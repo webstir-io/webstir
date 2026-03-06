@@ -62,34 +62,29 @@ test('resolve-release-package resolves canonical package metadata', () => {
   assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
 });
 
-test('publishable package manifests and lockfiles use concrete internal dependency ranges', () => {
+test('publishable package manifests use concrete internal dependency ranges', () => {
   const cases = [
     {
       packageJsonPath: 'packages/tooling/webstir-backend/package.json',
-      packageLockPath: 'packages/tooling/webstir-backend/package-lock.json',
       dependencyName: '@webstir-io/module-contract',
       expectedRange: '^0.1.14',
     },
     {
       packageJsonPath: 'packages/tooling/webstir-frontend/package.json',
-      packageLockPath: 'packages/tooling/webstir-frontend/package-lock.json',
       dependencyName: '@webstir-io/module-contract',
       expectedRange: '^0.1.14',
     },
     {
       packageJsonPath: 'packages/tooling/webstir-testing/package.json',
-      packageLockPath: 'packages/tooling/webstir-testing/package-lock.json',
       dependencyName: '@webstir-io/testing-contract',
       expectedRange: '^0.1.7',
     },
   ];
 
-  for (const { packageJsonPath, packageLockPath, dependencyName, expectedRange } of cases) {
+  for (const { packageJsonPath, dependencyName, expectedRange } of cases) {
     const packageJson = readJson(packageJsonPath);
-    const packageLock = readJson(packageLockPath);
 
     assert.equal(packageJson.dependencies?.[dependencyName], expectedRange);
-    assert.equal(packageLock.packages?.['']?.dependencies?.[dependencyName], expectedRange);
     assert.doesNotMatch(packageJson.dependencies?.[dependencyName] ?? '', /^workspace:/);
   }
 });
@@ -122,12 +117,17 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       assert.equal(packResult.status, 0, packResult.stderr);
 
       const [{ filename }] = JSON.parse(packResult.stdout);
+      const tarballPath = path.join(copiedPackageDir, filename);
       const packedManifestResult = run('tar', ['-xOf', path.join(copiedPackageDir, filename), 'package/package.json'], copiedPackageDir);
       assert.equal(packedManifestResult.status, 0, packedManifestResult.stderr);
 
       const packedManifest = JSON.parse(packedManifestResult.stdout);
       assert.equal(packedManifest.dependencies?.[dependencyName], expectedRange);
       assert.doesNotMatch(packedManifest.dependencies?.[dependencyName] ?? '', /^workspace:/);
+
+      const tarListResult = run('tar', ['-tf', tarballPath], copiedPackageDir);
+      assert.equal(tarListResult.status, 0, tarListResult.stderr);
+      assert.doesNotMatch(tarListResult.stdout, /package\/package-lock\.json/);
     }
   });
 });

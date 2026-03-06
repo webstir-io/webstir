@@ -72,17 +72,17 @@ All exported types align with `@webstir-io/testing-contract`.
 ## Maintainer Workflow
 
 ```bash
-npm install
-npm run clean          # remove dist artifacts
-npm run build          # TypeScript → dist/
-npm run test
-npm run smoke
+bun install
+bun run clean          # remove dist artifacts
+bun run build          # TypeScript → dist/
+bun run test
+bun run smoke
 # Release helper (bumps version and pushes a package-scoped release tag)
-npm run release -- patch
+bun run release -- patch
 ```
 
 - Add integration fixtures under `tests/` before enabling automated suites.
-- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` prior to publishing.
+- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` prior to publishing.
 - The release workflow publishes to npm using trusted publishing (`id-token: write` + provenance).
 
 ## Troubleshooting

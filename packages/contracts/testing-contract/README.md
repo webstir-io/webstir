@@ -85,17 +85,17 @@ function assertEvent(payload: string) {
 ## Maintainer Workflow
 
 ```bash
-npm install
-npm run clean          # remove dist artifacts
-npm run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
-npm run test
-npm run smoke
+bun install
+bun run clean          # remove dist artifacts
+bun run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
+bun run test
+bun run smoke
 # Release helper (bumps version and pushes a package-scoped release tag)
-npm run release -- patch
+bun run release -- patch
 ```
 
 - Regenerate schema files whenever TypeScript interfaces change.
-- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publishing.
+- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` before publishing.
 - Publishing targets npm and is triggered by the monorepo release workflow.
 
 ## License

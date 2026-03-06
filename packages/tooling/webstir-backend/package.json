@@ -32,11 +32,11 @@
     "build": "tsc -p tsconfig.json",
     "test": "node -e \"const { spawnSync } = require('node:child_process'); const glob = require('glob'); const files = glob.sync('tests/**/*.test.js'); if (!files.length) { console.error('No backend test files found'); process.exit(1); } const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' }); process.exit(result.status ?? 1);\"",
     "clean": "rm -rf dist",
-    "prepare": "npm run build",
-    "watch": "npm run build && node -e \"import('./dist/watch.js').then(m=>m.startBackendWatch({workspaceRoot:process.cwd(),env:{WEBSTIR_MODULE_MODE:'build'}}));\"",
-    "dev": "npm run watch",
-    "dev:fast": "WEBSTIR_BACKEND_TYPECHECK=skip npm run watch",
-    "smoke": "npm run build && node scripts/smoke.mjs",
+    "prepare": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json && node -e \"import('./dist/watch.js').then(m=>m.startBackendWatch({workspaceRoot:process.cwd(),env:{WEBSTIR_MODULE_MODE:'build'}}));\"",
+    "dev": "bun run watch",
+    "dev:fast": "WEBSTIR_BACKEND_TYPECHECK=skip bun run watch",
+    "smoke": "tsc -p tsconfig.json && node scripts/smoke.mjs",
     "release": "bash scripts/publish.sh"
   },
   "files": [
@@ -45,8 +45,7 @@
     "src",
     "scripts",
     "tests",
-    "tsconfig.json",
-    "package-lock.json"
+    "tsconfig.json"
   ],
   "engines": {
     "node": ">=20.18.1"

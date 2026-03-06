@@ -4,23 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEMOS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WORKSPACE_ROOT="$(cd "${DEMOS_ROOT}/../.." && pwd)"
-
-set_local_provider_specs() {
-  local frontend_spec="${WORKSPACE_ROOT}/packages/tooling/webstir-frontend"
-  if [[ -z "${WEBSTIR_FRONTEND_PROVIDER_SPEC+x}" && -d "${frontend_spec}" ]]; then
-    export WEBSTIR_FRONTEND_PROVIDER_SPEC="${frontend_spec}"
-  fi
-
-  local backend_spec="${WORKSPACE_ROOT}/packages/tooling/webstir-backend"
-  if [[ -z "${WEBSTIR_BACKEND_PROVIDER_SPEC+x}" && -d "${backend_spec}" ]]; then
-    export WEBSTIR_BACKEND_PROVIDER_SPEC="${backend_spec}"
-  fi
-
-  local testing_spec="${WORKSPACE_ROOT}/packages/tooling/webstir-testing"
-  if [[ -z "${WEBSTIR_TESTING_PROVIDER_SPEC+x}" && -d "${testing_spec}" ]]; then
-    export WEBSTIR_TESTING_PROVIDER_SPEC="${testing_spec}"
-  fi
-}
+source "${SCRIPT_DIR}/provider-helpers.sh"
 
 usage() {
   cat <<'EOF'
@@ -112,7 +96,7 @@ if [[ ! -d "${DEMO_DIR}" ]]; then
   exit 1
 fi
 
-set_local_provider_specs
+set_local_provider_specs "${WORKSPACE_ROOT}"
 
 echo "Publishing ${MODE} demo at ${DEMO_DIR}..."
 (

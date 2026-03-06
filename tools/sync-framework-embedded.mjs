@@ -227,7 +227,7 @@ if (options.check) {
   for (const relativePath of dedupedPaths) {
     console.error(`- ${relativePath}`);
   }
-  console.error('Run "pnpm run sync:framework-embedded" and commit the updated embedded snapshot files.');
+  console.error('Run "bun run sync:framework-embedded" and commit the updated embedded snapshot files.');
   process.exit(1);
 }
 

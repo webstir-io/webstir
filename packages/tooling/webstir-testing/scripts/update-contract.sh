@@ -22,6 +22,8 @@ EOF
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+MONOREPO_ROOT="$(git -C "$ROOT_DIR" rev-parse --show-toplevel)"
+PACKAGE_NAME="$(node -p "require('./package.json').name" 2>/dev/null)"
 
 has_script() {
   local script_name="$1"
@@ -84,34 +86,34 @@ main() {
   echo "› Setting @webstir-io/testing-contract to $spec"
   npm pkg set "dependencies.@webstir-io/testing-contract=$spec"
 
-  echo "› npm install (refresh lockfile)"
+  echo "› bun install (refresh workspace lockfile)"
   if [[ "$fast" == "true" ]]; then
-    npm install --package-lock-only --no-audit --no-fund --ignore-scripts
+    bun install --cwd "$MONOREPO_ROOT" --filter "$PACKAGE_NAME" --lockfile-only
   else
-    npm install --no-audit --no-fund
+    bun install --cwd "$MONOREPO_ROOT" --filter "$PACKAGE_NAME"
   fi
 
   local pkg_version
   pkg_version="$(node -p "require('./package.json').version" 2>/dev/null || echo 'unknown')"
   local installed_contract
-  installed_contract="$(npm ls @webstir-io/testing-contract --json 2>/dev/null | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const j=JSON.parse(d);const v=(j.dependencies&&j.dependencies['@webstir-io/testing-contract']&&j.dependencies['@webstir-io/testing-contract'].version)||'';console.log(v||'unknown')}catch{console.log('unknown')}})")"
+  installed_contract="$(node -p "try { require('@webstir-io/testing-contract/package.json').version } catch { 'unknown' }" 2>/dev/null || echo 'unknown')"
   echo "› Testing package: @webstir-io/webstir-testing@${pkg_version}"
   echo "› Contract installed: @webstir-io/testing-contract@${installed_contract}"
 
   if [[ "$fast" != "true" ]]; then
     if has_script build; then
-      echo "› npm run build"
-      npm run build
+      echo "› bun run build"
+      bun run build
     fi
 
     if has_script test; then
-      echo "› npm test"
-      npm test
+      echo "› bun run test"
+      bun run test
     fi
 
     if has_script smoke; then
-      echo "› npm run smoke"
-      npm run smoke
+      echo "› bun run smoke"
+      bun run smoke
     fi
   fi
 

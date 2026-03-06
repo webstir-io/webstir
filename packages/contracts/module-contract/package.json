@@ -24,14 +24,14 @@
   ],
   "scripts": {
     "clean": "rm -rf dist schema",
-    "build": "npm run build:types && npm run build:schema",
+    "build": "tsc -p tsconfig.json && node scripts/build-schema.mjs",
     "build:types": "tsc -p tsconfig.json",
     "build:schema": "node scripts/build-schema.mjs",
-    "test": "npm run test:examples",
+    "test": "tsc -p tsconfig.examples.json",
     "test:examples": "tsc -p tsconfig.examples.json",
     "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
     "release": "bash scripts/publish.sh",
-    "prepare": "npm run build"
+    "prepare": "tsc -p tsconfig.json && node scripts/build-schema.mjs"
   },
   "keywords": [
     "webstir",

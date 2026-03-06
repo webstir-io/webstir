@@ -44,7 +44,7 @@ Configure a base path so published URLs resolve correctly in SSG output:
 }
 ```
 
-When enabled, Webstir adds `utils/deploy-gh-pages.sh` and wires it to `npm run deploy`.
+When enabled, Webstir adds `utils/deploy-gh-pages.sh` and wires it to `bun run deploy`.
 
 When you enable `gh-deploy`, Webstir also adds `.github/workflows/webstir-gh-pages.yml` to deploy automatically on push to `main`.
 

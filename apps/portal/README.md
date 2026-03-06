@@ -5,14 +5,14 @@ Docs hub for the Webstir ecosystem, built with Docusaurus and deployed to GitHub
 ## Run locally
 
 - Prereq: Node.js ≥ 20.18
-- Install: `npm install`
-- Dev server: `npm start` (opens at http://localhost:3000)
+- Install: `bun install`
+- Dev server: `bun run start` (opens at http://localhost:3000)
 
 ## Build & deploy
 
-- Build static site: `npm run build` (outputs to `build/`)
-- Preview build: `npm run serve`
-- Deploy: GitHub Actions at `.github/workflows/deploy-docs.yml` builds on `main` and publishes to GitHub Pages with the `webstir.io` CNAME. For a manual push, `npm run deploy` (requires `GITHUB_TOKEN`/`GH_PAT` with `contents: write`).
+- Build static site: `bun run build` (outputs to `build/`)
+- Preview build: `bun run serve`
+- Deploy: GitHub Actions at `.github/workflows/deploy-docs.yml` builds on `main` and publishes to GitHub Pages with the `webstir.io` CNAME. For a manual push, `bun run deploy` (requires `GITHUB_TOKEN`/`GH_PAT` with `contents: write`).
 
 ## Structure
 
