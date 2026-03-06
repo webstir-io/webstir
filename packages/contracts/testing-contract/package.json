@@ -22,7 +22,6 @@
     "test": "node --test tests/*.test.js",
     "clean": "rm -rf dist",
     "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
-    "prepare": "tsc -p tsconfig.json",
     "release": "bash scripts/publish.sh"
   },
   "keywords": [

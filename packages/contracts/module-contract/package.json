@@ -30,8 +30,7 @@
     "test": "tsc -p tsconfig.examples.json",
     "test:examples": "tsc -p tsconfig.examples.json",
     "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
-    "release": "bash scripts/publish.sh",
-    "prepare": "tsc -p tsconfig.json && node scripts/build-schema.mjs"
+    "release": "bash scripts/publish.sh"
   },
   "keywords": [
     "webstir",
