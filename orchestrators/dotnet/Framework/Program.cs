@@ -27,21 +27,15 @@ try
     services.AddSingleton<IRepositoryDiffService, RepositoryDiffService>();
     services.AddSingleton<IGitCommitAnalyzer, GitCommitAnalyzer>();
     services.AddSingleton<IPackageMetadataService, PackageMetadataService>();
-    services.AddSingleton<IReleaseNotesService, ReleaseNotesService>();
-    services.AddSingleton<IPackagePublishValidator, PackagePublishValidator>();
-    services.AddSingleton<IPackageOperationReporter, PackageOperationReporter>();
+    services.AddSingleton<IMonorepoPackageReleasePolicy, MonorepoPackageReleasePolicy>();
 
     services.AddSingleton<PackagesBumpCommand>();
     services.AddSingleton<PackagesSyncCommand>();
-    services.AddSingleton<PackagesReleaseCommand>();
-    services.AddSingleton<PackagesPublishCommand>();
     services.AddSingleton<PackagesVerifyCommand>();
     services.AddSingleton<PackagesDiffCommand>();
 
     services.AddSingleton<IPackagesSubcommand>(provider => provider.GetRequiredService<PackagesBumpCommand>());
     services.AddSingleton<IPackagesSubcommand>(provider => provider.GetRequiredService<PackagesSyncCommand>());
-    services.AddSingleton<IPackagesSubcommand>(provider => provider.GetRequiredService<PackagesReleaseCommand>());
-    services.AddSingleton<IPackagesSubcommand>(provider => provider.GetRequiredService<PackagesPublishCommand>());
     services.AddSingleton<IPackagesSubcommand>(provider => provider.GetRequiredService<PackagesVerifyCommand>());
     services.AddSingleton<IPackagesSubcommand>(provider => provider.GetRequiredService<PackagesDiffCommand>());
 

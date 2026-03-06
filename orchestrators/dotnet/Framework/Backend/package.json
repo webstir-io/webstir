@@ -16,6 +16,16 @@
       "import": "./dist/provider.js",
       "default": "./dist/provider.js"
     },
+    "./watch": {
+      "types": "./dist/watch.d.ts",
+      "import": "./dist/watch.js",
+      "default": "./dist/watch.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {

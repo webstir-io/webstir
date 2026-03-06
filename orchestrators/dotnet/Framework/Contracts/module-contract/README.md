@@ -2,6 +2,11 @@
 
 TypeScript interfaces, helper utilities, and JSON schema describing Webstir modules and providers. The contract covers build-time provider APIs and the runtime surface (contexts, manifests, routes, views) that providers expose to the orchestrator.
 
+## Status
+
+- Experimental contract for the Webstir ecosystem — shapes and helpers may change as providers and orchestrator behavior are refined.
+- Expect breaking changes across early versions; pin carefully if you integrate it outside Webstir itself.
+
 ## Install
 
 ```bash
@@ -20,6 +25,7 @@ import {
   defineRoute,
   defineView,
   createModule,
+  CONTRACT_VERSION,
   type RequestContext,
   type SSRContext,
 } from '@webstir-io/module-contract';
@@ -33,8 +39,24 @@ import { fromTsRestRoute, fromTsRestRouter } from '@webstir-io/module-contract/t
 - `defineRoute`, `defineView`, and `createModule` give providers ergonomic helpers with strong TypeScript inference.
 - `RequestContext` and `SSRContext` describe what the orchestrator supplies to route and view handlers.
 - `fromTsRestRoute` converts an `@ts-rest/core` route contract into a Webstir `RouteSpec`, and `fromTsRestRouter` adapts an entire ts-rest router tree at once.
+- Routes and views support optional SSG metadata: `renderMode?: 'ssg' | 'ssr' | 'spa'`, `staticPaths?: string[]`, and a reserved `ssg?: { revalidateSeconds?: number }` bag for future incremental/static revalidation hints.
 
 > Install `@ts-rest/core` to use the adapters; it's published as an optional peer dependency of this package.
+
+## Schema References
+
+`SchemaReference` objects describe how a manifest entry maps back to the typed schema that produced it. Webstir modules emit these references in `route.input`, `route.output`, and `view` definitions so downstream tooling can point developers to the right file when something fails validation.
+
+Format:
+- `kind` &mdash; schema system. Supported values: `zod` (default), `json-schema`, `ts-rest`.
+- `name` &mdash; PascalCase identifier that matches the exported symbol or schema `$id`.
+- `source` &mdash; optional module specifier (usually a workspace-relative path like `src/backend/routes/accounts.ts` or a package entry such as `@demo/contracts/accounts.ts`).
+
+Naming & source guidance:
+- Keep `name` stable across builds. Use the TypeScript identifier for `zod`, the `$id` (or filename) for JSON Schema, and the router key for ts-rest adapters.
+- Use `source` whenever the schema lives outside the generated manifest (for example, in `src/shared/contracts/`), and prefer workspace-relative paths so the CLI can resolve them after scaffolding.
+- When emitting references from the CLI, serialize the tuple as `kind:name@source` (drop `kind:` for `zod` and omit `@source` when not needed). This is the same string accepted by `--*-schema` flags on `webstir add-route`.
+- Keep `kind`/`name` unique per file to avoid ambiguity when generators pre-populate manifest entries.
 
 ## Usage Example
 
@@ -54,8 +76,13 @@ const getAccount = defineRoute<RequestContext, typeof paramsSchema, undefined, u
     name: 'getAccount',
     method: 'GET',
     path: '/accounts/:id',
-    input: { params: { kind: 'zod', name: 'AccountRouteParams' } },
-    output: { body: { kind: 'zod', name: 'AccountRouteResponse' }, status: 200 }
+    input: {
+      params: { kind: 'zod', name: 'AccountRouteParams', source: 'src/backend/server/routes/accounts.ts' }
+    },
+    output: {
+      body: { kind: 'zod', name: 'AccountRouteResponse', source: 'src/backend/server/routes/accounts.ts' },
+      status: 200
+    }
   },
   schemas: {
     params: paramsSchema,
@@ -71,8 +98,11 @@ const accountView = defineView<SSRContext, typeof paramsSchema, typeof viewDataS
   definition: {
     name: 'AccountView',
     path: '/accounts/:id',
-    params: { kind: 'zod', name: 'AccountViewParams' },
-    data: { kind: 'zod', name: 'AccountViewData' }
+    params: { kind: 'zod', name: 'AccountViewParams', source: 'src/backend/views/account.ts' },
+    data: { kind: 'zod', name: 'AccountViewData', source: 'src/backend/views/account.ts' },
+    // Optional SSG hints for frontend providers
+    renderMode: 'ssg',
+    staticPaths: ['/accounts/demo']
   },
   params: paramsSchema,
   data: viewDataSchema,
@@ -81,11 +111,14 @@ const accountView = defineView<SSRContext, typeof paramsSchema, typeof viewDataS
 
 export const accountsModule = createModule({
   manifest: {
-    contractVersion: '1.0.0',
+    contractVersion: CONTRACT_VERSION,
     name: '@demo/accounts',
     version: '0.0.1',
     kind: 'backend',
     capabilities: ['auth', 'db', 'views'],
+    // Optional: pass-through metadata for providers
+    assets: [],
+    middlewares: [],
     routes: [getAccount.definition],
     views: [accountView.definition]
   },
@@ -153,18 +186,26 @@ When authoring a provider:
 3. Return absolute filesystem paths in `ModuleArtifact.path` from the build step.
 4. Emit `ModuleDiagnostic`s for recoverable issues and include the module manifest in `ModuleBuildResult.manifest.module`.
 
+## Community & Support
+
+- Code of Conduct: https://github.com/webstir-io/.github/blob/main/CODE_OF_CONDUCT.md
+- Contributing guidelines: https://github.com/webstir-io/.github/blob/main/CONTRIBUTING.md
+- Security policy and disclosure process: https://github.com/webstir-io/.github/blob/main/SECURITY.md
+- Support expectations and contact channels: https://github.com/webstir-io/.github/blob/main/SUPPORT.md
+
 ## Maintainer Workflow
 
 ```bash
 npm install
-npm run build          # cleans, compiles TypeScript, regenerates schema/*.schema.json
+npm run clean          # remove dist/schema artifacts
+npm run build          # compiles TypeScript, regenerates schema/*.schema.json
 npm run test           # type-checks the Accounts example module
-# Release helper (bumps version and pushes tags to trigger release workflow)
+# Release helper (bumps version and pushes a package-scoped release tag)
 npm run release -- patch
 ```
 
 - The `schema/` folder contains `*-definition.schema.json` files derived from the exported Zod schemas. Commit them with contract changes.
-- Ensure CI runs `npm run build` and fails on schema drift before publish.
+- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publish.
 
 ## License
 

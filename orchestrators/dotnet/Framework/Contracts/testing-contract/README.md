@@ -2,6 +2,11 @@
 
 TypeScript types and JSON schema defining Webstir’s test manifests, runner events, and summaries. Downstream tooling (CLI, dashboards, custom reporters) consume this package to stay aligned with the official testing contract.
 
+## Status
+
+- Experimental testing contract for the Webstir ecosystem — event and manifest schemas may evolve alongside the runner and host.
+- Use pinned versions and expect breaking changes while the testing story stabilizes.
+
 ## Install
 
 ```bash
@@ -70,15 +75,28 @@ function assertEvent(payload: string) {
 }
 ```
 
+## Community & Support
+
+- Code of Conduct: https://github.com/webstir-io/.github/blob/main/CODE_OF_CONDUCT.md
+- Contributing guidelines: https://github.com/webstir-io/.github/blob/main/CONTRIBUTING.md
+- Security policy and disclosure process: https://github.com/webstir-io/.github/blob/main/SECURITY.md
+- Support expectations and contact channels: https://github.com/webstir-io/.github/blob/main/SUPPORT.md
+
 ## Maintainer Workflow
 
 ```bash
 npm install
+npm run clean          # remove dist artifacts
 npm run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
+npm run test
+npm run smoke
+# Release helper (bumps version and pushes a package-scoped release tag)
+npm run release -- patch
 ```
 
 - Regenerate schema files whenever TypeScript interfaces change.
-- Ensure CI lints, builds, and verifies schema parity before publishing.
+- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publishing.
+- Publishing targets npm and is triggered by the monorepo release workflow.
 
 ## License
 

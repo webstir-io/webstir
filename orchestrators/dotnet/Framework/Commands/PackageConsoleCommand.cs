@@ -16,15 +16,18 @@ internal sealed class PackageConsoleCommand
     private static readonly string[] HelpTokens = ["-h", "--help", "help"];
 
     private readonly ILogger<PackageConsoleCommand> _logger;
+    private readonly IMonorepoPackageReleasePolicy _monorepoReleasePolicy;
     private readonly IReadOnlyDictionary<string, IPackagesSubcommand> _handlers;
 
     public PackageConsoleCommand(
         IEnumerable<IPackagesSubcommand> subcommands,
+        IMonorepoPackageReleasePolicy monorepoReleasePolicy,
         ILogger<PackageConsoleCommand> logger)
     {
         ArgumentNullException.ThrowIfNull(subcommands);
 
         _logger = logger;
+        _monorepoReleasePolicy = monorepoReleasePolicy;
         _handlers = BuildCommandIndex(subcommands);
     }
 
@@ -35,14 +38,16 @@ internal sealed class PackageConsoleCommand
             PackagesParseResult result = ParseArguments(args);
             if (result.ShowHelp)
             {
-                ShowUsage();
+                ShowUsage(result.RepositoryRoot);
                 return 0;
             }
+
+            _monorepoReleasePolicy.EnsureCommandSupported(result.RepositoryRoot, result.Command);
 
             if (!_handlers.TryGetValue(result.Command, out IPackagesSubcommand? handler))
             {
                 _logger.LogError("[packages] Unknown command '{Command}'.", result.Command);
-                ShowUsage();
+                ShowUsage(result.RepositoryRoot);
                 return 1;
             }
 
@@ -336,29 +341,36 @@ internal sealed class PackageConsoleCommand
         };
     }
 
-    private static void ShowUsage()
+    private void ShowUsage(string repositoryRoot)
     {
-        Console.WriteLine("framework packages <bump|sync|release|publish|verify|diff> [options]");
+        Console.WriteLine("framework packages <bump|sync|verify|diff> [options]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  bump       Bump package versions using conventional commit heuristics or manual flags.");
-        Console.WriteLine("  sync       Rebuild framework packages and refresh registry metadata.");
-        Console.WriteLine("  release    Bump and rebuild packages without publishing.");
-        Console.WriteLine("  publish    Bump, rebuild, and publish packages to the configured registry.");
-        Console.WriteLine("  verify     Validate registry metadata and template dependencies.");
-        Console.WriteLine("  diff       Report registry metadata differences without modifying files.");
+        Console.WriteLine("  bump       Update embedded framework package versions using heuristics or manual flags.");
+        Console.WriteLine("  sync       Rebuild embedded framework packages and refresh orchestrator registry metadata.");
+        Console.WriteLine("  verify     Validate embedded package metadata and template dependencies.");
+        Console.WriteLine("  diff       Report embedded metadata differences without modifying files.");
         Console.WriteLine();
         Console.WriteLine("Shared Options:");
         Console.WriteLine("  --package <name>    Target a specific package (repeatable, accepts aliases).");
         Console.WriteLine("  --all               Target all packages.");
         Console.WriteLine("  --changed-only      Target packages with detected repository changes (default).");
         Console.WriteLine("  --dry-run           Preview actions without writing files or publishing.");
-        Console.WriteLine("  --set-version <x.y.z>  Explicitly set the next version.");
+        Console.WriteLine("  --set-version <x.y.z>  Explicitly set the next version (bump only in the monorepo).");
         Console.WriteLine("  --bump <patch|minor|major>  Version bump increment (defaults to patch).");
         Console.WriteLine("  --print-version    Emit the resolved version to stdout (bump only).");
         Console.WriteLine("  --interactive       Prompt before executing critical steps (future use).");
         Console.WriteLine("  --since <ref>       Detect changes relative to the provided git reference.");
         Console.WriteLine();
         Console.WriteLine("Legacy aliases --frontend/--test/--backend/--both remain supported for compatibility.");
+
+        if (_monorepoReleasePolicy.IsCanonicalMonorepo(repositoryRoot))
+        {
+            Console.WriteLine();
+            Console.WriteLine("Monorepo note:");
+            Console.WriteLine("  Release npm packages from packages/** with npm run release or the Release Package workflow.");
+            Console.WriteLine("  Legacy framework packages release/publish aliases remain blocked if invoked.");
+            Console.WriteLine("  Use sync/verify here only to maintain the embedded orchestrator snapshots under Framework/**.");
+        }
     }
 }

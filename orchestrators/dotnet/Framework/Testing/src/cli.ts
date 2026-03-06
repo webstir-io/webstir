@@ -8,6 +8,7 @@ const program = new Command();
 
 program
   .name('webstir-testing')
+  .alias('webstir-test')
   .description('Unified test runner for Webstir workspaces');
 
 program

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import postcss from 'postcss';
 import autoprefixer from 'autoprefixer';
+import customMedia from 'postcss-custom-media';
 import * as cssoModule from 'csso';
 import { glob } from 'glob';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
@@ -12,11 +13,11 @@ import { updatePageManifest, updateSharedAssets, readSharedAssets } from '../ass
 import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
-import { applyBasePath } from '../utils/publicPath.js';
 
 const MODULE_SUFFIX = '.module';
 const APP_CSS_BASENAME = 'app';
 const csso = ((cssoModule as unknown as { default?: typeof cssoModule }).default ?? cssoModule) as typeof cssoModule;
+const PAGE_IMPORT_PATTERN = /@import\s+(?:url\()?[\s]*['"]([^'"\)]+)['"][\s]*\)?\s*;?/g;
 
 interface SharedCssArtifacts {
     appCss?: string;
@@ -43,8 +44,9 @@ async function processCss(context: BuilderContext, isProduction: boolean): Promi
         return;
     }
 
-    const sharedArtifacts = await processAppCss(config, isProduction);
-    const basePath = isProduction ? config.publish.basePath : '';
+    const processor = createPostcssProcessor();
+    const customMediaPrelude = await loadCustomMediaPrelude(config);
+    const sharedArtifacts = await processAppCss(config, isProduction, processor, customMediaPrelude);
     const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
     const pages = await getPages(config.paths.src.pages);
 
@@ -58,22 +60,27 @@ async function processCss(context: BuilderContext, isProduction: boolean): Promi
         }
 
         const css = await readFile(entryPath);
-        const processor = postcss([autoprefixer]);
-        const processed = await processor.process(css, { from: entryPath, map: !isProduction ? { inline: true } : false });
-        let normalized = resolveAppImports(processed.css, isProduction ? sharedArtifacts.appCss : undefined, basePath);
-        normalized = rewriteRootRelativeUrls(normalized, basePath);
+        const inlinedCss = await inlinePageImports(css, page.directory);
+        const prepared = applyCustomMediaPrelude(inlinedCss, customMediaPrelude);
+        const processed = await processor.process(prepared, { from: entryPath, map: !isProduction ? { inline: true } : false });
+        const normalized = resolveAppImports(processed.css, isProduction ? sharedArtifacts.appCss : undefined);
 
         if (isProduction) {
-            const inlined = await inlineAppImports(normalized, config.paths.dist.frontend, basePath);
+            const inlined = await inlineAppImports(normalized, config.paths.dist.frontend);
             await emitProductionCss(config, page.name, inlined);
         } else {
             await emitDevelopmentCss(config, page.name, normalized);
+            await syncPageCssAssetsForDevelopment(
+                page.directory,
+                path.join(config.paths.build.pages, page.name),
+                entryPath
+            );
         }
     }
 }
 
 async function emitDevelopmentCss(config: BuilderContext['config'], pageName: string, css: string): Promise<void> {
-    const outputDir = path.join(config.paths.build.frontend, FOLDERS.pages, pageName);
+    const outputDir = path.join(config.paths.build.pages, pageName);
     await ensureDir(outputDir);
     const outputPath = path.join(outputDir, `${FILES.index}${EXTENSIONS.css}`);
     await writeFile(outputPath, css);
@@ -83,7 +90,7 @@ async function emitProductionCss(config: BuilderContext['config'], pageName: str
     const minified = csso.minify(css).css;
     const hash = hashContent(minified);
     const fileName = `${FILES.index}-${hash}${EXTENSIONS.css}`;
-    const outputDir = path.join(config.paths.dist.frontend, FOLDERS.pages, pageName);
+    const outputDir = path.join(config.paths.dist.pages, pageName);
     await ensureDir(outputDir);
     const outputPath = path.join(outputDir, fileName);
     await writeFile(outputPath, minified);
@@ -100,21 +107,60 @@ async function emitProductionCss(config: BuilderContext['config'], pageName: str
     });
 }
 
-async function processAppCss(config: BuilderContext['config'], isProduction: boolean): Promise<SharedCssArtifacts> {
+async function syncPageCssAssetsForDevelopment(
+    pageDirectory: string,
+    outputDir: string,
+    entryPath: string
+): Promise<void> {
+    const sourceFiles = await glob('**/*.css', { cwd: pageDirectory, nodir: true });
+    const entryRelative = normalizeForwardSlashes(path.relative(pageDirectory, entryPath));
+
+    const copySet = new Set<string>();
+    for (const relative of sourceFiles) {
+        const normalized = normalizeForwardSlashes(relative);
+        if (normalized === entryRelative) {
+            continue;
+        }
+
+        copySet.add(normalized);
+        const sourcePath = path.join(pageDirectory, relative);
+        const destinationPath = path.join(outputDir, relative);
+        await ensureDir(path.dirname(destinationPath));
+        await copy(sourcePath, destinationPath);
+    }
+
+    const existingFiles = await glob('**/*.css', { cwd: outputDir, nodir: true });
+    for (const relative of existingFiles) {
+        const normalized = normalizeForwardSlashes(relative);
+        if (normalized === `${FILES.index}${EXTENSIONS.css}`) {
+            continue;
+        }
+
+        if (!copySet.has(normalized)) {
+            await remove(path.join(outputDir, relative)).catch(() => undefined);
+        }
+    }
+}
+
+async function processAppCss(
+    config: BuilderContext['config'],
+    isProduction: boolean,
+    processor: postcss.Processor,
+    customMediaPrelude: string
+): Promise<SharedCssArtifacts> {
     const appCssPath = path.join(config.paths.src.app, 'app.css');
     if (!(await pathExists(appCssPath))) {
         return {};
     }
 
-    const processor = postcss([autoprefixer]);
-    const source = await readFile(appCssPath);
+    const source = applyCustomMediaPrelude(await readFile(appCssPath), customMediaPrelude);
 
     if (isProduction) {
-        const basePath = config.publish.basePath;
-        const stylesMap = await emitAppStylesProduction(config, processor);
+        const stylesMap = await emitAppStylesProduction(config, processor, customMediaPrelude);
         const processed = await processor.process(source, { from: appCssPath, map: false });
-        const rewritten = rewriteRootRelativeUrls(rewriteAppStyleImports(processed.css, stylesMap, basePath), basePath);
-        const fileName = await emitAppProductionCss(config, rewritten);
+        const rewritten = rewriteAppStyleImports(processed.css, stylesMap);
+        const inlined = await inlineAppImports(rewritten, config.paths.dist.frontend);
+        const fileName = await emitAppProductionCss(config, inlined);
         await updateSharedAssets(config.paths.dist.frontend, shared => {
             shared.css = fileName;
         });
@@ -125,8 +171,43 @@ async function processAppCss(config: BuilderContext['config'], isProduction: boo
     const stylesVersion = await computeAppStylesVersion(config.paths.src.app);
     const rewritten = rewriteAppStyleImportsForDevelopment(processed.css, stylesVersion);
     await emitAppDevelopmentCss(config, rewritten);
-    await syncAppStyles(config.paths.src.app, path.join(config.paths.build.frontend, FOLDERS.app));
+    await syncAppStyles(config.paths.src.app, path.join(config.paths.build.frontend, FOLDERS.app), processor, customMediaPrelude);
     return {};
+}
+
+function createPostcssProcessor(): postcss.Processor {
+    return postcss([customMedia(), autoprefixer]);
+}
+
+async function loadCustomMediaPrelude(config: BuilderContext['config']): Promise<string> {
+    const tokensPath = path.join(config.paths.src.app, 'styles', 'tokens.css');
+    if (!(await pathExists(tokensPath))) {
+        return '';
+    }
+
+    const contents = await readFile(tokensPath);
+    const matches = contents.match(/^[\t ]*@custom-media[^\n]*;[\t ]*$/gm) ?? [];
+    if (matches.length === 0) {
+        return '';
+    }
+
+    return `${matches.join('\n')}\n`;
+}
+
+function applyCustomMediaPrelude(css: string, prelude: string): string {
+    if (!prelude) {
+        return css;
+    }
+
+    if (!css.includes('@media (--')) {
+        return css;
+    }
+
+    if (css.includes('@custom-media')) {
+        return css;
+    }
+
+    return `${prelude}${css}`;
 }
 
 async function emitAppDevelopmentCss(config: BuilderContext['config'], css: string): Promise<void> {
@@ -136,7 +217,8 @@ async function emitAppDevelopmentCss(config: BuilderContext['config'], css: stri
 }
 
 async function emitAppProductionCss(config: BuilderContext['config'], css: string): Promise<string> {
-    const minified = csso.minify(css).css;
+    const { css: stripped, layerOrder } = stripAppLayerOrderStatement(css);
+    const minified = restoreAppLayerOrderStatement(csso.minify(stripped).css, layerOrder);
     const hash = hashContent(minified);
     const fileName = `${APP_CSS_BASENAME}-${hash}${EXTENSIONS.css}`;
     const outputDir = path.join(config.paths.dist.frontend, FOLDERS.app);
@@ -166,15 +248,35 @@ async function emitAppProductionCss(config: BuilderContext['config'], css: strin
     return fileName;
 }
 
-async function syncAppStyles(sourceAppDir: string, destinationAppDir: string): Promise<void> {
+async function syncAppStyles(
+    sourceAppDir: string,
+    destinationAppDir: string,
+    processor: postcss.Processor,
+    customMediaPrelude: string
+): Promise<void> {
     const stylesSource = path.join(sourceAppDir, 'styles');
     if (!(await pathExists(stylesSource))) {
         return;
     }
 
     const stylesDestination = path.join(destinationAppDir, 'styles');
-    await ensureDir(path.dirname(stylesDestination));
-    await copy(stylesSource, stylesDestination);
+    await ensureDir(stylesDestination);
+
+    const files = await glob('**/*', { cwd: stylesSource, nodir: true });
+    for (const relative of files) {
+        const sourcePath = path.join(stylesSource, relative);
+        const destinationPath = path.join(stylesDestination, relative);
+        await ensureDir(path.dirname(destinationPath));
+
+        if (!relative.endsWith(EXTENSIONS.css)) {
+            await copy(sourcePath, destinationPath);
+            continue;
+        }
+
+        const source = applyCustomMediaPrelude(await readFile(sourcePath), customMediaPrelude);
+        const processed = await processor.process(source, { from: sourcePath, map: { inline: true } });
+        await writeFile(destinationPath, processed.css);
+    }
 }
 
 async function computeAppStylesVersion(sourceAppDir: string): Promise<string> {
@@ -202,29 +304,94 @@ function rewriteAppStyleImportsForDevelopment(css: string, stylesVersion: string
     return css.replace(importPattern, `$1./$2?v=${stylesVersion}$4`);
 }
 
-function resolveAppImports(css: string, appCssFile?: string, basePath = ''): string {
+function resolveAppImports(css: string, appCssFile?: string): string {
     let result = css;
 
     if (appCssFile) {
-        const appHref = applyBasePath(`/app/${appCssFile}`, basePath);
-        result = result.replace(/@import\s+['"]@app\/app\.css['"];?/g, `@import "${appHref}";`);
+        result = result.replace(/@import\s+['"]@app\/app\.css['"];?/g, `@import "/app/${appCssFile}";`);
     }
 
-    const appPrefix = applyBasePath('/app/', basePath);
-    return result.replace(/@app\//g, appPrefix);
+    return result.replace(/@app\//g, '/app/');
 }
 
-async function inlineAppImports(
-    css: string,
-    distRoot: string,
-    basePath = '',
-    seen: Set<string> = new Set()
-): Promise<string> {
-    const appPrefix = applyBasePath('/app/', basePath);
-    const importPattern = new RegExp(
-        `@import\\s+(?:url\\()?\\s*['"]${escapeRegExp(appPrefix)}([^'"\\)]+)['"]\\s*\\)?;?`,
-        'g'
-    );
+async function inlinePageImports(css: string, pageDirectory: string, seen: Set<string> = new Set()): Promise<string> {
+    const segments: string[] = [];
+    let lastIndex = 0;
+
+    for (const match of css.matchAll(PAGE_IMPORT_PATTERN)) {
+        const index = match.index ?? 0;
+        segments.push(css.slice(lastIndex, index));
+
+        const importPath = String(match[1] ?? '').trim();
+        if (!shouldInlinePageImport(importPath)) {
+            segments.push(match[0]);
+            lastIndex = index + match[0].length;
+            continue;
+        }
+
+        const resolved = path.resolve(pageDirectory, importPath);
+        if (!isWithin(resolved, pageDirectory)) {
+            segments.push(match[0]);
+            lastIndex = index + match[0].length;
+            continue;
+        }
+
+        const key = resolved;
+        if (seen.has(key)) {
+            lastIndex = index + match[0].length;
+            continue;
+        }
+
+        if (!(await pathExists(resolved))) {
+            segments.push(match[0]);
+            lastIndex = index + match[0].length;
+            continue;
+        }
+
+        seen.add(key);
+        const imported = await readFile(resolved);
+        const inlined = await inlinePageImports(imported, pageDirectory, seen);
+        seen.delete(key);
+        segments.push(inlined);
+
+        lastIndex = index + match[0].length;
+    }
+
+    segments.push(css.slice(lastIndex));
+    return segments.join('');
+}
+
+function shouldInlinePageImport(importPath: string): boolean {
+    if (importPath.length === 0) {
+        return false;
+    }
+
+    if (!importPath.endsWith(EXTENSIONS.css)) {
+        return false;
+    }
+
+    if (importPath.startsWith('/') || importPath.startsWith('http:') || importPath.startsWith('https:')) {
+        return false;
+    }
+
+    if (importPath.startsWith('@') || importPath.includes('?') || importPath.includes('#')) {
+        return false;
+    }
+
+    if (importPath.includes('..')) {
+        return false;
+    }
+
+    return true;
+}
+
+function isWithin(candidate: string, root: string): boolean {
+    const relative = path.relative(root, candidate);
+    return relative.length > 0 && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+async function inlineAppImports(css: string, distRoot: string, seen: Set<string> = new Set()): Promise<string> {
+    const importPattern = /@import\s+(?:url\()?[\s]*['"]\/app\/([^'"\)]+)['"][\s]*\)?;?/g;
     const segments: string[] = [];
     let lastIndex = 0;
 
@@ -233,7 +400,7 @@ async function inlineAppImports(
         segments.push(css.slice(lastIndex, index));
 
         const relative = normalizeForwardSlashes(match[1] ?? '');
-        const inlined = await inlineAppImport(relative, distRoot, basePath, seen);
+        const inlined = await inlineAppImport(relative, distRoot, seen);
         if (inlined !== null) {
             segments.push(inlined);
         } else {
@@ -247,12 +414,7 @@ async function inlineAppImports(
     return segments.join('');
 }
 
-async function inlineAppImport(
-    relativePath: string,
-    distRoot: string,
-    basePath: string,
-    seen: Set<string>
-): Promise<string | null> {
+async function inlineAppImport(relativePath: string, distRoot: string, seen: Set<string>): Promise<string | null> {
     if (relativePath.length === 0 || relativePath.includes('..')) {
         return null;
     }
@@ -269,7 +431,7 @@ async function inlineAppImport(
 
     seen.add(key);
     const content = await readFile(resolved);
-    const inlined = await inlineAppImports(content, distRoot, basePath, seen);
+    const inlined = await inlineAppImports(content, distRoot, seen);
     seen.delete(key);
 
     return inlined;
@@ -277,7 +439,8 @@ async function inlineAppImport(
 
 async function emitAppStylesProduction(
     config: BuilderContext['config'],
-    processor: postcss.Processor
+    processor: postcss.Processor,
+    customMediaPrelude: string
 ): Promise<Map<string, string>> {
     const sourceDir = path.join(config.paths.src.app, 'styles');
     const mapping = new Map<string, string>();
@@ -294,7 +457,8 @@ async function emitAppStylesProduction(
     const files = await glob('**/*.css', { cwd: sourceDir, nodir: true });
     for (const relative of files) {
         const sourcePath = path.join(sourceDir, relative);
-        const processed = await processor.process(await readFile(sourcePath), { from: sourcePath, map: false });
+        const source = applyCustomMediaPrelude(await readFile(sourcePath), customMediaPrelude);
+        const processed = await processor.process(source, { from: sourcePath, map: false });
         const minified = csso.minify(processed.css).css;
         const hash = hashContent(minified);
         const parsed = path.parse(relative);
@@ -319,33 +483,20 @@ async function emitAppStylesProduction(
     return mapping;
 }
 
-function rewriteAppStyleImports(css: string, stylesMap: Map<string, string>, basePath = ''): string {
+function rewriteAppStyleImports(css: string, stylesMap: Map<string, string>): string {
     if (stylesMap.size === 0) {
         return css;
     }
 
     let result = css;
-    const appPrefix = applyBasePath('/app/', basePath);
     for (const [original, hashed] of stylesMap.entries()) {
         const normalizedOriginal = original.startsWith('styles/') ? original : `styles/${original}`;
         const escaped = escapeRegExp(normalizedOriginal);
         const pattern = new RegExp(`(@import\\s+['"])(?:\.\/)?${escaped}(['"];?)`, 'g');
-        result = result.replace(pattern, `$1${appPrefix}${hashed}$2`);
+        result = result.replace(pattern, `$1/app/${hashed}$2`);
     }
 
     return result;
-}
-
-function rewriteRootRelativeUrls(css: string, basePath: string): string {
-    if (!basePath) {
-        return css;
-    }
-
-    const urlPattern = /url\(\s*(['"]?)(\/(?!\/)[^'")]+)\1\s*\)/g;
-    return css.replace(urlPattern, (_match, quote: string, url: string) => {
-        const updated = applyBasePath(url, basePath);
-        return `url(${quote}${updated}${quote})`;
-    });
 }
 
 function normalizeForwardSlashes(value: string): string {
@@ -354,6 +505,36 @@ function normalizeForwardSlashes(value: string): string {
 
 function escapeRegExp(value: string): string {
     return value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+}
+
+function stripAppLayerOrderStatement(css: string): { css: string; layerOrder?: string } {
+    const layerMatch = css.match(/@layer[^;]*;/);
+    if (!layerMatch || layerMatch.index === undefined) {
+        return { css };
+    }
+
+    const layerText = layerMatch[0];
+    if (layerText.includes('{')) {
+        return { css };
+    }
+
+    const withoutLayer = css.slice(0, layerMatch.index) + css.slice(layerMatch.index + layerText.length);
+    return { css: withoutLayer, layerOrder: layerText.trim() };
+}
+
+function restoreAppLayerOrderStatement(css: string, layerOrder?: string): string {
+    if (!layerOrder) {
+        return css;
+    }
+
+    const charsetMatch = css.match(/^@charset[^;]*;/);
+    if (charsetMatch && charsetMatch.index === 0) {
+        const charsetText = charsetMatch[0];
+        const rest = css.slice(charsetText.length);
+        return `${charsetText}${layerOrder}${rest}`;
+    }
+
+    return `${layerOrder}${css}`;
 }
 
 async function resolveCssEntry(pageDirectory: string): Promise<string | null> {

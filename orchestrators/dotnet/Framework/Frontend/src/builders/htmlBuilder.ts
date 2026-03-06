@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { load } from 'cheerio';
 import type { Cheerio, CheerioAPI } from 'cheerio';
@@ -15,10 +16,13 @@ import { getImageDimensions } from '../assets/imageOptimizer.js';
 import { applyLazyLoading } from '../html/lazyLoad.js';
 import { addSubresourceIntegrity } from '../html/htmlSecurity.js';
 import { injectResourceHints } from '../html/resourceHints.js';
-import { inlineCriticalCss } from '../html/criticalCss.js';
+import { ensureAppShellCriticalCss, ensureDocsShellCriticalCss, inlineCriticalCss } from '../html/criticalCss.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
-import { applyBasePath } from '../utils/publicPath.js';
+import type { EnableFlags } from '../types.js';
+import { resolvePageAssetUrl, resolvePageHtmlDir, resolvePagesUrlPrefix } from '../utils/pagePaths.js';
+
+
 
 export function createHtmlBuilder(context: BuilderContext): Builder {
     return {
@@ -36,7 +40,11 @@ async function buildHtml(context: BuilderContext): Promise<void> {
     const { config } = context;
     if (!shouldProcess(context, [
         { directory: config.paths.src.pages, extensions: [EXTENSIONS.html] },
-        { directory: config.paths.src.app, extensions: [EXTENSIONS.html] }
+        { directory: config.paths.src.pages, extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx'] },
+        { directory: config.paths.src.app, extensions: [EXTENSIONS.html, EXTENSIONS.js] }
+        ,
+        // `webstir enable ...` modifies package.json and can change which opt-in scripts should be injected.
+        { directory: config.paths.workspace, extensions: ['.json'] }
     ])) {
         return;
     }
@@ -67,7 +75,7 @@ async function buildHtml(context: BuilderContext): Promise<void> {
             continue;
         }
 
-        const targetDir = path.join(config.paths.build.frontend, FOLDERS.pages, page.name);
+        const targetDir = path.join(config.paths.build.pages, page.name);
         await ensureDir(targetDir);
 
         for (const relativeHtml of pageHtmlFiles) {
@@ -76,8 +84,15 @@ async function buildHtml(context: BuilderContext): Promise<void> {
             validatePageFragment(fragment, sourceHtmlPath);
 
             const mergedHtml = mergeTemplates(templateHtml, fragment);
+            const mergedWithScripts = injectOptInScripts(
+                mergedHtml,
+                context.enable,
+                page.name,
+                page.directory,
+                sourceHtmlPath
+            );
             const targetPath = path.join(targetDir, path.basename(relativeHtml));
-            await writeFile(targetPath, mergedHtml);
+            await writeFile(targetPath, mergedWithScripts);
         }
     }
 
@@ -89,7 +104,7 @@ async function buildHtml(context: BuilderContext): Promise<void> {
 
 async function publishHtml(context: BuilderContext): Promise<void> {
     const { config } = context;
-    const buildPagesRoot = path.join(config.paths.build.frontend, FOLDERS.pages);
+    const buildPagesRoot = config.paths.build.pages;
     if (!(await pathExists(buildPagesRoot))) {
         warn('Skipping HTML publish because no build artifacts were found. Run build first.');
         return;
@@ -98,26 +113,42 @@ async function publishHtml(context: BuilderContext): Promise<void> {
     const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
     const pages = await getPageDirectories(buildPagesRoot);
     const shared = await readSharedAssets(config.paths.dist.frontend);
+    const pagesUrlPrefix = resolvePagesUrlPrefix(config.paths.dist.frontend, config.paths.dist.pages);
+    const buildPagesUrlPrefix = resolvePagesUrlPrefix(config.paths.build.frontend, config.paths.build.pages);
+    const useRootIndex = pagesUrlPrefix.length === 0;
 
     for (const page of pages) {
         if (targetPage && page.name !== targetPage) {
             continue;
         }
-        const distDir = path.join(config.paths.dist.frontend, FOLDERS.pages, page.name);
-        await ensureDir(distDir);
+        const assetDir = path.join(config.paths.dist.pages, page.name);
+        const distDir = resolvePageHtmlDir(config.paths.dist.pages, page.name, useRootIndex);
 
         const htmlFiles = await glob('**/*.html', {
             cwd: page.directory,
             nodir: true
         });
 
-        const manifest = await readPageManifest(distDir, page.name);
+        const manifest = await readPageManifest(assetDir, page.name);
 
         for (const relativeHtml of htmlFiles) {
             const sourcePath = path.join(page.directory, relativeHtml);
             const html = await readFile(sourcePath);
-            const rewritten = await rewriteForPublish(context, html, page.name, manifest, page.directory, shared);
-            const outputPath = path.join(distDir, path.basename(relativeHtml));
+            const rewritten = await rewriteForPublish(
+                context,
+                html,
+                page.name,
+                manifest,
+                page.directory,
+                shared,
+                {
+                    pagesUrlPrefix,
+                    buildPagesUrlPrefix,
+                    useRootIndex
+                }
+            );
+            const outputPath = path.join(distDir, relativeHtml);
+            await ensureDir(path.dirname(outputPath));
             await writeFile(outputPath, rewritten);
             await handlePrecompression(context, outputPath);
         }
@@ -143,10 +174,81 @@ function mergeTemplates(appHtml: string, pageHtml: string): string {
         throw new Error('Templates must include a <head> element.');
     }
 
+    const appBody = app('body').first();
+    const pageBody = page('body').first();
+    if (appBody.length && pageBody.length) {
+        const pageBodyClass = pageBody.attr('class');
+        if (pageBodyClass) {
+            const existing = appBody.attr('class');
+            const merged = existing ? `${existing} ${pageBodyClass}` : pageBodyClass;
+            appBody.attr('class', merged);
+        }
+    }
+
     appHead.append(pageHead.children());
     appMain.html(pageMain.html() ?? '');
 
     return app.root().html() ?? '';
+}
+
+function injectOptInScripts(
+    html: string,
+    enable: EnableFlags | undefined,
+    pageName: string,
+    pageDir: string,
+    sourceHtmlPath: string
+): string {
+    if (!enable) {
+        return html;
+    }
+
+    const document = load(html);
+
+    rewritePageRelativeAssets(document, pageName);
+
+    if (enable.spa) {
+        const existing = document(`script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`);
+        if (existing.length === 0) {
+            document('head').append(`<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`);
+        }
+    }
+
+    const tsCandidate = path.join(pageDir, `${FILES.index}${EXTENSIONS.ts}`);
+    const tsxCandidate = path.join(pageDir, `${FILES.index}.tsx`);
+    const jsCandidate = path.join(pageDir, `${FILES.index}${EXTENSIONS.js}`);
+    const jsxCandidate = path.join(pageDir, `${FILES.index}.jsx`);
+    const pageScriptExists = [tsCandidate, tsxCandidate, jsCandidate, jsxCandidate]
+        .some(candidate => fs.existsSync(candidate));
+    if (pageScriptExists) {
+        const hasScript = document(`script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`).length > 0;
+        if (!hasScript) {
+            document('head').append(`<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`);
+        }
+    }
+
+    return document.root().html() ?? html;
+}
+
+function rewritePageRelativeAssets(document: CheerioAPI, pageName: string): void {
+    const pagePrefix = `/${FOLDERS.pages}/${pageName}/`;
+
+    document('link[rel="stylesheet"]').each((_, element) => {
+        const node = document(element);
+        const href = node.attr('href');
+        if (!href || href.startsWith('/') || href.startsWith('http:') || href.startsWith('https:') || href.startsWith('data:')) {
+            return;
+        }
+        node.attr('href', `${pagePrefix}${href}`);
+    });
+
+    document('script[src]').each((_, element) => {
+        const node = document(element);
+        const src = node.attr('src');
+        if (!src || src.startsWith('/') || src.startsWith('http:') || src.startsWith('https:') || src.startsWith('data:')) {
+            return;
+        }
+        node.attr('src', `${pagePrefix}${src}`);
+    });
 }
 
 async function rewriteForPublish(
@@ -155,26 +257,53 @@ async function rewriteForPublish(
     pageName: string,
     manifest: { js?: string; css?: string },
     pageDirectory: string,
-    shared: { css?: string } | null
+    shared: { css?: string; js?: string } | null,
+    options: {
+        readonly pagesUrlPrefix: string;
+        readonly buildPagesUrlPrefix: string;
+        readonly useRootIndex: boolean;
+    }
 ): Promise<string> {
     const document = load(html);
-    const basePath = context.config.publish.basePath;
+    const { pagesUrlPrefix, buildPagesUrlPrefix, useRootIndex } = options;
+    const buildScriptHref = resolvePageAssetUrl(buildPagesUrlPrefix, pageName, `${FILES.index}${EXTENSIONS.js}`);
+    const buildCssHref = resolvePageAssetUrl(buildPagesUrlPrefix, pageName, `${FILES.index}${EXTENSIONS.css}`);
 
     removeDevScripts(document);
 
+    const appCssHref = shared?.css ? `/app/${shared.css}` : `/${FOLDERS.app}/app.css`;
     if (shared?.css) {
-        document(`link[href="/app/app.css"]`).attr('href', `/app/${shared.css}`);
+        document(`link[href="/app/app.css"]`).attr('href', appCssHref);
+    }
+    ensureStylesheetPreload(document, appCssHref);
+    ensureAppShellCriticalCss(document, appCssHref);
+    if (document('[data-scope="docs"]').length > 0) {
+        ensureDocsShellCriticalCss(document);
+    }
+    if (shared?.js) {
+        document(`script[src="/app/app.js"]`)
+            .attr('src', `/app/${shared.js}`)
+            .attr('type', 'module');
     }
 
+    const scriptSelector = [
+        `script[src="${FILES.index}${EXTENSIONS.js}"]`,
+        `script[src="${buildScriptHref}"]`
+    ].join(', ');
     if (manifest.js) {
-        const selector = `script[src="${FILES.index}${EXTENSIONS.js}"]`;
-        document(selector).attr('src', `/${FOLDERS.pages}/${pageName}/${manifest.js}`);
-        document(selector).attr('type', 'module');
+        document(scriptSelector)
+            .attr('src', resolvePageAssetUrl(pagesUrlPrefix, pageName, manifest.js))
+            .attr('type', 'module');
+    } else {
+        document(scriptSelector).remove();
     }
 
+    const cssSelector = [
+        `link[href="${FILES.index}${EXTENSIONS.css}"]`,
+        `link[href="${buildCssHref}"]`
+    ].join(', ');
     if (manifest.css) {
-        const selector = `link[href="${FILES.index}${EXTENSIONS.css}"]`;
-        document(selector).attr('href', `/${FOLDERS.pages}/${pageName}/${manifest.css}`);
+        document(cssSelector).attr('href', resolvePageAssetUrl(pagesUrlPrefix, pageName, manifest.css));
     }
 
     applyLazyLoading(document);
@@ -184,7 +313,7 @@ async function rewriteForPublish(
     }
 
     if (context.config.features.htmlSecurity) {
-        await inlineCriticalCss(document, pageName, context.config.paths.dist.frontend, manifest.css);
+        await inlineCriticalCss(document, pageName, context.config.paths.dist.pages, pagesUrlPrefix, manifest.css);
         const sriResult = await addSubresourceIntegrity(document);
         if (sriResult.failures.length > 0) {
             const resources = sriResult.failures;
@@ -202,7 +331,7 @@ async function rewriteForPublish(
             });
         }
 
-        const hints = injectResourceHints(document, pageName, basePath);
+        const hints = injectResourceHints(document, pageName, pagesUrlPrefix, useRootIndex);
         if (hints.missingHead) {
             emitDiagnostic({
                 code: 'frontend.resourceHints.missingHead',
@@ -218,14 +347,6 @@ async function rewriteForPublish(
     dedupeHeadMeta(document, 'name');
     dedupeHeadMeta(document, 'property');
     dedupeHeadLinks(document, 'rel');
-
-    if (basePath) {
-        const htmlRoot = document('html').first();
-        if (htmlRoot.length > 0) {
-            htmlRoot.attr('data-webstir-base', basePath);
-        }
-        applyPublishBasePath(document, basePath);
-    }
 
     const htmlOutput = document.root().html() ?? '';
     return await minifyHtml(htmlOutput);
@@ -265,6 +386,29 @@ function validatePageFragment(html: string, filePath: string): void {
 
 function warn(message: string): void {
     console.warn(`[webstir-frontend][html] ${message}`);
+}
+
+function ensureStylesheetPreload(document: CheerioAPI, href: string): void {
+    const head = document('head').first();
+    if (head.length === 0) {
+        return;
+    }
+
+    const existingPreload = document(`link[rel="preload"][href="${href}"]`).first();
+    if (existingPreload.length > 0) {
+        return;
+    }
+
+    const stylesheet = document(`link[rel="stylesheet"][href="${href}"]`).first();
+    if (stylesheet.length > 0) {
+        stylesheet.attr('fetchpriority', 'high');
+    }
+    const preloadTag = `<link rel="preload" as="style" href="${href}">`;
+    if (stylesheet.length > 0) {
+        stylesheet.before(preloadTag);
+    } else {
+        head.append(preloadTag);
+    }
 }
 
 function dedupeHeadMeta(document: CheerioAPI, attribute: 'name' | 'property'): void {
@@ -311,54 +455,6 @@ function dedupeHeadLinks(document: CheerioAPI, attribute: 'rel'): void {
 
         seen.set(key, document(element));
     });
-}
-
-function applyPublishBasePath(document: CheerioAPI, basePath: string): void {
-    const attributes = ['href', 'src', 'action', 'poster'];
-    for (const attribute of attributes) {
-        document(`[${attribute}]`).each((_index, element) => {
-            const current = document(element).attr(attribute);
-            if (!current) {
-                return;
-            }
-            const updated = applyBasePath(current, basePath);
-            if (updated !== current) {
-                document(element).attr(attribute, updated);
-            }
-        });
-    }
-
-    applyBasePathToSrcset(document, 'srcset', basePath);
-    applyBasePathToSrcset(document, 'imagesrcset', basePath);
-}
-
-function applyBasePathToSrcset(document: CheerioAPI, attribute: string, basePath: string): void {
-    document(`[${attribute}]`).each((_index, element) => {
-        const current = document(element).attr(attribute);
-        if (!current) {
-            return;
-        }
-        const updated = rewriteSrcset(current, basePath);
-        if (updated !== current) {
-            document(element).attr(attribute, updated);
-        }
-    });
-}
-
-function rewriteSrcset(value: string, basePath: string): string {
-    return value.split(',')
-        .map((segment) => {
-            const trimmed = segment.trim();
-            if (!trimmed) {
-                return trimmed;
-            }
-            const parts = trimmed.split(/\s+/);
-            const url = parts.shift() ?? '';
-            const descriptor = parts.join(' ');
-            const updatedUrl = applyBasePath(url, basePath);
-            return descriptor ? `${updatedUrl} ${descriptor}` : updatedUrl;
-        })
-        .join(', ');
 }
 
 function removeDevScripts(document: CheerioAPI): void {

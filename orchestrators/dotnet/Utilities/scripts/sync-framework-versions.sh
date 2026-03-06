@@ -8,7 +8,7 @@ Usage: Utilities/scripts/sync-framework-versions.sh [options]
 
 Run with no options to resolve backend/frontend/testing to the registry's latest tag.
 
-Sync framework package versions (catalog + templates) after a publish.
+Sync embedded framework package versions (catalog + templates) after a canonical package release.
 
 Options:
   -a, --all <ver|spec>        Set the same version/spec for backend, frontend, and testing
@@ -21,6 +21,8 @@ Options:
   -h, --help                  Show this help
 
 Notes:
+  - In the canonical monorepo, this script first runs 'pnpm run sync:framework-embedded'
+    from the repo root so the embedded Framework/** copies match packages/**.
   - This updates Framework/Packaging/framework-packages.json and Engine/Resources/package.json
     by invoking the Framework 'packages sync' command with appropriate env overrides, then runs 'packages verify'.
   - Pass a bare version (e.g., 0.1.5) or a full registry spec (e.g., @webstir-io/webstir-backend@0.1.5).
@@ -29,6 +31,8 @@ EOF
 
 here() { local s; s="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; echo "$s"; }
 root_dir() { local s; s="$(cd "$(here)/../.." && pwd)"; echo "$s"; }
+repo_root() { local s; s="$(cd "$(root_dir)/../.." && pwd)"; echo "$s"; }
+is_canonical_monorepo() { [[ -f "$(repo_root)/pnpm-workspace.yaml" && -d "$(repo_root)/packages" ]]; }
 
 make_spec() {
   # $1: package short name (backend|frontend|testing)
@@ -169,6 +173,9 @@ if [[ -n "$FRONTEND_VER" && "$FRONTEND_VER" != "$FRONTEND_LOCAL_VER" ]]; then CH
 if [[ -n "$TESTING_VER" && "$TESTING_VER" != "$TESTING_LOCAL_VER" ]]; then CHANGED_PACKAGES+=(testing); fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
+  if is_canonical_monorepo; then
+    echo "(dry-run) pnpm run sync:framework-embedded"
+  fi
   if [[ -n "$BACKEND_VER" && "$BACKEND_VER" != "$BACKEND_LOCAL_VER" ]]; then echo "(dry-run) dotnet run --project Framework/Framework.csproj -- packages bump --backend --set-version $BACKEND_VER"; fi
   if [[ -n "$FRONTEND_VER" && "$FRONTEND_VER" != "$FRONTEND_LOCAL_VER" ]]; then echo "(dry-run) dotnet run --project Framework/Framework.csproj -- packages bump --frontend --set-version $FRONTEND_VER"; fi
   if [[ -n "$TESTING_VER" && "$TESTING_VER" != "$TESTING_LOCAL_VER" ]]; then echo "(dry-run) dotnet run --project Framework/Framework.csproj -- packages bump --testing --set-version $TESTING_VER"; fi
@@ -184,6 +191,9 @@ if [[ $DRY_RUN -eq 1 ]]; then
 fi
 
 pushd "$(root_dir)" >/dev/null
+  if is_canonical_monorepo; then
+    (cd "$(repo_root)" && pnpm run sync:framework-embedded)
+  fi
   # Bump local Framework package versions to match resolved specs (if provided)
   if [[ -n "$BACKEND_VER" ]]; then
     dotnet run --project Framework/Framework.csproj -- packages bump --backend --set-version "$BACKEND_VER"

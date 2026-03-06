@@ -34,7 +34,10 @@
   "bin": {
     "webstir-testing": "dist/cli.js",
     "webstir-testing-runner": "dist/cli.js",
-    "webstir-testing-add": "dist/add-cli.js"
+    "webstir-testing-add": "dist/add-cli.js",
+    "webstir-test": "dist/cli.js",
+    "webstir-test-runner": "dist/cli.js",
+    "webstir-test-add": "dist/add-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

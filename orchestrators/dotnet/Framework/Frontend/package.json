@@ -67,8 +67,11 @@
     "esbuild": "^0.25.10",
     "fs-extra": "^11.2.0",
     "glob": "^10.4.1",
+    "highlight.js": "^11.11.1",
     "html-minifier-terser": "^7.2.0",
+    "marked": "^12.0.2",
     "postcss": "^8.4.47",
+    "postcss-custom-media": "^11.0.6",
     "sharp": "^0.33.3",
     "zod": "^3.23.8"
   },

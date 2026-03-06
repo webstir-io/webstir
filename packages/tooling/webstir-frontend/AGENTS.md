@@ -6,4 +6,5 @@ This package follows the monorepo baseline at the repo root `AGENTS.md`.
 - Start here: `README.md` and `package.json` exports.
 - Precedence: org baseline; add repo-specific rules here if needed.
 - Release note: npm tarball ships `src/`, `scripts/`, `tests/`, `tsconfig.json`, and `package-lock.json` so downstream tooling can rebuild without cloning; keep them publish-ready.
-- Use `npm run release -- <patch|minor|major>` (scripts/publish.sh) for version bumps; it refreshes the lockfile and enforces clean git + build/test/smoke before tagging.
+- Use `npm run release -- <patch|minor|major>` (scripts/publish.sh) for version bumps; it refreshes the lockfile, enforces clean git + build/test/smoke, and pushes a package-scoped release tag for the monorepo workflow.
+- Run `pnpm run sync:framework-embedded` after canonical manifest changes when you are not using the release helper; the release helper syncs its target package automatically.

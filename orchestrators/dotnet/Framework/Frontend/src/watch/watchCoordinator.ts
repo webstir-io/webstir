@@ -5,9 +5,9 @@ import type { BuildContext, BuildResult } from 'esbuild';
 import { FOLDERS, FILES, FILE_NAMES, EXTENSIONS } from '../core/constants.js';
 import { getPages, type PageInfo } from '../core/pages.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
-import type { FrontendConfig } from '../types.js';
+import type { EnableFlags, FrontendConfig } from '../types.js';
 import { prepareWorkspaceConfig } from '../config/setup.js';
-import { ensureDir } from '../utils/fs.js';
+import { ensureDir, readJson } from '../utils/fs.js';
 import { shouldProcess, isPathInside } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import { createCssBuilder } from '../builders/cssBuilder.js';
@@ -36,6 +36,18 @@ interface PageBuildContext {
 
 const JAVASCRIPT_EXTENSIONS = [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx'] as const;
 
+interface WorkspacePackageJson {
+    readonly webstir?: {
+        readonly mode?: string;
+        readonly enable?: EnableFlags;
+        readonly moduleManifest?: {
+            readonly views?: ReadonlyArray<{
+                readonly renderMode?: string;
+            }>;
+        };
+    };
+}
+
 export class WatchCoordinator {
     private readonly workspaceRoot: string;
     private readonly jsContexts = new Map<string, PageBuildContext>();
@@ -45,6 +57,8 @@ export class WatchCoordinator {
     private readonly hotUpdateTracker: HotUpdateTracker;
     private readonly hmrTotals = { hotUpdates: 0, reloadFallbacks: 0 };
     private config?: FrontendConfig;
+    private isSsgWorkspace = false;
+    private enable?: EnableFlags;
     private isStopping = false;
     private queue: Promise<void> = Promise.resolve();
 
@@ -70,6 +84,9 @@ export class WatchCoordinator {
         });
 
         this.config = await prepareWorkspaceConfig(this.workspaceRoot);
+        const workspaceSettings = await this.readWorkspaceSettings(this.workspaceRoot);
+        this.isSsgWorkspace = workspaceSettings.isSsg;
+        this.enable = workspaceSettings.enable;
         await this.refreshJavaScriptContexts();
         const pipelineReady = await this.runFullBuildCycle();
 
@@ -100,6 +117,9 @@ export class WatchCoordinator {
             });
 
             await this.refreshJavaScriptContexts();
+            const workspaceSettings = await this.readWorkspaceSettings(this.workspaceRoot);
+            this.isSsgWorkspace = workspaceSettings.isSsg;
+            this.enable = workspaceSettings.enable;
             const pipelineSucceeded = await this.runFullBuildCycle();
 
             if (pipelineSucceeded) {
@@ -121,6 +141,11 @@ export class WatchCoordinator {
             }
 
             const resolvedChange = this.resolveChangedFile(intent.path);
+            if (resolvedChange && path.resolve(resolvedChange) === path.resolve(this.workspaceRoot, FILES.packageJson)) {
+                const workspaceSettings = await this.readWorkspaceSettings(this.workspaceRoot);
+                this.isSsgWorkspace = workspaceSettings.isSsg;
+                this.enable = workspaceSettings.enable;
+            }
             await this.runFullBuildCycle(resolvedChange);
         });
     }
@@ -195,13 +220,23 @@ export class WatchCoordinator {
     private async ensureJavaScriptContext(config: FrontendConfig, page: PageInfo): Promise<void> {
         const entryPoint = await resolveEntryPoint(page.directory);
         if (!entryPoint) {
-            emitDiagnostic({
-                code: 'frontend.watch.javascript.entry.missing',
-                kind: 'watch-daemon',
-                stage: 'javascript',
-                severity: 'warning',
-                message: `No JavaScript entry point found for page '${page.name}'.`
-            });
+            if (!this.isSsgWorkspace) {
+                emitDiagnostic({
+                    code: 'frontend.watch.javascript.entry.missing',
+                    kind: 'watch-daemon',
+                    stage: 'javascript',
+                    severity: 'warning',
+                    message: `No JavaScript entry point found for page '${page.name}'.`
+                });
+            } else if (this.verbose) {
+                emitDiagnostic({
+                    code: 'frontend.watch.javascript.entry.missing',
+                    kind: 'watch-daemon',
+                    stage: 'javascript',
+                    severity: 'info',
+                    message: `No JavaScript entry point found for page '${page.name}' (ssg workspace).`
+                });
+            }
             if (this.jsContexts.has(page.name)) {
                 const existing = this.jsContexts.get(page.name);
                 if (existing) {
@@ -292,7 +327,7 @@ export class WatchCoordinator {
 
     private async runAdditionalBuilders(changedFile?: string): Promise<AdditionalBuildResult> {
         const config = this.requireConfig();
-        const context: BuilderContext = { config, changedFile };
+        const context: BuilderContext = { config, changedFile, enable: this.enable };
         const builders: Builder[] = [
             createCssBuilder(context),
             createHtmlBuilder(context),
@@ -381,7 +416,7 @@ export class WatchCoordinator {
 
     private async runJavaScriptBuild(changedFile?: string): Promise<JavaScriptBuildSummary | null> {
         const config = this.requireConfig();
-        const context: BuilderContext = { config, changedFile };
+        const context: BuilderContext = { config, changedFile, enable: this.enable };
         const shouldRun = shouldProcess(context, [
             {
                 directory: config.paths.src.frontend,
@@ -469,7 +504,7 @@ export class WatchCoordinator {
         }
 
         if (builtPages.length > 0) {
-            await copyRefreshScript(this.requireConfig());
+            await copyRefreshScript(this.requireConfig(), this.enable);
         }
 
         return {
@@ -479,6 +514,23 @@ export class WatchCoordinator {
             requiresReload,
             fallbackReasons: this.combineFallbackReasons([], fallbackReasons)
         };
+    }
+
+    private async readWorkspaceSettings(workspaceRoot: string): Promise<{ isSsg: boolean; enable?: EnableFlags }> {
+        const pkgPath = path.join(workspaceRoot, FILES.packageJson);
+        const pkg = await readJson<WorkspacePackageJson>(pkgPath);
+        if (!pkg?.webstir) {
+            return { isSsg: false, enable: undefined };
+        }
+
+        const stringMode = pkg.webstir.mode;
+        if (typeof stringMode === 'string' && stringMode.toLowerCase() === 'ssg') {
+            return { isSsg: true, enable: pkg.webstir.enable };
+        }
+
+        const views = pkg.webstir.moduleManifest?.views;
+        const hasSsgView = Array.isArray(views) && views.some(view => view.renderMode?.toLowerCase() === 'ssg');
+        return { isSsg: hasSsgView, enable: pkg.webstir.enable };
     }
 
     private resolveTargetPages(changedFile?: string): string[] {

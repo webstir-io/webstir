@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { readdir } from 'node:fs/promises';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -17,6 +18,9 @@ import { runPipeline } from './pipeline.js';
 import type { PipelineMode } from './pipeline.js';
 import { prepareWorkspaceConfig } from './config/setup.js';
 import type { FrontendConfig } from './types.js';
+import { FOLDERS } from './core/constants.js';
+import { pathExists, readJson, remove } from './utils/fs.js';
+import { applySsgRouting, assertNoSsgRoutes, generateSsgViewData } from './modes/ssg/index.js';
 
 interface PackageJson {
     readonly name: string;
@@ -40,15 +44,66 @@ function resolveWorkspacePaths(workspaceRoot: string): ResolvedModuleWorkspace {
 async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResult> {
     const config = await prepareWorkspaceConfig(options.workspaceRoot);
     const mode = normalizeMode(options.env?.WEBSTIR_MODULE_MODE);
-    await runPipeline(config, mode, { changedFile: undefined });
+    const workspaceMode = await readWorkspaceMode(options.workspaceRoot);
+    const frontendMode = normalizeFrontendMode(options.env?.WEBSTIR_FRONTEND_MODE);
+    const shouldRunSsgPublish =
+        mode === 'publish' && (frontendMode === 'ssg' || (frontendMode === undefined && workspaceMode.mode === 'ssg'));
+    const publishConfig = shouldRunSsgPublish ? applySsgPublishLayout(config) : config;
+
+    if (shouldRunSsgPublish) {
+        await assertNoSsgRoutes(config.paths.workspace);
+    }
+    await runPipeline(publishConfig, mode, { changedFile: undefined, enable: workspaceMode.enable });
+
+    if (shouldRunSsgPublish) {
+        await generateSsgViewData(publishConfig);
+        await applySsgRouting(publishConfig);
+        await removeLegacyPagesFolder(publishConfig);
+    }
 
     const artifacts = await collectArtifacts(config);
-    const manifest = createManifest(config, artifacts);
+    const manifest = createManifest(config, artifacts, workspaceMode.mode, workspaceMode.isSsg);
 
     return {
         artifacts,
         manifest
     };
+}
+
+function applySsgPublishLayout(config: FrontendConfig): FrontendConfig {
+    const distFrontend = config.paths.dist.frontend;
+    const distPages = distFrontend;
+    const distContent = path.join(distFrontend, 'docs');
+
+    return {
+        ...config,
+        paths: {
+            ...config.paths,
+            dist: {
+                ...config.paths.dist,
+                pages: distPages,
+                content: distContent
+            }
+        }
+    };
+}
+
+async function removeLegacyPagesFolder(config: FrontendConfig): Promise<void> {
+    const legacyPagesRoot = path.join(config.paths.dist.frontend, FOLDERS.pages);
+    if (legacyPagesRoot === config.paths.dist.pages) {
+        return;
+    }
+
+    if (!(await pathExists(legacyPagesRoot))) {
+        return;
+    }
+
+    const entries = await readdir(legacyPagesRoot);
+    if (entries.length > 0) {
+        return;
+    }
+
+    await remove(legacyPagesRoot);
 }
 
 function normalizeMode(rawMode: unknown): PipelineMode {
@@ -83,10 +138,37 @@ async function collectArtifacts(config: FrontendConfig): Promise<ModuleArtifact[
     });
 }
 
-function createManifest(config: FrontendConfig, assets: readonly ModuleArtifact[]) {
+interface WorkspaceEnableFlags {
+    readonly spa?: boolean;
+    readonly clientNav?: boolean;
+    readonly backend?: boolean;
+    readonly search?: boolean;
+}
+
+interface WorkspacePackageJson {
+    readonly webstir?: {
+        readonly mode?: string;
+        readonly enable?: WorkspaceEnableFlags;
+        readonly moduleManifest?: {
+            readonly views?: ReadonlyArray<{
+                readonly renderMode?: string;
+            }>;
+        };
+    };
+}
+
+function createManifest(
+    config: FrontendConfig,
+    assets: readonly ModuleArtifact[],
+    workspaceMode?: string,
+    isSsgWorkspace?: boolean
+) {
     const entryPoints: string[] = [];
     const staticAssets: string[] = [];
     const diagnostics: ModuleDiagnostic[] = [];
+
+    const normalizedMode = workspaceMode?.toLowerCase();
+    const isSsg = isSsgWorkspace || normalizedMode === 'ssg';
 
     for (const asset of assets) {
         const relativePath = path.relative(config.paths.build.frontend, asset.path);
@@ -103,7 +185,7 @@ function createManifest(config: FrontendConfig, assets: readonly ModuleArtifact[
         const fallback = path.join(config.paths.build.app, 'index.js');
         if (fs.existsSync(fallback)) {
             entryPoints.push(path.relative(config.paths.build.frontend, fallback));
-        } else {
+        } else if (!isSsg) {
             diagnostics.push({
                 severity: 'warn',
                 message: 'No JavaScript entry points found under build/frontend.'
@@ -116,6 +198,33 @@ function createManifest(config: FrontendConfig, assets: readonly ModuleArtifact[
         staticAssets,
         diagnostics
     };
+}
+
+async function readWorkspaceMode(workspaceRoot: string): Promise<{ mode?: string; isSsg: boolean; enable?: WorkspaceEnableFlags }> {
+    const pkgPath = path.join(workspaceRoot, 'package.json');
+    const pkg = await readJson<WorkspacePackageJson>(pkgPath);
+    const mode = pkg?.webstir?.mode;
+    const normalizedMode = typeof mode === 'string' ? mode.toLowerCase() : undefined;
+    const views = pkg?.webstir?.moduleManifest?.views;
+    const hasSsgView = Array.isArray(views) && views.some(view => view.renderMode?.toLowerCase() === 'ssg');
+    return {
+        mode,
+        isSsg: normalizedMode === 'ssg' || hasSsgView,
+        enable: pkg?.webstir?.enable
+    };
+}
+
+function normalizeFrontendMode(value: unknown): 'bundle' | 'ssg' | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'ssg'
+        ? 'ssg'
+        : normalized === 'bundle'
+            ? 'bundle'
+            : undefined;
 }
 
 export const frontendProvider: ModuleProvider = {

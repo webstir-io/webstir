@@ -200,7 +200,7 @@ npm install
 npm run clean          # remove dist/schema artifacts
 npm run build          # compiles TypeScript, regenerates schema/*.schema.json
 npm run test           # type-checks the Accounts example module
-# Release helper (bumps version, pushes tags to trigger release workflow)
+# Release helper (bumps version and pushes a package-scoped release tag)
 npm run release -- patch
 ```
 
