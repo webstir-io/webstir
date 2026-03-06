@@ -5,7 +5,8 @@ This guide covers the end-to-end workflow for rebuilding and publishing the fram
 ## Overview
 
 - Run commands via `dotnet run --project Framework/Framework.csproj -- packages …` from the repo root (or use a built `framework` binary).
-- `Framework/Frontend`, `Framework/Backend`, and `Framework/Testing` contain the sources for the published packages.
+- `packages/tooling/webstir-frontend`, `packages/tooling/webstir-backend`, and `packages/tooling/webstir-testing` are the canonical sources for the published packages.
+- `orchestrators/dotnet/Framework/Frontend`, `orchestrators/dotnet/Framework/Backend`, and `orchestrators/dotnet/Framework/Testing` are embedded copies that stay aligned with those canonical packages for the .NET orchestrator.
 - `framework packages sync` rebuilds those packages, updates `Framework/Packaging/framework-packages.json`, and refreshes `Engine/Resources/package.json` with caret specifiers.
 - `webstir install` keeps consuming workspaces aligned with the recorded registry versions by updating `package.json` specifiers and running the configured package manager (pnpm by default) when drift is detected.
 
@@ -21,7 +22,7 @@ This guide covers the end-to-end workflow for rebuilding and publishing the fram
    - The check also confirms that no legacy tarball assets remain in the repo.
 5. When you are ready to publish the new versions, run `framework packages publish`.
    - Publishing pushes each package to the configured registry (npmjs by default) if that version is missing. Export `NPM_TOKEN` so npm can authenticate.
-6. Commit the updated package sources, lockfiles, `Framework/Packaging/framework-packages.json`, and `Engine/Resources/package.json`.
+6. Commit the updated canonical package sources under `packages/tooling/**`, the embedded orchestrator copies under `orchestrators/dotnet/Framework/**`, lockfiles, `Framework/Packaging/framework-packages.json`, and `Engine/Resources/package.json`.
 
 ## Install In A Workspace
 - Run `webstir install` (or any workflow that indirectly calls it) in the consuming project.

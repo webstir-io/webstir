@@ -11,6 +11,7 @@
     "clean": "pnpm -r --if-present clean",
     "smoke": "pnpm -r --if-present smoke",
     "build:contracts": "pnpm --filter @webstir-io/module-contract build && pnpm --filter @webstir-io/testing-contract build",
-    "test:contracts": "pnpm --filter @webstir-io/module-contract test && pnpm --filter @webstir-io/testing-contract test"
+    "test:contracts": "pnpm --filter @webstir-io/module-contract test && pnpm --filter @webstir-io/testing-contract test",
+    "check:framework-versions": "node tools/check-framework-version-alignment.mjs"
   }
 }

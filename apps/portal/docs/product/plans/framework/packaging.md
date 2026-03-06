@@ -21,7 +21,7 @@
 
 ## Target Architecture
 ### Build & Publish
-- `framework packages sync` runs the package manager install (`pnpm install --frozen-lockfile` by default), `npm run build`, and `npm pack` inside each package workspace (e.g., `Framework/Frontend`, `Framework/Testing`), returning metadata but leaving the tarball alongside the source.
+- `framework packages sync` runs the package manager install (`pnpm install --frozen-lockfile` by default), `npm run build`, and `npm pack` inside each package workspace (for example, the canonical packages under `packages/tooling/**` and their orchestrator copies under `orchestrators/dotnet/Framework/**`), returning metadata but leaving the tarball alongside the source.
 - `framework packages publish` pushes the built tarball to a configurable registry URL (default: GitHub Packages) and skips if the version already exists.
 - No files are copied into `Framework/out` or `Framework/Resources/webstir`; no manifest is generated.
 

@@ -3,7 +3,8 @@
 This guide explains how maintainers rebuild the frontend, backend, and testing packages that ship with Webstir.
 
 ## Overview
-- `Framework/Frontend`, `Framework/Backend`, and `Framework/Testing` contain the sources for the published `@webstir-io/*` packages.
+- `packages/tooling/webstir-frontend`, `packages/tooling/webstir-backend`, and `packages/tooling/webstir-testing` are the canonical sources for the published `@webstir-io/*` packages.
+- `orchestrators/dotnet/Framework/Frontend`, `orchestrators/dotnet/Framework/Backend`, and `orchestrators/dotnet/Framework/Testing` are embedded copies kept in sync for the .NET orchestrator.
 - The standalone `framework` console rebuilds those packages, records registry metadata in `Framework/Packaging/framework-packages.json`, and updates `Engine/Resources/package.json` so workspace templates stay in sync.
 - `webstir install` keeps consuming workspaces aligned with the recorded registry versions by updating `package.json` specifiers and running the configured package manager (pnpm by default) when drift is detected.
 
@@ -16,7 +17,7 @@ This guide explains how maintainers rebuild the frontend, backend, and testing p
    - Set `WEBSTIR_FRONTEND_REGISTRY_SPEC`, `WEBSTIR_TEST_REGISTRY_SPEC`, or `WEBSTIR_BACKEND_REGISTRY_SPEC` before running if you need to override the default `<name>@<version>` registry specifier (for example, to target a dist-tag during validation).
 4. **Verify metadata** – Run `dotnet run --project Framework/Framework.csproj -- packages verify` to confirm that the package sources, manifest entries, template dependencies, and repository state are aligned. The verifier also ensures no legacy tarball assets remain.
 5. **Publish packages** – Run `dotnet run --project Framework/Framework.csproj -- packages publish` to bump versions, rebuild metadata, and publish any missing releases. Add `--dry-run` to preview without touching files or hitting the registry, and pass `--bump <patch|minor|major>` (or `--set-version <x.y.z>`) when you need to override the automatic bump detection. Ensure `NPM_TOKEN` is available before attempting to publish; the command surfaces actionable errors if authentication or `.npmrc` configuration is missing.
-6. **Commit artifacts** – Include the updated package sources, lockfiles, `Framework/Packaging/framework-packages.json`, and `Engine/Resources/package.json` in your PR. No tarballs are generated or committed in the registry-only flow.
+6. **Commit artifacts** – Include the updated canonical package sources under `packages/tooling/**`, the embedded orchestrator copies under `orchestrators/dotnet/Framework/**`, lockfiles, `Framework/Packaging/framework-packages.json`, and `Engine/Resources/package.json` in your PR. No tarballs are generated or committed in the registry-only flow.
 
 ## Automate Releases
 - Trigger the **Release** workflow in GitHub Actions when you are ready to publish a new build.
