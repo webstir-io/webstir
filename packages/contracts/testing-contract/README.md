@@ -90,13 +90,13 @@ npm run clean          # remove dist artifacts
 npm run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
 npm run test
 npm run smoke
-# Release helper (bumps version, pushes tags to trigger release workflow)
+# Release helper (bumps version and pushes a package-scoped release tag)
 npm run release -- patch
 ```
 
 - Regenerate schema files whenever TypeScript interfaces change.
 - Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publishing.
-- Publishing targets npm and is triggered by the release workflow.
+- Publishing targets npm and is triggered by the monorepo release workflow.
 
 ## License
 

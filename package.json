@@ -8,10 +8,14 @@
   "scripts": {
     "build": "pnpm -r --if-present build",
     "test": "pnpm -r --if-present test",
+    "test:tools": "node --test tools/tests/*.test.mjs",
     "clean": "pnpm -r --if-present clean",
     "smoke": "pnpm -r --if-present smoke",
     "build:contracts": "pnpm --filter @webstir-io/module-contract build && pnpm --filter @webstir-io/testing-contract build",
     "test:contracts": "pnpm --filter @webstir-io/module-contract test && pnpm --filter @webstir-io/testing-contract test",
-    "check:framework-versions": "node tools/check-framework-version-alignment.mjs"
+    "check:framework-versions": "node tools/check-framework-version-alignment.mjs",
+    "check:framework-sync": "node tools/check-framework-package-sync.mjs",
+    "check:framework-embedded-idempotent": "node tools/sync-framework-embedded.mjs --check",
+    "sync:framework-embedded": "node tools/sync-framework-embedded.mjs"
   }
 }

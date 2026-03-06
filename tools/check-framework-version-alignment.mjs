@@ -2,37 +2,9 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { frameworkPackages, getRepoRoot } from './framework-packages.mjs';
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-
-const packagePairs = [
-  {
-    label: '@webstir-io/module-contract',
-    canonical: 'packages/contracts/module-contract/package.json',
-    embedded: 'orchestrators/dotnet/Framework/Contracts/module-contract/package.json',
-  },
-  {
-    label: '@webstir-io/testing-contract',
-    canonical: 'packages/contracts/testing-contract/package.json',
-    embedded: 'orchestrators/dotnet/Framework/Contracts/testing-contract/package.json',
-  },
-  {
-    label: '@webstir-io/webstir-backend',
-    canonical: 'packages/tooling/webstir-backend/package.json',
-    embedded: 'orchestrators/dotnet/Framework/Backend/package.json',
-  },
-  {
-    label: '@webstir-io/webstir-frontend',
-    canonical: 'packages/tooling/webstir-frontend/package.json',
-    embedded: 'orchestrators/dotnet/Framework/Frontend/package.json',
-  },
-  {
-    label: '@webstir-io/webstir-testing',
-    canonical: 'packages/tooling/webstir-testing/package.json',
-    embedded: 'orchestrators/dotnet/Framework/Testing/package.json',
-  },
-];
+const rootDir = getRepoRoot(import.meta.url);
 
 function readPackageJson(relativePath) {
   const absolutePath = path.join(rootDir, relativePath);
@@ -41,16 +13,18 @@ function readPackageJson(relativePath) {
 
 const mismatches = [];
 
-for (const pair of packagePairs) {
-  const canonicalPkg = readPackageJson(pair.canonical);
-  const embeddedPkg = readPackageJson(pair.embedded);
+for (const pkg of frameworkPackages) {
+  const canonicalPath = `${pkg.canonicalDir}/package.json`;
+  const embeddedPath = `${pkg.embeddedDir}/package.json`;
+  const canonicalPkg = readPackageJson(canonicalPath);
+  const embeddedPkg = readPackageJson(embeddedPath);
 
   if (canonicalPkg.version !== embeddedPkg.version) {
     mismatches.push({
-      label: pair.label,
-      canonicalPath: pair.canonical,
+      label: pkg.packageName,
+      canonicalPath,
       canonicalVersion: canonicalPkg.version,
-      embeddedPath: pair.embedded,
+      embeddedPath,
       embeddedVersion: embeddedPkg.version,
     });
   }

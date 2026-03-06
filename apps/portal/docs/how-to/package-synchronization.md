@@ -1,27 +1,28 @@
 # Synchronize Framework Packages
 
-This guide covers the end-to-end workflow for rebuilding and publishing the framework packages that Webstir workspaces consume.
+This guide covers the end-to-end workflow for keeping the embedded orchestrator framework packages aligned with the canonical npm packages that Webstir workspaces consume.
 
 ## Overview
 
 - Run commands via `dotnet run --project Framework/Framework.csproj -- packages …` from the repo root (or use a built `framework` binary).
 - `packages/tooling/webstir-frontend`, `packages/tooling/webstir-backend`, and `packages/tooling/webstir-testing` are the canonical sources for the published packages.
 - `orchestrators/dotnet/Framework/Frontend`, `orchestrators/dotnet/Framework/Backend`, and `orchestrators/dotnet/Framework/Testing` are embedded copies that stay aligned with those canonical packages for the .NET orchestrator.
+- Treat those embedded copies as snapshots, not release entrypoints. Release from `packages/**`, then sync the embedded copies.
+- Run `pnpm run sync:framework-embedded` after canonical package changes to rewrite the embedded managed snapshots, including `package.json`, overlapping source/template files, and managed helper stubs.
 - `framework packages sync` rebuilds those packages, updates `Framework/Packaging/framework-packages.json`, and refreshes `Engine/Resources/package.json` with caret specifiers.
 - `webstir install` keeps consuming workspaces aligned with the recorded registry versions by updating `package.json` specifiers and running the configured package manager (pnpm by default) when drift is detected.
 
 ## Update The Packages
-1. Run `framework packages bump` (for example, `framework packages bump --bump minor` or `framework packages bump --set-version 1.2.3`). Add `--dry-run` to preview the next version without touching manifests.
-2. (Optional) Run `framework packages diff` to preview version or specifier drift without modifying files.
-3. Run `framework packages sync`.
-   - Add `--frontend`, `--testing`, or `--backend` to rebuild a single package when only one changed.
-   - The command runs the workspace package manager install (`pnpm install --frozen-lockfile` by default) and `npm run build`, then rewrites the manifest and template dependencies with the new versions and caret specifiers. No tarballs are generated.
+1. Release the target npm package from its canonical `packages/**` directory with `npm run release -- <patch|minor|major|x.y.z>` or the Release Package GitHub workflow.
+2. Run `pnpm run sync:framework-embedded` to refresh the embedded `orchestrators/dotnet/Framework/**` package snapshots from the canonical `packages/**` managed files.
+3. (Optional) Run `framework packages diff` to preview embedded metadata drift without modifying files.
+4. Run `framework packages sync`.
+   - Add `--frontend`, `--testing`, or `--backend` to rebuild a single embedded package when only one changed.
+   - The command rewrites the manifest and template dependencies with the new versions and caret specifiers. No tarballs are generated.
    - Set `WEBSTIR_FRONTEND_REGISTRY_SPEC`, `WEBSTIR_TEST_REGISTRY_SPEC`, or `WEBSTIR_BACKEND_REGISTRY_SPEC` before running if you need an alternate registry specifier (for example, a dist-tag).
-4. Run `framework packages verify`.
+5. Run `framework packages verify`.
    - The verifier ensures package directories, manifest entries, template dependencies, and the repository state are aligned.
    - The check also confirms that no legacy tarball assets remain in the repo.
-5. When you are ready to publish the new versions, run `framework packages publish`.
-   - Publishing pushes each package to the configured registry (npmjs by default) if that version is missing. Export `NPM_TOKEN` so npm can authenticate.
 6. Commit the updated canonical package sources under `packages/tooling/**`, the embedded orchestrator copies under `orchestrators/dotnet/Framework/**`, lockfiles, `Framework/Packaging/framework-packages.json`, and `Engine/Resources/package.json`.
 
 ## Install In A Workspace
@@ -32,10 +33,11 @@ This guide covers the end-to-end workflow for rebuilding and publishing the fram
 
 ## Registry Requirements
 - Framework installations now rely on registry packages. Configure `.npmrc` with `@webstir-io:registry=https://registry.npmjs.org`. Corepack users should run `corepack enable` so pnpm is available.
-- Provide the token and `.npmrc` to CI or sandbox environments before executing `framework packages publish` or `webstir install`.
+- Provide the token and `.npmrc` to CI or sandbox environments before executing the Release Package workflow or `webstir install`.
 
 ## Verify Changes
 - Run `./utilities/scripts/format-build.sh` before handing off; it formats code, builds the solution, and executes frontend package tests.
-- Run `framework packages sync` followed by `framework packages verify` whenever package artifacts change. Use `framework packages publish --dry-run` to exercise the end-to-end pipeline without modifying files.
-- Optionally run `framework packages publish` in a dry environment (or CI) to confirm the registry accepts the new version.
+- Run `pnpm run sync:framework-embedded`, then `framework packages sync`, then `framework packages verify` whenever package artifacts change.
+- CI also runs `pnpm run check:framework-embedded-idempotent`, which fails if the embedded snapshot generator would still rewrite tracked files.
+- Optionally trigger the Release Package workflow for a non-production version to confirm npm trusted publishing is configured before the next real release.
 - Exercise `webstir install` (optionally with `--clean`) inside a sample workspace to verify the new packages resolve correctly and upgrade existing installations.

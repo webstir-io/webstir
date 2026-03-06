@@ -1,18 +1,13 @@
 import fs from 'node:fs';
 import path from 'path';
-import type { FrontendConfig, FrontendFeatureFlags, FrontendPublishConfig } from '../types.js';
+import type { FrontendConfig, FrontendFeatureFlags } from '../types.js';
 import { FOLDERS } from '../core/constants.js';
-import { frontendFeatureFlagsSchema, frontendPublishSchema } from './schema.js';
-import { normalizeBasePath } from '../utils/publicPath.js';
+import { frontendFeatureFlagsSchema } from './schema.js';
 
 const DEFAULT_FEATURE_FLAGS: FrontendFeatureFlags = {
     htmlSecurity: true,
     imageOptimization: true,
     precompression: true
-};
-
-const DEFAULT_PUBLISH_CONFIG: FrontendPublishConfig = {
-    basePath: ''
 };
 
 export function buildConfig(workspaceRoot: string): FrontendConfig {
@@ -23,12 +18,7 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
 
     const buildFrontend = path.join(buildRoot, FOLDERS.frontend);
     const distFrontend = path.join(distRoot, FOLDERS.frontend);
-
-    const overrides = loadConfigOverrides(frontendRoot);
-    const workspaceMode = readWorkspaceMode(workspaceRoot);
-    const publishOverrides = workspaceMode === 'ssg'
-        ? overrides.publish
-        : DEFAULT_PUBLISH_CONFIG;
+    const srcContentRoot = resolveContentRoot(workspaceRoot, frontendRoot);
 
     return {
         version: 1,
@@ -39,6 +29,7 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
                 frontend: frontendRoot,
                 app: path.join(frontendRoot, FOLDERS.app),
                 pages: path.join(frontendRoot, FOLDERS.pages),
+                content: srcContentRoot,
                 images: path.join(frontendRoot, FOLDERS.images),
                 fonts: path.join(frontendRoot, FOLDERS.fonts),
                 media: path.join(frontendRoot, FOLDERS.media)
@@ -48,6 +39,7 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
                 frontend: buildFrontend,
                 app: path.join(buildFrontend, FOLDERS.app),
                 pages: path.join(buildFrontend, FOLDERS.pages),
+                content: path.join(buildFrontend, FOLDERS.pages, 'docs'),
                 images: path.join(buildFrontend, FOLDERS.images),
                 fonts: path.join(buildFrontend, FOLDERS.fonts),
                 media: path.join(buildFrontend, FOLDERS.media)
@@ -57,78 +49,102 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
                 frontend: distFrontend,
                 app: path.join(distFrontend, FOLDERS.app),
                 pages: path.join(distFrontend, FOLDERS.pages),
+                content: path.join(distFrontend, FOLDERS.pages, 'docs'),
                 images: path.join(distFrontend, FOLDERS.images),
                 fonts: path.join(distFrontend, FOLDERS.fonts),
                 media: path.join(distFrontend, FOLDERS.media)
             }
         },
-        features: overrides.features,
-        publish: publishOverrides
+        features: loadFeatureFlags(frontendRoot)
     };
 }
 
-interface FrontendConfigOverrides {
-    features: FrontendFeatureFlags;
-    publish: FrontendPublishConfig;
-}
-
-function loadConfigOverrides(frontendRoot: string): FrontendConfigOverrides {
+function resolveContentRoot(workspaceRoot: string, frontendRoot: string): string {
+    const defaultContentRoot = path.join(frontendRoot, 'content');
     const configPath = path.join(frontendRoot, 'frontend.config.json');
     if (!fs.existsSync(configPath)) {
-        return {
-            features: DEFAULT_FEATURE_FLAGS,
-            publish: DEFAULT_PUBLISH_CONFIG
-        };
+        return defaultContentRoot;
     }
 
     try {
         const raw = fs.readFileSync(configPath, 'utf8');
         const parsed = JSON.parse(raw) as unknown;
-        const featureSource = extractOverrideSource(parsed, 'features');
-        const publishSource = extractOverrideSource(parsed, 'publish');
-        const overrides = frontendFeatureFlagsSchema.parse(featureSource);
-        const publishOverrides = frontendPublishSchema.parse(publishSource);
-        return {
-            features: {
-                htmlSecurity: overrides.htmlSecurity,
-                imageOptimization: overrides.imageOptimization,
-                precompression: overrides.precompression
-            },
-            publish: {
-                basePath: normalizeBasePath(publishOverrides.basePath)
-            }
-        };
+        const override = extractContentRoot(parsed);
+
+        if (override === undefined) {
+            return defaultContentRoot;
+        }
+
+        if (typeof override !== 'string') {
+            throw new Error('Expected contentRoot to be a string when specified.');
+        }
+
+        const trimmed = override.trim();
+        if (!trimmed) {
+            return defaultContentRoot;
+        }
+
+        if (path.isAbsolute(trimmed)) {
+            return trimmed;
+        }
+
+        return path.join(workspaceRoot, trimmed);
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to read frontend config overrides from ${configPath}: ${message}`);
+        throw new Error(`Failed to read frontend content root from ${configPath}: ${message}`);
     }
 }
 
-function extractOverrideSource(value: unknown, key: string): Record<string, unknown> {
-    if (value && typeof value === 'object' && key in (value as Record<string, unknown>)) {
-        const container = (value as Record<string, unknown>)[key];
-        if (container && typeof container === 'object') {
-            return container as Record<string, unknown>;
+function extractContentRoot(value: unknown): unknown {
+    if (!value || typeof value !== 'object') {
+        return undefined;
+    }
+
+    const container = value as Record<string, unknown>;
+
+    if ('paths' in container && container.paths && typeof container.paths === 'object') {
+        const pathsContainer = container.paths as Record<string, unknown>;
+        if ('contentRoot' in pathsContainer) {
+            return pathsContainer.contentRoot;
         }
-        return {};
     }
 
-    return (value && typeof value === 'object') ? value as Record<string, unknown> : {};
+    if ('contentRoot' in container) {
+        return container.contentRoot;
+    }
+
+    return undefined;
 }
 
-function readWorkspaceMode(workspaceRoot: string): string | null {
-    const packageJsonPath = path.join(workspaceRoot, 'package.json');
-    if (!fs.existsSync(packageJsonPath)) {
-        return null;
+function loadFeatureFlags(frontendRoot: string): FrontendFeatureFlags {
+    const configPath = path.join(frontendRoot, 'frontend.config.json');
+    if (!fs.existsSync(configPath)) {
+        return DEFAULT_FEATURE_FLAGS;
     }
 
     try {
-        const raw = fs.readFileSync(packageJsonPath, 'utf8');
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        const webstir = parsed?.webstir as Record<string, unknown> | undefined;
-        const mode = typeof webstir?.mode === 'string' ? webstir.mode.trim().toLowerCase() : '';
-        return mode || null;
-    } catch {
-        return null;
+        const raw = fs.readFileSync(configPath, 'utf8');
+        const parsed = JSON.parse(raw) as unknown;
+        const overridesSource = extractOverrideSource(parsed);
+        const overrides = frontendFeatureFlagsSchema.parse(overridesSource);
+        return {
+            htmlSecurity: overrides.htmlSecurity,
+            imageOptimization: overrides.imageOptimization,
+            precompression: overrides.precompression
+        };
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to read frontend feature flags from ${configPath}: ${message}`);
     }
+}
+
+function extractOverrideSource(value: unknown): Record<string, unknown> {
+    if (value && typeof value === 'object' && 'features' in (value as Record<string, unknown>)) {
+        const container = (value as Record<string, unknown>).features;
+        if (container && typeof container === 'object') {
+            return container as Record<string, unknown>;
+        }
+    }
+
+    return (value && typeof value === 'object') ? value as Record<string, unknown> : {};
 }

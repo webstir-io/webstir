@@ -2,6 +2,11 @@
 
 Unified test runner, runtime helpers, and CLI for Webstir TypeScript workspaces. Provides the binaries used by the Webstir CLI and the `test` API consumed inside generated specs.
 
+## Status
+
+- Experimental test host and CLI — event shapes, flags, and discovery rules may change as the ecosystem evolves.
+- Intended for Webstir workspaces and experimentation, not yet as a general-purpose, production-stable test runner.
+
 ## Quick Start
 
 1. **Install**
@@ -31,7 +36,7 @@ Compile with `tsc` (or the workspace build) before invoking the runner; the CLI 
 
 ## CLI Commands
 
-Binary aliases: `webstir-testing`, `webstir-testing-runner`, `webstir-testing-add`.
+Binary aliases: `webstir-testing`, `webstir-testing-runner`, `webstir-testing-add` (legacy aliases: `webstir-test`, `webstir-test-runner`, `webstir-test-add`).
 
 | Command | Description | Notable options |
 |---------|-------------|-----------------|
@@ -40,7 +45,7 @@ Binary aliases: `webstir-testing`, `webstir-testing-runner`, `webstir-testing-ad
 | `webstir-testing-add <name>` | Scaffolds a sample test file. | `--workspace` to control destination. |
 
 Tips:
-- Set `WEBSTIR_TEST_RUNTIME=<frontend|backend|all>` to limit discovery to a single runtime. This is the same flag the Webstir CLI passes when you invoke `webstir test --runtime backend`.
+- Set `WEBSTIR_TEST_RUNTIME=<frontend|backend|all>` to limit discovery to a single runtime (defaults to `all`). This mirrors the flag exposed through the `.NET` CLI (`webstir test --runtime backend`).
 
 ### Event Stream
 
@@ -68,18 +73,30 @@ All exported types align with `@webstir-io/testing-contract`.
 
 ```bash
 npm install
+npm run clean          # remove dist artifacts
 npm run build          # TypeScript → dist/
+npm run test
+npm run smoke
+# Release helper (bumps version and pushes a package-scoped release tag)
+npm run release -- patch
 ```
 
 - Add integration fixtures under `tests/` before enabling automated suites.
-- Ensure CI runs `npm ci`, `npm run build`, and any smoke tests prior to publishing.
-- Publishing targets npm per `publishConfig`.
+- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` prior to publishing.
+- The release workflow publishes to npm using trusted publishing (`id-token: write` + provenance).
 
 ## Troubleshooting
 
 - **“No tests found under src/**/tests/.”** — ensure compiled JavaScript exists in `build/**/tests/`.
 - **ESM/CommonJS errors** — the runtime attempts CommonJS first and falls back to dynamic `import()`; misconfigured TypeScript output may still surface syntax errors.
 - **Watch mode exits non-zero** — inspect emitted `WEBSTIR_TEST` events for failures.
+
+## Community & Support
+
+- Code of Conduct: https://github.com/webstir-io/.github/blob/main/CODE_OF_CONDUCT.md
+- Contributing guidelines: https://github.com/webstir-io/.github/blob/main/CONTRIBUTING.md
+- Security policy and disclosure process: https://github.com/webstir-io/.github/blob/main/SECURITY.md
+- Support expectations and contact channels: https://github.com/webstir-io/.github/blob/main/SUPPORT.md
 
 ## License
 

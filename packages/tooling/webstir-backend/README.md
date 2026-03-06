@@ -338,14 +338,14 @@ npm run clean          # remove dist artifacts
 npm run build          # emits dist/
 npm run test           # runs unit/integration tests
 npm run smoke
-# Release helper (bumps version, pushes tags to trigger release workflow)
+# Release helper (bumps version and pushes a package-scoped release tag)
 npm run release -- patch
 ```
 
 - Add tests under `tests/**/*.test.ts` and wire them into `npm test` once the backend runtime is ready.
 - Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publish.
 - Publishing targets npm via `publishConfig.registry`.
-- Use `npm run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and push tags to trigger the release workflow.
+- Use `npm run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and push a package-scoped tag that triggers the monorepo release workflow.
 
 ## Troubleshooting
 

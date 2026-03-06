@@ -1,4 +1,4 @@
-dist/
 node_modules/
-webstir-*.tgz
-npm-debug.log*
+dist/
+*.tsbuildinfo
+.DS_Store

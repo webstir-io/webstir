@@ -27,7 +27,7 @@ and may be incorporated into the project owned by **Electric Coding LLC**.
 | Run workflow tests (quick) | `dotnet test Tester/Tester.csproj` |
 | Run full workflow tests | `WEBSTIR_TEST_MODE=full dotnet test Tester/Tester.csproj` |
 | Format & build sanity check | `./utilities/scripts/format-build.sh` |
-| Rebuild & verify framework packages | `dotnet run --project Framework/Framework.csproj -- packages sync`<br>`dotnet run --project Framework/Framework.csproj -- packages verify` |
+| Refresh embedded framework metadata | `dotnet run --project Framework/Framework.csproj -- packages sync`<br>`dotnet run --project Framework/Framework.csproj -- packages verify` |
 
 > Tip: `./utilities/scripts/local-ci.sh` builds the Docker image used by CI and runs the same workflow (npm installs, dotnet build/test, framework package sync/verify) against your checkout.
 
@@ -43,10 +43,10 @@ and may be incorporated into the project owned by **Electric Coding LLC**.
 - Keep TypeScript/JavaScript changes formatted via `npm run lint`/`npm run format` when available; `format-build.sh` covers the common cases.
 
 ## Release Workflow (Maintainers)
-1. Publish framework packages from their owning repos (`webstir-frontend`, `webstir-backend`, `webstir-testing`).
-2. Run `Utilities/scripts/sync-framework-versions.sh` to pin released versions and verify.
-3. Commit source, lockfiles, and `framework-packages.json`.
-4. Trigger the release workflow (clean `main` only): `Utilities/scripts/publish.sh patch`.
+1. Publish the target npm package from its canonical monorepo directory under `packages/` with `npm run release -- <patch|minor|major|x.y.z>` or the Release Package GitHub workflow.
+2. Run `pnpm run sync:framework-embedded` to copy canonical managed package files into `orchestrators/dotnet/Framework/**`.
+3. Run `Utilities/scripts/sync-framework-versions.sh` to refresh orchestrator metadata, pin released versions, and verify.
+4. Commit source, lockfiles, and `framework-packages.json`.
 
 ## Developer Certificate of Origin
 By signing off, you certify that you have the right to submit the code

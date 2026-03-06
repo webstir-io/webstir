@@ -126,6 +126,31 @@
             ],
             "additionalProperties": false
           }
+        },
+        "renderMode": {
+          "type": "string",
+          "enum": [
+            "ssg",
+            "ssr",
+            "spa"
+          ]
+        },
+        "staticPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ssg": {
+          "type": "object",
+          "properties": {
+            "revalidateSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
         }
       },
       "required": [

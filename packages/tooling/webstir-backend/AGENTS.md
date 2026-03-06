@@ -19,11 +19,12 @@
 - `npm run build` — TypeScript compile to `dist/`.
 - `npm test` — runs Node test runner for backend tests (rarely used; keep green).
 - `npm run smoke` — exercises scaffold provisioning + build/publish + Fastify health check.
-- `npm run release` / `scripts/publish.sh` — bump version, refresh package-lock, run build/test/smoke, tag (release workflow publishes).
+- `npm run release` / `scripts/publish.sh` — bump version, refresh package-lock, run build/test/smoke, and create a package-scoped release tag that the monorepo workflow publishes.
 
 ## Release Notes
 - Ensure clean git tree and passing build/smoke before running `scripts/publish.sh`.
-- Publish script intentionally does not call `npm publish`; GitHub Actions release workflow handles publishing from tags.
+- Run `pnpm run sync:framework-embedded` after canonical package manifest changes when you are not using the release helper; `scripts/publish.sh` does this automatically for its target package.
+- Publish script intentionally does not call `npm publish`; GitHub Actions publishes from the package-scoped release tag.
 - After publishing, sync versions via `orchestrators/dotnet/Utilities/scripts/sync-framework-versions.sh`.
 - Published tarball now includes `src/`, `scripts/`, `tests/`, `tsconfig.json`, and `package-lock.json`; keep them build-ready since downstream repos rebuild straight from the package.
 

@@ -34,6 +34,15 @@ jobs:
       - name: Verify framework version alignment
         run: pnpm run check:framework-versions
 
+      - name: Verify framework package sync
+        run: pnpm run check:framework-sync
+
+      - name: Verify framework embedded sync idempotence
+        run: pnpm run check:framework-embedded-idempotent
+
+      - name: Test release tools
+        run: pnpm run test:tools
+
       - name: Test module contract
         run: pnpm --filter @webstir-io/module-contract test
 

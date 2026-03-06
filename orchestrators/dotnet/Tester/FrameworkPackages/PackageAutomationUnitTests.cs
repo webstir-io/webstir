@@ -18,6 +18,53 @@ namespace Tester.FrameworkPackages;
 public sealed class PackageAutomationUnitTests
 {
     [Fact]
+    public void MonorepoPackageReleasePolicyDetectsCanonicalMonorepo()
+    {
+        using TemporaryMonorepoLayout workspace = TemporaryMonorepoLayout.Create(includeMarkers: true);
+
+        MonorepoPackageReleasePolicy policy = new();
+
+        Assert.True(policy.IsCanonicalMonorepo(workspace.RootPath));
+    }
+
+    [Fact]
+    public void MonorepoPackageReleasePolicyIgnoresNonCanonicalWorkspace()
+    {
+        using TemporaryMonorepoLayout workspace = TemporaryMonorepoLayout.Create(includeMarkers: false);
+
+        MonorepoPackageReleasePolicy policy = new();
+
+        Assert.False(policy.IsCanonicalMonorepo(workspace.RootPath));
+    }
+
+    [Theory]
+    [InlineData("release")]
+    [InlineData("publish")]
+    public void MonorepoPackageReleasePolicyBlocksLegacyReleaseCommands(string command)
+    {
+        using TemporaryMonorepoLayout workspace = TemporaryMonorepoLayout.Create(includeMarkers: true);
+
+        MonorepoPackageReleasePolicy policy = new();
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+            policy.EnsureCommandSupported(workspace.RootPath, command));
+
+        Assert.Contains($"framework packages {command} is unavailable", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("packages/**", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("sync:framework-embedded", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MonorepoPackageReleasePolicyAllowsSyncCommands()
+    {
+        using TemporaryMonorepoLayout workspace = TemporaryMonorepoLayout.Create(includeMarkers: true);
+
+        MonorepoPackageReleasePolicy policy = new();
+
+        policy.EnsureCommandSupported(workspace.RootPath, "sync");
+    }
+
+    [Fact]
     public async Task PackageMetadataServiceLoadsEnabledManifestsAsync()
     {
         using TestWorkspace workspace = TestWorkspace.WithPackages(frontendEnabled: true, testingEnabled: true, includeBackend: true);
@@ -229,98 +276,6 @@ public sealed class PackageAutomationUnitTests
             await service.GetStatusAsync(repositoryRoot, new RepositoryDiffOptions(), CancellationToken.None));
     }
 
-    [Fact]
-    public async Task PackagePublishValidatorRequiresTokensAsync()
-    {
-        using TestWorkspace workspace = TestWorkspace.WithPackages(frontendEnabled: true, testingEnabled: false);
-
-        FakePackageMetadataService metadata = new([workspace.FrontendManifest!]);
-        FakeProcessRunner runner = new();
-        PackagePublishValidator validator = new(metadata, runner, NullLogger<PackagePublishValidator>.Instance);
-
-        string? originalToken = Environment.GetEnvironmentVariable("NPM_TOKEN");
-        Environment.SetEnvironmentVariable("NPM_TOKEN", null);
-
-        try
-        {
-            await Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await validator.ValidateAsync(
-                    workspace.RepositoryRoot,
-                    PackageSelection.AllPackages,
-                    sinceReference: null,
-                    CancellationToken.None));
-
-            Assert.Empty(runner.Requests);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("NPM_TOKEN", originalToken);
-        }
-    }
-
-    [Fact]
-    public async Task PackagePublishValidatorValidatesRegistriesAsync()
-    {
-        using TestWorkspace workspace = TestWorkspace.WithPackages(frontendEnabled: true, testingEnabled: false);
-
-        FakePackageMetadataService metadata = new([workspace.FrontendManifest!]);
-        FakeProcessRunner runner = new()
-        {
-            OnRun = request =>
-            {
-                Assert.Equal("npm", request.FileName);
-                Assert.Contains("ping", request.Arguments, StringComparison.Ordinal);
-                Assert.Contains("https://registry.npmjs.org", request.Arguments, StringComparison.Ordinal);
-                return new ProcessResult
-                {
-                    ExitCode = 0,
-                    StandardOutput = "pong",
-                    StandardError = string.Empty,
-                    Duration = TimeSpan.Zero,
-                    IsExitCodeAccepted = true
-                };
-            }
-        };
-
-        PackagePublishValidator validator = new(metadata, runner, NullLogger<PackagePublishValidator>.Instance);
-
-        string? originalToken = Environment.GetEnvironmentVariable("NPM_TOKEN");
-        Environment.SetEnvironmentVariable("NPM_TOKEN", "fake-token");
-
-        try
-        {
-            await validator.ValidateAsync(
-                workspace.RepositoryRoot,
-                PackageSelection.AllPackages,
-                sinceReference: null,
-                CancellationToken.None);
-
-            Assert.Single(runner.Requests);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("NPM_TOKEN", originalToken);
-        }
-    }
-
-    [Fact]
-    public async Task PackagePublishValidatorSkipsWhenNoPublishableAsync()
-    {
-        using TestWorkspace workspace = TestWorkspace.WithPackages(frontendEnabled: false, testingEnabled: false, includeBackend: true);
-
-        FakePackageMetadataService metadata = new([workspace.BackendManifest!]);
-        FakeProcessRunner runner = new();
-        PackagePublishValidator validator = new(metadata, runner, NullLogger<PackagePublishValidator>.Instance);
-
-        await validator.ValidateAsync(
-            workspace.RepositoryRoot,
-            PackageSelection.AllPackages,
-            sinceReference: null,
-            CancellationToken.None);
-
-        Assert.Empty(runner.Requests);
-    }
-
     private sealed class StubRepositoryDiffService : IRepositoryDiffService
     {
         public RepositoryDiffResult NextResult { get; set; } = new(Array.Empty<string>());
@@ -514,6 +469,56 @@ public sealed class PackageAutomationUnitTests
                 SemanticVersion.Parse(version),
                 identifiers,
                 enabled);
+        }
+    }
+
+    private sealed class TemporaryMonorepoLayout : IDisposable
+    {
+        private TemporaryMonorepoLayout(string rootPath)
+        {
+            RootPath = rootPath;
+        }
+
+        public string RootPath
+        {
+            get;
+        }
+
+        public static TemporaryMonorepoLayout Create(bool includeMarkers)
+        {
+            string rootPath = Directory.CreateDirectory(
+                Path.Combine(Path.GetTempPath(), "webstir-tests", "monorepo-policy", Guid.NewGuid().ToString("N"))).FullName;
+
+            if (includeMarkers)
+            {
+                WriteFile(rootPath, Path.Combine(".github", "workflows", "release-package.yml"), "name: Release Package\n");
+                WriteFile(rootPath, Path.Combine("packages", "contracts", "module-contract", "package.json"), "{ \"name\": \"@webstir-io/module-contract\" }\n");
+                WriteFile(rootPath, Path.Combine("packages", "tooling", "webstir-frontend", "package.json"), "{ \"name\": \"@webstir-io/webstir-frontend\" }\n");
+            }
+
+            return new TemporaryMonorepoLayout(rootPath);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                if (Directory.Exists(RootPath))
+                {
+                    Directory.Delete(RootPath, recursive: true);
+                }
+            }
+            catch
+            {
+                // Ignore cleanup failures.
+            }
+        }
+
+        private static void WriteFile(string rootPath, string relativePath, string contents)
+        {
+            string fullPath = Path.Combine(rootPath, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllText(fullPath, contents);
         }
     }
 }

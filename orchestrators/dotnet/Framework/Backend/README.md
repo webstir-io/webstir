@@ -2,6 +2,11 @@
 
 Backend build orchestration for Webstir workspaces. The package exposes a `ModuleProvider` that type‑checks with TypeScript, builds with esbuild, collects build artifacts, and returns diagnostics for the Webstir CLI and installers.
 
+## Status
+
+- Experimental provider for the Webstir ecosystem — APIs, defaults, and behavior may change between releases while things stabilize.
+- Not yet recommended for production workloads; treat it as a learning and exploration tool.
+
 ## Quick Start
 
 1. **Install**
@@ -22,6 +27,13 @@ Backend build orchestration for Webstir workspaces. The package exposes a `Modul
    ```
 
 Requires Node.js **20.18.x** or newer.
+
+## Community & Support
+
+- Code of Conduct: https://github.com/webstir-io/.github/blob/main/CODE_OF_CONDUCT.md
+- Contributing guidelines: https://github.com/webstir-io/.github/blob/main/CONTRIBUTING.md
+- Security policy and disclosure process: https://github.com/webstir-io/.github/blob/main/SECURITY.md
+- Support expectations and contact channels: https://github.com/webstir-io/.github/blob/main/SUPPORT.md
 
 ## Workspace Layout
 
@@ -322,17 +334,18 @@ The published package ships prebuilt JavaScript and type definitions in `dist/`.
 
 ```bash
 npm install
+npm run clean          # remove dist artifacts
 npm run build          # emits dist/
 npm run test           # runs unit/integration tests
-# Optional quick E2E
 npm run smoke
+# Release helper (bumps version and pushes a package-scoped release tag)
+npm run release -- patch
 ```
 
 - Add tests under `tests/**/*.test.ts` and wire them into `npm test` once the backend runtime is ready.
-- Ensure CI runs `npm ci`, `npm run build`, and any smoke tests before publish.
+- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publish.
 - Publishing targets npm via `publishConfig.registry`.
-- Reference implementation: `examples/accounts/` demonstrates a ts-rest powered module exporting `createModule()` for provider hydration.
-- Use `npm run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and publish via the bundled helper script.
+- Use `npm run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and push a package-scoped tag that triggers the monorepo release workflow.
 
 ## Troubleshooting
 
@@ -341,7 +354,7 @@ npm run smoke
 - esbuild warnings/errors are surfaced as diagnostics with file locations when available.
 
 CI notes
-- Package CI runs build + tests on PRs and main; a smoke step runs on main only to exercise the end-to-end path quickly.
+- Package CI runs clean + build + tests + smoke on PRs and main.
 
 Dev tips
 - Fast iteration: set `WEBSTIR_BACKEND_TYPECHECK=skip` to bypass type-checking during `build`/`test` mode. Type-checks always run for `publish`.

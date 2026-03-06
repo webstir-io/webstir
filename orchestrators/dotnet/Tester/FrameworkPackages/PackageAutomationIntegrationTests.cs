@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using Utilities.Process;
 using Tester.Infrastructure;
@@ -13,127 +11,33 @@ namespace Tester.FrameworkPackages;
 public sealed class PackageAutomationIntegrationTests
 {
     [Fact]
-    public void ReleaseDryRunSinglePackage()
+    public void ReleaseCommandIsBlockedInCanonicalMonorepoWorkspace()
     {
-        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("single-change");
-        workspace.ModifyFile(Path.Combine("Framework", "Frontend", "src", "integration-change.txt"), "// integration change");
+        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("release-blocked");
+        workspace.MarkAsCanonicalMonorepo();
 
         ProcessResult result = workspace.RunFramework("-- packages release --dry-run", timeoutMs: 25000);
-        Assert.Equal(0, result.ExitCode);
-
-        using JsonDocument summary = workspace.ReadSummary();
-        AssertSummaryStatus(summary, "@webstir-io/webstir-frontend", "planned-build");
-        AssertSummaryStatus(summary, "@webstir-io/webstir-testing", "unchanged");
-        AssertSummaryStatus(summary, "@webstir-io/webstir-backend", "unchanged");
-        AssertSummaryDryRun(summary, expected: true);
-    }
-
-    [Fact]
-    public void ReleaseDryRunMultiplePackages()
-    {
-        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("multi-change");
-        workspace.ModifyFile(Path.Combine("Framework", "Frontend", "src", "multi-change.ts"), "// frontend change");
-        workspace.ModifyFile(Path.Combine("Framework", "Testing", "specs", "multi-change.test.ts"), "// testing change");
-
-        ProcessResult result = workspace.RunFramework("-- packages release --dry-run", timeoutMs: 25000);
-        Assert.Equal(0, result.ExitCode);
-
-        using JsonDocument summary = workspace.ReadSummary();
-        AssertSummaryStatus(summary, "@webstir-io/webstir-frontend", "planned-build");
-        AssertSummaryStatus(summary, "@webstir-io/webstir-testing", "planned-build");
-        AssertSummaryDryRun(summary, expected: true);
-    }
-
-    [Fact]
-    public void ReleaseDryRunNoChanges()
-    {
-        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("no-change");
-
-        ProcessResult result = workspace.RunFramework("-- packages release --dry-run", timeoutMs: 25000);
-        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(1, result.ExitCode);
 
         string output = string.Concat(result.StandardOutput, result.StandardError);
-        Assert.Contains("No framework packages matched the selection.", output);
-
-        using JsonDocument summary = workspace.ReadSummary();
-        AssertSummaryStatus(summary, "@webstir-io/webstir-frontend", "unchanged");
-        AssertSummaryStatus(summary, "@webstir-io/webstir-testing", "unchanged");
-        AssertSummaryStatus(summary, "@webstir-io/webstir-backend", "unchanged");
+        Assert.Contains("framework packages release is unavailable", output, StringComparison.Ordinal);
+        Assert.Contains("packages/**", output, StringComparison.Ordinal);
+        Assert.Contains("sync:framework-embedded", output, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void PublishDryRunProducesSummary()
+    public void PublishCommandIsBlockedInCanonicalMonorepoWorkspace()
     {
-        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("publish-dryrun");
+        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("publish-blocked");
+        workspace.MarkAsCanonicalMonorepo();
 
         ProcessResult result = workspace.RunFramework("-- packages publish --dry-run --all", timeoutMs: 30000);
-        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(1, result.ExitCode);
 
-        using JsonDocument summary = workspace.ReadSummary();
-        AssertSummaryDryRun(summary, expected: true);
-        AssertSummaryStatus(summary, "@webstir-io/webstir-frontend", "planned-publish");
-        AssertSummaryStatus(summary, "@webstir-io/webstir-testing", "planned-publish");
-    }
-
-    [Fact]
-    public void PublishFailsWithoutToken()
-    {
-        using PackageCliWorkspace workspace = PackageCliWorkspace.Create("publish-missing-token");
-
-        string? originalToken = Environment.GetEnvironmentVariable("NPM_TOKEN");
-        string? originalConfig = Environment.GetEnvironmentVariable("NPM_CONFIG_USERCONFIG");
-        string? originalSkip = Environment.GetEnvironmentVariable("WEBSTIR_SKIP_NPM_AUTH");
-        Environment.SetEnvironmentVariable("NPM_TOKEN", null);
-        Environment.SetEnvironmentVariable("NPM_CONFIG_USERCONFIG", Path.Combine(workspace.RepositoryRoot, "nonexistent", "npmrc"));
-        Environment.SetEnvironmentVariable("WEBSTIR_SKIP_NPM_AUTH", "1");
-
-        try
-        {
-            ProcessResult result = workspace.RunFramework("-- packages publish --all", timeoutMs: 25000);
-            Assert.Equal(1, result.ExitCode);
-
-            string output = string.Concat(result.StandardOutput, result.StandardError);
-            Assert.Contains("NPM_TOKEN", output);
-            Assert.Contains("does not exist", output, StringComparison.OrdinalIgnoreCase);
-
-            using JsonDocument summary = workspace.ReadSummary();
-            AssertSummaryFailure(summary);
-            AssertSummaryStatus(summary, "@webstir-io/webstir-frontend", "publish-skipped");
-            AssertSummaryStatus(summary, "@webstir-io/webstir-testing", "publish-skipped");
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("NPM_TOKEN", originalToken);
-            Environment.SetEnvironmentVariable("NPM_CONFIG_USERCONFIG", originalConfig);
-            Environment.SetEnvironmentVariable("WEBSTIR_SKIP_NPM_AUTH", originalSkip);
-        }
-    }
-
-    private static void AssertSummaryDryRun(JsonDocument summary, bool expected)
-    {
-        bool actual = summary.RootElement.GetProperty("dryRun").GetBoolean();
-        Assert.Equal(expected, actual);
-    }
-
-    private static void AssertSummaryStatus(JsonDocument summary, string packageName, string expectedStatus)
-    {
-        foreach (JsonElement package in summary.RootElement.GetProperty("packages").EnumerateArray())
-        {
-            if (string.Equals(package.GetProperty("name").GetString(), packageName, StringComparison.OrdinalIgnoreCase))
-            {
-                string status = package.GetProperty("status").GetString() ?? string.Empty;
-                Assert.Equal(expectedStatus, status);
-                return;
-            }
-        }
-
-        throw new Xunit.Sdk.XunitException($"Package {packageName} not found in summary.");
-    }
-
-    private static void AssertSummaryFailure(JsonDocument summary)
-    {
-        JsonElement failure = summary.RootElement.GetProperty("failure");
-        Assert.False(string.IsNullOrWhiteSpace(failure.GetString()));
+        string output = string.Concat(result.StandardOutput, result.StandardError);
+        Assert.Contains("framework packages publish is unavailable", output, StringComparison.Ordinal);
+        Assert.Contains("packages/**", output, StringComparison.Ordinal);
+        Assert.Contains("sync:framework-embedded", output, StringComparison.Ordinal);
     }
 
     private sealed class PackageCliWorkspace : IDisposable
@@ -161,6 +65,13 @@ public sealed class PackageAutomationIntegrationTests
             return new PackageCliWorkspace(root);
         }
 
+        public void MarkAsCanonicalMonorepo()
+        {
+            WriteFile(Path.Combine(".github", "workflows", "release-package.yml"), "name: Release Package\n");
+            WriteFile(Path.Combine("packages", "contracts", "module-contract", "package.json"), "{ \"name\": \"@webstir-io/module-contract\" }\n");
+            WriteFile(Path.Combine("packages", "tooling", "webstir-frontend", "package.json"), "{ \"name\": \"@webstir-io/webstir-frontend\" }\n");
+        }
+
         public ProcessResult RunFramework(string arguments, int timeoutMs)
         {
             ProcessRunner runner = new();
@@ -176,21 +87,6 @@ public sealed class PackageAutomationIntegrationTests
             };
 
             return runner.RunAsync(spec, CancellationToken.None).GetAwaiter().GetResult();
-        }
-
-        public JsonDocument ReadSummary()
-        {
-            string summaryPath = Path.Combine(RepositoryRoot, "artifacts", "packages-release-summary.json");
-            Assert.True(File.Exists(summaryPath), $"Summary file not found at {summaryPath}.");
-            string json = File.ReadAllText(summaryPath);
-            return JsonDocument.Parse(json);
-        }
-
-        public void ModifyFile(string relativePath, string content)
-        {
-            string fullPath = Path.Combine(RepositoryRoot, relativePath);
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            File.AppendAllText(fullPath, $"{content}{Environment.NewLine}");
         }
 
         public void Dispose()
@@ -215,6 +111,13 @@ public sealed class PackageAutomationIntegrationTests
             RunGit(root, "config user.name Webstir Tests");
             RunGit(root, "add .");
             RunGit(root, "commit -m \"initial\" --allow-empty");
+        }
+
+        private void WriteFile(string relativePath, string contents)
+        {
+            string fullPath = Path.Combine(RepositoryRoot, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllText(fullPath, contents);
         }
 
         private static void RunGit(string workingDirectory, string arguments)

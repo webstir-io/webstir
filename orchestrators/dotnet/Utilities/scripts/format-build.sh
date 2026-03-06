@@ -5,6 +5,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
+ensure_dotnet_js_dependencies() {
+    if [[ -f "node_modules/jsonschema/package.json" ]]; then
+        return 0
+    fi
+
+    echo "Installing orchestrators/dotnet JavaScript dependencies with bun..."
+    bun install --frozen-lockfile
+}
+
 run_dotnet_format_scope() {
     local mode="$1"
     local description="$2"
@@ -63,6 +72,8 @@ echo "normalized ${normalized_count} files"
 run_dotnet_format_scope "whitespace" "(whitespace)"
 run_dotnet_format_scope "style" "(style)"
 run_dotnet_format_scope "analyzers" "(analyzers)"
+
+ensure_dotnet_js_dependencies
 
 echo "Validating contract schemas..."
 if ! npm run validate:contracts --silent; then

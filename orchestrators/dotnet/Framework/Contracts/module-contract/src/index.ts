@@ -252,7 +252,14 @@ export const routeDefinitionSchema = z.object({
   tags: z.array(z.string()).optional(),
   input: routeInputSchema.optional(),
   output: routeOutputSchema.optional(),
-  errors: z.array(moduleErrorSchema).optional()
+  errors: z.array(moduleErrorSchema).optional(),
+  renderMode: z.enum(['ssg', 'ssr', 'spa']).optional(),
+  staticPaths: z.array(z.string().min(1)).optional(),
+  ssg: z
+    .object({
+      revalidateSeconds: z.number().int().positive().optional()
+    })
+    .optional()
 });
 
 export type RouteDefinition = z.infer<typeof routeDefinitionSchema>;
@@ -327,7 +334,14 @@ export const viewDefinitionSchema = z.object({
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   params: schemaReferenceSchema.optional(),
-  data: schemaReferenceSchema.optional()
+  data: schemaReferenceSchema.optional(),
+  renderMode: z.enum(['ssg', 'ssr', 'spa']).optional(),
+  staticPaths: z.array(z.string().min(1)).optional(),
+  ssg: z
+    .object({
+      revalidateSeconds: z.number().int().positive().optional()
+    })
+    .optional()
 });
 
 export type ViewDefinition = z.infer<typeof viewDefinitionSchema>;
@@ -385,7 +399,7 @@ export const moduleManifestSchema = z.object({
   version: z.string().min(1),
   kind: moduleKindSchema,
   capabilities: z.array(z.string()).optional(),
-  // Optional pass-through metadata for providers
+  // New: optional pass-through lists
   assets: z.array(z.string()).optional(),
   middlewares: z.array(z.string()).optional(),
   routes: z.array(routeDefinitionSchema).optional(),
