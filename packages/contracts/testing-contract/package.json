@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/testing-contract",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Public contract definitions for Webstir test manifests and runner events.",
   "type": "module",
   "main": "dist/index.js",
