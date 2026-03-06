@@ -24,6 +24,8 @@ This guide explains how maintainers keep the embedded orchestrator framework pac
 ## Release Path
 - Do not use `framework packages release` or `framework packages publish` in this monorepo. Those commands are retained only for legacy compatibility outside the canonical monorepo layout.
 - Release npm packages from the canonical `packages/**` directories with `npm run release -- <patch|minor|major|x.y.z>`, or trigger the **Release Package** GitHub workflow for the specific package.
+- On npm, each publishable `@webstir-io/*` package should trust the same GitHub Actions publisher: `webstir-io/webstir` with workflow file `release-package.yml`.
+- The shared workflow stays package-scoped because it resolves a single canonical package from either the `release/<package>/v<version>` tag format or the manual `package` workflow input before it builds or publishes.
 - After a canonical release, run `pnpm run sync:framework-embedded` and then `framework packages sync` / `framework packages verify` if the orchestrator metadata needs to follow that release immediately.
 
 ## Developer Helpers

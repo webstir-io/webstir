@@ -34,6 +34,8 @@ This guide covers the end-to-end workflow for keeping the embedded orchestrator 
 ## Registry Requirements
 - Framework installations now rely on registry packages. Configure `.npmrc` with `@webstir-io:registry=https://registry.npmjs.org`. Corepack users should run `corepack enable` so pnpm is available.
 - Provide the token and `.npmrc` to CI or sandbox environments before executing the Release Package workflow or `webstir install`.
+- Each publishable `@webstir-io/*` package should configure npm trusted publishing against the same monorepo workflow: `webstir-io/webstir` with `release-package.yml`.
+- That shared workflow still publishes only one package per run because it resolves the target package from the `release/<package>/v<version>` tag or the manual workflow `package` input.
 
 ## Verify Changes
 - Run `./utilities/scripts/format-build.sh` before handing off; it formats code, builds the solution, and executes frontend package tests.
