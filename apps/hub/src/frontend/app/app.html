@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html data-webstir-search-styles="css" lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Starter description for your Webstir app. Update it to summarize this page for search results.">
+    <link rel="stylesheet" href="/app/app.css" />
+</head>
+<body>
+    <header class="app-header">
+        <div class="app-header__inner ws-container">
+            <a class="app-brand" href="/" aria-label="Webstir home">
+                Webstir
+            </a>
+            <div class="app-menu" data-app-menu>
+                <nav id="app-menu-nav" class="app-nav" aria-label="Primary">
+                    <a href="/about">About</a>
+                    <a href="/docs/">Docs</a>
+                </nav>
+                <button class="app-theme-toggle ws-icon-button" type="button" data-theme-toggle="true" aria-label="Switch to light theme" title="Switch to light theme">
+                    <span class="theme-toggle__icon theme-toggle__icon--light" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="4"></circle>
+                            <path d="M12 2v2"></path>
+                            <path d="M12 20v2"></path>
+                            <path d="M5 5l1.5 1.5"></path>
+                            <path d="M17.5 17.5L19 19"></path>
+                            <path d="M2 12h2"></path>
+                            <path d="M20 12h2"></path>
+                            <path d="M5 19l1.5-1.5"></path>
+                            <path d="M17.5 6.5L19 5"></path>
+                        </svg>
+                    </span>
+                    <span class="theme-toggle__icon theme-toggle__icon--dark" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+                        </svg>
+                    </span>
+                </button>
+                <button class="app-menu__toggle ws-icon-button" type="button" aria-label="Menu" aria-controls="app-menu-nav" aria-expanded="false">
+                    <span class="app-menu__icon app-menu__icon--open" aria-hidden="true">
+                        <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h16M2 10h16M2 17h16"></path>
+                        </svg>
+                    </span>
+                    <span class="app-menu__icon app-menu__icon--close" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 6L6 18"></path>
+                            <path d="M6 6l12 12"></path>
+                        </svg>
+                    </span>
+                    <span class="sr-only">Menu</span>
+                </button>
+            </div>
+        </div>
+    </header>
+    <div class="ws-drawer-backdrop" data-drawer="menu" data-drawer-close aria-hidden="true"></div>
+    <main></main>
+    <script type="module" src="/app/app.js"></script>
+    <script type="module" src="/hmr.js"></script>
+    <script src="/refresh.js" async></script>
+</body>
+</html>

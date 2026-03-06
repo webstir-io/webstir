@@ -1,0 +1,158 @@
+# @webstir-io/webstir-frontend
+
+Frontend build and publish toolkit for Webstir workspaces. The package bundles the HTML/CSS/JS pipeline, scaffolding helpers, and module provider used by the Webstir CLI and installers.
+
+## Status
+
+- Experimental provider for the Webstir ecosystem — pipeline details and configuration surfaces may change between releases.
+- Best suited for exploration and demos today; do not rely on it as a hardened production frontend pipeline yet.
+
+## Quick Start
+
+1. **Install the package**
+   ```bash
+   npm install @webstir-io/webstir-frontend
+   ```
+2. **Run a build**
+   ```bash
+   npx webstir-frontend build --workspace /absolute/path/to/workspace
+   ```
+
+Requires Node.js **20.18.x** or newer.
+
+## Workspace Layout
+
+The provider assumes the standard Webstir workspace shape:
+
+```
+workspace/
+  src/frontend/
+    app/
+    pages/
+    images/
+    fonts/
+    media/
+    frontend.config.json   # optional feature flag overrides
+    webstir.config.mjs     # optional hook definitions
+  build/frontend/...       # generated build artifacts
+  dist/frontend/...        # publish-ready assets
+  .webstir/manifest.json   # pipeline manifest emitted on each run
+```
+
+## CLI Commands
+
+Binary name: `webstir-frontend`. All commands require `--workspace` pointing to the absolute workspace root.
+
+| Command | Description | Useful options |
+|---------|-------------|----------------|
+| `build` | Runs the development pipeline (incremental safe). | `--changed-file <path>` to scope rebuilds. |
+| `publish` | Produces optimized assets under `dist/frontend`. | `--mode <bundle\|ssg>` (SSG preview). |
+| `rebuild` | Incremental rebuild triggered by a file change. | `--changed-file <path>` to pass the changed file. |
+| `add-page <name>` | Scaffolds a page (HTML/CSS/TS) inside `src/frontend/pages`. | — |
+| `watch-daemon` | Persistent watcher + HMR coordinator. | `--no-auto-start`, `--verbose`, `--hmr-verbose`. |
+
+### Feature Flags
+
+`frontend.config.json` enables or disables pipeline features:
+
+```jsonc
+{
+  "features": {
+    "htmlSecurity": true,
+    "imageOptimization": true,
+    "precompression": false
+  }
+}
+```
+
+### Lifecycle Hooks
+
+Hooks live in `webstir.config.mjs` (or `.js`/`.cjs`) at the workspace root:
+
+```js
+export const hooks = {
+  pipeline: {
+    beforeAll({ mode }) {
+      console.info(`[webstir] starting ${mode} pipeline`);
+    }
+  },
+  builders: {
+    assets: {
+      after({ config }) {
+        // custom post-processing
+      }
+    }
+  }
+};
+```
+
+## API Usage
+
+The package exports a `ModuleProvider` compatible with `@webstir-io/module-contract`:
+
+```ts
+import { frontendProvider } from '@webstir-io/webstir-frontend';
+
+const result = await frontendProvider.build({
+  workspaceRoot: '/absolute/path/to/workspace',
+  env: { WEBSTIR_MODULE_MODE: 'publish' }
+});
+
+   console.log(result.manifest.entryPoints);
+   ```
+
+- `frontendProvider.metadata` surfaces id/version compatibility.
+- `frontendProvider.resolveWorkspace` returns canonical source/build/test paths.
+- `frontendProvider.build` executes the pipeline and returns artifacts + manifest.
+
+## SSG Preview
+
+When invoked as:
+
+```bash
+npx webstir-frontend publish --workspace /absolute/path/to/workspace --mode ssg
+```
+
+the provider:
+
+- Runs the normal publish pipeline to populate `dist/frontend/**`.
+- Creates static-friendly `index.html` aliases (root and per-page).
+- When `package.json` includes `webstir.moduleManifest.views` with `renderMode: 'ssg'` and `staticPaths`, uses those paths to add additional `index.html` aliases under `dist/frontend/**`.
+
+## Maintainer Workflow
+
+```bash
+npm install
+npm run clean          # remove dist artifacts
+npm run build          # TypeScript → dist/
+npm run test           # Node --test against compiled output
+npm run smoke          # scaffolds a temp workspace and runs build/publish
+# Release helper (bumps version, pushes tags to trigger release workflow)
+npm run release -- patch
+```
+
+GitHub Actions should run `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publishing. The release workflow publishes to npm with trusted publishing (`id-token: write` + provenance).
+
+CI notes
+- Package CI runs clean + build + tests + smoke on PRs and main.
+
+## Troubleshooting
+
+- **“404 Not Found” when installing `@webstir-io/module-contract`** — verify the dependency has been published to npm and re-generate `package-lock.json` against npmjs.
+- **“No frontend test files found”** — the `test` script expects files under `tests/**/*.test.js` after build.
+- **Missing entry points in manifest** — confirm `build/frontend` contains at least one `.js`/`.mjs` bundle; the provider falls back to `build/app/index.js` and emits a warning if empty.
+
+## Community & Support
+
+- Code of Conduct: https://github.com/webstir-io/.github/blob/main/CODE_OF_CONDUCT.md
+- Contributing guidelines: https://github.com/webstir-io/.github/blob/main/CONTRIBUTING.md
+- Security policy and disclosure process: https://github.com/webstir-io/.github/blob/main/SECURITY.md
+- Support expectations and contact channels: https://github.com/webstir-io/.github/blob/main/SUPPORT.md
+
+## Third-Party Notices
+
+Webstir Frontend depends on third-party libraries and data sets (including `sharp`/libvips and `caniuse-lite`) under their respective licenses. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for a summary of notable licenses and attribution.
+
+## License
+
+MIT © Webstir

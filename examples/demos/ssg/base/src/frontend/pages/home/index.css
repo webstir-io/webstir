@@ -1,0 +1,91 @@
+/* Index Page Styles */
+
+@layer overrides {
+.hero {
+  padding: 56px 0 48px;
+}
+
+.hero__inner {
+  text-align: center;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+  --ws-flow-space: var(--ws-space-8);
+  --ws-hero-space: calc(var(--ws-space-8) + var(--ws-space-2));
+}
+
+.hero .ws-cluster {
+  justify-content: center;
+}
+
+.hero__kicker {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ws-border);
+  color: var(--ws-muted);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: var(--ws-hero-space);
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.hero__kicker + h1 {
+  margin-top: var(--ws-hero-space);
+}
+
+.hero__lead {
+  font-size: 1.15rem;
+  color: var(--ws-muted);
+  margin: 0 auto;
+  max-width: 84ch;
+}
+
+.hero__lead + .ws-cluster {
+  margin-top: 0;
+  padding-top: var(--ws-hero-space);
+}
+
+.start {
+  padding: 40px 0 88px;
+}
+
+.start .ws-container {
+  max-width: 720px;
+  width: min(720px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+  padding-left: var(--ws-container-pad, var(--ws-space-4));
+  padding-right: var(--ws-container-pad, var(--ws-space-4));
+}
+
+.start h2 {
+  font-size: 1.25rem;
+  margin: 0 0 16px;
+}
+
+.start__list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--ws-muted);
+  font-size: 1.05rem;
+}
+
+.start__list li {
+  margin: 12px 0;
+}
+
+.start__list code {
+  font-weight: 650;
+  color: var(--ws-fg);
+}
+}

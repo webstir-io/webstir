@@ -1,0 +1,83 @@
+{
+  "name": "@webstir-io/webstir-testing",
+  "version": "0.1.4",
+  "description": "Testing runtime and CLI for Webstir TypeScript projects.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js",
+      "default": "./dist/runtime.js"
+    },
+    "./assert": {
+      "types": "./dist/assert.d.ts",
+      "import": "./dist/assert.js",
+      "default": "./dist/assert.js"
+    },
+    "./cli": {
+      "import": "./dist/cli.js",
+      "default": "./dist/cli.js"
+    },
+    "./add-cli": {
+      "import": "./dist/add-cli.js",
+      "default": "./dist/add-cli.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "webstir-testing": "dist/cli.js",
+    "webstir-testing-runner": "dist/cli.js",
+    "webstir-testing-add": "dist/add-cli.js",
+    "webstir-test": "dist/cli.js",
+    "webstir-test-runner": "dist/cli.js",
+    "webstir-test-add": "dist/add-cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test tests/*.test.js",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build",
+    "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
+    "release": "bash scripts/publish.sh"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webstir-io/webstir.git",
+    "directory": "packages/tooling/webstir-testing"
+  },
+  "keywords": [
+    "webstir",
+    "test",
+    "cli"
+  ],
+  "author": "Webstir",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.11.25",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@webstir-io/testing-contract": "workspace:*",
+    "chokidar": "^3.6.0",
+    "commander": "^11.1.0",
+    "fs-extra": "^11.2.0"
+  }
+}

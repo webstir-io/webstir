@@ -1,0 +1,101 @@
+@layer components {
+  /* Buttons */
+  :where([data-ui="btn"]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--ws-space-3) var(--ws-space-4);
+    border-radius: var(--ws-radius-2);
+    border: 1px solid var(--ws-border);
+    background: var(--ws-bg);
+    color: var(--ws-fg);
+    text-decoration: none;
+    font-weight: 600;
+    transition: background-color var(--ws-duration-fast) var(--ws-ease-standard),
+      border-color var(--ws-duration-fast) var(--ws-ease-standard),
+      filter var(--ws-duration-fast) var(--ws-ease-standard);
+    cursor: pointer;
+  }
+
+  .ws-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ws-header-control-size, 2.6rem);
+    height: var(--ws-header-control-size, 2.6rem);
+    padding: 0;
+    border-radius: var(--ws-radius-1);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--ws-fg);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color var(--ws-duration-fast) var(--ws-ease-standard),
+      border-color var(--ws-duration-fast) var(--ws-ease-standard);
+  }
+
+  .ws-icon-button svg {
+    width: var(--ws-icon-size, 20px);
+    height: var(--ws-icon-size, 20px);
+  }
+
+  .ws-icon-button:hover {
+    background: var(--ws-hover);
+  }
+
+  .ws-icon-button:focus-visible {
+    outline: 0.1875rem solid var(--ws-focus);
+    outline-offset: 0.125rem;
+    border-radius: var(--ws-radius-1);
+  }
+
+  .ws-icon-button[aria-expanded="true"] {
+    background: var(--ws-hover);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ws-icon-button {
+      transition: none;
+    }
+  }
+
+  :where([data-ui="btn"]):focus-visible {
+    outline: 0.1875rem solid var(--ws-focus);
+    outline-offset: 0.125rem;
+  }
+
+  :where([data-ui="btn"]):hover {
+    text-decoration: none;
+    background: var(--ws-hover);
+  }
+
+  :where([data-ui="btn"][data-variant="solid"][data-tone="accent"]) {
+    background: var(--ws-accent);
+    color: #ffffff;
+    border-color: var(--ws-accent);
+  }
+
+  :where([data-ui="btn"][data-variant="solid"][data-tone="accent"]):hover {
+    background: var(--ws-accent-hover);
+    border-color: var(--ws-accent-hover);
+  }
+
+  :where([data-ui="btn"][data-variant="ghost"]) {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  :where([data-ui="btn"][data-variant="ghost"]):hover {
+    background: var(--ws-hover);
+  }
+
+  :where([data-ui="btn"][data-size="sm"]) {
+    padding: var(--ws-space-2) var(--ws-space-3);
+    font-size: 0.95rem;
+  }
+
+  :where([data-ui="btn"][data-size="lg"]) {
+    padding: 0.875rem 1.125rem;
+    font-size: 1.05rem;
+  }
+}

@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monorepo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Test module contract
+        run: pnpm --filter @webstir-io/module-contract test
+
+      - name: Test testing contract
+        run: pnpm --filter @webstir-io/testing-contract test
+
+      - name: Test backend tooling
+        run: pnpm --filter @webstir-io/webstir-backend test
+
+      - name: Test frontend tooling
+        run: pnpm --filter @webstir-io/webstir-frontend test
+
+      - name: Test testing tooling
+        run: pnpm --filter @webstir-io/webstir-testing test
+
+      - name: Build portal
+        run: pnpm --filter webstir-portal build
+
+      - name: Build hub frontend
+        run: pnpm --dir apps/hub exec webstir-frontend build --workspace "$GITHUB_WORKSPACE/apps/hub"
+
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: pnpm
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build solution
+        run: dotnet build orchestrators/dotnet/Webstir.sln -v minimal

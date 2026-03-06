@@ -1,0 +1,63 @@
+{
+	"folders": [
+		{
+			"name": "webstir-portal",
+			"path": "apps/portal"
+		},
+		{
+			"name": "webstir-dotnet",
+			"path": "orchestrators/dotnet"
+		},
+		{
+			"name": "webstir-frontend",
+			"path": "packages/tooling/webstir-frontend"
+		},
+		{
+			"name": "webstir-backend",
+			"path": "packages/tooling/webstir-backend"
+		},
+		{
+			"name": "webstir-testing",
+			"path": "packages/tooling/webstir-testing"
+		},
+		{
+			"name": "testing-contract",
+			"path": "packages/contracts/testing-contract"
+		},
+		{
+			"name": "module-contract",
+			"path": "packages/contracts/module-contract"
+		},
+		{
+			"name": "webstir-demos",
+			"path": "examples/demos"
+		},
+		{
+			"name": "webstir-hub",
+			"path": "apps/hub"
+		},
+		{
+			"name": ".github",
+			"path": ".github"
+		}
+	],
+	"settings": {
+		"chatgpt.openOnStartup": false,
+		"C_Cpp.files.exclude": {
+			"**/node_modules/**": true,
+			"**/out/**": true,
+			"**/dist/**": true,
+			"**/.baselines/**": true
+		},
+		"files.watcherExclude": {
+			"**/node_modules/**": true,
+			"**/out/**": true,
+			"**/dist/**": true,
+			"**/.baselines/**": true
+		},
+		"C_Cpp.intelliSenseEngine": "Disabled",
+		"C_Cpp.default.browse.path": [],
+		"C_Cpp.default.includePath": [],
+		"C_Cpp.default.systemIncludePath": []
+	}
+}

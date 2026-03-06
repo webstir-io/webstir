@@ -1,0 +1,33 @@
+@layer overrides {
+.page {
+  padding: 48px 0 96px;
+  --ws-container: 100%;
+}
+
+.page .ws-flow {
+  --ws-flow-space: var(--ws-space-8);
+}
+
+.page-header {
+  max-width: none;
+}
+
+.page .lead {
+  color: var(--ws-muted);
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.page ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.page li {
+  margin: 10px 0;
+}
+
+.page .bullets {
+  max-width: none;
+}
+}

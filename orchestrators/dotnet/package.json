@@ -1,0 +1,28 @@
+{
+  "name": "webstir-project",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TypeScript type definitions for webstir project",
+  "workspaces": [
+    "Framework/Contracts/testing-contract",
+    "Framework/Contracts/module-contract",
+    "Framework/Frontend",
+    "Framework/Backend",
+    "Framework/Testing"
+  ],
+  "scripts": {
+    "build:contracts": "bun run --cwd Framework/Contracts/testing-contract build && bun run --cwd Framework/Contracts/module-contract build",
+    "validate:contracts": "node ./utilities/scripts/validate-contracts.mjs"
+  },
+  "devDependencies": {
+    "@ts-rest/core": "^3.40.0",
+    "@types/node": "^20.0.0",
+    "jsonschema": "^1.5.0"
+  },
+  "dependencies": {
+    "@webstir-io/webstir-backend": "workspace:*",
+    "@webstir-io/webstir-frontend": "workspace:*",
+    "@webstir-io/webstir-testing": "workspace:*"
+  },
+  "packageManager": "bun@1.3.5"
+}

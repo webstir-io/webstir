@@ -1,0 +1,48 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CLI",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/CLI/bin/Debug/net9.0/CLI.dll",
+            "args": "watch",
+            "cwd": "${workspaceFolder}/CLI/out",
+            "stopAtEntry": false,
+            "console": "integratedTerminal",
+        },
+        {
+            "name": "Tests",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/Tests/bin/Debug/net9.0/Tests.dll",
+            "args": ["--full"],
+            "cwd": "${workspaceFolder}/Tests",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        },
+        {
+            "name": "Sandbox: Up",
+            "type": "node-terminal",
+            "request": "launch",
+            "preLaunchTask": "check:docker",
+            "command": "bash -lc 'unset NODE_OPTIONS; (docker compose -f Sandbox/docker-compose.yml down -v --remove-orphans || true) && ./Utilities/scripts/deploy-seed.sh && ./Sandbox/mkcert/trust-local-ca.sh && docker compose -f Sandbox/docker-compose.yml up --build'",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "COMPOSE_DOCKER_CLI_BUILD": "1"
+            }
+        },
+        {
+            "name": "Sandbox: Down",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "exec docker compose -f Sandbox/docker-compose.yml down -v",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

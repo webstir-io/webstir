@@ -1,0 +1,88 @@
+{
+  "$ref": "#/definitions/view-definition",
+  "definitions": {
+    "view-definition": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "params": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "zod",
+                "json-schema",
+                "ts-rest"
+              ],
+              "default": "zod"
+            },
+            "name": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        "data": {
+          "$ref": "#/definitions/view-definition/properties/params"
+        },
+        "renderMode": {
+          "type": "string",
+          "enum": [
+            "ssg",
+            "ssr",
+            "spa"
+          ]
+        },
+        "staticPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "ssg": {
+          "type": "object",
+          "properties": {
+            "revalidateSeconds": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "name",
+        "path"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

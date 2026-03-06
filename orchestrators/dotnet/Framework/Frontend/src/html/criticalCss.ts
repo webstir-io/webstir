@@ -1,0 +1,48 @@
+import path from 'node:path';
+import * as cssoModule from 'csso';
+import type { CheerioAPI } from 'cheerio';
+import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
+import { pathExists, readFile, stat } from '../utils/fs.js';
+
+const INLINE_THRESHOLD_BYTES = 6 * 1024;
+const csso = ((cssoModule as unknown as { default?: typeof cssoModule }).default ?? cssoModule) as typeof cssoModule;
+
+function minifyCriticalCss(css: string): string {
+    return csso.minify(css).css;
+}
+
+export async function inlineCriticalCss(
+    document: CheerioAPI,
+    pageName: string,
+    distRoot: string,
+    cssFile?: string
+): Promise<void> {
+    if (!cssFile) {
+        return;
+    }
+
+    const cssPath = path.join(distRoot, FOLDERS.pages, pageName, cssFile);
+    if (!(await pathExists(cssPath))) {
+        return;
+    }
+
+    const info = await stat(cssPath).catch(() => null);
+    if (!info || !info.isFile() || info.size > INLINE_THRESHOLD_BYTES) {
+        return;
+    }
+
+    const cssContent = minifyCriticalCss(await readFile(cssPath));
+    const head = document('head').first();
+    if (head.length === 0) {
+        return;
+    }
+
+    const href = `/${FOLDERS.pages}/${pageName}/${cssFile}`;
+    document(`link[href="${href}"]`).remove();
+
+    if (cssFile.endsWith(EXTENSIONS.css)) {
+        document(`link[rel="preload"][href="${href}"]`).remove();
+    }
+
+    head.append(`\n<style data-critical>\n${cssContent}\n</style>\n`);
+}

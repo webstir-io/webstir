@@ -1,0 +1,38 @@
+{
+  "name": "webstir-demo-ssg-site",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static site (SSG) workspace for Webstir.",
+  "dependencies": {
+    "@webstir-io/webstir-testing": "workspace:*",
+    "@webstir-io/webstir-frontend": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "autoprefixer": "^10.4.20",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.4.0"
+  },
+  "packageManager": "pnpm@10.6.2",
+  "browserslist": [
+    "last 2 chrome versions",
+    "last 2 firefox versions",
+    "last 2 safari major versions",
+    "iOS \u003E= 14",
+    "not dead"
+  ],
+  "webstir": {
+    "mode": "ssg",
+    "moduleManifest": {},
+    "enable": {
+      "clientNav": true,
+      "search": true,
+      "contentNav": true,
+      "githubPages": true
+    }
+  },
+  "scripts": {
+    "deploy": "bash ./utils/deploy-gh-pages.sh"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "name": "@webstir-io/module-contract",
+  "version": "0.1.6",
+  "description": "Public contract definitions for Webstir frontend and backend module providers.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ts-rest": {
+      "types": "./dist/adapters/ts-rest.d.ts",
+      "import": "./dist/adapters/ts-rest.js",
+      "default": "./dist/adapters/ts-rest.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schema"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist schema",
+    "build": "npm run clean && npm run build:types && npm run build:schema",
+    "build:types": "tsc -p tsconfig.json",
+    "build:schema": "node scripts/build-schema.mjs",
+    "test": "npm run build && npm run test:examples",
+    "test:examples": "tsc -p tsconfig.examples.json",
+    "release": "bash scripts/publish.sh",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "webstir",
+    "contract",
+    "modules"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webstir-io/webstir.git",
+    "directory": "orchestrators/dotnet/Framework/Contracts/module-contract"
+  },
+  "author": "Webstir",
+  "dependencies": {
+    "@ts-rest/core": "^3.40.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.21",
+    "typescript": "^5.7.2",
+    "zod-to-json-schema": "^3.23.3"
+  },
+  "peerDependencies": {
+    "@ts-rest/core": "^3.40.0"
+  },
+  "peerDependenciesMeta": {
+    "@ts-rest/core": {
+      "optional": true
+    }
+  }
+}

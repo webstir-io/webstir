@@ -1,0 +1,540 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { load } from 'cheerio';
+import type { Cheerio, CheerioAPI } from 'cheerio';
+import type { AnyNode } from 'domhandler';
+import { glob } from 'glob';
+import { minify } from 'html-minifier-terser';
+import { FOLDERS, FILES, FILE_NAMES, EXTENSIONS } from '../core/constants.js';
+import { ensureDir, readFile, writeFile, pathExists, remove } from '../utils/fs.js';
+import type { Builder, BuilderContext } from './types.js';
+import { getPageDirectories } from '../core/pages.js';
+import { readPageManifest, readSharedAssets } from '../assets/assetManifest.js';
+import { createCompressedVariants } from '../assets/precompression.js';
+import { shouldProcess } from '../utils/changedFile.js';
+import { getImageDimensions } from '../assets/imageOptimizer.js';
+import { applyLazyLoading } from '../html/lazyLoad.js';
+import { addSubresourceIntegrity } from '../html/htmlSecurity.js';
+import { injectResourceHints } from '../html/resourceHints.js';
+import { ensureAppShellCriticalCss, ensureDocsShellCriticalCss, inlineCriticalCss } from '../html/criticalCss.js';
+import { findPageFromChangedFile } from '../utils/pathMatch.js';
+import { emitDiagnostic } from '../core/diagnostics.js';
+import type { EnableFlags } from '../types.js';
+import { resolvePageAssetUrl, resolvePageHtmlDir, resolvePagesUrlPrefix } from '../utils/pagePaths.js';
+
+
+
+export function createHtmlBuilder(context: BuilderContext): Builder {
+    return {
+        name: 'html',
+        async build(): Promise<void> {
+            await buildHtml(context);
+        },
+        async publish(): Promise<void> {
+            await publishHtml(context);
+        }
+    };
+}
+
+async function buildHtml(context: BuilderContext): Promise<void> {
+    const { config } = context;
+    if (!shouldProcess(context, [
+        { directory: config.paths.src.pages, extensions: [EXTENSIONS.html] },
+        { directory: config.paths.src.pages, extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx'] },
+        { directory: config.paths.src.app, extensions: [EXTENSIONS.html, EXTENSIONS.js] }
+        ,
+        // `webstir enable ...` modifies package.json and can change which opt-in scripts should be injected.
+        { directory: config.paths.workspace, extensions: ['.json'] }
+    ])) {
+        return;
+    }
+    
+    const appTemplatePath = path.join(config.paths.src.app, FILE_NAMES.htmlAppTemplate);
+    if (!(await pathExists(appTemplatePath))) {
+        throw new Error(`Base application HTML file not found: ${appTemplatePath}`);
+    }
+
+    const templateHtml = await readFile(appTemplatePath);
+    validateAppTemplate(templateHtml, appTemplatePath);
+
+    const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
+    const pages = await getPageDirectories(config.paths.src.pages);
+    await ensureDir(config.paths.build.frontend);
+
+    for (const page of pages) {
+        if (targetPage && page.name !== targetPage) {
+            continue;
+        }
+        const pageHtmlFiles = await glob('**/*.html', {
+            cwd: page.directory,
+            nodir: true
+        });
+
+        if (pageHtmlFiles.length === 0) {
+            warn(`No HTML fragments found for page '${page.name}'.`);
+            continue;
+        }
+
+        const targetDir = path.join(config.paths.build.pages, page.name);
+        await ensureDir(targetDir);
+
+        for (const relativeHtml of pageHtmlFiles) {
+            const sourceHtmlPath = path.join(page.directory, relativeHtml);
+            const fragment = await readFile(sourceHtmlPath);
+            validatePageFragment(fragment, sourceHtmlPath);
+
+            const mergedHtml = mergeTemplates(templateHtml, fragment);
+            const mergedWithScripts = injectOptInScripts(
+                mergedHtml,
+                context.enable,
+                page.name,
+                page.directory,
+                sourceHtmlPath
+            );
+            const targetPath = path.join(targetDir, path.basename(relativeHtml));
+            await writeFile(targetPath, mergedWithScripts);
+        }
+    }
+
+    // Copy the app template for reference in the build output.
+    const buildAppDir = path.join(config.paths.build.frontend, FOLDERS.app);
+    await ensureDir(buildAppDir);
+    await writeFile(path.join(buildAppDir, FILE_NAMES.htmlAppTemplate), templateHtml);
+}
+
+async function publishHtml(context: BuilderContext): Promise<void> {
+    const { config } = context;
+    const buildPagesRoot = config.paths.build.pages;
+    if (!(await pathExists(buildPagesRoot))) {
+        warn('Skipping HTML publish because no build artifacts were found. Run build first.');
+        return;
+    }
+
+    const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
+    const pages = await getPageDirectories(buildPagesRoot);
+    const shared = await readSharedAssets(config.paths.dist.frontend);
+    const pagesUrlPrefix = resolvePagesUrlPrefix(config.paths.dist.frontend, config.paths.dist.pages);
+    const buildPagesUrlPrefix = resolvePagesUrlPrefix(config.paths.build.frontend, config.paths.build.pages);
+    const useRootIndex = pagesUrlPrefix.length === 0;
+
+    for (const page of pages) {
+        if (targetPage && page.name !== targetPage) {
+            continue;
+        }
+        const assetDir = path.join(config.paths.dist.pages, page.name);
+        const distDir = resolvePageHtmlDir(config.paths.dist.pages, page.name, useRootIndex);
+
+        const htmlFiles = await glob('**/*.html', {
+            cwd: page.directory,
+            nodir: true
+        });
+
+        const manifest = await readPageManifest(assetDir, page.name);
+
+        for (const relativeHtml of htmlFiles) {
+            const sourcePath = path.join(page.directory, relativeHtml);
+            const html = await readFile(sourcePath);
+            const rewritten = await rewriteForPublish(
+                context,
+                html,
+                page.name,
+                manifest,
+                page.directory,
+                shared,
+                {
+                    pagesUrlPrefix,
+                    buildPagesUrlPrefix,
+                    useRootIndex
+                }
+            );
+            const outputPath = path.join(distDir, relativeHtml);
+            await ensureDir(path.dirname(outputPath));
+            await writeFile(outputPath, rewritten);
+            await handlePrecompression(context, outputPath);
+        }
+    }
+}
+
+function mergeTemplates(appHtml: string, pageHtml: string): string {
+    const app = load(appHtml);
+    const page = load(pageHtml);
+
+    const appMain = app('main').first();
+    const pageMain = page('main').first();
+    if (appMain.length === 0) {
+        throw new Error('Base application template is missing a <main> element.');
+    }
+    if (pageMain.length === 0) {
+        throw new Error('Page fragment is missing a <main> element.');
+    }
+
+    const appHead = app('head').first();
+    const pageHead = page('head').first();
+    if (appHead.length === 0 || pageHead.length === 0) {
+        throw new Error('Templates must include a <head> element.');
+    }
+
+    const appBody = app('body').first();
+    const pageBody = page('body').first();
+    if (appBody.length && pageBody.length) {
+        const pageBodyClass = pageBody.attr('class');
+        if (pageBodyClass) {
+            const existing = appBody.attr('class');
+            const merged = existing ? `${existing} ${pageBodyClass}` : pageBodyClass;
+            appBody.attr('class', merged);
+        }
+    }
+
+    appHead.append(pageHead.children());
+    appMain.html(pageMain.html() ?? '');
+
+    return app.root().html() ?? '';
+}
+
+function injectOptInScripts(
+    html: string,
+    enable: EnableFlags | undefined,
+    pageName: string,
+    pageDir: string,
+    sourceHtmlPath: string
+): string {
+    if (!enable) {
+        return html;
+    }
+
+    const document = load(html);
+
+    rewritePageRelativeAssets(document, pageName);
+
+    if (enable.spa) {
+        const existing = document(`script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`);
+        if (existing.length === 0) {
+            document('head').append(`<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`);
+        }
+    }
+
+    const tsCandidate = path.join(pageDir, `${FILES.index}${EXTENSIONS.ts}`);
+    const tsxCandidate = path.join(pageDir, `${FILES.index}.tsx`);
+    const jsCandidate = path.join(pageDir, `${FILES.index}${EXTENSIONS.js}`);
+    const jsxCandidate = path.join(pageDir, `${FILES.index}.jsx`);
+    const pageScriptExists = [tsCandidate, tsxCandidate, jsCandidate, jsxCandidate]
+        .some(candidate => fs.existsSync(candidate));
+    if (pageScriptExists) {
+        const hasScript = document(`script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`).length > 0;
+        if (!hasScript) {
+            document('head').append(`<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`);
+        }
+    }
+
+    return document.root().html() ?? html;
+}
+
+function rewritePageRelativeAssets(document: CheerioAPI, pageName: string): void {
+    const pagePrefix = `/${FOLDERS.pages}/${pageName}/`;
+
+    document('link[rel="stylesheet"]').each((_, element) => {
+        const node = document(element);
+        const href = node.attr('href');
+        if (!href || href.startsWith('/') || href.startsWith('http:') || href.startsWith('https:') || href.startsWith('data:')) {
+            return;
+        }
+        node.attr('href', `${pagePrefix}${href}`);
+    });
+
+    document('script[src]').each((_, element) => {
+        const node = document(element);
+        const src = node.attr('src');
+        if (!src || src.startsWith('/') || src.startsWith('http:') || src.startsWith('https:') || src.startsWith('data:')) {
+            return;
+        }
+        node.attr('src', `${pagePrefix}${src}`);
+    });
+}
+
+async function rewriteForPublish(
+    context: BuilderContext,
+    html: string,
+    pageName: string,
+    manifest: { js?: string; css?: string },
+    pageDirectory: string,
+    shared: { css?: string; js?: string } | null,
+    options: {
+        readonly pagesUrlPrefix: string;
+        readonly buildPagesUrlPrefix: string;
+        readonly useRootIndex: boolean;
+    }
+): Promise<string> {
+    const document = load(html);
+    const { pagesUrlPrefix, buildPagesUrlPrefix, useRootIndex } = options;
+    const buildScriptHref = resolvePageAssetUrl(buildPagesUrlPrefix, pageName, `${FILES.index}${EXTENSIONS.js}`);
+    const buildCssHref = resolvePageAssetUrl(buildPagesUrlPrefix, pageName, `${FILES.index}${EXTENSIONS.css}`);
+
+    removeDevScripts(document);
+
+    const appCssHref = shared?.css ? `/app/${shared.css}` : `/${FOLDERS.app}/app.css`;
+    if (shared?.css) {
+        document(`link[href="/app/app.css"]`).attr('href', appCssHref);
+    }
+    ensureStylesheetPreload(document, appCssHref);
+    ensureAppShellCriticalCss(document, appCssHref);
+    if (document('[data-scope="docs"]').length > 0) {
+        ensureDocsShellCriticalCss(document);
+    }
+    if (shared?.js) {
+        document(`script[src="/app/app.js"]`)
+            .attr('src', `/app/${shared.js}`)
+            .attr('type', 'module');
+    }
+
+    const scriptSelector = [
+        `script[src="${FILES.index}${EXTENSIONS.js}"]`,
+        `script[src="${buildScriptHref}"]`
+    ].join(', ');
+    if (manifest.js) {
+        document(scriptSelector)
+            .attr('src', resolvePageAssetUrl(pagesUrlPrefix, pageName, manifest.js))
+            .attr('type', 'module');
+    } else {
+        document(scriptSelector).remove();
+    }
+
+    const cssSelector = [
+        `link[href="${FILES.index}${EXTENSIONS.css}"]`,
+        `link[href="${buildCssHref}"]`
+    ].join(', ');
+    if (manifest.css) {
+        document(cssSelector).attr('href', resolvePageAssetUrl(pagesUrlPrefix, pageName, manifest.css));
+    }
+
+    applyLazyLoading(document);
+
+    if (context.config.features.imageOptimization) {
+        await addImageDimensions(document, context, pageDirectory);
+    }
+
+    if (context.config.features.htmlSecurity) {
+        await inlineCriticalCss(document, pageName, context.config.paths.dist.pages, pagesUrlPrefix, manifest.css);
+        const sriResult = await addSubresourceIntegrity(document);
+        if (sriResult.failures.length > 0) {
+            const resources = sriResult.failures;
+            const message = resources.length === 1
+                ? `Failed to compute subresource integrity for ${resources[0]}.`
+                : `Failed to compute subresource integrity for ${resources.length} resources.`;
+            emitDiagnostic({
+                code: 'frontend.sri.unresolved',
+                kind: 'sri',
+                stage: 'html.publish',
+                severity: 'warning',
+                message,
+                data: { resources },
+                suggestion: 'Verify the resource is reachable and not blocked by auth or network constraints.'
+            });
+        }
+
+        const hints = injectResourceHints(document, pageName, pagesUrlPrefix, useRootIndex);
+        if (hints.missingHead) {
+            emitDiagnostic({
+                code: 'frontend.resourceHints.missingHead',
+                kind: 'resource-hints',
+                stage: 'html.publish',
+                severity: 'warning',
+                message: 'Unable to inject resource hints because <head> is missing.',
+                data: { candidates: hints.candidates }
+            });
+        }
+    }
+
+    dedupeHeadMeta(document, 'name');
+    dedupeHeadMeta(document, 'property');
+    dedupeHeadLinks(document, 'rel');
+
+    const htmlOutput = document.root().html() ?? '';
+    return await minifyHtml(htmlOutput);
+}
+
+async function handlePrecompression(context: BuilderContext, outputPath: string): Promise<void> {
+    if (context.config.features.precompression) {
+        await createCompressedVariants(outputPath);
+        return;
+    }
+
+    await Promise.all([
+        remove(`${outputPath}${EXTENSIONS.br}`).catch(() => undefined),
+        remove(`${outputPath}${EXTENSIONS.gz}`).catch(() => undefined)
+    ]);
+}
+
+function validateAppTemplate(html: string, filePath: string): void {
+    const doc = load(html);
+    if (doc('main').length === 0) {
+        throw new Error(`Base template missing <main> container (${filePath}).`);
+    }
+    if (doc('head').length === 0) {
+        throw new Error(`Base template missing <head> section (${filePath}).`);
+    }
+}
+
+function validatePageFragment(html: string, filePath: string): void {
+    const doc = load(html);
+    if (doc('main').length === 0) {
+        throw new Error(`Page fragment missing <main> section (${filePath}).`);
+    }
+    if (doc('head').length === 0) {
+        throw new Error(`Page fragment missing <head> section (${filePath}).`);
+    }
+}
+
+function warn(message: string): void {
+    console.warn(`[webstir-frontend][html] ${message}`);
+}
+
+function ensureStylesheetPreload(document: CheerioAPI, href: string): void {
+    const head = document('head').first();
+    if (head.length === 0) {
+        return;
+    }
+
+    const existingPreload = document(`link[rel="preload"][href="${href}"]`).first();
+    if (existingPreload.length > 0) {
+        return;
+    }
+
+    const stylesheet = document(`link[rel="stylesheet"][href="${href}"]`).first();
+    if (stylesheet.length > 0) {
+        stylesheet.attr('fetchpriority', 'high');
+    }
+    const preloadTag = `<link rel="preload" as="style" href="${href}">`;
+    if (stylesheet.length > 0) {
+        stylesheet.before(preloadTag);
+    } else {
+        head.append(preloadTag);
+    }
+}
+
+function dedupeHeadMeta(document: CheerioAPI, attribute: 'name' | 'property'): void {
+    const head = document('head').first();
+    if (head.length === 0) {
+        return;
+    }
+
+    const seen = new Map<string, Cheerio<AnyNode>>();
+    head.find(`meta[${attribute}]`).each((_, element) => {
+        const value = element.attribs?.[attribute];
+        if (!value) {
+            return;
+        }
+
+        const key = value.toLowerCase();
+        const previous = seen.get(key);
+        if (previous) {
+            previous.remove();
+        }
+
+        seen.set(key, document(element));
+    });
+}
+
+function dedupeHeadLinks(document: CheerioAPI, attribute: 'rel'): void {
+    const head = document('head').first();
+    if (head.length === 0) {
+        return;
+    }
+
+    const seen = new Map<string, Cheerio<AnyNode>>();
+    head.find(`link[${attribute}]`).each((_, element) => {
+        const value = element.attribs?.[attribute];
+        if (!value) {
+            return;
+        }
+
+        const key = value.toLowerCase();
+        const previous = seen.get(key);
+        if (previous) {
+            previous.remove();
+        }
+
+        seen.set(key, document(element));
+    });
+}
+
+function removeDevScripts(document: CheerioAPI): void {
+    removeDevScript(document, `/${FILES.refreshJs}`);
+    removeDevScript(document, `/${FILES.hmrJs}`);
+}
+
+function removeDevScript(document: CheerioAPI, selector: string): void {
+    document(`script[src="${selector}"]`).each((_, element) => {
+        const script = document(element);
+        const next = script.next();
+        script.remove();
+
+        if (isWhitespaceTextNode(next)) {
+            next.remove();
+        }
+    });
+}
+
+function isWhitespaceTextNode(node: Cheerio<AnyNode>): boolean {
+    return node.length > 0
+        && node[0].type === 'text'
+        && (node[0].data ?? '').trim().length === 0;
+}
+
+async function minifyHtml(html: string): Promise<string> {
+    return minify(html, {
+        collapseWhitespace: true,
+        keepClosingSlash: true,
+        minifyCSS: true,
+        minifyJS: false,
+        removeComments: true,
+        removeOptionalTags: false,
+        removeAttributeQuotes: false
+    });
+}
+
+async function addImageDimensions(document: CheerioAPI, context: BuilderContext, pageDirectory: string): Promise<void> {
+    const { config } = context;
+    const images = document('img').toArray();
+
+    await Promise.all(images.map(async (element) => {
+        const img = document(element);
+        if (img.attr('width') || img.attr('height')) {
+            return;
+        }
+
+        const src = img.attr('src');
+        if (!src || isExternalSource(src)) {
+            return;
+        }
+
+        const assetPath = resolveAssetPath(src, pageDirectory, config.paths.build.frontend);
+        if (!assetPath || !(await pathExists(assetPath))) {
+            return;
+        }
+
+        const dimensions = await getImageDimensions(assetPath);
+        if (!dimensions) {
+            return;
+        }
+
+        img.attr('width', dimensions.width.toString());
+        img.attr('height', dimensions.height.toString());
+    }));
+}
+
+function isExternalSource(src: string): boolean {
+    return src.startsWith('http://')
+        || src.startsWith('https://')
+        || src.startsWith('data:')
+        || src.startsWith('//');
+}
+
+function resolveAssetPath(src: string, pageDirectory: string, buildRoot: string): string | null {
+    const normalized = src.replace(/\\/g, '/');
+    if (normalized.startsWith('/')) {
+        const relative = normalized.replace(/^\//, '');
+        return path.join(buildRoot, relative);
+    }
+
+    return path.join(pageDirectory, normalized);
+}

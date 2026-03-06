@@ -1,0 +1,6 @@
+packages:
+  - "packages/contracts/*"
+  - "packages/tooling/*"
+  - "apps/*"
+  - "examples/demos/*"
+  - "examples/demos/ssg/*"

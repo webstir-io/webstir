@@ -1,0 +1,75 @@
+{
+  "name": "@webstir-io/webstir-backend",
+  "version": "0.1.15",
+  "description": "Reserved manifest for the future Webstir backend tooling package.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./provider": {
+      "types": "./dist/provider.d.ts",
+      "import": "./dist/provider.js",
+      "default": "./dist/provider.js"
+    },
+    "./watch": {
+      "types": "./dist/watch.d.ts",
+      "import": "./dist/watch.js",
+      "default": "./dist/watch.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node -e \"const { spawnSync } = require('node:child_process'); const glob = require('glob'); const files = glob.sync('tests/**/*.test.js'); if (!files.length) { console.error('No backend test files found'); process.exit(1); } const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit' }); process.exit(result.status ?? 1);\"",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build",
+    "watch": "npm run build && node -e \"import('./dist/watch.js').then(m=>m.startBackendWatch({workspaceRoot:process.cwd(),env:{WEBSTIR_MODULE_MODE:'build'}}));\"",
+    "dev": "npm run watch",
+    "dev:fast": "WEBSTIR_BACKEND_TYPECHECK=skip npm run watch",
+    "smoke": "npm run build && node scripts/smoke.mjs",
+    "release": "bash scripts/publish.sh"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "src",
+    "scripts",
+    "tests",
+    "tsconfig.json",
+    "package-lock.json"
+  ],
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webstir-io/webstir.git",
+    "directory": "packages/tooling/webstir-backend"
+  },
+  "dependencies": {
+    "@webstir-io/module-contract": "workspace:*",
+    "esbuild": "^0.25.10",
+    "glob": "^10.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.21",
+    "fastify": "^5.6.2",
+    "pino": "^10.1.0",
+    "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
+}

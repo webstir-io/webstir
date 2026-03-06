@@ -1,0 +1,26 @@
+{
+  "name": "webstir-project",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Webstir frontend defaults and tooling",
+  "dependencies": {
+    "@webstir-io/webstir-testing": "^0.1.4",
+    "@webstir-io/webstir-frontend": "^0.1.40",
+    "@webstir-io/webstir-backend": "^0.1.15"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "autoprefixer": "^10.4.20",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.4.0"
+  },
+  "packageManager": "npm@10.8.2",
+  "browserslist": [
+    "last 2 chrome versions",
+    "last 2 firefox versions",
+    "last 2 safari major versions",
+    "iOS \u003E= 14",
+    "not dead"
+  ]
+}

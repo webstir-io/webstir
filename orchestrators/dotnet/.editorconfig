@@ -1,0 +1,95 @@
+root = true
+
+[*.cs]
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+end_of_line = lf
+trim_trailing_whitespace = true
+
+# Note: Some options like 'dotnet_sort_system_directives_first' and
+# 'dotnet_separate_import_directive_groups' are formatter-only and do not
+# produce diagnostics at build. They are still honored by the formatter.
+
+# Bracing and formatting
+csharp_new_line_before_open_brace = all
+csharp_preserve_single_line_blocks = false
+csharp_preserve_single_line_statements = false
+
+csharp_style_var_for_built_in_types = false:warning
+csharp_style_var_when_type_is_apparent = false:warning
+csharp_style_var_elsewhere = false:warning
+
+# Expression-bodied members
+csharp_style_expression_bodied_methods = when_on_single_line:warning
+csharp_style_expression_bodied_properties = when_on_single_line:warning
+csharp_style_expression_bodied_indexers = when_on_single_line:warning
+csharp_style_expression_bodied_constructors = false:warning
+
+# Pattern matching
+csharp_style_pattern_matching_over_is_with_cast_check = true:warning
+csharp_style_pattern_matching_over_as_with_null_check = true:warning
+csharp_style_prefer_switch_expression = true:warning
+csharp_style_prefer_pattern_matching = true:warning
+
+# Nullability
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_diagnostic.CA1062.severity = error     # Validate arguments against null
+dotnet_diagnostic.CA1305.severity = error     # Specify IFormatProvider (culture-aware operations)
+dotnet_diagnostic.CA1310.severity = error     # Specify StringComparison for string operations
+dotnet_diagnostic.CA1510.severity = warning   # Prefer ArgumentNullException.ThrowIfNull
+dotnet_diagnostic.CA1869.severity = warning   # Cache JsonSerializerOptions instances
+dotnet_diagnostic.SYSLIB1045.severity = warning   # Prefer GeneratedRegexAttribute for regexes
+dotnet_diagnostic.CA2016.severity = error     # Forward CancellationToken in async methods
+# Scope CA1822 to testing pipeline only to avoid repo-wide churn
+
+[Engine/Pipelines/Core/Testing/*.cs]
+dotnet_diagnostic.CA1822.severity = error     # Mark members static when possible
+
+# Naming
+dotnet_naming_rule.interfaces_should_start_with_i.severity = warning
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_symbols.interfaces.applicable_accessibilities = public, internal, private, protected, protected_internal, private_protected
+dotnet_naming_symbols.interfaces.required_prefix = I
+dotnet_naming_style.interface_prefix_style.capitalization = pascal_case
+dotnet_naming_style.interface_prefix_style.required_prefix = I
+dotnet_naming_rule.interfaces_should_start_with_i.symbols = interfaces
+dotnet_naming_rule.interfaces_should_start_with_i.style = interface_prefix_style
+
+# Usings
+dotnet_diagnostic.IDE0005.severity = error     # Remove unnecessary usings
+dotnet_diagnostic.IDE0001.severity = error     # Name can be simplified
+dotnet_diagnostic.IDE0002.severity = error     # Name can be simplified (remove qualification)
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = true
+
+# Qualification preferences (drive IDE0001 at build)
+dotnet_style_qualification_for_field = false:warning
+dotnet_style_qualification_for_property = false:warning
+dotnet_style_qualification_for_method = false:warning
+dotnet_style_qualification_for_event = false:warning
+
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_prefer_null_propagation = true:warning
+csharp_style_prefer_null_coalescing_expression = true:warning
+csharp_style_implicit_object_creation_when_type_is_apparent = true:warning
+csharp_style_prefer_primary_constructors = true:warning
+
+# Async
+dotnet_diagnostic.IDE0047.severity = error     # Braces required
+dotnet_diagnostic.IDE0048.severity = error     # Braces required for if/else
+dotnet_diagnostic.CA1852.severity = error     # Seal types with no subtypes
+
+# Collections
+csharp_style_prefer_collection_expression = true:warning
+# Disable legacy suggestion that often appears only as an editor hint
+# and is superseded by IDE030x rules. This keeps editor and build aligned.
+dotnet_diagnostic.IDE0028.severity = none      # Simplify collection initialization (legacy)
+dotnet_diagnostic.IDE0305.severity = error     # Use collection expressions
+dotnet_diagnostic.IDE0301.severity = error     # Collection initialization can be simplified
+dotnet_diagnostic.IDE0300.severity = error     # Collection initialization can be simplified
+dotnet_diagnostic.IDE0270.severity = error     # Null check can be simplified
+
+# General formatting
+csharp_style_allow_blank_line_after_colon_in_constructor_initializer = false:warning
+csharp_style_allow_blank_lines_between_consecutive_braces = false:warning

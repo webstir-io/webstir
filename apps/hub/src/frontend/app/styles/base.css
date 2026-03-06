@@ -1,0 +1,93 @@
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  html {
+    scroll-padding-top: calc(
+      var(--ws-header-sticky-offset, 0px) + var(--ws-space-4)
+    );
+  }
+
+  body {
+    font-family: var(--ws-font-sans);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ws-fg);
+    background: var(--ws-bg);
+    padding-top: var(--ws-header-sticky-offset, 0px);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--ws-fg);
+    line-height: 1.25;
+    margin: 0 0 0.5rem 0;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: clamp(1.5rem, 2.5vw, 2rem);
+    letter-spacing: -0.01em;
+  }
+
+  h3 {
+    font-size: 1.35rem;
+  }
+
+  p {
+    margin: 0 0 1rem 0;
+  }
+
+  a {
+    color: var(--ws-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+
+  a:hover {
+    text-decoration-thickness: 0.12em;
+  }
+
+  a:focus-visible {
+    outline: 3px solid var(--ws-focus);
+    outline-offset: 2px;
+    border-radius: var(--ws-radius-1);
+  }
+
+  code {
+    font-family: var(--ws-font-mono);
+    font-size: 0.95em;
+    padding: 0.12em 0.4em;
+    border-radius: var(--ws-radius-1);
+    border: 1px solid var(--ws-border);
+    background: var(--ws-surface-2);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  pre {
+    padding: 12px 14px;
+    border-radius: var(--ws-radius-2);
+    border: 1px solid var(--ws-border);
+    background: var(--ws-surface-1);
+    overflow-x: auto;
+  }
+
+  pre code {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "webstir",
+  "private": true,
+  "packageManager": "pnpm@10.6.2",
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "test": "pnpm -r --if-present test",
+    "clean": "pnpm -r --if-present clean",
+    "smoke": "pnpm -r --if-present smoke",
+    "build:contracts": "pnpm --filter @webstir-io/module-contract build && pnpm --filter @webstir-io/testing-contract build",
+    "test:contracts": "pnpm --filter @webstir-io/module-contract test && pnpm --filter @webstir-io/testing-contract test"
+  }
+}
