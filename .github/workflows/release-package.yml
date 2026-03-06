@@ -45,9 +45,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.18.1
+          node-version: 22.14.0
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      - name: Set up npm
+        run: npm install --global npm@11.5.1
 
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
