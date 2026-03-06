@@ -76,5 +76,9 @@
     "chokidar": "^3.6.0",
     "commander": "^11.1.0",
     "fs-extra": "^11.2.0"
+  },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/tooling/webstir-testing#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
   }
 }

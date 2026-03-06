@@ -13,6 +13,8 @@ export const publicManifestFields = [
   'keywords',
   'author',
   'license',
+  'homepage',
+  'bugs',
   'engines',
   'dependencies',
   'peerDependencies',

@@ -60,5 +60,9 @@
     "@ts-rest/core": {
       "optional": true
     }
+  },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/contracts/module-contract#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
   }
 }

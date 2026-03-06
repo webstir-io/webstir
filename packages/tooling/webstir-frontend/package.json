@@ -55,6 +55,10 @@
     "url": "git+https://github.com/webstir-io/webstir.git",
     "directory": "packages/tooling/webstir-frontend"
   },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/tooling/webstir-frontend#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
+  },
   "keywords": [
     "webstir",
     "frontend",

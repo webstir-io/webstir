@@ -57,6 +57,10 @@
     "url": "git+https://github.com/webstir-io/webstir.git",
     "directory": "packages/tooling/webstir-backend"
   },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/tooling/webstir-backend#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
+  },
   "dependencies": {
     "@webstir-io/module-contract": "workspace:*",
     "esbuild": "^0.25.10",

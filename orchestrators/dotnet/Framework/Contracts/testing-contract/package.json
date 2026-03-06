@@ -35,5 +35,9 @@
   "author": "Webstir",
   "devDependencies": {
     "typescript": "^5.4.0"
+  },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/contracts/testing-contract#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
   }
 }

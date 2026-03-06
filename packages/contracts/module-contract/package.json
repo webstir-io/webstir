@@ -44,6 +44,10 @@
     "url": "git+https://github.com/webstir-io/webstir.git",
     "directory": "packages/contracts/module-contract"
   },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/contracts/module-contract#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
+  },
   "author": "Webstir",
   "dependencies": {
     "zod": "^3.23.8"

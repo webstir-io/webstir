@@ -83,5 +83,9 @@
     "@types/node": "^20.11.25",
     "baseline-browser-mapping": "^2.9.5",
     "typescript": "^5.4.0"
+  },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/tooling/webstir-frontend#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
   }
 }

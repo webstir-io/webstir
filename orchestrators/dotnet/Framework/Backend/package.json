@@ -51,5 +51,9 @@
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
     "access": "public"
+  },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/tooling/webstir-backend#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
   }
 }

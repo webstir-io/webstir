@@ -59,6 +59,10 @@
     "url": "git+https://github.com/webstir-io/webstir.git",
     "directory": "packages/tooling/webstir-testing"
   },
+  "homepage": "https://github.com/webstir-io/webstir/tree/main/packages/tooling/webstir-testing#readme",
+  "bugs": {
+    "url": "https://github.com/webstir-io/webstir/issues"
+  },
   "keywords": [
     "webstir",
     "test",
