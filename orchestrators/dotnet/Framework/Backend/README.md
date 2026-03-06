@@ -246,7 +246,7 @@ export const module = createModule({
 });
 ```
 
-When `npm run build` completes, the provider detects `build/backend/module.js`, hydrates the manifest with the `routes` metadata above, and returns it to the orchestrator alongside the compiled entry points.
+When `bun run build` completes, the provider detects `build/backend/module.js`, hydrates the manifest with the `routes` metadata above, and returns it to the orchestrator alongside the compiled entry points.
 
 #### Module Definition Only Example
 
@@ -323,29 +323,29 @@ Artifacts are returned as absolute paths so installers can copy or upload them. 
 
 | Script | Description |
 |--------|-------------|
-| `npm run build` | Compiles provider TypeScript from `src/` into `dist/`. |
-| `npm test` | Builds and runs Node's test runner over `tests/**/*.test.js`. |
-| `npm run smoke` | Quick end-to-end check: scaffolds a temp workspace and runs build/publish via the provider. |
-| `npm run clean` | Removes `dist/`. |
+| `bun run build` | Compiles provider TypeScript from `src/` into `dist/`. |
+| `bun run test` | Builds and runs Node's test runner over `tests/**/*.test.js`. |
+| `bun run smoke` | Quick end-to-end check: scaffolds a temp workspace and runs build/publish via the provider. |
+| `bun run clean` | Removes `dist/`. |
 
 The published package ships prebuilt JavaScript and type definitions in `dist/`.
 
 ## Maintainer Workflow
 
 ```bash
-npm install
-npm run clean          # remove dist artifacts
-npm run build          # emits dist/
-npm run test           # runs unit/integration tests
-npm run smoke
+bun install
+bun run clean          # remove dist artifacts
+bun run build          # emits dist/
+bun run test           # runs unit/integration tests
+bun run smoke
 # Release helper (bumps version and pushes a package-scoped release tag)
-npm run release -- patch
+bun run release -- patch
 ```
 
-- Add tests under `tests/**/*.test.ts` and wire them into `npm test` once the backend runtime is ready.
-- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publish.
+- Add tests under `tests/**/*.test.ts` and wire them into `bun run test` once the backend runtime is ready.
+- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` before publish.
 - Publishing targets npm via `publishConfig.registry`.
-- Use `npm run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and push a package-scoped tag that triggers the monorepo release workflow.
+- Use `bun run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and push a package-scoped tag that triggers the monorepo release workflow.
 
 ## Troubleshooting
 
@@ -371,8 +371,8 @@ MIT © Webstir
 Start incremental builds with type-checking in the background:
 
 ```bash
-npm run dev           # type-check + transpile on change
-npm run dev:fast      # faster DX: skip tsc in watch
+bun run dev           # type-check + transpile on change
+bun run dev:fast      # faster DX: skip tsc in watch
 ```
 
 Notes

@@ -13,10 +13,10 @@ Canonical monorepo for the Webstir ecosystem.
 ## Getting Started
 
 ```bash
-pnpm install
-pnpm --filter @webstir-io/module-contract test
-pnpm --filter @webstir-io/webstir-frontend test
-pnpm --filter webstir-portal build
+bun install
+bun run --filter @webstir-io/module-contract test
+bun run --filter @webstir-io/webstir-frontend test
+bun run --filter webstir-portal build
 dotnet build orchestrators/dotnet/Webstir.sln -v minimal
 ```
 

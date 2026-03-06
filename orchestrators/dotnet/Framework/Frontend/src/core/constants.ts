@@ -25,7 +25,7 @@ export const FOLDERS = {
 
 export const FILES = {
     packageJson: 'package.json',
-    packageLockJson: 'package-lock.json',
+    bunLock: 'bun.lock',
     tsBuildInfo: '.tsbuildinfo',
     baseTsConfigJson: 'base.tsconfig.json',
     manifestJson: 'manifest.json',

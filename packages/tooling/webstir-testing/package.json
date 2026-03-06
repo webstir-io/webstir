@@ -41,9 +41,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "node --test tests/*.test.js",
+    "test": "tsc -p tsconfig.json && node --test tests/*.test.js",
     "clean": "rm -rf dist",
-    "prepare": "npm run build",
     "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
     "release": "bash scripts/publish.sh"
   },

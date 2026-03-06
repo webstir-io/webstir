@@ -144,7 +144,7 @@ if (mismatches.length > 0) {
     console.error(`  embedded:  ${JSON.stringify(mismatch.embeddedValue)}`);
   }
   console.error(
-    '[framework-package-sync] Run "pnpm run sync:framework-embedded" after canonical package changes. Embedded copies may only diverge where the orchestrator intentionally owns local build metadata such as repository paths, files, scripts, or devDependencies.',
+    '[framework-package-sync] Run "bun run sync:framework-embedded" after canonical package changes. Embedded copies may only diverge where the orchestrator intentionally owns local build metadata such as repository paths, files, scripts, or devDependencies.',
   );
   process.exit(1);
 }

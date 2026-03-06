@@ -22,7 +22,7 @@ function usage() {
   console.error(`Usage: release-package.mjs <patch|minor|major|x.y.z> [--no-push] [--package-dir <dir>]
 
 Runs the canonical monorepo package release helper for one package under packages/**.
-The helper bumps the version, refreshes the package lockfile, runs clean/build/test/smoke,
+The helper bumps the version, syncs the embedded framework snapshot, runs clean/build/test/smoke,
 creates a package-scoped release commit and tag, and optionally pushes both upstream.`);
   process.exit(1);
 }
@@ -118,7 +118,6 @@ if (!frameworkPackage) {
 ensureCleanGit();
 
 const packageJsonPath = path.join(options.packageDir, 'package.json');
-const packageLockPath = path.join(options.packageDir, 'package-lock.json');
 
 if (!existsSync(packageJsonPath)) {
   fail(`package.json not found in ${relativePackageDir}`);
@@ -130,9 +129,6 @@ run('npm', ['version', options.bump, '--no-git-tag-version'], options.packageDir
 const packageJson = readPackageJson(options.packageDir);
 const releaseTag = getFrameworkReleaseTag(frameworkPackage, packageJson.version);
 
-console.log('› npm install --package-lock-only');
-run('npm', ['install', '--package-lock-only'], options.packageDir);
-
 console.log('› node tools/sync-framework-embedded.mjs');
 run('node', ['tools/sync-framework-embedded.mjs', '--package-dir', relativePackageDir], repoRoot);
 
@@ -141,14 +137,11 @@ for (const scriptName of ['clean', 'build', 'test', 'smoke']) {
     continue;
   }
 
-  console.log(`› npm run ${scriptName}`);
-  run('npm', ['run', scriptName], options.packageDir);
+  console.log(`› bun run ${scriptName}`);
+  run('bun', ['run', scriptName], options.packageDir);
 }
 
 const filesToStage = [path.posix.join(relativePackageDir, 'package.json')];
-if (existsSync(packageLockPath)) {
-  filesToStage.push(path.posix.join(relativePackageDir, 'package-lock.json'));
-}
 filesToStage.push(...getEmbeddedManagedPaths(frameworkPackage));
 
 console.log(`› git add ${filesToStage.join(' ')}`);

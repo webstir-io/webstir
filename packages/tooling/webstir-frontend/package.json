@@ -33,9 +33,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "test": "node -e \"const { spawnSync } = require('node:child_process'); const glob = require('glob'); const files = glob.sync('tests/**/*.test.js'); if (!files.length) { console.error('No frontend test files found'); process.exit(1); } const env = { ...process.env, BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA: 'true', BROWSERSLIST_IGNORE_OLD_DATA: 'true' }; const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit', env }); process.exit(result.status ?? 1);\"",
-    "prepare": "npm run build",
-    "smoke": "npm run build && node scripts/smoke.mjs",
+    "test": "tsc -p tsconfig.json && node -e \"const { spawnSync } = require('node:child_process'); const glob = require('glob'); const files = glob.sync('tests/**/*.test.js'); if (!files.length) { console.error('No frontend test files found'); process.exit(1); } const env = { ...process.env, BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA: 'true', BROWSERSLIST_IGNORE_OLD_DATA: 'true' }; const result = spawnSync(process.execPath, ['--test', ...files], { stdio: 'inherit', env }); process.exit(result.status ?? 1);\"",
+    "smoke": "tsc -p tsconfig.json && node scripts/smoke.mjs",
     "release": "bash scripts/publish.sh"
   },
   "files": [
@@ -43,8 +42,7 @@
     "src",
     "scripts",
     "tests",
-    "tsconfig.json",
-    "package-lock.json"
+    "tsconfig.json"
   ],
   "engines": {
     "node": ">=20.18.1"

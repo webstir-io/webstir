@@ -196,16 +196,16 @@ When authoring a provider:
 ## Maintainer Workflow
 
 ```bash
-npm install
-npm run clean          # remove dist/schema artifacts
-npm run build          # compiles TypeScript, regenerates schema/*.schema.json
-npm run test           # type-checks the Accounts example module
+bun install
+bun run clean          # remove dist/schema artifacts
+bun run build          # compiles TypeScript, regenerates schema/*.schema.json
+bun run test           # type-checks the Accounts example module
 # Release helper (bumps version and pushes a package-scoped release tag)
-npm run release -- patch
+bun run release -- patch
 ```
 
 - The `schema/` folder contains `*-definition.schema.json` files derived from the exported Zod schemas. Commit them with contract changes.
-- Ensure CI runs `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publish.
+- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, and `bun run test` before publish.
 
 ## License
 

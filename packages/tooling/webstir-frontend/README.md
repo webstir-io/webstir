@@ -122,23 +122,23 @@ the provider:
 ## Maintainer Workflow
 
 ```bash
-npm install
-npm run clean          # remove dist artifacts
-npm run build          # TypeScript → dist/
-npm run test           # Node --test against compiled output
-npm run smoke          # scaffolds a temp workspace and runs build/publish
+bun install
+bun run clean          # remove dist artifacts
+bun run build          # TypeScript → dist/
+bun run test           # Node --test against compiled output
+bun run smoke          # scaffolds a temp workspace and runs build/publish
 # Release helper (bumps version and pushes a package-scoped release tag)
-npm run release -- patch
+bun run release -- patch
 ```
 
-GitHub Actions should run `npm ci`, `npm run clean`, `npm run build`, `npm run test`, and `npm run smoke` before publishing. The release workflow publishes to npm with trusted publishing (`id-token: write` + provenance).
+GitHub Actions should run `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` before publishing. The release workflow publishes to npm with trusted publishing (`id-token: write` + provenance).
 
 CI notes
 - Package CI runs clean + build + tests + smoke on PRs and main.
 
 ## Troubleshooting
 
-- **“404 Not Found” when installing `@webstir-io/module-contract`** — verify the dependency has been published to npm and re-generate `package-lock.json` against npmjs.
+- **“404 Not Found” when installing `@webstir-io/module-contract`** — verify the dependency has been published to npm and refresh the repo root `bun.lock` against npmjs.
 - **“No frontend test files found”** — the `test` script expects files under `tests/**/*.test.js` after build.
 - **Missing entry points in manifest** — confirm `build/frontend` contains at least one `.js`/`.mjs` bundle; the provider falls back to `build/app/index.js` and emits a warning if empty.
 
