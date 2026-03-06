@@ -1,0 +1,62 @@
+name: Release Package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Canonical package to publish
+        required: true
+        type: choice
+        options:
+          - packages/contracts/module-contract
+          - packages/contracts/testing-contract
+          - packages/tooling/webstir-backend
+          - packages/tooling/webstir-frontend
+          - packages/tooling/webstir-testing
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PACKAGE_DIR: ${{ inputs.package }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.6.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.18.1
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Show package version
+        run: node -p "const pkg=require('./${PACKAGE_DIR}/package.json'); console.log(pkg.name + '@' + pkg.version)"
+
+      - name: Clean package
+        run: pnpm --dir "$PACKAGE_DIR" run --if-present clean
+
+      - name: Build package
+        run: pnpm --dir "$PACKAGE_DIR" run build
+
+      - name: Test package
+        run: pnpm --dir "$PACKAGE_DIR" run test
+
+      - name: Smoke package
+        run: pnpm --dir "$PACKAGE_DIR" run --if-present smoke
+
+      - name: Publish package
+        working-directory: ${{ env.PACKAGE_DIR }}
+        run: npm publish --provenance --access public
