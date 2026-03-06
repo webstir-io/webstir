@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -30,6 +30,17 @@ function runNode(relativeScript, args, cwd) {
   });
 }
 
+function run(command, args, cwd) {
+  return spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+  });
+}
+
+function readJson(relativePath) {
+  return JSON.parse(readFileSync(path.join(repoRoot, relativePath), 'utf8'));
+}
+
 test('resolve-release-package rejects mismatched tag versions', () => {
   withTempWorkspace((tempRoot) => {
     copyTree('tools', tempRoot);
@@ -49,6 +60,76 @@ test('resolve-release-package resolves canonical package metadata', () => {
   assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
   assert.match(result.stdout, /package_name=@webstir-io\/webstir-backend/);
   assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
+});
+
+test('publishable package manifests and lockfiles use concrete internal dependency ranges', () => {
+  const cases = [
+    {
+      packageJsonPath: 'packages/tooling/webstir-backend/package.json',
+      packageLockPath: 'packages/tooling/webstir-backend/package-lock.json',
+      dependencyName: '@webstir-io/module-contract',
+      expectedRange: '^0.1.14',
+    },
+    {
+      packageJsonPath: 'packages/tooling/webstir-frontend/package.json',
+      packageLockPath: 'packages/tooling/webstir-frontend/package-lock.json',
+      dependencyName: '@webstir-io/module-contract',
+      expectedRange: '^0.1.14',
+    },
+    {
+      packageJsonPath: 'packages/tooling/webstir-testing/package.json',
+      packageLockPath: 'packages/tooling/webstir-testing/package-lock.json',
+      dependencyName: '@webstir-io/testing-contract',
+      expectedRange: '^0.1.7',
+    },
+  ];
+
+  for (const { packageJsonPath, packageLockPath, dependencyName, expectedRange } of cases) {
+    const packageJson = readJson(packageJsonPath);
+    const packageLock = readJson(packageLockPath);
+
+    assert.equal(packageJson.dependencies?.[dependencyName], expectedRange);
+    assert.equal(packageLock.packages?.['']?.dependencies?.[dependencyName], expectedRange);
+    assert.doesNotMatch(packageJson.dependencies?.[dependencyName] ?? '', /^workspace:/);
+  }
+});
+
+test('packed publishable tooling packages do not ship workspace protocol dependencies', () => {
+  withTempWorkspace((tempRoot) => {
+    const cases = [
+      {
+        packageDir: 'packages/tooling/webstir-backend',
+        dependencyName: '@webstir-io/module-contract',
+        expectedRange: '^0.1.14',
+      },
+      {
+        packageDir: 'packages/tooling/webstir-frontend',
+        dependencyName: '@webstir-io/module-contract',
+        expectedRange: '^0.1.14',
+      },
+      {
+        packageDir: 'packages/tooling/webstir-testing',
+        dependencyName: '@webstir-io/testing-contract',
+        expectedRange: '^0.1.7',
+      },
+    ];
+
+    for (const { packageDir, dependencyName, expectedRange } of cases) {
+      copyTree(packageDir, tempRoot);
+
+      const copiedPackageDir = path.join(tempRoot, packageDir);
+      const packResult = run('npm', ['pack', '--ignore-scripts', '--json'], copiedPackageDir);
+      assert.equal(packResult.status, 0, packResult.stderr);
+
+      const [{ filename }] = JSON.parse(packResult.stdout);
+      const packedManifestResult = run('tar', ['-xOf', path.join(copiedPackageDir, filename), 'package/package.json'], copiedPackageDir);
+      assert.equal(packedManifestResult.status, 0, packedManifestResult.stderr);
+
+      const packedManifest = JSON.parse(packedManifestResult.stdout);
+      assert.equal(packedManifest.dependencies?.[dependencyName], expectedRange);
+      assert.doesNotMatch(packedManifest.dependencies?.[dependencyName] ?? '', /^workspace:/);
+    }
+  });
 });
 
 test('sync-framework-embedded check fails when a managed helper stub is stale', () => {

@@ -202,8 +202,8 @@ importers:
   packages/tooling/webstir-backend:
     dependencies:
       '@webstir-io/module-contract':
-        specifier: workspace:*
-        version: link:../../contracts/module-contract
+        specifier: ^0.1.14
+        version: 0.1.14(@ts-rest/core@3.52.1(@types/node@20.19.37)(zod@3.25.76))
       esbuild:
         specifier: ^0.25.10
         version: 0.25.12
@@ -227,8 +227,8 @@ importers:
   packages/tooling/webstir-frontend:
     dependencies:
       '@webstir-io/module-contract':
-        specifier: workspace:*
-        version: link:../../contracts/module-contract
+        specifier: ^0.1.14
+        version: 0.1.14(@ts-rest/core@3.52.1(@types/node@20.19.37)(zod@3.25.76))
       autoprefixer:
         specifier: ^10.4.18
         version: 10.4.27(postcss@8.5.8)
@@ -297,8 +297,8 @@ importers:
   packages/tooling/webstir-testing:
     dependencies:
       '@webstir-io/testing-contract':
-        specifier: workspace:*
-        version: link:../../contracts/testing-contract
+        specifier: ^0.1.7
+        version: 0.1.7
       chokidar:
         specifier: ^3.6.0
         version: 3.6.0
@@ -2327,6 +2327,17 @@ packages:
 
   '@webassemblyjs/wast-printer@1.14.1':
     resolution: {integrity: sha512-kPSSXE6De1XOR820C90RIo2ogvZG+c3KiHzqUoO/F34Y2shGzesfqv7o57xrxovZJH/MetF5UjroJ/R/3isoiw==}
+
+  '@webstir-io/module-contract@0.1.14':
+    resolution: {integrity: sha512-9++7NKHVrKf1Wwdr9fCmMBroZkFum5BtKX/Z9TBQlmKBimAo8eOgw0kScdJBX5vdEvd6pxSEQzHrQjWiKpnUQQ==}
+    peerDependencies:
+      '@ts-rest/core': ^3.40.0
+    peerDependenciesMeta:
+      '@ts-rest/core':
+        optional: true
+
+  '@webstir-io/testing-contract@0.1.7':
+    resolution: {integrity: sha512-wh1dS3pPAD/EheYxQLe8ZWRaOiB2IzfQbdqDQHpUKhPrXW352LR2mmjxDa8yHDS8oAzYcjsAi6PPFBeQqeRZfQ==}
 
   '@xtuc/ieee754@1.2.0':
     resolution: {integrity: sha512-DX8nKgqcGwsc0eJSqYt5lwP4DH5FlHnmuWWBRy7X0NcaGR0ZtuyeESgMwTYVEtxmsNGY+qit4QYT/MIYTOTPeA==}
@@ -8744,6 +8755,14 @@ snapshots:
     dependencies:
       '@webassemblyjs/ast': 1.14.1
       '@xtuc/long': 4.2.2
+
+  '@webstir-io/module-contract@0.1.14(@ts-rest/core@3.52.1(@types/node@20.19.37)(zod@3.25.76))':
+    dependencies:
+      zod: 3.25.76
+    optionalDependencies:
+      '@ts-rest/core': 3.52.1(@types/node@20.19.37)(zod@3.25.76)
+
+  '@webstir-io/testing-contract@0.1.7': {}
 
   '@xtuc/ieee754@1.2.0': {}
 
