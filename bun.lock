@@ -108,6 +108,16 @@
         "typescript": "^5.4.0",
       },
     },
+    "orchestrators/bun": {
+      "name": "@webstir-io/webstir-orchestrator-bun",
+      "bin": {
+        "webstir-bun": "src/cli.ts",
+      },
+      "devDependencies": {
+        "@types/node": "^20.19.21",
+        "typescript": "^5.7.2",
+      },
+    },
     "packages/contracts/module-contract": {
       "name": "@webstir-io/module-contract",
       "version": "0.1.14",
@@ -997,6 +1007,8 @@
     "@webstir-io/webstir-backend": ["@webstir-io/webstir-backend@workspace:packages/tooling/webstir-backend"],
 
     "@webstir-io/webstir-frontend": ["@webstir-io/webstir-frontend@workspace:packages/tooling/webstir-frontend"],
+
+    "@webstir-io/webstir-orchestrator-bun": ["@webstir-io/webstir-orchestrator-bun@workspace:orchestrators/bun"],
 
     "@webstir-io/webstir-testing": ["@webstir-io/webstir-testing@workspace:packages/tooling/webstir-testing"],
 

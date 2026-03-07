@@ -5,6 +5,7 @@
   "workspaces": [
     "packages/contracts/*",
     "packages/tooling/*",
+    "orchestrators/bun",
     "apps/*",
     "examples/demos/*",
     "examples/demos/ssg/*"
@@ -23,6 +24,7 @@
     "check:framework-versions": "node tools/check-framework-version-alignment.mjs",
     "check:framework-sync": "node tools/check-framework-package-sync.mjs",
     "check:framework-embedded-idempotent": "node tools/sync-framework-embedded.mjs --check",
-    "sync:framework-embedded": "node tools/sync-framework-embedded.mjs"
+    "sync:framework-embedded": "node tools/sync-framework-embedded.mjs",
+    "orchestrate:bun": "bun orchestrators/bun/src/cli.ts"
   }
 }
