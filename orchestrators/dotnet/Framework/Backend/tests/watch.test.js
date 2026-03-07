@@ -98,3 +98,38 @@ test('startBackendWatch updates cache files after rebuild', async () => {
     await handle.stop();
   }
 });
+
+test('startBackendWatch emits build outcome events for successful and failed rebuilds', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-watch-events-');
+  await seedBackendEntry(workspace);
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+  };
+
+  const events = [];
+  const handle = await startBackendWatch({
+    workspaceRoot: workspace,
+    env,
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  try {
+    await waitFor(async () => events.some((event) => event.type === 'build-complete' && event.succeeded === true));
+
+    const indexPath = path.join(workspace, 'src', 'backend', 'index.ts');
+    await fs.writeFile(indexPath, 'export default () => {\n', 'utf8');
+
+    await waitFor(async () => events.some((event) => event.type === 'build-complete' && event.succeeded === false));
+
+    assert.ok(events.some((event) => event.type === 'build-start'));
+    assert.ok(events.some((event) => event.type === 'build-complete' && event.succeeded === true));
+    assert.ok(events.some((event) => event.type === 'build-complete' && event.succeeded === false));
+  } finally {
+    await handle.stop();
+  }
+});

@@ -16,9 +16,18 @@ export interface WatchHandle {
   stop(): Promise<void>;
 }
 
+export interface BackendWatchEvent {
+  readonly type: 'build-start' | 'build-complete';
+  readonly succeeded?: boolean;
+  readonly errorCount?: number;
+  readonly warningCount?: number;
+  readonly durationMs?: number;
+}
+
 export interface StartWatchOptions {
   readonly workspaceRoot: string;
   readonly env?: Record<string, string | undefined>;
+  readonly onEvent?: (event: BackendWatchEvent) => void | Promise<void>;
 }
 
 export async function startBackendWatch(options: StartWatchOptions): Promise<WatchHandle> {
@@ -74,8 +83,11 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
     name: 'webstir-watch-logger',
     setup(build) {
       let start = 0;
-      build.onStart(() => {
+      build.onStart(async () => {
         start = performance.now();
+        await emitWatchEvent(options.onEvent, {
+          type: 'build-start'
+        });
       });
       build.onEnd(async (result: BuildResult) => {
         const end = performance.now();
@@ -103,6 +115,14 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
           }
         }
         console.info(`[webstir-backend] watch:esbuild ${errorCount} error(s), ${warnCount} warning(s) in ${(end - start).toFixed(1)}ms`);
+
+        await emitWatchEvent(options.onEvent, {
+          type: 'build-complete',
+          succeeded: errorCount === 0,
+          errorCount,
+          warningCount: warnCount,
+          durationMs: end - start
+        });
 
         if (errorCount === 0) {
           const diagBuffer: ModuleDiagnostic[] = [];
@@ -174,4 +194,20 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
       console.info('[webstir-backend] watch:stopped');
     },
   };
+}
+
+async function emitWatchEvent(
+  onEvent: StartWatchOptions['onEvent'],
+  event: BackendWatchEvent
+): Promise<void> {
+  if (!onEvent) {
+    return;
+  }
+
+  try {
+    await onEvent(event);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[webstir-backend] watch:event failed: ${message}`);
+  }
 }
