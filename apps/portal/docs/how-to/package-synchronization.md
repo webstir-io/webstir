@@ -39,7 +39,6 @@ This guide covers the end-to-end workflow for keeping the embedded orchestrator 
 
 ## Verify Changes
 - Run `./utilities/scripts/format-build.sh` before handing off; it formats code, builds the solution, and executes frontend package tests.
-- Run `pnpm run sync:framework-embedded`, then `framework packages sync`, then `framework packages verify` whenever package artifacts change.
-- CI also runs `pnpm run check:framework-embedded-idempotent`, which fails if the embedded snapshot generator would still rewrite tracked files.
+- If you still need to maintain the legacy embedded `.NET` framework copies, run `pnpm run sync:framework-embedded`, then `framework packages sync`, then `framework packages verify` whenever package artifacts change.
 - Optionally trigger the Release Package workflow for a non-production version to confirm npm trusted publishing is configured before the next real release.
 - Exercise `webstir install` (optionally with `--clean`) inside a sample workspace to verify the new packages resolve correctly and upgrade existing installations.
