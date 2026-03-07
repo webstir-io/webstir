@@ -64,6 +64,10 @@ export class BackendRuntimeSupervisor {
     });
   }
 
+  public async prepare(): Promise<void> {
+    await this.resolvePort();
+  }
+
   public async stop(): Promise<void> {
     this.isStopping = true;
     await this.enqueue(async () => {
@@ -81,7 +85,7 @@ export class BackendRuntimeSupervisor {
       return;
     }
 
-    const port = this.resolvedPort ?? (await resolvePort(this.requestedPort));
+    const port = await this.resolvePort();
     this.resolvedPort = port;
     await this.stopCurrentProcess();
     await this.startProcess(port);
@@ -91,6 +95,15 @@ export class BackendRuntimeSupervisor {
     const next = this.queuedRestart.catch(() => undefined).then(task);
     this.queuedRestart = next.catch(() => undefined);
     await next;
+  }
+
+  private async resolvePort(): Promise<number> {
+    if (this.resolvedPort !== undefined) {
+      return this.resolvedPort;
+    }
+
+    this.resolvedPort = await resolvePort(this.requestedPort);
+    return this.resolvedPort;
   }
 
   private async startProcess(port: number): Promise<void> {

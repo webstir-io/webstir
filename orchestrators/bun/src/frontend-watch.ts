@@ -1,27 +1,63 @@
 import path from 'node:path';
 
-import { DevServer } from './dev-server.ts';
+import { DevServer, type DevServerAddress } from './dev-server.ts';
 import { createStopSignal } from './stop-signal.ts';
 import { FrontendWatchDaemonClient } from './watch-daemon-client.ts';
 import { collectWatchActions, type StructuredDiagnosticPayload } from './watch-events.ts';
+import type { WorkspaceDescriptor } from './types.ts';
 import type { WatchIo, WatchOptions } from './watch.ts';
 import { WorkspaceWatcher, type WorkspaceWatchEvent } from './workspace-watcher.ts';
-import type { WorkspaceDescriptor } from './types.ts';
+
+export interface FrontendWatchSession {
+  readonly address: DevServerAddress;
+  waitForExit(): Promise<number | null>;
+  stop(): Promise<void>;
+}
+
+interface FrontendWatchSessionOptions extends WatchOptions {
+  readonly server?: DevServer;
+}
 
 export async function runFrontendWatch(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
   io: WatchIo
 ): Promise<void> {
-  const server = new DevServer({
+  const session = await startFrontendWatchSession(workspace, options, io);
+
+  io.stdout.write(
+    `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.address.origin}\n`
+  );
+
+  const stopSignal = createStopSignal();
+
+  try {
+    const daemonExitCode = await Promise.race([
+      session.waitForExit(),
+      stopSignal.promise.then(() => null),
+    ]);
+
+    if (typeof daemonExitCode === 'number' && daemonExitCode !== 0) {
+      throw new Error(`Frontend watch daemon exited with code ${daemonExitCode}.`);
+    }
+  } finally {
+    stopSignal.dispose();
+    await session.stop();
+  }
+}
+
+export async function startFrontendWatchSession(
+  workspace: WorkspaceDescriptor,
+  options: FrontendWatchSessionOptions,
+  io: WatchIo
+): Promise<FrontendWatchSession> {
+  const server = options.server ?? new DevServer({
     buildRoot: path.join(workspace.root, 'build', 'frontend'),
     host: options.host,
     port: options.port,
   });
+  const ownsServer = options.server === undefined;
   const address = await server.start();
-  io.stdout.write(
-    `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${address.origin}\n`
-  );
 
   let initialBuildReady = false;
   const daemon = new FrontendWatchDaemonClient({
@@ -56,23 +92,25 @@ export async function runFrontendWatch(
   await watcher.start();
   await daemon.sendStart();
 
-  const stopSignal = createStopSignal();
+  let stopPromise: Promise<void> | null = null;
 
-  try {
-    const daemonExitCode = await Promise.race([
-      daemon.waitForExit(),
-      stopSignal.promise.then(() => null),
-    ]);
+  return {
+    address,
+    async waitForExit() {
+      return await daemon.waitForExit();
+    },
+    async stop() {
+      stopPromise ??= (async () => {
+        await watcher.stop();
+        await daemon.stop();
+        if (ownsServer) {
+          await server.stop();
+        }
+      })();
 
-    if (typeof daemonExitCode === 'number' && daemonExitCode !== 0) {
-      throw new Error(`Frontend watch daemon exited with code ${daemonExitCode}.`);
-    }
-  } finally {
-    stopSignal.dispose();
-    await watcher.stop();
-    await daemon.stop();
-    await server.stop();
-  }
+      await stopPromise;
+    },
+  };
 }
 
 async function applyDiagnostic(payload: StructuredDiagnosticPayload, server: DevServer): Promise<void> {

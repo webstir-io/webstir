@@ -1,11 +1,11 @@
 import path from 'node:path';
 
-import { createStopSignal } from './stop-signal.ts';
 import { BackendRuntimeSupervisor } from './backend-runtime.ts';
-import { createWorkspaceRuntimeEnv } from './runtime.ts';
-import type { WatchIo, WatchOptions } from './watch.ts';
-import type { WorkspaceDescriptor } from './types.ts';
 import { ensureModuleContractArtifacts } from './providers.ts';
+import { createWorkspaceRuntimeEnv } from './runtime.ts';
+import { createStopSignal } from './stop-signal.ts';
+import type { WorkspaceDescriptor } from './types.ts';
+import type { WatchIo, WatchOptions } from './watch.ts';
 
 interface BackendWatchModule {
   startBackendWatch(options: {
@@ -18,11 +18,36 @@ interface BackendWatchModule {
   }): Promise<{ stop(): Promise<void> }>;
 }
 
+export interface ApiWatchSession {
+  readonly origin: string;
+  stop(): Promise<void>;
+}
+
 export async function runApiWatch(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
   io: WatchIo
 ): Promise<void> {
+  const session = await startApiWatchSession(workspace, options, io);
+
+  io.stdout.write(
+    `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.origin}\n`
+  );
+
+  const stopSignal = createStopSignal();
+  try {
+    await stopSignal.promise;
+  } finally {
+    stopSignal.dispose();
+    await session.stop();
+  }
+}
+
+export async function startApiWatchSession(
+  workspace: WorkspaceDescriptor,
+  options: WatchOptions,
+  io: WatchIo
+): Promise<ApiWatchSession> {
   await ensureModuleContractArtifacts();
   const runtimeEnv = createWorkspaceRuntimeEnv(workspace.root, 'build', options.env);
   const { startBackendWatch } = (await importBackendWatchModule()) as BackendWatchModule;
@@ -35,9 +60,7 @@ export async function runApiWatch(
     io,
   });
 
-  io.stdout.write(
-    `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${runtime.getOrigin()}\n`
-  );
+  await runtime.prepare();
 
   let initialReadyLogged = false;
   const watchHandle = await startBackendWatch({
@@ -64,14 +87,13 @@ export async function runApiWatch(
     },
   });
 
-  const stopSignal = createStopSignal();
-  try {
-    await stopSignal.promise;
-  } finally {
-    stopSignal.dispose();
-    await runtime.stop();
-    await watchHandle.stop();
-  }
+  return {
+    origin: runtime.getOrigin(),
+    async stop() {
+      await runtime.stop();
+      await watchHandle.stop();
+    },
+  };
 }
 
 async function importBackendWatchModule(): Promise<unknown> {
