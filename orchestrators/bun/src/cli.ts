@@ -26,12 +26,12 @@ const HELP_TEXT = `Usage:
 Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
-  watch      Run the Bun SPA dev loop for a Webstir workspace.
+  watch      Run the Bun dev loop for a supported Webstir workspace.
 
 Options:
   -w, --workspace <path>   Workspace root to build or publish.
-  --host <host>            Dev server host (default: 127.0.0.1).
-  --port <port>            Dev server port (default: 8088).
+  --host <host>            Dev host or bind address (default: 127.0.0.1).
+  --port <port>            Dev port (SPA default: 8088, API default: 4321).
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
   -h, --help               Show this help text.

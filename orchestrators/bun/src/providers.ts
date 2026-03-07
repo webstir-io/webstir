@@ -29,7 +29,7 @@ async function loadBackendProvider(): Promise<BuildProvider> {
   return mod.backendProvider;
 }
 
-async function ensureModuleContractArtifacts(): Promise<void> {
+export async function ensureModuleContractArtifacts(): Promise<void> {
   const distEntry = path.join(repoRoot, 'packages', 'contracts', 'module-contract', 'dist', 'index.js');
 
   try {
