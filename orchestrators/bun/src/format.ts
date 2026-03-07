@@ -1,8 +1,16 @@
-import type { BuildExecutionResult } from './types.ts';
+import type { CommandExecutionResult } from './types.ts';
 
-export function formatBuildSummary(result: BuildExecutionResult): string {
+export function formatBuildSummary(result: CommandExecutionResult): string {
+  return formatExecutionSummary(result);
+}
+
+export function formatPublishSummary(result: CommandExecutionResult): string {
+  return formatExecutionSummary(result);
+}
+
+function formatExecutionSummary(result: CommandExecutionResult): string {
   const lines = [
-    '[webstir-bun] build complete',
+    `[webstir-bun] ${result.mode} complete`,
     `workspace: ${result.workspace.name}`,
     `mode: ${result.workspace.mode}`,
     `root: ${result.workspace.root}`,
@@ -13,7 +21,7 @@ export function formatBuildSummary(result: BuildExecutionResult): string {
     lines.push(
       `${target.kind}: ${target.result.artifacts.length} artifacts, ` +
         `${target.result.manifest.entryPoints.length} entries, ` +
-        `${target.result.manifest.staticAssets.length} static assets -> ${target.buildRoot}`
+        `${target.result.manifest.staticAssets.length} static assets -> ${target.outputRoot}`
     );
 
     if (diagnostics.errors > 0 || diagnostics.warnings > 0) {
@@ -26,7 +34,7 @@ export function formatBuildSummary(result: BuildExecutionResult): string {
   return lines.join('\n');
 }
 
-function summarizeDiagnostics(result: BuildExecutionResult['targets'][number]['result']) {
+function summarizeDiagnostics(result: CommandExecutionResult['targets'][number]['result']) {
   const counts = {
     errors: 0,
     warnings: 0,

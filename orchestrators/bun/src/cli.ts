@@ -4,8 +4,9 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { formatBuildSummary } from './format.ts';
+import { formatBuildSummary, formatPublishSummary } from './format.ts';
 import { runBuild } from './build.ts';
+import { runPublish } from './publish.ts';
 import { runWatch } from './watch.ts';
 
 interface CliStream {
@@ -19,14 +20,16 @@ interface CliIo {
 
 const HELP_TEXT = `Usage:
   webstir-bun build --workspace <path>
+  webstir-bun publish --workspace <path>
   webstir-bun watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
+  publish    Publish a Webstir workspace with the Bun orchestrator.
   watch      Run the Bun SPA dev loop for a Webstir workspace.
 
 Options:
-  -w, --workspace <path>   Workspace root to build.
+  -w, --workspace <path>   Workspace root to build or publish.
   --host <host>            Dev server host (default: 127.0.0.1).
   --port <port>            Dev server port (default: 8088).
   -v, --verbose            Enable verbose frontend watch diagnostics.
@@ -41,7 +44,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const [command, ...rest] = argv;
-  if (command !== 'build' && command !== 'watch') {
+  if (command !== 'build' && command !== 'publish' && command !== 'watch') {
     io.stderr.write(`Unknown command "${command}".\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -70,6 +73,14 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         workspaceRoot: resolvedWorkspaceRoot,
       });
       io.stdout.write(`${formatBuildSummary(result)}\n`);
+      return 0;
+    }
+
+    if (command === 'publish') {
+      const result = await runPublish({
+        workspaceRoot: resolvedWorkspaceRoot,
+      });
+      io.stdout.write(`${formatPublishSummary(result)}\n`);
       return 0;
     }
 
