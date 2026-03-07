@@ -9,6 +9,7 @@ export interface DevServerOptions {
   readonly buildRoot: string;
   readonly host?: string;
   readonly port?: number;
+  readonly apiProxyOrigin?: string;
 }
 
 export interface DevServerAddress {
@@ -54,6 +55,7 @@ export class DevServer {
   private readonly buildRoot: string;
   private readonly host: string;
   private readonly port: number;
+  private readonly apiProxyOrigin?: string;
   private readonly clients = new Set<SseClient>();
   private server?: http.Server;
 
@@ -61,6 +63,7 @@ export class DevServer {
     this.buildRoot = path.resolve(options.buildRoot);
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 8088;
+    this.apiProxyOrigin = options.apiProxyOrigin;
   }
 
   public async start(): Promise<DevServerAddress> {
@@ -149,14 +152,22 @@ export class DevServer {
     }
 
     const method = request.method ?? 'GET';
-    if (method !== 'GET' && method !== 'HEAD') {
-      this.writeText(response, 405, 'Method not allowed.');
+
+    const requestUrl = new URL(request.url, 'http://localhost');
+    const { pathname } = requestUrl;
+    if (pathname === '/sse') {
+      this.handleSse(response);
       return;
     }
 
-    const { pathname } = new URL(request.url, 'http://localhost');
-    if (pathname === '/sse') {
-      this.handleSse(response);
+    const apiProxyPath = getApiProxyPath(pathname);
+    if (apiProxyPath !== null && this.apiProxyOrigin) {
+      await this.handleApiProxy(request, response, requestUrl, apiProxyPath);
+      return;
+    }
+
+    if (method !== 'GET' && method !== 'HEAD') {
+      this.writeText(response, 405, 'Method not allowed.');
       return;
     }
 
@@ -187,6 +198,55 @@ export class DevServer {
       }
     });
     stream.pipe(response);
+  }
+
+  private async handleApiProxy(
+    request: IncomingMessage,
+    response: ServerResponse<IncomingMessage>,
+    requestUrl: URL,
+    apiProxyPath: string
+  ): Promise<void> {
+    const targetUrl = new URL(apiProxyPath + requestUrl.search, this.apiProxyOrigin);
+
+    await new Promise<void>((resolve) => {
+      const proxyRequest = http.request(targetUrl, {
+        agent: false,
+        method: request.method,
+        headers: {
+          ...request.headers,
+          host: targetUrl.host,
+          connection: 'close',
+        },
+      }, (proxyResponse) => {
+        response.writeHead(proxyResponse.statusCode ?? 502, proxyResponse.headers);
+        proxyResponse.pipe(response);
+        proxyResponse.once('end', resolve);
+        proxyResponse.once('error', () => {
+          if (!response.headersSent) {
+            this.writeText(response, 502, 'Backend proxy read failed.');
+          } else {
+            response.destroy();
+          }
+          resolve();
+        });
+      });
+
+      proxyRequest.once('error', () => {
+        if (!response.headersSent) {
+          this.writeText(response, 502, 'Backend proxy failed.');
+        } else {
+          response.destroy();
+        }
+        resolve();
+      });
+
+      if (request.method === 'GET' || request.method === 'HEAD') {
+        proxyRequest.end();
+        return;
+      }
+
+      request.pipe(proxyRequest);
+    });
   }
 
   private handleSse(response: ServerResponse<IncomingMessage>): void {
@@ -250,6 +310,19 @@ export function getStaticCandidatePaths(pathname: string): readonly string[] {
   }
 
   return Array.from(new Set(candidates.map(candidate => candidate.replace(/^\/+/, ''))));
+}
+
+export function getApiProxyPath(pathname: string): string | null {
+  if (pathname === '/api') {
+    return '/';
+  }
+
+  if (pathname.startsWith('/api/')) {
+    const normalizedPath = path.posix.normalize(pathname.slice('/api'.length));
+    return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
+  }
+
+  return null;
 }
 
 async function resolveStaticFile(

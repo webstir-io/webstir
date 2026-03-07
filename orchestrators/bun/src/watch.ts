@@ -1,5 +1,6 @@
 import { runApiWatch } from './api-watch.ts';
 import { runFrontendWatch } from './frontend-watch.ts';
+import { runFullWatch } from './full-watch.ts';
 import type { WorkspaceDescriptor } from './types.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 
@@ -49,6 +50,9 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
     case 'api':
       await runApiWatch(workspace, options, io);
       return;
+    case 'full':
+      await runFullWatch(workspace, options, io);
+      return;
     default:
       throwUnsupportedWatchMode(workspace);
   }
@@ -56,6 +60,6 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
 
 function throwUnsupportedWatchMode(workspace: WorkspaceDescriptor): never {
   throw new Error(
-    `Watch currently supports spa and api workspaces only. "${workspace.name}" is ${workspace.mode}.`
+    `Watch currently supports spa, api, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`
   );
 }

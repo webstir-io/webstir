@@ -209,11 +209,19 @@ test('sync-framework-embedded restores missing canonical managed files into the 
   });
 });
 
-test('sync-framework-embedded check passes for a clean managed package snapshot', () => {
+test('sync-framework-embedded check passes after syncing a clean managed package snapshot', () => {
   withTempWorkspace((tempRoot) => {
     copyTree('tools', tempRoot);
     copyTree('packages/tooling/webstir-backend', tempRoot);
     copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
+
+    const syncResult = runNode(
+      'tools/sync-framework-embedded.mjs',
+      ['--package-dir', 'packages/tooling/webstir-backend'],
+      tempRoot,
+    );
+
+    assert.equal(syncResult.status, 0);
 
     const result = runNode(
       'tools/sync-framework-embedded.mjs',

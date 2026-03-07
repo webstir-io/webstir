@@ -116,14 +116,6 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
         }
         console.info(`[webstir-backend] watch:esbuild ${errorCount} error(s), ${warnCount} warning(s) in ${(end - start).toFixed(1)}ms`);
 
-        await emitWatchEvent(options.onEvent, {
-          type: 'build-complete',
-          succeeded: errorCount === 0,
-          errorCount,
-          warningCount: warnCount,
-          durationMs: end - start
-        });
-
         if (errorCount === 0) {
           const diagBuffer: ModuleDiagnostic[] = [];
           const cacheReporter = createCacheReporter({
@@ -155,6 +147,14 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
             }
           }
         }
+
+        await emitWatchEvent(options.onEvent, {
+          type: 'build-complete',
+          succeeded: errorCount === 0,
+          errorCount,
+          warningCount: warnCount,
+          durationMs: end - start
+        });
       });
     },
   };
