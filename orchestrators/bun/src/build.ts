@@ -1,13 +1,11 @@
-import path from 'node:path';
-
 import type {
   BuildExecutionResult,
   BuildProvider,
   BuildTargetKind,
 } from './types.ts';
 import { createBuildPlan } from './build-plan.ts';
-import { repoRoot } from './paths.ts';
 import { loadProvider } from './providers.ts';
+import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 
 export interface RunBuildOptions {
@@ -29,7 +27,7 @@ export async function runBuild(options: RunBuildOptions): Promise<BuildExecution
     });
     const result = await provider.build({
       workspaceRoot: workspace.root,
-      env: createBuildEnv(workspace.root, options.env),
+      env: createWorkspaceRuntimeEnv(workspace.root, 'build', options.env),
       incremental: false,
     });
 
@@ -43,22 +41,5 @@ export async function runBuild(options: RunBuildOptions): Promise<BuildExecution
   return {
     workspace,
     targets,
-  };
-}
-
-function createBuildEnv(
-  workspaceRoot: string,
-  env: Record<string, string | undefined> = process.env
-): Record<string, string | undefined> {
-  const binPaths = [
-    path.join(workspaceRoot, 'node_modules', '.bin'),
-    path.join(repoRoot, 'node_modules', '.bin'),
-    env.PATH,
-  ].filter(Boolean);
-
-  return {
-    ...env,
-    PATH: binPaths.join(path.delimiter),
-    WEBSTIR_MODULE_MODE: 'build',
   };
 }

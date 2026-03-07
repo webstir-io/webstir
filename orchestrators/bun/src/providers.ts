@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 
 import type { BuildProvider, BuildTargetKind } from './types.ts';
 import { repoRoot } from './paths.ts';
+import { resolveRuntimeCommand } from './runtime.ts';
 
 let moduleContractBuildPromise: Promise<void> | null = null;
 
@@ -48,14 +49,6 @@ async function ensureModuleContractArtifacts(): Promise<void> {
   }
 
   await moduleContractBuildPromise;
-}
-
-function resolveRuntimeCommand(): string {
-  if (typeof process.versions.bun === 'string') {
-    return process.execPath;
-  }
-
-  return 'bun';
 }
 
 async function runRuntimeCommand(args: readonly string[]): Promise<void> {
