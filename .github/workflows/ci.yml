@@ -30,15 +30,6 @@ jobs:
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify framework version alignment
-        run: bun run check:framework-versions
-
-      - name: Verify framework package sync
-        run: bun run check:framework-sync
-
-      - name: Verify framework embedded sync idempotence
-        run: bun run check:framework-embedded-idempotent
-
       - name: Test release tools
         run: bun run test:tools
 

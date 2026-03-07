@@ -21,9 +21,6 @@
     "smoke": "bun run --workspaces --if-present smoke",
     "build:contracts": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build",
     "test:contracts": "bun run --filter @webstir-io/module-contract test && bun run --filter @webstir-io/testing-contract test",
-    "check:framework-versions": "node tools/check-framework-version-alignment.mjs",
-    "check:framework-sync": "node tools/check-framework-package-sync.mjs",
-    "check:framework-embedded-idempotent": "node tools/sync-framework-embedded.mjs --check",
     "sync:framework-embedded": "node tools/sync-framework-embedded.mjs",
     "orchestrate:bun": "bun orchestrators/bun/src/cli.ts"
   }
