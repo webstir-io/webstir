@@ -1,0 +1,17 @@
+{
+  "name": "@webstir-io/webstir-orchestrator-bun",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "webstir-bun": "src/cli.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.21",
+    "typescript": "^5.7.2"
+  }
+}
