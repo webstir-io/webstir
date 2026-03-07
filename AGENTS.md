@@ -14,7 +14,29 @@ Monorepo baseline for Webstir.
 - Treat `orchestrators/dotnet/Framework/**` as orchestrator-local copies unless the task explicitly requires updating the embedded framework snapshot there too.
 - When docs refer to repo paths, prefer the monorepo layout above rather than the legacy single-repo names.
 
+## Code Size
+- Prefer keeping code files to about 500 lines or fewer when practical.
+- Split large files by responsibility when it improves clarity; do not force file splits that make the code harder to follow.
+
 ## Validation
-- JS/TS work: use `pnpm` from the repo root when possible.
+- JS/TS work: use `bun` from the repo root when possible.
 - .NET orchestrator work: run `dotnet` commands from the repo root or `orchestrators/dotnet`.
-- For package-specific constraints, read the nearest nested `AGENTS.md`.
+- Prefer package-local validation first, then widen to repo-level checks when the change warrants it.
+
+## Path-Specific Notes
+### `packages/tooling/webstir-backend`
+- Use `bun run build` for small changes.
+- Use `bun run smoke` for scaffold or template changes; use `WEBSTIR_BACKEND_SMOKE_FASTIFY=skip` or `WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN=skip` when you intentionally need lighter Fastify coverage.
+- Release prep: `bun run build && bun run smoke && bun run test`.
+- After canonical manifest changes, run `bun run sync:framework-embedded` unless you are using `bun run release -- <patch|minor|major>`, which handles the sync for its target package.
+
+### `packages/tooling/webstir-frontend`
+- Start with `README.md` and the package exports before changing public surfaces.
+- Validate with `bun run build`, `bun run test`, and `bun run smoke` as needed.
+- The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
+- Use `bun run release -- <patch|minor|major>` for version bumps; run `bun run sync:framework-embedded` after canonical manifest changes when you are not using the release helper.
+
+### `orchestrators/dotnet`
+- Read `.codex/instructions.md`, `.codex/style.md`, and `.codex/testing.md` before edits.
+- Use `./Utilities/scripts/format-build.sh` before handoff.
+- Keep diffs minimal and behavior-preserving; prefer repo helpers such as `AppWorkspace` and `Engine.Extensions` for paths and file operations when appropriate.
