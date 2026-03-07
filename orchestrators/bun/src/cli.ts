@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { formatBuildSummary } from './format.ts';
 import { runBuild } from './build.ts';
+import { runWatch } from './watch.ts';
 
 interface CliStream {
   write(message: string): void;
@@ -18,12 +19,18 @@ interface CliIo {
 
 const HELP_TEXT = `Usage:
   webstir-bun build --workspace <path>
+  webstir-bun watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
+  watch      Run the Bun SPA dev loop for a Webstir workspace.
 
 Options:
   -w, --workspace <path>   Workspace root to build.
+  --host <host>            Dev server host (default: 127.0.0.1).
+  --port <port>            Dev server port (default: 8088).
+  -v, --verbose            Enable verbose frontend watch diagnostics.
+  --hmr-verbose            Enable detailed hot-update diagnostics.
   -h, --help               Show this help text.
 `;
 
@@ -34,40 +41,145 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const [command, ...rest] = argv;
-
-  if (command !== 'build') {
+  if (command !== 'build' && command !== 'watch') {
     io.stderr.write(`Unknown command "${command}".\n\n${HELP_TEXT}`);
     return 1;
   }
 
-  const workspaceRoot = parseWorkspaceArgument(rest);
+  const options = parseCommandOptions(rest);
+  if (options.help) {
+    io.stdout.write(HELP_TEXT);
+    return 0;
+  }
+
+  if (options.error) {
+    io.stderr.write(`${options.error}\n\n${HELP_TEXT}`);
+    return 1;
+  }
+
+  const workspaceRoot = options.workspaceRoot;
   if (!workspaceRoot) {
     io.stderr.write(`Missing required --workspace <path>.\n\n${HELP_TEXT}`);
     return 1;
   }
 
   try {
-    const result = await runBuild({
-      workspaceRoot: path.resolve(workspaceRoot),
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+    if (command === 'build') {
+      const result = await runBuild({
+        workspaceRoot: resolvedWorkspaceRoot,
+      });
+      io.stdout.write(`${formatBuildSummary(result)}\n`);
+      return 0;
+    }
+
+    await runWatch({
+      workspaceRoot: resolvedWorkspaceRoot,
+      host: options.host,
+      port: options.port,
+      verbose: options.verbose,
+      hmrVerbose: options.hmrVerbose,
+      io,
     });
-    io.stdout.write(`${formatBuildSummary(result)}\n`);
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    io.stderr.write(`[webstir-bun] build failed: ${message}\n`);
+    io.stderr.write(`[webstir-bun] ${command} failed: ${message}\n`);
     return 1;
   }
 }
 
-function parseWorkspaceArgument(args: readonly string[]): string | undefined {
+interface ParsedCommandOptions {
+  readonly workspaceRoot?: string;
+  readonly host?: string;
+  readonly port?: number;
+  readonly verbose: boolean;
+  readonly hmrVerbose: boolean;
+  readonly help: boolean;
+  readonly error?: string;
+}
+
+function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
+  let workspaceRoot: string | undefined;
+  let host: string | undefined;
+  let port: number | undefined;
+  let verbose = false;
+  let hmrVerbose = false;
+
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === '--workspace' || arg === '-w') {
-      return args[index + 1];
+      workspaceRoot = args[index + 1];
+      index += 1;
+      continue;
     }
+
+    if (arg === '--host') {
+      host = args[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--port') {
+      const rawPort = args[index + 1];
+      const parsedPort = Number.parseInt(rawPort ?? '', 10);
+      if (!Number.isFinite(parsedPort) || parsedPort < 0) {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          verbose,
+          hmrVerbose,
+          help: false,
+          error: `Invalid --port value "${rawPort ?? ''}".`,
+        };
+      }
+
+      port = parsedPort;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--verbose' || arg === '-v') {
+      verbose = true;
+      continue;
+    }
+
+    if (arg === '--hmr-verbose') {
+      hmrVerbose = true;
+      continue;
+    }
+
+    if (arg === '--help' || arg === '-h') {
+      return {
+        workspaceRoot,
+        host,
+        port,
+        verbose,
+        hmrVerbose,
+        help: true,
+      };
+    }
+
+    return {
+      workspaceRoot,
+      host,
+      port,
+      verbose,
+      hmrVerbose,
+      help: false,
+      error: `Unknown option "${arg}".`,
+    };
   }
 
-  return undefined;
+  return {
+    workspaceRoot,
+    host,
+    port,
+    verbose,
+    hmrVerbose,
+    help: false,
+  };
 }
 
 const defaultIo: CliIo = {
