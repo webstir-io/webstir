@@ -151,18 +151,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          dotnet-version: '9.0.x'
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
+          bun-version: '1.3.5'
 
       - name: Build static site
-        run: dotnet run --project orchestrators/dotnet/CLI/CLI.csproj -- publish --frontend-mode ssg
+        run: bun run orchestrate:bun -- publish --workspace "$PWD"
 
       - name: Deploy to GitHub Pages
         run: |
@@ -180,7 +175,7 @@ High-level steps:
 1. Build the static frontend:
 
    ```bash
-   webstir publish --frontend-mode ssg
+   bun run orchestrate:bun -- publish --workspace "$PWD"
    ```
 
 2. Sync `dist/frontend/**` to your bucket (example using AWS CLI):

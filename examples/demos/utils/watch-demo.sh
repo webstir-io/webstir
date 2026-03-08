@@ -8,11 +8,11 @@ WORKSPACE_ROOT="$(cd "${DEMOS_ROOT}/../.." && pwd)"
 usage() {
   cat <<'EOF'
 Usage:
-  watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-watch-args...>]
+  watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-bun-watch-args...>]
 
 Examples:
   watch-demo.sh ssg base
-  watch-demo.sh ssg site --runtime frontend
+  watch-demo.sh ssg site --port 4300
   watch-demo.sh spa --verbose
 
 Notes:
@@ -92,4 +92,4 @@ fi
 
 trap restore_stty EXIT
 
-dotnet run --project orchestrators/dotnet/CLI -- watch "$@" "${DEMO_DIR}"
+exec bun run orchestrate:bun -- watch --workspace "${DEMO_DIR}" "$@"
