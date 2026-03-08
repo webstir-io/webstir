@@ -13,6 +13,7 @@ import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import { createCssBuilder } from '../builders/cssBuilder.js';
 import { createHtmlBuilder } from '../builders/htmlBuilder.js';
 import { createStaticAssetsBuilder } from '../builders/staticAssetsBuilder.js';
+import { createContentBuilder } from '../builders/contentBuilder.js';
 import type { Builder, BuilderContext } from '../builders/types.js';
 import type { WatchChangeIntent, WatchCoordinatorOptions } from './types.js';
 import { WatchReporter, serializeMessages, type SerializedMessage } from './watchReporter.js';
@@ -331,6 +332,7 @@ export class WatchCoordinator {
         const builders: Builder[] = [
             createCssBuilder(context),
             createHtmlBuilder(context),
+            createContentBuilder(context),
             createStaticAssetsBuilder(context)
         ];
 
@@ -343,11 +345,15 @@ export class WatchCoordinator {
         const fallbackReasons: string[] = [];
         const normalizedChange = changedFile ? path.resolve(changedFile) : undefined;
         const appTemplatePath = path.resolve(config.paths.src.app, FILE_NAMES.htmlAppTemplate);
+        const contentRoot = path.resolve(config.paths.src.content);
         const isHtmlChange = Boolean(normalizedChange && (
             (path.extname(normalizedChange).toLowerCase() === EXTENSIONS.html
                 && (isPathInside(normalizedChange, config.paths.src.pages) || isPathInside(normalizedChange, config.paths.src.app)))
             || normalizedChange === appTemplatePath
         ));
+        const isContentChange = Boolean(normalizedChange
+            && path.extname(normalizedChange).toLowerCase() === '.md'
+            && isPathInside(normalizedChange, contentRoot));
         const staticAssetDirectories = [
             config.paths.src.images,
             config.paths.src.fonts,
@@ -386,6 +392,13 @@ export class WatchCoordinator {
                 if (!changedFile || isHtmlChange) {
                     requiresReload = true;
                     fallbackReasons.push('builder.html.reload');
+                }
+            }
+
+            if (builder.name === 'content') {
+                if (!changedFile || isContentChange) {
+                    requiresReload = true;
+                    fallbackReasons.push('builder.content.reload');
                 }
             }
 
