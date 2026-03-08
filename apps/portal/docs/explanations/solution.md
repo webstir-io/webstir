@@ -2,6 +2,8 @@
 
 Hub for the CLI and host tooling. This doc explains what the solution is, how it’s organized, the technology choices, and how the app works at a high level.
 
+> Historical note: this page reflects the archived `.NET` orchestrator architecture. The active orchestration path in the monorepo is now `orchestrators/bun`.
+
 ## What It Is
 - Opinionated, zero-config build tool and project scaffolder.
  - Full-stack by default: frontend (HTML/CSS/TS) + Node API server.

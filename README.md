@@ -8,7 +8,7 @@ Canonical monorepo for the Webstir ecosystem.
 - `packages/tooling` — publishable JavaScript/TypeScript tooling packages.
 - `apps` — first-party apps and docs sites built on the framework.
 - `examples` — demo workspaces that validate consumer flows against local packages.
-- `orchestrators` — orchestration runtimes and hosts, including the Bun orchestrator and the legacy .NET orchestrator.
+- `orchestrators` — orchestration runtimes and hosts, including the Bun orchestrator and an archived historical `.NET` orchestrator tree.
 
 ## Getting Started
 
@@ -41,5 +41,5 @@ bun run orchestrate:bun -- publish --workspace "$PWD/examples/demos/ssg/site"
 ## Notes
 
 - Published npm package names remain unchanged.
-- `orchestrators/dotnet` still exists in-tree, but normal local init/build/publish/watch/enable/refresh usage should go through `orchestrators/bun`.
+- `orchestrators/dotnet` remains in-tree for historical reference only; active local workflows should go through `orchestrators/bun`.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

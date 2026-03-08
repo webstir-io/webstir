@@ -11,7 +11,7 @@ resolve_workspace_root() {
     "${ROOT_DIR}/../../.."
   do
     candidate="$(cd "${candidate}" && pwd)"
-    if [[ -d "${candidate}/orchestrators/dotnet/CLI" ]]; then
+    if [[ -f "${candidate}/orchestrators/bun/package.json" ]]; then
       echo "${candidate}"
       return 0
     fi
@@ -25,16 +25,11 @@ if ! WORKSPACE_ROOT="$(resolve_workspace_root)"; then
   exit 1
 fi
 
-if command -v webstir >/dev/null 2>&1; then
-  exec webstir watch "${ROOT_DIR}" "$@"
-fi
-
-CLI_PROJECT="${WORKSPACE_ROOT}/orchestrators/dotnet/CLI"
-if [[ ! -d "${CLI_PROJECT}" ]]; then
-  echo "[webstir-hub] Could not find Webstir CLI project at ${CLI_PROJECT}" >&2
-  echo "[webstir-hub] Install Webstir (webstir on PATH) or run from the webstir-io workspace." >&2
+if [[ ! -f "${WORKSPACE_ROOT}/orchestrators/bun/package.json" ]]; then
+  echo "[webstir-hub] Could not find the Bun orchestrator workspace under ${WORKSPACE_ROOT}/orchestrators/bun" >&2
+  echo "[webstir-hub] Run this from the webstir monorepo root." >&2
   exit 1
 fi
 
 cd "${WORKSPACE_ROOT}"
-exec dotnet run --project "${CLI_PROJECT}" -- watch --project "webstir-hub" "$@"
+exec bun run orchestrate:bun -- watch --workspace "${ROOT_DIR}" "$@"

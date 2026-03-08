@@ -4,7 +4,7 @@ Thanks for your interest in improving the Webstir ecosystem! These guidelines co
 
 ## Quick Checklist
 - Review the [Code of Conduct](./CODE_OF_CONDUCT.md) and uphold it in all community spaces.
-- Read the repo-specific `CONTRIBUTING.md` (for example, the [dotnet orchestrator guide](https://github.com/webstir-io/webstir/blob/main/orchestrators/dotnet/CONTRIBUTING.md)).
+- Read the repo-specific `CONTRIBUTING.md` for the code you are changing.
 - Open an issue to propose larger features before starting work when possible.
 
 ## Development Workflow

@@ -1,5 +1,9 @@
 # Webstir
 
+> Archived historical orchestrator
+>
+> `orchestrators/dotnet` is kept in-tree for reference only. New development, local workflows, and user-facing docs should target the Bun orchestrator in `orchestrators/bun`. Do not add new product features or active repo dependencies on this tree.
+
 Modern, minimal full-stack TypeScript web framework and build tool. Webstir scaffolds projects, builds client and server code, runs a fast dev server with live reload and API proxying, and produces optimized production bundles.
 
 ## Status
