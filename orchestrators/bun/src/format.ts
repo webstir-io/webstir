@@ -39,6 +39,39 @@ export function formatRefreshSummary(result: RefreshResult): string {
   return formatWorkspaceMutationSummary('[webstir-bun] refresh complete', result.mode, result.workspaceRoot, result.changes);
 }
 
+export function formatAddSummary(
+  header: string,
+  target: string,
+  workspaceRoot: string,
+  changes: readonly string[],
+  note?: string
+): string {
+  const lines = [
+    header,
+    `target: ${target}`,
+    `root: ${workspaceRoot}`,
+  ];
+
+  if (changes.length === 0) {
+    lines.push('changes: none');
+    if (note) {
+      lines.push(`note: ${note}`);
+    }
+    return lines.join('\n');
+  }
+
+  lines.push(`changes: ${changes.length}`);
+  for (const change of changes) {
+    lines.push(`  - ${change}`);
+  }
+
+  if (note) {
+    lines.push(`note: ${note}`);
+  }
+
+  return lines.join('\n');
+}
+
 function formatExecutionSummary(result: CommandExecutionResult): string {
   const lines = [
     `[webstir-bun] ${result.mode} complete`,

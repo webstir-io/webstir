@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
-import fs from 'fs-extra';
+import { runAddTest } from './add.js';
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -16,47 +16,18 @@ async function main(): Promise<void> {
     throw new Error('Missing test name. Usage: webstir-testing-add <name> --workspace <path>');
   }
 
-  const normalized = normalizeName(nameArg);
-  const srcRoot = path.join(workspaceRoot, 'src');
-  const hasSlash = normalized.includes('/');
+  const result = await runAddTest({
+    workspaceRoot,
+    name: nameArg,
+  });
 
-  let targetDirectory: string;
-  let fileName: string;
-
-  if (hasSlash) {
-    const withoutExtension = normalized;
-    const parent = path.posix.dirname(withoutExtension);
-    const leaf = path.posix.basename(withoutExtension);
-    targetDirectory = path.join(srcRoot, parent, 'tests');
-    fileName = `${leaf}.test.ts`;
-  } else {
-    targetDirectory = path.join(srcRoot, 'tests');
-    fileName = `${normalized}.test.ts`;
-  }
-
-  await fs.ensureDir(targetDirectory);
-  const targetFile = path.join(targetDirectory, fileName);
-
-  if (await fs.pathExists(targetFile)) {
-    console.log(`File already exists: ${path.relative(workspaceRoot, targetFile)}`);
+  if (!result.created) {
+    console.log(`File already exists: ${result.relativePath}`);
     return;
   }
 
-  await fs.writeFile(targetFile, SAMPLE_TEST_TEMPLATE, 'utf8');
-  console.log(`Created ${path.relative(workspaceRoot, targetFile)}`);
+  console.log(`Created ${result.relativePath}`);
 }
-
-function normalizeName(raw: string): string {
-  const trimmed = raw.trim().replace(/\\/g, '/');
-  return trimmed.replace(/(\.test\.ts)$/i, '');
-}
-
-const SAMPLE_TEST_TEMPLATE = `import { test, assert } from '@webstir-io/webstir-testing';
-
-test('sample passes', () => {
-  assert.isTrue(true);
-});
-`;
 
 void main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);

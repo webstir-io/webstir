@@ -4,8 +4,16 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { runAddPageCommand, runAddTestCommand } from './add.ts';
 import { runEnable } from './enable.ts';
-import { formatBuildSummary, formatEnableSummary, formatInitSummary, formatPublishSummary, formatRefreshSummary } from './format.ts';
+import {
+  formatAddSummary,
+  formatBuildSummary,
+  formatEnableSummary,
+  formatInitSummary,
+  formatPublishSummary,
+  formatRefreshSummary,
+} from './format.ts';
 import { runInit } from './init.ts';
 import { runRefresh } from './refresh.ts';
 import { runBuild } from './build.ts';
@@ -24,6 +32,8 @@ interface CliIo {
 const HELP_TEXT = `Usage:
   webstir-bun init <mode> <directory>
   webstir-bun init <directory>
+  webstir-bun add-page <name> --workspace <path>
+  webstir-bun add-test <name-or-path> --workspace <path>
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
@@ -32,6 +42,8 @@ const HELP_TEXT = `Usage:
 
 Commands:
   init       Scaffold a new Webstir workspace.
+  add-page   Scaffold a frontend page in an existing workspace.
+  add-test   Scaffold a test file in an existing workspace.
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
@@ -54,7 +66,16 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const [command, ...rest] = argv;
-  if (command !== 'init' && command !== 'build' && command !== 'publish' && command !== 'enable' && command !== 'refresh' && command !== 'watch') {
+  if (
+    command !== 'init'
+    && command !== 'add-page'
+    && command !== 'add-test'
+    && command !== 'build'
+    && command !== 'publish'
+    && command !== 'enable'
+    && command !== 'refresh'
+    && command !== 'watch'
+  ) {
     io.stderr.write(`Unknown command "${command}".\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -92,6 +113,38 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     const resolvedWorkspaceRoot = path.resolve(workspaceRoot!);
+    if (command === 'add-page') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runAddPageCommand({
+        workspaceRoot: resolvedWorkspaceRoot,
+        args: options.positionals,
+      });
+      io.stdout.write(
+        `${formatAddSummary('[webstir-bun] add-page complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+      );
+      return 0;
+    }
+
+    if (command === 'add-test') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Add-test does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runAddTestCommand({
+        workspaceRoot: resolvedWorkspaceRoot,
+        args: options.positionals,
+      });
+      io.stdout.write(
+        `${formatAddSummary('[webstir-bun] add-test complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+      );
+      return 0;
+    }
+
     if (command === 'build') {
       if (options.positionals.length > 0) {
         io.stderr.write(`Build does not accept positional arguments.\n\n${HELP_TEXT}`);
