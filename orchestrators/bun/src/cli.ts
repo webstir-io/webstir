@@ -5,6 +5,7 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { runAddPageCommand, runAddTestCommand } from './add.ts';
+import { runAddJobCommand, runAddRouteCommand } from './add-backend.ts';
 import { runEnable } from './enable.ts';
 import {
   formatAddSummary,
@@ -34,6 +35,8 @@ const HELP_TEXT = `Usage:
   webstir-bun init <directory>
   webstir-bun add-page <name> --workspace <path>
   webstir-bun add-test <name-or-path> --workspace <path>
+  webstir-bun add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify]
+  webstir-bun add-job <name> --workspace <path> [--schedule <expression>]
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
@@ -44,6 +47,8 @@ Commands:
   init       Scaffold a new Webstir workspace.
   add-page   Scaffold a frontend page in an existing workspace.
   add-test   Scaffold a test file in an existing workspace.
+  add-route  Scaffold a backend route in an existing workspace.
+  add-job    Scaffold a backend job in an existing workspace.
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
@@ -70,6 +75,8 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     command !== 'init'
     && command !== 'add-page'
     && command !== 'add-test'
+    && command !== 'add-route'
+    && command !== 'add-job'
     && command !== 'build'
     && command !== 'publish'
     && command !== 'enable'
@@ -80,7 +87,9 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     return 1;
   }
 
-  const options = parseCommandOptions(rest);
+  const options = parseCommandOptions(rest, {
+    allowUnknownOptions: command === 'add-route' || command === 'add-job',
+  });
   if (options.help) {
     io.stdout.write(HELP_TEXT);
     return 0;
@@ -141,6 +150,38 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       });
       io.stdout.write(
         `${formatAddSummary('[webstir-bun] add-test complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+      );
+      return 0;
+    }
+
+    if (command === 'add-route') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Add-route does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runAddRouteCommand({
+        workspaceRoot: resolvedWorkspaceRoot,
+        rawArgs: options.rawArgs,
+      });
+      io.stdout.write(
+        `${formatAddSummary('[webstir-bun] add-route complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+      );
+      return 0;
+    }
+
+    if (command === 'add-job') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Add-job does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runAddJobCommand({
+        workspaceRoot: resolvedWorkspaceRoot,
+        rawArgs: options.rawArgs,
+      });
+      io.stdout.write(
+        `${formatAddSummary('[webstir-bun] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
       );
       return 0;
     }
@@ -222,11 +263,15 @@ interface ParsedCommandOptions {
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
   readonly positionals: readonly string[];
+  readonly rawArgs: readonly string[];
   readonly help: boolean;
   readonly error?: string;
 }
 
-function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
+function parseCommandOptions(
+  args: readonly string[],
+  options: { readonly allowUnknownOptions?: boolean } = {}
+): ParsedCommandOptions {
   let workspaceRoot: string | undefined;
   let host: string | undefined;
   let port: number | undefined;
@@ -251,6 +296,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
           verbose,
           hmrVerbose,
           positionals,
+          rawArgs: args,
           help: false,
           error: 'Missing value for --workspace.',
         };
@@ -271,6 +317,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
           verbose,
           hmrVerbose,
           positionals,
+          rawArgs: args,
           help: false,
           error: 'Missing value for --host.',
         };
@@ -292,6 +339,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
           verbose,
           hmrVerbose,
           positionals,
+          rawArgs: args,
           help: false,
           error: `Invalid --port value "${rawPort ?? ''}".`,
         };
@@ -320,8 +368,13 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
         verbose,
         hmrVerbose,
         positionals,
+        rawArgs: args,
         help: true,
       };
+    }
+
+    if (options.allowUnknownOptions) {
+      continue;
     }
 
     return {
@@ -331,6 +384,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
       verbose,
       hmrVerbose,
       positionals,
+      rawArgs: args,
       help: false,
       error: `Unknown option "${arg}".`,
     };
@@ -343,6 +397,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
     verbose,
     hmrVerbose,
     positionals,
+    rawArgs: args,
     help: false,
   };
 }
