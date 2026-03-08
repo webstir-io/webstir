@@ -17,7 +17,7 @@ export interface RunAddTestOptions {
 
 export interface AddCommandResult {
   readonly workspaceRoot: string;
-  readonly subject: 'page' | 'test';
+  readonly subject: 'page' | 'test' | 'route' | 'job';
   readonly target: string;
   readonly changes: readonly string[];
   readonly note?: string;

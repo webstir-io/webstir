@@ -279,6 +279,9 @@
               "schedule": {
                 "type": "string"
               },
+              "description": {
+                "type": "string"
+              },
               "priority": {
                 "anyOf": [
                   {
