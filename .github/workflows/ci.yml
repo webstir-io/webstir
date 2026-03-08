@@ -57,7 +57,7 @@ jobs:
           node packages/tooling/webstir-frontend/dist/cli.js build --workspace "$GITHUB_WORKSPACE/apps/hub"
 
   dotnet:
-    # Temporarily disabled while Bun orchestrator work is underway.
+    # Archived historical orchestrator lane. Kept for reference only.
     if: ${{ false }}
     runs-on: ubuntu-latest
     steps:

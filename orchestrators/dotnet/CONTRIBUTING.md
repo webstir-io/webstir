@@ -1,5 +1,9 @@
 # Contributing to Webstir
 
+> Archived historical orchestrator
+>
+> This guide is preserved for maintenance of the archived `.NET` orchestrator tree only. Do not use it as the default workflow for new Webstir work; active orchestration now lives under `orchestrators/bun`.
+
 We love contributions!  
 By contributing, you agree that your work is licensed under the project’s MIT License
 and may be incorporated into the project owned by **Electric Coding LLC**.

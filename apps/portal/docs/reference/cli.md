@@ -2,6 +2,8 @@
 
 Detailed reference for the `webstir` CLI. This expands the high-level overview in [solution.md](../explanations/solution.md) and focuses on concrete behavior, options, and outputs.
 
+> Historical note: this page documents the archived `.NET` orchestrator CLI. For active local workflows in this repo, use the Bun orchestrator under `orchestrators/bun`.
+
 ## Overview
 - Single entrypoint: `webstir <command> [options]`.
 - Default command is `watch` when no command is provided.

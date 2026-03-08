@@ -2,6 +2,8 @@
 
 End-to-end flows driven by the CLI. Workflows coordinate workers, pipelines, and services to deliver a complete task (init → build → watch/test → publish). They are orchestration only; low-level logic lives in engine components.
 
+> Historical note: this page describes the archived `.NET` orchestrator workflow model. Active repo workflows now run through the Bun orchestrator.
+
 ## What They Are
 - Thin coordinators that call workers and services in a defined order.
 - Source of truth for user-visible behavior, exit codes, and logs.
