@@ -4,7 +4,8 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { formatBuildSummary, formatPublishSummary } from './format.ts';
+import { runEnable } from './enable.ts';
+import { formatBuildSummary, formatEnableSummary, formatPublishSummary } from './format.ts';
 import { runBuild } from './build.ts';
 import { runPublish } from './publish.ts';
 import { runWatch } from './watch.ts';
@@ -21,15 +22,17 @@ interface CliIo {
 const HELP_TEXT = `Usage:
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
+  webstir-bun enable <feature> [feature-args...] --workspace <path>
   webstir-bun watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
+  enable     Scaffold an optional Webstir feature into a workspace.
   watch      Run the Bun dev loop for a supported Webstir workspace.
 
 Options:
-  -w, --workspace <path>   Workspace root to build or publish.
+  -w, --workspace <path>   Workspace root to operate on.
   --host <host>            Dev host or bind address (default: 127.0.0.1).
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
   -v, --verbose            Enable verbose frontend watch diagnostics.
@@ -44,7 +47,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const [command, ...rest] = argv;
-  if (command !== 'build' && command !== 'publish' && command !== 'watch') {
+  if (command !== 'build' && command !== 'publish' && command !== 'enable' && command !== 'watch') {
     io.stderr.write(`Unknown command "${command}".\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -69,6 +72,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   try {
     const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
     if (command === 'build') {
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Build does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
       const result = await runBuild({
         workspaceRoot: resolvedWorkspaceRoot,
       });
@@ -77,11 +85,30 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'publish') {
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Publish does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
       const result = await runPublish({
         workspaceRoot: resolvedWorkspaceRoot,
       });
       io.stdout.write(`${formatPublishSummary(result)}\n`);
       return 0;
+    }
+
+    if (command === 'enable') {
+      const result = await runEnable({
+        workspaceRoot: resolvedWorkspaceRoot,
+        args: options.positionals,
+      });
+      io.stdout.write(`${formatEnableSummary(result)}\n`);
+      return 0;
+    }
+
+    if (options.positionals.length > 0) {
+      io.stderr.write(`Watch does not accept positional arguments.\n\n${HELP_TEXT}`);
+      return 1;
     }
 
     await runWatch({
@@ -106,6 +133,7 @@ interface ParsedCommandOptions {
   readonly port?: number;
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
+  readonly positionals: readonly string[];
   readonly help: boolean;
   readonly error?: string;
 }
@@ -116,17 +144,51 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
   let port: number | undefined;
   let verbose = false;
   let hmrVerbose = false;
+  const positionals: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (!arg.startsWith('-')) {
+      positionals.push(arg);
+      continue;
+    }
+
     if (arg === '--workspace' || arg === '-w') {
-      workspaceRoot = args[index + 1];
+      const next = args[index + 1];
+      if (!next || next.startsWith('-')) {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          verbose,
+          hmrVerbose,
+          positionals,
+          help: false,
+          error: 'Missing value for --workspace.',
+        };
+      }
+
+      workspaceRoot = next;
       index += 1;
       continue;
     }
 
     if (arg === '--host') {
-      host = args[index + 1];
+      const next = args[index + 1];
+      if (!next || next.startsWith('-')) {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          verbose,
+          hmrVerbose,
+          positionals,
+          help: false,
+          error: 'Missing value for --host.',
+        };
+      }
+
+      host = next;
       index += 1;
       continue;
     }
@@ -141,6 +203,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
           port,
           verbose,
           hmrVerbose,
+          positionals,
           help: false,
           error: `Invalid --port value "${rawPort ?? ''}".`,
         };
@@ -168,6 +231,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
         port,
         verbose,
         hmrVerbose,
+        positionals,
         help: true,
       };
     }
@@ -178,6 +242,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
       port,
       verbose,
       hmrVerbose,
+      positionals,
       help: false,
       error: `Unknown option "${arg}".`,
     };
@@ -189,6 +254,7 @@ function parseCommandOptions(args: readonly string[]): ParsedCommandOptions {
     port,
     verbose,
     hmrVerbose,
+    positionals,
     help: false,
   };
 }

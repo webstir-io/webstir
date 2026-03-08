@@ -15,8 +15,9 @@ Supported features:
 - `client-nav` — enable client-side navigation (feature module)
 - `search` — enable site search UI + behavior (feature modules + CSS)
 - `content-nav` — enable docs content navigation (sidebar, breadcrumb, h2 TOC)
- - `content-nav` — enable docs content navigation (sidebar + breadcrumb)
 - `backend` — add backend scaffold and switch to `webstir.mode=full`
+- `github-pages [basePath]` — scaffold a Bun-based GitHub Pages deploy script and set the publish base path
+- `gh-deploy [basePath]` — `github-pages` plus a GitHub Actions workflow
 
 ## What `enable` Changes
 
@@ -60,11 +61,24 @@ Supported features:
 Applies to SSG docs pages (content pipeline) only.
 
 ### backend
-- Creates `src/backend/**` if missing (using the embedded full-stack backend scaffold).
+- Creates `src/backend/**` if missing (using the current backend package scaffold).
 - Updates `package.json`:
   - `webstir.mode=full`
   - `webstir.enable.backend=true`
 - Ensures `base.tsconfig.json` includes a `references` entry for `src/backend`.
+
+### github-pages
+- Writes `utils/deploy-gh-pages.sh`.
+- Updates `src/frontend/frontend.config.json`:
+  - `publish.basePath="/<workspace-name>"` by default, or the path you pass
+- Updates `package.json`:
+  - `webstir.enable.githubPages=true`
+  - adds `scripts.deploy="bash ./utils/deploy-gh-pages.sh"` if missing
+
+### gh-deploy
+- Applies all `github-pages` changes.
+- Also writes `.github/workflows/webstir-gh-pages.yml` if it does not already exist.
+- The generated workflow is Bun-based and runs `bun install` plus `bun run deploy`.
 
 ## Notes
 - `enable` is additive and idempotent: it avoids duplicating imports on re-run.

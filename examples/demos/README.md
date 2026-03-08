@@ -28,4 +28,5 @@ Root shortcuts:
 
 Notes:
 - Watch and publish helpers use the Bun orchestrator.
-- Refresh and feature-enable flows still use the legacy .NET CLI because scaffold/init ownership has not moved yet.
+- Feature-enable helpers now use the Bun orchestrator.
+- Refresh still depends on the legacy `.NET` init flow until Bun owns scaffold/init too.
