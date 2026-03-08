@@ -45,6 +45,7 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
 
   switch (workspace.mode) {
     case 'spa':
+    case 'ssg':
       await runFrontendWatch(workspace, options, io);
       return;
     case 'api':
@@ -60,6 +61,6 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
 
 function throwUnsupportedWatchMode(workspace: WorkspaceDescriptor): never {
   throw new Error(
-    `Watch currently supports spa, api, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`
+    `Watch currently supports spa, ssg, api, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`
   );
 }
