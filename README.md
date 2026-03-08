@@ -24,6 +24,7 @@ bun run --filter webstir-portal build
 The Bun orchestrator is the primary local workflow now:
 
 ```bash
+bun run orchestrate:bun -- init ssg ./my-site
 bun run watch:spa
 bun run watch:ssg:base
 bun run watch:api
@@ -40,5 +41,5 @@ bun run orchestrate:bun -- publish --workspace "$PWD/examples/demos/ssg/site"
 ## Notes
 
 - Published npm package names remain unchanged.
-- `orchestrators/dotnet` still exists for legacy `init` flows, but normal build/publish/watch/enable usage should go through `orchestrators/bun`.
+- `orchestrators/dotnet` still exists in-tree, but normal local init/build/publish/watch/enable/refresh usage should go through `orchestrators/bun`.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

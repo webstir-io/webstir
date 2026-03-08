@@ -80,10 +80,10 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       break;
     case 'github-pages':
     case 'gh-pages':
-      await enableGithubPages(workspace.root, workspace.name, rest[0], false, changes);
+      await enableGithubPages(workspace.root, path.basename(workspace.root), rest[0], false, changes);
       break;
     case 'gh-deploy':
-      await enableGithubPages(workspace.root, workspace.name, rest[0], true, changes);
+      await enableGithubPages(workspace.root, path.basename(workspace.root), rest[0], true, changes);
       break;
   }
 

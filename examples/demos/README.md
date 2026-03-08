@@ -27,6 +27,4 @@ Root shortcuts:
 - `bun run watch:full`
 
 Notes:
-- Watch and publish helpers use the Bun orchestrator.
-- Feature-enable helpers now use the Bun orchestrator.
-- Refresh still depends on the legacy `.NET` init flow until Bun owns scaffold/init too.
+- Watch, feature-enable, and refresh helpers use the Bun orchestrator.

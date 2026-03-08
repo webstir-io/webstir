@@ -23,6 +23,6 @@ refresh_demo_dir() {
 
   (
     cd "${WORKSPACE_ROOT_REFRESH_LIB}"
-    dotnet run --project orchestrators/dotnet/CLI -- init "${init_mode}" "${demo_dir}"
+    bun run orchestrate:bun -- refresh "${init_mode}" --workspace "${demo_dir}"
   )
 }
