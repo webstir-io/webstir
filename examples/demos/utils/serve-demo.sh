@@ -4,8 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEMOS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 WORKSPACE_ROOT="$(cd "${DEMOS_ROOT}/../.." && pwd)"
-source "${SCRIPT_DIR}/provider-helpers.sh"
-
 usage() {
   cat <<'EOF'
 Usage:
@@ -96,16 +94,10 @@ if [[ ! -d "${DEMO_DIR}" ]]; then
   exit 1
 fi
 
-set_local_provider_specs "${WORKSPACE_ROOT}"
-
 echo "Publishing ${MODE} demo at ${DEMO_DIR}..."
 (
-  cd "${DEMO_DIR}"
-  if [[ "${MODE}" == "api" ]]; then
-    dotnet run --project "${WORKSPACE_ROOT}/orchestrators/dotnet/CLI" -- publish --runtime backend
-  else
-    dotnet run --project "${WORKSPACE_ROOT}/orchestrators/dotnet/CLI" -- publish --runtime frontend
-  fi
+  cd "${WORKSPACE_ROOT}"
+  bun run orchestrate:bun -- publish --workspace "${DEMO_DIR}"
 )
 
 if [[ "${MODE}" == "api" ]]; then

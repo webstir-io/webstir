@@ -22,6 +22,16 @@
     "build:contracts": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build",
     "test:contracts": "bun run --filter @webstir-io/module-contract test && bun run --filter @webstir-io/testing-contract test",
     "sync:framework-embedded": "node tools/sync-framework-embedded.mjs",
-    "orchestrate:bun": "bun orchestrators/bun/src/cli.ts"
+    "orchestrate:bun": "bun orchestrators/bun/src/cli.ts",
+    "watch:spa": "bash examples/demos/utils/watch-spa.sh",
+    "watch:ssg:base": "bash examples/demos/utils/watch-ssg.sh base",
+    "watch:ssg:site": "bash examples/demos/utils/watch-ssg.sh site",
+    "watch:api": "bash examples/demos/utils/watch-api.sh",
+    "watch:full": "bash examples/demos/utils/watch-full.sh",
+    "publish:spa": "bun run orchestrate:bun -- publish --workspace \"$PWD/examples/demos/spa\"",
+    "publish:ssg:base": "bun run orchestrate:bun -- publish --workspace \"$PWD/examples/demos/ssg/base\"",
+    "publish:ssg:site": "bun run orchestrate:bun -- publish --workspace \"$PWD/examples/demos/ssg/site\"",
+    "publish:api": "bun run orchestrate:bun -- publish --workspace \"$PWD/examples/demos/api\"",
+    "publish:full": "bun run orchestrate:bun -- publish --workspace \"$PWD/examples/demos/full\""
   }
 }

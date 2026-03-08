@@ -1,7 +1,7 @@
 # webstir-demos
 
 Helper scripts:
-- `utils/watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-watch-args...>]` — start watch without re-initializing.
+- `utils/watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-bun-watch-args...>]` — start Bun watch without re-initializing.
 - `utils/enable-feature.sh <project|ssg|ssg-base|ssg-site|spa|api|full> <feature> [<feature-args...>]` — enable a feature in a demo or any project folder.
 
 Demo folders:
@@ -18,3 +18,14 @@ Convenience scripts:
 - `utils/refresh-full.sh` / `utils/watch-full.sh`
 - `utils/serve-demo.sh <ssg|spa|api|full> [base|site] [--host <host>] [--port <port>]`
 - `utils/serve-ssg.sh <base|site>`
+
+Root shortcuts:
+- `bun run watch:spa`
+- `bun run watch:ssg:base`
+- `bun run watch:ssg:site`
+- `bun run watch:api`
+- `bun run watch:full`
+
+Notes:
+- Watch and publish helpers use the Bun orchestrator.
+- Refresh and feature-enable flows still use the legacy .NET CLI because scaffold/init ownership has not moved yet.
