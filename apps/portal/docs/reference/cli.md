@@ -137,7 +137,7 @@ What it does:
 Usage: `webstir backend-inspect [project] [--project <name>]`
 
 ### enable
-Usage: `webstir enable <scripts <page>|spa|client-nav|search|backend>`
+Usage: `webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy>`
 
 What it does:
 - Opts into optional functionality by writing embedded feature scaffolds and updating `package.json` flags under `webstir.enable`.

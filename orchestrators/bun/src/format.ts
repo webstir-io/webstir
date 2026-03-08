@@ -1,3 +1,4 @@
+import type { EnableResult } from './enable.ts';
 import type { CommandExecutionResult } from './types.ts';
 
 export function formatBuildSummary(result: CommandExecutionResult): string {
@@ -6,6 +7,26 @@ export function formatBuildSummary(result: CommandExecutionResult): string {
 
 export function formatPublishSummary(result: CommandExecutionResult): string {
   return formatExecutionSummary(result);
+}
+
+export function formatEnableSummary(result: EnableResult): string {
+  const lines = [
+    '[webstir-bun] enable complete',
+    `feature: ${result.feature}`,
+    `root: ${result.workspaceRoot}`,
+  ];
+
+  if (result.changes.length === 0) {
+    lines.push('changes: none');
+    return lines.join('\n');
+  }
+
+  lines.push(`changes: ${result.changes.length}`);
+  for (const change of result.changes) {
+    lines.push(`  - ${change}`);
+  }
+
+  return lines.join('\n');
 }
 
 function formatExecutionSummary(result: CommandExecutionResult): string {

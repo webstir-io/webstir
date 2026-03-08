@@ -81,7 +81,7 @@ if [[ "${VARIANT}" == "site" ]]; then
   for feature in "${ORDERED_FEATURES[@]}"; do
     (
       cd "${WORKSPACE_ROOT_REFRESH_LIB}"
-      dotnet run --project orchestrators/dotnet/CLI -- enable "${feature}" "${DEMO_DIR}"
+      bun run orchestrate:bun -- enable "${feature}" --workspace "${DEMO_DIR}"
     )
   done
 fi

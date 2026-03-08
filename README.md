@@ -40,5 +40,5 @@ bun run orchestrate:bun -- publish --workspace "$PWD/examples/demos/ssg/site"
 ## Notes
 
 - Published npm package names remain unchanged.
-- `orchestrators/dotnet` still exists for legacy `init` and feature-enable flows, but normal build/publish/watch usage should go through `orchestrators/bun`.
+- `orchestrators/dotnet` still exists for legacy `init` flows, but normal build/publish/watch/enable usage should go through `orchestrators/bun`.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

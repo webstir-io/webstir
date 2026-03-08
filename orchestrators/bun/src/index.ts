@@ -1,6 +1,7 @@
 export * from './build-plan.ts';
 export * from './build.ts';
 export * from './dev-server.ts';
+export * from './enable.ts';
 export * from './execute.ts';
 export * from './format.ts';
 export * from './publish.ts';
