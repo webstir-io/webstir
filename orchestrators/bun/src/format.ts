@@ -1,4 +1,6 @@
 import type { EnableResult } from './enable.ts';
+import type { InitResult } from './init.ts';
+import type { RefreshResult } from './refresh.ts';
 import type { CommandExecutionResult } from './types.ts';
 
 export function formatBuildSummary(result: CommandExecutionResult): string {
@@ -29,6 +31,14 @@ export function formatEnableSummary(result: EnableResult): string {
   return lines.join('\n');
 }
 
+export function formatInitSummary(result: InitResult): string {
+  return formatWorkspaceMutationSummary('[webstir-bun] init complete', result.mode, result.workspaceRoot, result.changes);
+}
+
+export function formatRefreshSummary(result: RefreshResult): string {
+  return formatWorkspaceMutationSummary('[webstir-bun] refresh complete', result.mode, result.workspaceRoot, result.changes);
+}
+
 function formatExecutionSummary(result: CommandExecutionResult): string {
   const lines = [
     `[webstir-bun] ${result.mode} complete`,
@@ -50,6 +60,31 @@ function formatExecutionSummary(result: CommandExecutionResult): string {
         `${target.kind}: ${diagnostics.errors} error(s), ${diagnostics.warnings} warning(s), ${diagnostics.info} info`
       );
     }
+  }
+
+  return lines.join('\n');
+}
+
+function formatWorkspaceMutationSummary(
+  header: string,
+  mode: string,
+  workspaceRoot: string,
+  changes: readonly string[]
+): string {
+  const lines = [
+    header,
+    `mode: ${mode}`,
+    `root: ${workspaceRoot}`,
+  ];
+
+  if (changes.length === 0) {
+    lines.push('changes: none');
+    return lines.join('\n');
+  }
+
+  lines.push(`changes: ${changes.length}`);
+  for (const change of changes) {
+    lines.push(`  - ${change}`);
   }
 
   return lines.join('\n');

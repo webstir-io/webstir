@@ -81,7 +81,11 @@ if [[ "${VARIANT}" == "site" ]]; then
   for feature in "${ORDERED_FEATURES[@]}"; do
     (
       cd "${WORKSPACE_ROOT_REFRESH_LIB}"
-      bun run orchestrate:bun -- enable "${feature}" --workspace "${DEMO_DIR}"
+      if [[ "${feature}" == "gh-deploy" || "${feature}" == "github-pages" || "${feature}" == "gh-pages" ]]; then
+        bun run orchestrate:bun -- enable "${feature}" "${VARIANT}" --workspace "${DEMO_DIR}"
+      else
+        bun run orchestrate:bun -- enable "${feature}" --workspace "${DEMO_DIR}"
+      fi
     )
   done
 fi

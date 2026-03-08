@@ -5,7 +5,9 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { runEnable } from './enable.ts';
-import { formatBuildSummary, formatEnableSummary, formatPublishSummary } from './format.ts';
+import { formatBuildSummary, formatEnableSummary, formatInitSummary, formatPublishSummary, formatRefreshSummary } from './format.ts';
+import { runInit } from './init.ts';
+import { runRefresh } from './refresh.ts';
 import { runBuild } from './build.ts';
 import { runPublish } from './publish.ts';
 import { runWatch } from './watch.ts';
@@ -20,15 +22,20 @@ interface CliIo {
 }
 
 const HELP_TEXT = `Usage:
+  webstir-bun init <mode> <directory>
+  webstir-bun init <directory>
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
+  webstir-bun refresh <mode> --workspace <path>
   webstir-bun watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
+  init       Scaffold a new Webstir workspace.
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
+  refresh    Reset and re-scaffold an existing workspace directory.
   watch      Run the Bun dev loop for a supported Webstir workspace.
 
 Options:
@@ -47,7 +54,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const [command, ...rest] = argv;
-  if (command !== 'build' && command !== 'publish' && command !== 'enable' && command !== 'watch') {
+  if (command !== 'init' && command !== 'build' && command !== 'publish' && command !== 'enable' && command !== 'refresh' && command !== 'watch') {
     io.stderr.write(`Unknown command "${command}".\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -64,13 +71,27 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const workspaceRoot = options.workspaceRoot;
-  if (!workspaceRoot) {
+  if (command !== 'init' && !workspaceRoot) {
     io.stderr.write(`Missing required --workspace <path>.\n\n${HELP_TEXT}`);
     return 1;
   }
 
   try {
-    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+    if (command === 'init') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Init does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runInit({
+        args: options.positionals,
+        workspaceRoot,
+      });
+      io.stdout.write(`${formatInitSummary(result)}\n`);
+      return 0;
+    }
+
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot!);
     if (command === 'build') {
       if (options.positionals.length > 0) {
         io.stderr.write(`Build does not accept positional arguments.\n\n${HELP_TEXT}`);
@@ -103,6 +124,20 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         args: options.positionals,
       });
       io.stdout.write(`${formatEnableSummary(result)}\n`);
+      return 0;
+    }
+
+    if (command === 'refresh') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Refresh does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runRefresh({
+        workspaceRoot: resolvedWorkspaceRoot,
+        args: options.positionals,
+      });
+      io.stdout.write(`${formatRefreshSummary(result)}\n`);
       return 0;
     }
 
