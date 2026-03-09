@@ -1,0 +1,204 @@
+@layer features {
+  #webstir-search {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    top: var(--ws-drawer-top, 0px);
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #webstir-search[data-open="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  #webstir-search[data-open="true"] .ws-drawer-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  body.webstir-search-open {
+    overflow: hidden;
+  }
+
+  .webstir-search__trigger-icon {
+    display: inline-flex;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  .webstir-search__trigger-icon * {
+    pointer-events: none;
+  }
+
+  .webstir-search__drawer {
+    position: relative;
+    background: var(--ws-bg);
+    border-bottom: 1px solid var(--ws-border);
+    box-shadow: 0 1.5rem 3rem -1.5rem rgba(0, 0, 0, 0.28);
+    z-index: 20;
+  }
+
+  .webstir-search__drawer-inner {
+    padding-block: 1.25rem 1.5rem;
+  }
+
+  .webstir-search__field {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-block: 0.25rem;
+  }
+
+  .webstir-search__icon {
+    display: inline-flex;
+    opacity: 0.7;
+  }
+
+  .webstir-search__input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    outline: none;
+    font-size: 1.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0;
+  }
+
+  .webstir-search__input::placeholder {
+    color: var(--ws-muted);
+    opacity: 1;
+  }
+
+  .webstir-search__close {
+    padding: 0.375rem 0.625rem;
+    border-radius: 999px;
+    border: 1px solid var(--ws-border);
+    background: transparent;
+    color: var(--ws-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .webstir-search__close:hover {
+    background: rgba(17, 24, 39, 0.04);
+  }
+
+  [data-theme="dark"] .webstir-search__close:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .webstir-search__scopes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .webstir-search__scopes[hidden] {
+    display: none;
+  }
+
+  .webstir-search__scopes button {
+    padding: 0.375rem 0.625rem;
+    border-radius: 999px;
+    border: 1px solid var(--ws-border);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.875rem;
+  }
+
+  .webstir-search__scopes button[aria-pressed="true"] {
+    background: rgba(37, 99, 235, 0.12);
+    border-color: rgba(37, 99, 235, 0.35);
+  }
+
+  .webstir-search__body {
+    margin-top: 1.25rem;
+    max-height: min(60vh, 36rem);
+    overflow: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .webstir-search__hint {
+    color: var(--ws-muted);
+  }
+
+  .webstir-search__label {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ws-muted);
+  }
+
+  .webstir-search__quicklinks[hidden],
+  .webstir-search__matches[hidden] {
+    display: none;
+  }
+
+  .webstir-search__quicklinks-list,
+  .webstir-search__results-list {
+    margin: 0.5rem 0 0;
+  }
+
+  .webstir-search__quicklinks-list a:focus-visible,
+  .webstir-search__results-list a:focus-visible {
+    outline: 0.1875rem solid var(--ws-focus);
+    outline-offset: 0.125rem;
+  }
+
+  .webstir-search__results-list strong {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+
+  .webstir-search__results-list span {
+    display: block;
+    color: var(--ws-muted);
+    line-height: 1.35;
+  }
+
+  .webstir-search__arrow {
+    opacity: 0.7;
+  }
+
+  .webstir-search__group {
+    margin-top: 0.75rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ws-muted);
+  }
+
+  .webstir-search__empty {
+    padding: 0.5rem 0;
+    color: var(--ws-muted);
+  }
+
+  @media (--ws-sm) {
+    .webstir-search__trigger {
+      order: -1;
+    }
+
+    .webstir-search__drawer-inner {
+      padding-block: 1rem 1.25rem;
+    }
+
+    .webstir-search__input {
+      font-size: 1.375rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #webstir-search {
+      transition: none;
+    }
+  }
+}

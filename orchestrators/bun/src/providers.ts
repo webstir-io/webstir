@@ -3,64 +3,80 @@ import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
 import type { BuildProvider, BuildTargetKind } from './types.ts';
-import { repoRoot } from './paths.ts';
+import { monorepoRoot } from './paths.ts';
 import { resolveRuntimeCommand } from './runtime.ts';
 
-let moduleContractBuildPromise: Promise<void> | null = null;
+let localPackageBuildPromise: Promise<void> | null = null;
 
 export async function loadProvider(kind: BuildTargetKind): Promise<BuildProvider> {
+  await ensureLocalPackageArtifacts();
   if (kind === 'frontend') {
-    return await loadFrontendProvider();
+    const mod = await import('@webstir-io/webstir-frontend') as { frontendProvider: BuildProvider };
+    return mod.frontendProvider;
   }
 
-  await ensureModuleContractArtifacts();
-  return await loadBackendProvider();
-}
-
-async function loadFrontendProvider(): Promise<BuildProvider> {
-  const moduleUrl = new URL('../../../packages/tooling/webstir-frontend/src/provider.ts', import.meta.url);
-  const mod = (await import(moduleUrl.href)) as { frontendProvider: BuildProvider };
-  return mod.frontendProvider;
-}
-
-async function loadBackendProvider(): Promise<BuildProvider> {
-  const moduleUrl = new URL('../../../packages/tooling/webstir-backend/src/provider.ts', import.meta.url);
-  const mod = (await import(moduleUrl.href)) as { backendProvider: BuildProvider };
+  const mod = await import('@webstir-io/webstir-backend') as { backendProvider: BuildProvider };
   return mod.backendProvider;
 }
 
-export async function ensureModuleContractArtifacts(): Promise<void> {
-  const distEntry = path.join(repoRoot, 'packages', 'contracts', 'module-contract', 'dist', 'index.js');
+export async function ensureLocalPackageArtifacts(): Promise<void> {
+  if (!monorepoRoot) {
+    return;
+  }
+
+  const requiredEntries = [
+    path.join(monorepoRoot, 'packages', 'contracts', 'module-contract', 'dist', 'index.js'),
+    path.join(monorepoRoot, 'packages', 'contracts', 'testing-contract', 'dist', 'index.js'),
+    path.join(monorepoRoot, 'packages', 'tooling', 'webstir-frontend', 'dist', 'index.js'),
+    path.join(monorepoRoot, 'packages', 'tooling', 'webstir-frontend', 'dist', 'cli.js'),
+    path.join(monorepoRoot, 'packages', 'tooling', 'webstir-backend', 'dist', 'index.js'),
+    path.join(monorepoRoot, 'packages', 'tooling', 'webstir-backend', 'dist', 'watch.js'),
+    path.join(monorepoRoot, 'packages', 'tooling', 'webstir-testing', 'dist', 'index.js'),
+  ];
 
   try {
-    await access(distEntry);
+    await Promise.all(requiredEntries.map(async (entry) => await access(entry)));
     return;
   } catch {
     // Fall through to the build step.
   }
 
-  if (!moduleContractBuildPromise) {
-    moduleContractBuildPromise = runRuntimeCommand([
-      'run',
-      '--filter',
-      '@webstir-io/module-contract',
-      'build',
-    ]);
+  if (!localPackageBuildPromise) {
+    localPackageBuildPromise = buildLocalPackages();
   }
 
-  await moduleContractBuildPromise;
+  await localPackageBuildPromise;
+}
+
+async function buildLocalPackages(): Promise<void> {
+  const packages = [
+    '@webstir-io/module-contract',
+    '@webstir-io/testing-contract',
+    '@webstir-io/webstir-frontend',
+    '@webstir-io/webstir-backend',
+    '@webstir-io/webstir-testing',
+  ];
+
+  for (const packageName of packages) {
+    await runRuntimeCommand(['run', '--filter', packageName, 'build']);
+  }
 }
 
 async function runRuntimeCommand(args: readonly string[]): Promise<void> {
+  const cwd = monorepoRoot;
+  if (!cwd) {
+    return;
+  }
+
   await new Promise<void>((resolve, reject) => {
     const child = spawn(resolveRuntimeCommand(), args, {
-      cwd: repoRoot,
+      cwd,
       env: process.env,
       stdio: 'inherit',
     });
 
     child.once('error', reject);
-    child.once('close', (code) => {
+    child.once('close', (code: number | null) => {
       if (code === 0) {
         resolve();
         return;

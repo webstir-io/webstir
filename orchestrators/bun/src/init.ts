@@ -1,9 +1,10 @@
 import path from 'node:path';
 import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
-import { repoRoot } from './paths.ts';
+import { monorepoRoot } from './paths.ts';
 import type { WorkspaceMode } from './types.ts';
 
 const PACKAGE_MANAGER = 'bun@1.3.5';
@@ -139,7 +140,11 @@ function parseWorkspaceMode(value: string): WorkspaceMode {
 }
 
 async function isRepoWorkspacePath(workspaceRoot: string): Promise<boolean> {
-  const relative = path.relative(repoRoot, workspaceRoot).replaceAll(path.sep, '/');
+  if (!monorepoRoot) {
+    return false;
+  }
+
+  const relative = path.relative(monorepoRoot, workspaceRoot).replaceAll(path.sep, '/');
   if (!relative || relative.startsWith('..')) {
     return false;
   }
@@ -157,15 +162,9 @@ async function resolveDependencySpecs(workspaceRoot: string): Promise<Record<str
   }
 
   return {
-    '@webstir-io/webstir-frontend': await readPackageVersion(
-      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend', 'package.json')
-    ),
-    '@webstir-io/webstir-backend': await readPackageVersion(
-      path.join(repoRoot, 'packages', 'tooling', 'webstir-backend', 'package.json')
-    ),
-    '@webstir-io/webstir-testing': await readPackageVersion(
-      path.join(repoRoot, 'packages', 'tooling', 'webstir-testing', 'package.json')
-    ),
+    '@webstir-io/webstir-frontend': await readInstalledPackageVersion('@webstir-io/webstir-frontend'),
+    '@webstir-io/webstir-backend': await readInstalledPackageVersion('@webstir-io/webstir-backend'),
+    '@webstir-io/webstir-testing': await readInstalledPackageVersion('@webstir-io/webstir-testing'),
   };
 }
 
@@ -266,7 +265,9 @@ function createBaseTsconfig(mode: WorkspaceMode): Record<string, unknown> {
 }
 
 function resolveDescription(mode: WorkspaceMode, workspaceRoot: string): string {
-  const relative = path.relative(repoRoot, workspaceRoot).replaceAll(path.sep, '/');
+  const relative = monorepoRoot
+    ? path.relative(monorepoRoot, workspaceRoot).replaceAll(path.sep, '/')
+    : '';
   if (relative === 'examples/demos/full') {
     return 'Webstir frontend defaults and tooling';
   }
@@ -275,13 +276,21 @@ function resolveDescription(mode: WorkspaceMode, workspaceRoot: string): string 
 }
 
 function resolvePackageName(workspaceRoot: string): string {
-  const relative = path.relative(repoRoot, workspaceRoot).replaceAll(path.sep, '/');
+  const relative = monorepoRoot
+    ? path.relative(monorepoRoot, workspaceRoot).replaceAll(path.sep, '/')
+    : '';
   const known = getKnownWorkspacePackageName(relative);
   if (known) {
     return known;
   }
 
   return sanitizePackageName(path.basename(workspaceRoot));
+}
+
+async function readInstalledPackageVersion(packageName: string): Promise<string> {
+  const packageJsonUrl = import.meta.resolve(`${packageName}/package.json`);
+  const packageJsonPath = fileURLToPath(packageJsonUrl);
+  return await readPackageVersion(packageJsonPath);
 }
 
 function getKnownWorkspacePackageName(relativePath: string): string | undefined {

@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '../../../packages/contracts/module-contract/src/index.ts';
+import type { ModuleManifest } from '@webstir-io/module-contract';
 import type { WorkspaceDescriptor } from './types.ts';
 
 import { loadProvider } from './providers.ts';

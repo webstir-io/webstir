@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { repoRoot } from './paths.ts';
+import { packageRoot } from './paths.ts';
 
 export type ModuleRuntimeMode = 'build' | 'publish' | 'test';
 
@@ -10,8 +10,8 @@ export function createWorkspaceRuntimeEnv(
   env: Record<string, string | undefined> = process.env
 ): Record<string, string | undefined> {
   const binPaths = [
-    path.join(workspaceRoot, 'node_modules', '.bin'),
-    path.join(repoRoot, 'node_modules', '.bin'),
+    ...collectNodeModuleBins(workspaceRoot),
+    ...collectNodeModuleBins(packageRoot),
     env.PATH,
   ].filter(Boolean);
 
@@ -28,4 +28,21 @@ export function resolveRuntimeCommand(): string {
   }
 
   return 'bun';
+}
+
+function collectNodeModuleBins(startPath: string): string[] {
+  const paths: string[] = [];
+  let current = path.resolve(startPath);
+
+  while (true) {
+    paths.push(path.join(current, 'node_modules', '.bin'));
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+
+    current = parent;
+  }
+
+  return paths;
 }

@@ -21,8 +21,8 @@ function fail(message) {
 function usage() {
   console.error(`Usage: release-package.mjs <patch|minor|major|x.y.z> [--no-push] [--package-dir <dir>]
 
-Runs the canonical monorepo package release helper for one package under packages/**.
-The helper bumps the version, syncs the embedded framework snapshot, runs clean/build/test/smoke,
+Runs the canonical monorepo package release helper for one configured publishable package.
+The helper bumps the version, syncs any embedded framework snapshot when present, runs clean/build/test/smoke,
 creates a package-scoped release commit and tag, and optionally pushes both upstream.`);
   process.exit(1);
 }
@@ -112,7 +112,7 @@ const relativePackageDir = normalizeRelativePath(path.relative(repoRoot, options
 const frameworkPackage = getFrameworkPackageByCanonicalDir(relativePackageDir);
 
 if (!frameworkPackage) {
-  fail(`"${relativePackageDir}" is not a canonical release package under packages/**`);
+  fail(`"${relativePackageDir}" is not a configured release package in the monorepo`);
 }
 
 ensureCleanGit();
@@ -129,8 +129,10 @@ run('npm', ['version', options.bump, '--no-git-tag-version'], options.packageDir
 const packageJson = readPackageJson(options.packageDir);
 const releaseTag = getFrameworkReleaseTag(frameworkPackage, packageJson.version);
 
-console.log('› node tools/sync-framework-embedded.mjs');
-run('node', ['tools/sync-framework-embedded.mjs', '--package-dir', relativePackageDir], repoRoot);
+if (frameworkPackage.embeddedDir) {
+  console.log('› node tools/sync-framework-embedded.mjs');
+  run('node', ['tools/sync-framework-embedded.mjs', '--package-dir', relativePackageDir], repoRoot);
+}
 
 for (const scriptName of ['clean', 'build', 'test', 'smoke']) {
   if (!hasScript(packageJson, scriptName)) {

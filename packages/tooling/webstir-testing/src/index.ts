@@ -1,6 +1,12 @@
 export { test, run } from './runtime.js';
 export { assert, AssertionError, equal, fail, isTrue } from './assert.js';
 export { runAddTest } from './add.js';
+export {
+  applyRuntimeFilter,
+  describeRuntimeFilter,
+  normalizeRuntimeFilter,
+} from './runtime-filter.js';
+export type { RuntimeFilter } from './runtime-filter.js';
 export type {
   RunnerEvent,
   RunnerSummary,

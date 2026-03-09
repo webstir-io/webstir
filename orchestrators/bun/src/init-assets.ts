@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { readdir } from 'node:fs/promises';
 
-import { repoRoot } from './paths.ts';
+import { assetsRoot } from './paths.ts';
 import type { WorkspaceMode } from './types.ts';
 
 export interface ScaffoldAsset {
@@ -9,11 +9,12 @@ export interface ScaffoldAsset {
   readonly targetPath: string;
 }
 
-const sharedTemplateRoot = path.join(repoRoot, 'examples', 'demos', 'spa');
-const ssgTemplateRoot = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
-const spaTemplateRoot = path.join(repoRoot, 'examples', 'demos', 'spa');
-const apiTemplateRoot = path.join(repoRoot, 'examples', 'demos', 'api');
-const fullTemplateRoot = path.join(repoRoot, 'examples', 'demos', 'full');
+const templatesRoot = path.join(assetsRoot, 'templates');
+const sharedTemplateRoot = path.join(templatesRoot, 'shared');
+const ssgTemplateRoot = path.join(templatesRoot, 'ssg');
+const spaTemplateRoot = path.join(templatesRoot, 'spa');
+const apiTemplateRoot = path.join(templatesRoot, 'api');
+const fullTemplateRoot = path.join(templatesRoot, 'full');
 
 export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
   return [

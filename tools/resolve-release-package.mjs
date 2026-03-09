@@ -65,7 +65,7 @@ if (options.tag) {
   const relativePath = normalizeRelativePath(options.packageDir);
   frameworkPackage = getFrameworkPackageByCanonicalDir(relativePath);
   if (!frameworkPackage) {
-    fail(`"${relativePath}" is not a canonical release package under packages/**`);
+    fail(`"${relativePath}" is not a configured release package in the monorepo`);
   }
 }
 

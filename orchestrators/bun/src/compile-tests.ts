@@ -1,13 +1,12 @@
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { pathToFileURL } from 'node:url';
 
 import ts from 'typescript';
 
-import type { TestModule } from '../../../packages/tooling/webstir-testing/src/types.ts';
-import { repoRoot } from './paths.ts';
+import type { TestModule } from '@webstir-io/webstir-testing';
 
 const TESTING_PACKAGE_SPECIFIER = '@webstir-io/webstir-testing';
+const TESTING_RUNTIME_SPECIFIER = import.meta.resolve(TESTING_PACKAGE_SPECIFIER);
 
 export async function compileTestModules(workspaceRoot: string, modules: readonly TestModule[]): Promise<void> {
   const shimPath = await ensureTestingRuntimeShim(workspaceRoot);
@@ -46,8 +45,7 @@ export async function compileTestModules(workspaceRoot: string, modules: readonl
 
 async function ensureTestingRuntimeShim(workspaceRoot: string): Promise<string> {
   const shimPath = path.join(workspaceRoot, 'build', '.webstir', 'testing-runtime.mjs');
-  const target = pathToFileURL(path.join(repoRoot, 'packages', 'tooling', 'webstir-testing', 'src', 'index.ts')).href;
-  const contents = `export { test, assert } from ${JSON.stringify(target)};\n`;
+  const contents = `export { test, assert } from ${JSON.stringify(TESTING_RUNTIME_SPECIFIER)};\n`;
   await mkdir(path.dirname(shimPath), { recursive: true });
   await writeFile(shimPath, contents, 'utf8');
   return shimPath;

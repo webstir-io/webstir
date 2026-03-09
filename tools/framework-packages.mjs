@@ -82,6 +82,13 @@ export const frameworkPackages = [
     embeddedDir: 'orchestrators/dotnet/Framework/Testing',
     embeddedHelpers: [],
   },
+  {
+    releaseTag: 'webstir',
+    packageName: '@webstir-io/webstir',
+    canonicalDir: 'orchestrators/bun',
+    embeddedDir: null,
+    embeddedHelpers: [],
+  },
 ];
 
 export function getRepoRoot(metaUrl) {
@@ -103,7 +110,11 @@ export function getFrameworkPackageByPackageName(packageName) {
 
 export function getFrameworkPackageByEmbeddedDir(relativePath) {
   const normalizedPath = normalizeRelativePath(relativePath);
-  return frameworkPackages.find((pkg) => pkg.embeddedDir === normalizedPath) ?? null;
+  return frameworkPackages.find((pkg) => pkg.embeddedDir && pkg.embeddedDir === normalizedPath) ?? null;
+}
+
+export function hasEmbeddedSnapshot(pkg) {
+  return typeof pkg.embeddedDir === 'string' && pkg.embeddedDir.length > 0;
 }
 
 export function parseFrameworkReleaseTag(tagName) {
@@ -127,6 +138,10 @@ export function getFrameworkReleaseTag(pkg, version) {
 }
 
 export function getEmbeddedManagedPaths(pkg) {
+  if (!hasEmbeddedSnapshot(pkg)) {
+    return [];
+  }
+
   return [
     `${pkg.embeddedDir}/package.json`,
     ...pkg.embeddedHelpers.map((helper) => `${pkg.embeddedDir}/${helper.relativePath}`),

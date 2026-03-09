@@ -5,8 +5,9 @@ import { cp, mkdtemp, rm } from 'node:fs/promises';
 import type { WorkspaceDescriptor } from './types.ts';
 
 import { runBackendInspect, type BackendInspectResult } from './backend-inspect.ts';
-import { repoRoot } from './paths.ts';
+import { monorepoRoot } from './paths.ts';
 import { runBuild, type RunBuildOptions } from './build.ts';
+import { scaffoldWorkspace } from './init.ts';
 import { runPublish } from './publish.ts';
 import { runTest, type TestCommandResult } from './test.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
@@ -99,8 +100,8 @@ function createSmokeEnv(
     return env;
   }
 
-  const relativeToRepo = path.relative(repoRoot, workspaceRoot);
-  const isExternalWorkspace = relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo);
+  const relativeToRepo = monorepoRoot ? path.relative(monorepoRoot, workspaceRoot) : '../external';
+  const isExternalWorkspace = !monorepoRoot || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo);
   if (!isExternalWorkspace) {
     return env;
   }
@@ -124,16 +125,24 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
     };
   }
 
-  const sourceRoot = path.join(repoRoot, 'examples', 'demos', 'full');
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-smoke-'));
   const tempWorkspace = path.join(tempRoot, 'full');
-  await cp(sourceRoot, tempWorkspace, { recursive: true });
+  let source: string | undefined;
+
+  if (monorepoRoot) {
+    const sourceRoot = path.join(monorepoRoot, 'examples', 'demos', 'full');
+    await cp(sourceRoot, tempWorkspace, { recursive: true });
+    source = sourceRoot;
+  } else {
+    await scaffoldWorkspace('full', tempWorkspace, { force: true });
+    source = 'built-in full template';
+  }
 
   return {
     workspaceRoot: tempWorkspace,
     cleanupRoot: tempRoot,
     usedTempWorkspace: true,
-    source: sourceRoot,
+    source,
   };
 }
 

@@ -2,8 +2,8 @@ import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-import { runAddPage } from '../../../packages/tooling/webstir-frontend/src/operations.ts';
-import { runAddTest } from '../../../packages/tooling/webstir-testing/src/add.ts';
+import { runAddPage } from '@webstir-io/webstir-frontend';
+import { runAddTest } from '@webstir-io/webstir-testing';
 
 export interface RunAddPageOptions {
   readonly workspaceRoot: string;

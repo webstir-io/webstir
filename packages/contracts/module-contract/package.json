@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/module-contract",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Public contract definitions for Webstir frontend and backend module providers.",
   "type": "module",
   "main": "dist/index.js",
@@ -49,20 +49,12 @@
   },
   "author": "Webstir",
   "dependencies": {
+    "@ts-rest/core": "^3.40.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.19.21",
-    "@ts-rest/core": "^3.40.0",
     "typescript": "^5.7.2",
     "zod-to-json-schema": "^3.23.3"
-  },
-  "peerDependencies": {
-    "@ts-rest/core": "^3.40.0"
-  },
-  "peerDependenciesMeta": {
-    "@ts-rest/core": {
-      "optional": true
-    }
   }
 }
