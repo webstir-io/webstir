@@ -2,6 +2,8 @@ import type { EnableResult } from './enable.ts';
 import type { InitResult } from './init.ts';
 import type { RefreshResult } from './refresh.ts';
 import type { BackendInspectResult } from './backend-inspect.ts';
+import type { TestCommandResult } from './test.ts';
+import { formatFailedTests } from './test.ts';
 import type { CommandExecutionResult } from './types.ts';
 
 export function formatBuildSummary(result: CommandExecutionResult): string {
@@ -68,6 +70,36 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
       job.priority !== undefined ? `priority: ${String(job.priority)}` : undefined,
     ].filter(Boolean);
     lines.push(`  - ${job.name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatTestSummary(result: TestCommandResult): string {
+  const lines = [
+    '[webstir-bun] test complete',
+    `workspace: ${result.workspace.name}`,
+    `mode: ${result.workspace.mode}`,
+    `root: ${result.workspace.root}`,
+    `runtime: ${result.runtime}`,
+    `build-targets: ${result.builtTargets.length > 0 ? result.builtTargets.join(', ') : 'none'}`,
+  ];
+
+  if (result.filterMessage) {
+    lines.push(`filter: ${result.filterMessage}`);
+  }
+
+  lines.push(`tests: ${result.summary.total}`);
+  lines.push(`passed: ${result.summary.passed}`);
+  lines.push(`failed: ${result.summary.failed}`);
+  lines.push(`durationMs: ${result.summary.durationMs}`);
+
+  const failures = formatFailedTests(result.summary.results);
+  if (failures.length > 0) {
+    lines.push(`failures: ${failures.length}`);
+    for (const failure of failures) {
+      lines.push(`  - ${failure}`);
+    }
   }
 
   return lines.join('\n');

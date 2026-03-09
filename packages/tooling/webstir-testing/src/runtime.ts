@@ -209,13 +209,19 @@ async function evaluateEsmModule(file: string): Promise<string | null> {
 }
 
 function isEsModuleSyntaxError(error: unknown): boolean {
-  if (!(error instanceof SyntaxError) || typeof error.message !== 'string') {
+  const name = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name?: unknown }).name) : '';
+  const message = typeof error === 'object' && error !== null && 'message' in error
+    ? String((error as { message?: unknown }).message)
+    : '';
+
+  if (name !== 'SyntaxError' || message.length === 0) {
     return false;
   }
 
-  return error.message.includes('Cannot use import statement outside a module')
-    || error.message.includes('Unexpected token')
-    || error.message.includes('export');
+  return message.includes('Cannot use import statement outside a module')
+    || message.includes('Unexpected token')
+    || message.includes('export')
+    || message.includes('import call expects one or two arguments');
 }
 
 async function runSingleTest(testCase: RegisteredTest): Promise<{ passed: boolean; message: string | null; durationMs: number; }> {
