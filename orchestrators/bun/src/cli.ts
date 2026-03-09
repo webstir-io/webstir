@@ -16,11 +16,13 @@ import {
   formatInitSummary,
   formatPublishSummary,
   formatRefreshSummary,
+  formatTestSummary,
 } from './format.ts';
 import { runInit } from './init.ts';
 import { runRefresh } from './refresh.ts';
 import { runBuild } from './build.ts';
 import { runPublish } from './publish.ts';
+import { runTest } from './test.ts';
 import { runWatch } from './watch.ts';
 
 interface CliStream {
@@ -40,6 +42,7 @@ const HELP_TEXT = `Usage:
   webstir-bun add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify]
   webstir-bun add-job <name> --workspace <path> [--schedule <expression>]
   webstir-bun backend-inspect --workspace <path>
+  webstir-bun test --workspace <path> [--runtime <frontend|backend|all>]
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
@@ -53,6 +56,7 @@ Commands:
   add-route  Scaffold a backend route in an existing workspace.
   add-job    Scaffold a backend job in an existing workspace.
   backend-inspect  Inspect the backend manifest for an existing workspace.
+  test       Build and run workspace tests with the Bun orchestrator.
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
@@ -82,6 +86,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     && command !== 'add-route'
     && command !== 'add-job'
     && command !== 'backend-inspect'
+    && command !== 'test'
     && command !== 'build'
     && command !== 'publish'
     && command !== 'enable'
@@ -207,6 +212,20 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       });
       io.stdout.write(`${formatBackendInspectSummary(result)}\n`);
       return 0;
+    }
+
+    if (command === 'test') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Test does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runTest({
+        workspaceRoot: resolvedWorkspaceRoot,
+        rawArgs: options.rawArgs,
+      });
+      io.stdout.write(`${formatTestSummary(result)}\n`);
+      return result.hadFailures ? 1 : 0;
     }
 
     if (command === 'build') {
@@ -370,6 +389,30 @@ function parseCommandOptions(
 
       port = parsedPort;
       index += 1;
+      continue;
+    }
+
+    if (arg === '--runtime' || arg === '-r') {
+      const next = args[index + 1];
+      if (!next || next.startsWith('-')) {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          verbose,
+          hmrVerbose,
+          positionals,
+          rawArgs: args,
+          help: false,
+          error: 'Missing value for --runtime.',
+        };
+      }
+
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--runtime=')) {
       continue;
     }
 

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { repoRoot } from './paths.ts';
 
-export type ModuleRuntimeMode = 'build' | 'publish';
+export type ModuleRuntimeMode = 'build' | 'publish' | 'test';
 
 export function createWorkspaceRuntimeEnv(
   workspaceRoot: string,
