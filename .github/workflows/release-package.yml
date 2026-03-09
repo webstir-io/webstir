@@ -11,12 +11,12 @@ on:
         required: true
         type: choice
         options:
-          - packages/contracts/module-contract
-          - packages/contracts/testing-contract
-          - packages/tooling/webstir-backend
-          - packages/tooling/webstir-frontend
-          - packages/tooling/webstir-testing
-          - orchestrators/bun
+          - @webstir-io/module-contract
+          - @webstir-io/testing-contract
+          - @webstir-io/webstir-backend
+          - @webstir-io/webstir-frontend
+          - @webstir-io/webstir-testing
+          - @webstir-io/webstir
 
 permissions:
   contents: read
@@ -46,7 +46,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
             node tools/resolve-release-package.mjs --tag "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
-            node tools/resolve-release-package.mjs --package-dir "${{ inputs.package }}" >> "$GITHUB_OUTPUT"
+            node tools/resolve-release-package.mjs --package-name "${{ inputs.package }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up npm

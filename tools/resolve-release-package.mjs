@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
   getFrameworkPackageByCanonicalDir,
+  getFrameworkPackageByPackageName,
   getFrameworkReleaseTag,
   getRepoRoot,
   normalizeRelativePath,
@@ -24,12 +25,19 @@ function readPackageJson(relativeDir) {
 
 function parseArgs(argv) {
   let packageDir = '';
+  let packageName = '';
   let tag = '';
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--package-dir') {
       packageDir = argv[index + 1] ?? '';
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--package-name') {
+      packageName = argv[index + 1] ?? '';
       index += 1;
       continue;
     }
@@ -41,11 +49,11 @@ function parseArgs(argv) {
     }
   }
 
-  if (!packageDir && !tag) {
-    fail('expected --package-dir or --tag');
+  if (!packageDir && !packageName && !tag) {
+    fail('expected --package-dir, --package-name, or --tag');
   }
 
-  return { packageDir, tag };
+  return { packageDir, packageName, tag };
 }
 
 const options = parseArgs(process.argv.slice(2));
@@ -62,10 +70,17 @@ if (options.tag) {
   frameworkPackage = parsed.package;
   expectedVersion = parsed.version;
 } else {
-  const relativePath = normalizeRelativePath(options.packageDir);
-  frameworkPackage = getFrameworkPackageByCanonicalDir(relativePath);
-  if (!frameworkPackage) {
-    fail(`"${relativePath}" is not a configured release package in the monorepo`);
+  if (options.packageName) {
+    frameworkPackage = getFrameworkPackageByPackageName(options.packageName);
+    if (!frameworkPackage) {
+      fail(`"${options.packageName}" is not a configured release package in the monorepo`);
+    }
+  } else {
+    const relativePath = normalizeRelativePath(options.packageDir);
+    frameworkPackage = getFrameworkPackageByCanonicalDir(relativePath);
+    if (!frameworkPackage) {
+      fail(`"${relativePath}" is not a configured release package in the monorepo`);
+    }
   }
 }
 

@@ -62,8 +62,17 @@ test('resolve-release-package resolves canonical package metadata', () => {
   assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
 });
 
+test('resolve-release-package resolves package metadata by package name', () => {
+  const result = runNode('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir-backend'], repoRoot);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
+  assert.match(result.stdout, /package_name=@webstir-io\/webstir-backend/);
+  assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
+});
+
 test('resolve-release-package resolves orchestrator package metadata', () => {
-  const result = runNode('tools/resolve-release-package.mjs', ['--package-dir', 'orchestrators/bun'], repoRoot);
+  const result = runNode('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir'], repoRoot);
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=orchestrators\/bun/);
