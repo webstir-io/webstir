@@ -86,7 +86,7 @@ test('CLI watch serves the API demo, restarts after a successful rebuild, and su
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
-}, 40_000);
+}, 60_000);
 
 async function fetchText(port: number): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}/`);

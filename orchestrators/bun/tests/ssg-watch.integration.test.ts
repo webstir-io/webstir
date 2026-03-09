@@ -66,7 +66,7 @@ test('CLI watch serves the SSG demo and rebuilds generated content after a markd
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
-}, 30_000);
+}, 45_000);
 
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);

@@ -2,6 +2,7 @@ import type { EnableResult } from './enable.ts';
 import type { InitResult } from './init.ts';
 import type { RefreshResult } from './refresh.ts';
 import type { BackendInspectResult } from './backend-inspect.ts';
+import type { SmokeResult } from './smoke.ts';
 import type { TestCommandResult } from './test.ts';
 import { formatFailedTests } from './test.ts';
 import type { CommandExecutionResult } from './types.ts';
@@ -100,6 +101,27 @@ export function formatTestSummary(result: TestCommandResult): string {
     for (const failure of failures) {
       lines.push(`  - ${failure}`);
     }
+  }
+
+  return lines.join('\n');
+}
+
+export function formatSmokeSummary(result: SmokeResult): string {
+  const lines = [
+    '[webstir-bun] smoke complete',
+    `workspace: ${result.workspace.name}`,
+    `mode: ${result.workspace.mode}`,
+    `root: ${result.workspace.root}`,
+    `workspace-source: ${result.usedTempWorkspace ? 'temporary copy' : 'explicit workspace'}`,
+  ];
+
+  if (result.source) {
+    lines.push(`source: ${result.source}`);
+  }
+
+  lines.push(`phases: ${result.phases.length}`);
+  for (const phase of result.phases) {
+    lines.push(`  - ${phase.name}: ${phase.detail}`);
   }
 
   return lines.join('\n');
