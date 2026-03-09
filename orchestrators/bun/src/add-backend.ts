@@ -1,6 +1,6 @@
 import type { AddCommandResult } from './add.ts';
 
-import { runAddJob, runAddRoute } from '../../../packages/tooling/webstir-backend/src/add.ts';
+import { runAddJob, runAddRoute } from '@webstir-io/webstir-backend';
 
 export interface RunAddBackendOptions {
   readonly workspaceRoot: string;

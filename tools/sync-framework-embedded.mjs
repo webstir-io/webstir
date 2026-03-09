@@ -6,6 +6,7 @@ import {
   frameworkPackages,
   getFrameworkPackageByCanonicalDir,
   getRepoRoot,
+  hasEmbeddedSnapshot,
   isManagedEmbeddedContentPath,
   normalizeRelativePath,
   publicManifestFields,
@@ -23,7 +24,7 @@ function usage() {
   console.error(`Usage: sync-framework-embedded.mjs [--package-dir <dir>] [--dry-run] [--check]
 
 Syncs embedded orchestrator package snapshots from the canonical packages under
-packages/**, including managed manifest fields, helper stubs, and overlapping
+configured release packages with embedded snapshots, including managed manifest fields, helper stubs, and overlapping
 managed source/template files.`);
   process.exit(1);
 }
@@ -200,10 +201,17 @@ if (options.packageDir) {
   const normalizedPath = normalizeRelativePath(options.packageDir);
   const selectedPackage = getFrameworkPackageByCanonicalDir(normalizedPath);
   if (!selectedPackage) {
-    fail(`"${normalizedPath}" is not a canonical package directory under packages/**`);
+    fail(`"${normalizedPath}" is not a configured release package in the monorepo`);
   }
 
   selectedPackages = [selectedPackage];
+}
+
+selectedPackages = selectedPackages.filter(hasEmbeddedSnapshot);
+
+if (selectedPackages.length === 0) {
+  console.log('[sync-framework-embedded] No embedded framework snapshots selected.');
+  process.exit(0);
 }
 
 const changedPaths = [];

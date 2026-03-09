@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface, type Interface as ReadLineInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
 
-import { repoRoot } from './paths.ts';
 import { createWorkspaceRuntimeEnv, resolveRuntimeCommand } from './runtime.ts';
 import { parseStructuredDiagnosticLine, type StructuredDiagnosticPayload } from './watch-events.ts';
+import { ensureLocalPackageArtifacts } from './providers.ts';
 
 type WatchDaemonCommand =
   | { readonly type: 'start' }
@@ -51,8 +52,10 @@ export class FrontendWatchDaemonClient {
       return;
     }
 
+    await ensureLocalPackageArtifacts();
+    const frontendCliPath = fileURLToPath(import.meta.resolve('@webstir-io/webstir-frontend/cli'));
     const args = [
-      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend', 'src', 'cli.ts'),
+      frontendCliPath,
       'watch-daemon',
       '--workspace',
       this.workspaceRoot,
@@ -68,7 +71,7 @@ export class FrontendWatchDaemonClient {
     }
 
     const child = spawn(resolveRuntimeCommand(), args, {
-      cwd: repoRoot,
+      cwd: this.workspaceRoot,
       env: createWorkspaceRuntimeEnv(this.workspaceRoot, 'build', this.env),
       stdio: 'pipe',
     });

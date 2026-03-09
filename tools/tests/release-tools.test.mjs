@@ -62,6 +62,15 @@ test('resolve-release-package resolves canonical package metadata', () => {
   assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
 });
 
+test('resolve-release-package resolves orchestrator package metadata', () => {
+  const result = runNode('tools/resolve-release-package.mjs', ['--package-dir', 'orchestrators/bun'], repoRoot);
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /package_dir=orchestrators\/bun/);
+  assert.match(result.stdout, /package_name=@webstir-io\/webstir/);
+  assert.match(result.stdout, /release_tag=release\/webstir\/v/);
+});
+
 test('publishable package manifests use concrete internal dependency ranges', () => {
   const cases = [
     {
@@ -78,6 +87,11 @@ test('publishable package manifests use concrete internal dependency ranges', ()
       packageJsonPath: 'packages/tooling/webstir-testing/package.json',
       dependencyName: '@webstir-io/testing-contract',
       expectedRange: '^0.1.7',
+    },
+    {
+      packageJsonPath: 'orchestrators/bun/package.json',
+      dependencyName: '@webstir-io/module-contract',
+      expectedRange: '^0.1.15',
     },
   ];
 

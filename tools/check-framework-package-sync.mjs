@@ -5,6 +5,7 @@ import path from 'node:path';
 import {
   frameworkPackages,
   getRepoRoot,
+  hasEmbeddedSnapshot,
   isManagedEmbeddedContentPath,
   publicManifestFields,
   renderEmbeddedHelperScript,
@@ -53,6 +54,10 @@ function stableSerialize(value) {
 const mismatches = [];
 
 for (const pkg of frameworkPackages) {
+  if (!hasEmbeddedSnapshot(pkg)) {
+    continue;
+  }
+
   const canonicalPackage = readPackageJson(`${pkg.canonicalDir}/package.json`);
   const embeddedPackage = readPackageJson(`${pkg.embeddedDir}/package.json`);
 

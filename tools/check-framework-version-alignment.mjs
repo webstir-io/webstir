@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { frameworkPackages, getRepoRoot } from './framework-packages.mjs';
+import { frameworkPackages, getRepoRoot, hasEmbeddedSnapshot } from './framework-packages.mjs';
 
 const rootDir = getRepoRoot(import.meta.url);
 
@@ -14,6 +14,10 @@ function readPackageJson(relativePath) {
 const mismatches = [];
 
 for (const pkg of frameworkPackages) {
+  if (!hasEmbeddedSnapshot(pkg)) {
+    continue;
+  }
+
   const canonicalPath = `${pkg.canonicalDir}/package.json`;
   const embeddedPath = `${pkg.embeddedDir}/package.json`;
   const canonicalPkg = readPackageJson(canonicalPath);

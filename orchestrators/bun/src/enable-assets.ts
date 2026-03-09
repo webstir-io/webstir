@@ -1,8 +1,8 @@
 import path from 'node:path';
 
-import { repoRoot } from './paths.ts';
+import { assetsRoot } from './paths.ts';
 
-const dotnetFeaturesRoot = path.join(repoRoot, 'orchestrators', 'dotnet', 'Engine', 'Resources', 'features');
+const featuresRoot = path.join(assetsRoot, 'features');
 
 export interface StaticFeatureAsset {
   readonly sourcePath: string;
@@ -14,12 +14,12 @@ export interface StaticFeatureAsset {
 export function getSpaAssets(): readonly StaticFeatureAsset[] {
   return [
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'router', 'router.ts'),
+      sourcePath: path.join(featuresRoot, 'router', 'router.ts'),
       targetPath: path.join('src', 'frontend', 'app', 'router.ts'),
       overwrite: true,
     },
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'router', 'router-types.ts'),
+      sourcePath: path.join(featuresRoot, 'router', 'router-types.ts'),
       targetPath: path.join('src', 'frontend', 'app', 'router-types.ts'),
       overwrite: true,
     },
@@ -29,7 +29,7 @@ export function getSpaAssets(): readonly StaticFeatureAsset[] {
 export function getClientNavAssets(): readonly StaticFeatureAsset[] {
   return [
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'client_nav', 'client_nav.ts'),
+      sourcePath: path.join(featuresRoot, 'client_nav', 'client_nav.ts'),
       targetPath: path.join('src', 'frontend', 'app', 'scripts', 'features', 'client-nav.ts'),
       overwrite: true,
     },
@@ -39,12 +39,12 @@ export function getClientNavAssets(): readonly StaticFeatureAsset[] {
 export function getSearchAssets(): readonly StaticFeatureAsset[] {
   return [
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'search', 'search.ts'),
+      sourcePath: path.join(featuresRoot, 'search', 'search.ts'),
       targetPath: path.join('src', 'frontend', 'app', 'scripts', 'features', 'search.ts'),
       overwrite: true,
     },
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'search', 'search.css'),
+      sourcePath: path.join(featuresRoot, 'search', 'search.css'),
       targetPath: path.join('src', 'frontend', 'app', 'styles', 'features', 'search.css'),
       overwrite: true,
     },
@@ -54,12 +54,12 @@ export function getSearchAssets(): readonly StaticFeatureAsset[] {
 export function getContentNavAssets(): readonly StaticFeatureAsset[] {
   return [
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'content_nav', 'content_nav.ts'),
+      sourcePath: path.join(featuresRoot, 'content_nav', 'content_nav.ts'),
       targetPath: path.join('src', 'frontend', 'app', 'scripts', 'features', 'content-nav.ts'),
       overwrite: true,
     },
     {
-      sourcePath: path.join(dotnetFeaturesRoot, 'content_nav', 'content_nav.css'),
+      sourcePath: path.join(featuresRoot, 'content_nav', 'content_nav.css'),
       targetPath: path.join('src', 'frontend', 'app', 'styles', 'features', 'content-nav.css'),
       overwrite: true,
     },

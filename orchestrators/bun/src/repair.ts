@@ -2,7 +2,7 @@ import path from 'node:path';
 import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-import { getBackendScaffoldAssets } from '../../../packages/tooling/webstir-backend/src/scaffold/assets.ts';
+import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import {
   getClientNavAssets,

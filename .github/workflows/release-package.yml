@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       package:
-        description: Canonical package to publish
+        description: Package to publish
         required: true
         type: choice
         options:
@@ -16,6 +16,7 @@ on:
           - packages/tooling/webstir-backend
           - packages/tooling/webstir-frontend
           - packages/tooling/webstir-testing
+          - orchestrators/bun
 
 permissions:
   contents: read

@@ -1,22 +1,21 @@
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 
-import type { ModuleManifest } from '../../../packages/contracts/module-contract/src/index.ts';
-import type { TestModule, RunnerSummary, TestRunResult } from '../../../packages/tooling/webstir-testing/src/types.ts';
+import type { ModuleManifest } from '@webstir-io/module-contract';
+import type { TestModule, RunnerSummary, TestRunResult, RuntimeFilter } from '@webstir-io/webstir-testing';
 import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
 import { compileTestModules } from './compile-tests.ts';
 import { loadProvider } from './providers.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
-import { createDefaultProviderRegistry } from '../../../packages/tooling/webstir-testing/src/providers.ts';
 import {
   applyRuntimeFilter,
   describeRuntimeFilter,
   normalizeRuntimeFilter,
-  type RuntimeFilter,
-} from '../../../packages/tooling/webstir-testing/src/runtime-filter.ts';
-import { discoverTestManifest } from '../../../packages/tooling/webstir-testing/src/discovery.ts';
+  createDefaultProviderRegistry,
+  discoverTestManifest,
+} from '@webstir-io/webstir-testing';
 
 export interface RunTestOptions {
   readonly workspaceRoot: string;

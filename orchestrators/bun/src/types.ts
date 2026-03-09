@@ -1,7 +1,7 @@
 import type {
   ModuleBuildResult,
   ModuleProvider,
-} from '../../../packages/contracts/module-contract/src/index.ts';
+} from '@webstir-io/module-contract';
 
 export const SUPPORTED_WORKSPACE_MODES = ['spa', 'ssg', 'api', 'full'] as const;
 
