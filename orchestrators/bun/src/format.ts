@@ -1,6 +1,7 @@
 import type { EnableResult } from './enable.ts';
 import type { InitResult } from './init.ts';
 import type { RefreshResult } from './refresh.ts';
+import type { BackendInspectResult } from './backend-inspect.ts';
 import type { CommandExecutionResult } from './types.ts';
 
 export function formatBuildSummary(result: CommandExecutionResult): string {
@@ -37,6 +38,39 @@ export function formatInitSummary(result: InitResult): string {
 
 export function formatRefreshSummary(result: RefreshResult): string {
   return formatWorkspaceMutationSummary('[webstir-bun] refresh complete', result.mode, result.workspaceRoot, result.changes);
+}
+
+export function formatBackendInspectSummary(result: BackendInspectResult): string {
+  const lines = [
+    '[webstir-bun] backend-inspect complete',
+    `workspace: ${result.workspace.name}`,
+    `mode: ${result.workspace.mode}`,
+    `root: ${result.workspace.root}`,
+    `build: ${result.buildRoot}`,
+    `module: ${result.manifest.name}@${result.manifest.version}`,
+    `capabilities: ${result.manifest.capabilities && result.manifest.capabilities.length > 0 ? result.manifest.capabilities.join(', ') : 'none'}`,
+  ];
+
+  const routes = result.manifest.routes ?? [];
+  lines.push(`routes: ${routes.length}`);
+  for (const route of routes) {
+    lines.push(`  - ${route.method} ${route.path}${route.name ? ` (${route.name})` : ''}`);
+  }
+
+  const jobs = result.manifest.jobs ?? [];
+  lines.push(`jobs: ${jobs.length}`);
+  for (const job of jobs) {
+    const details = [
+      job.schedule ? `schedule: ${job.schedule}` : undefined,
+      'description' in job && typeof (job as { description?: unknown }).description === 'string'
+        ? `description: ${(job as { description?: string }).description}`
+        : undefined,
+      job.priority !== undefined ? `priority: ${String(job.priority)}` : undefined,
+    ].filter(Boolean);
+    lines.push(`  - ${job.name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`);
+  }
+
+  return lines.join('\n');
 }
 
 export function formatAddSummary(

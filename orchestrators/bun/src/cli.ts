@@ -6,9 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 import { runAddPageCommand, runAddTestCommand } from './add.ts';
 import { runAddJobCommand, runAddRouteCommand } from './add-backend.ts';
+import { runBackendInspect } from './backend-inspect.ts';
 import { runEnable } from './enable.ts';
 import {
   formatAddSummary,
+  formatBackendInspectSummary,
   formatBuildSummary,
   formatEnableSummary,
   formatInitSummary,
@@ -37,6 +39,7 @@ const HELP_TEXT = `Usage:
   webstir-bun add-test <name-or-path> --workspace <path>
   webstir-bun add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify]
   webstir-bun add-job <name> --workspace <path> [--schedule <expression>]
+  webstir-bun backend-inspect --workspace <path>
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
@@ -49,6 +52,7 @@ Commands:
   add-test   Scaffold a test file in an existing workspace.
   add-route  Scaffold a backend route in an existing workspace.
   add-job    Scaffold a backend job in an existing workspace.
+  backend-inspect  Inspect the backend manifest for an existing workspace.
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
@@ -77,6 +81,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     && command !== 'add-test'
     && command !== 'add-route'
     && command !== 'add-job'
+    && command !== 'backend-inspect'
     && command !== 'build'
     && command !== 'publish'
     && command !== 'enable'
@@ -183,6 +188,24 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       io.stdout.write(
         `${formatAddSummary('[webstir-bun] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
       );
+      return 0;
+    }
+
+    if (command === 'backend-inspect') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Backend-inspect does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Backend-inspect does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runBackendInspect({
+        workspaceRoot: resolvedWorkspaceRoot,
+      });
+      io.stdout.write(`${formatBackendInspectSummary(result)}\n`);
       return 0;
     }
 
