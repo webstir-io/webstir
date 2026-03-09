@@ -16,12 +16,14 @@ import {
   formatInitSummary,
   formatPublishSummary,
   formatRefreshSummary,
+  formatSmokeSummary,
   formatTestSummary,
 } from './format.ts';
 import { runInit } from './init.ts';
 import { runRefresh } from './refresh.ts';
 import { runBuild } from './build.ts';
 import { runPublish } from './publish.ts';
+import { runSmoke } from './smoke.ts';
 import { runTest } from './test.ts';
 import { runWatch } from './watch.ts';
 
@@ -43,6 +45,7 @@ const HELP_TEXT = `Usage:
   webstir-bun add-job <name> --workspace <path> [--schedule <expression>]
   webstir-bun backend-inspect --workspace <path>
   webstir-bun test --workspace <path> [--runtime <frontend|backend|all>]
+  webstir-bun smoke [--workspace <path>]
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
@@ -57,6 +60,7 @@ Commands:
   add-job    Scaffold a backend job in an existing workspace.
   backend-inspect  Inspect the backend manifest for an existing workspace.
   test       Build and run workspace tests with the Bun orchestrator.
+  smoke      Run an end-to-end Bun orchestrator verification flow.
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
@@ -87,6 +91,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     && command !== 'add-job'
     && command !== 'backend-inspect'
     && command !== 'test'
+    && command !== 'smoke'
     && command !== 'build'
     && command !== 'publish'
     && command !== 'enable'
@@ -111,7 +116,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const workspaceRoot = options.workspaceRoot;
-  if (command !== 'init' && !workspaceRoot) {
+  if (command !== 'init' && command !== 'smoke' && !workspaceRoot) {
     io.stderr.write(`Missing required --workspace <path>.\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -131,7 +136,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return 0;
     }
 
-    const resolvedWorkspaceRoot = path.resolve(workspaceRoot!);
+    const resolvedWorkspaceRoot = workspaceRoot ? path.resolve(workspaceRoot) : undefined;
     if (command === 'add-page') {
       if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);
@@ -139,7 +144,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runAddPageCommand({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
       });
       io.stdout.write(
@@ -155,7 +160,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runAddTestCommand({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
       });
       io.stdout.write(
@@ -171,7 +176,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runAddRouteCommand({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
       });
       io.stdout.write(
@@ -187,7 +192,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runAddJobCommand({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
       });
       io.stdout.write(
@@ -208,7 +213,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runBackendInspect({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
       });
       io.stdout.write(`${formatBackendInspectSummary(result)}\n`);
       return 0;
@@ -221,11 +226,29 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runTest({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
       });
       io.stdout.write(`${formatTestSummary(result)}\n`);
       return result.hadFailures ? 1 : 0;
+    }
+
+    if (command === 'smoke') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Smoke does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Smoke does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runSmoke({
+        workspaceRoot: resolvedWorkspaceRoot,
+      });
+      io.stdout.write(`${formatSmokeSummary(result)}\n`);
+      return 0;
     }
 
     if (command === 'build') {
@@ -235,7 +258,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runBuild({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
       });
       io.stdout.write(`${formatBuildSummary(result)}\n`);
       return 0;
@@ -248,7 +271,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runPublish({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
       });
       io.stdout.write(`${formatPublishSummary(result)}\n`);
       return 0;
@@ -256,7 +279,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
     if (command === 'enable') {
       const result = await runEnable({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
       });
       io.stdout.write(`${formatEnableSummary(result)}\n`);
@@ -270,7 +293,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const result = await runRefresh({
-        workspaceRoot: resolvedWorkspaceRoot,
+        workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
       });
       io.stdout.write(`${formatRefreshSummary(result)}\n`);
@@ -283,7 +306,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     await runWatch({
-      workspaceRoot: resolvedWorkspaceRoot,
+      workspaceRoot: resolvedWorkspaceRoot!,
       host: options.host,
       port: options.port,
       verbose: options.verbose,

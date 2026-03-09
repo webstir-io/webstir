@@ -11,6 +11,7 @@ export * from './init.ts';
 export * from './publish.ts';
 export * from './refresh.ts';
 export * from './runtime.ts';
+export * from './smoke.ts';
 export * from './test.ts';
 export * from './types.ts';
 export * from './watch-events.ts';
