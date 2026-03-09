@@ -12,7 +12,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-smoke-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-smoke-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -46,7 +46,7 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir-backend] build:start');
-    expect(result.stdout).toContain('[webstir-bun] smoke complete');
+    expect(result.stdout).toContain('[webstir] smoke complete');
     expect(result.stdout).toContain('mode: full');
     expect(result.stdout).toContain('workspace-source: explicit workspace');
     expect(result.stdout).toContain('phases: 4');
@@ -63,7 +63,7 @@ test('CLI smoke defaults to a temporary copy of the full demo', () => {
   const result = runCli(['smoke']);
 
   expect(result.exitCode).toBe(0);
-  expect(result.stdout).toContain('[webstir-bun] smoke complete');
+  expect(result.stdout).toContain('[webstir] smoke complete');
   expect(result.stdout).toContain('mode: full');
   expect(result.stdout).toContain('workspace-source: temporary copy');
   expect(result.stdout).toContain(`source: ${path.join(repoRoot, 'examples', 'demos', 'full')}`);

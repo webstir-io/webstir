@@ -32,4 +32,4 @@ if [[ ! -f "${WORKSPACE_ROOT}/orchestrators/bun/package.json" ]]; then
 fi
 
 cd "${WORKSPACE_ROOT}"
-exec bun run orchestrate:bun -- watch --workspace "${ROOT_DIR}" "$@"
+exec bun run webstir -- watch --workspace "${ROOT_DIR}" "$@"

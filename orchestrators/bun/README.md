@@ -1,6 +1,8 @@
-# webstir-bun
+# webstir
 
 Bun-first orchestrator experiments for the Webstir monorepo.
+
+Primary command name: `webstir`
 
 Current scope:
 
@@ -11,5 +13,5 @@ Current scope:
 Run it from the repo root with:
 
 ```bash
-bun run orchestrate:bun -- build --workspace /absolute/path/to/workspace
+bun run webstir -- build --workspace /absolute/path/to/workspace
 ```

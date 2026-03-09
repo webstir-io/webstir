@@ -18,7 +18,7 @@ export function formatPublishSummary(result: CommandExecutionResult): string {
 
 export function formatEnableSummary(result: EnableResult): string {
   const lines = [
-    '[webstir-bun] enable complete',
+    '[webstir] enable complete',
     `feature: ${result.feature}`,
     `root: ${result.workspaceRoot}`,
   ];
@@ -37,16 +37,16 @@ export function formatEnableSummary(result: EnableResult): string {
 }
 
 export function formatInitSummary(result: InitResult): string {
-  return formatWorkspaceMutationSummary('[webstir-bun] init complete', result.mode, result.workspaceRoot, result.changes);
+  return formatWorkspaceMutationSummary('[webstir] init complete', result.mode, result.workspaceRoot, result.changes);
 }
 
 export function formatRefreshSummary(result: RefreshResult): string {
-  return formatWorkspaceMutationSummary('[webstir-bun] refresh complete', result.mode, result.workspaceRoot, result.changes);
+  return formatWorkspaceMutationSummary('[webstir] refresh complete', result.mode, result.workspaceRoot, result.changes);
 }
 
 export function formatRepairSummary(result: RepairResult): string {
   const lines = [
-    '[webstir-bun] repair complete',
+    '[webstir] repair complete',
     `mode: ${result.mode}`,
     `root: ${result.workspaceRoot}`,
     `dry-run: ${result.dryRun ? 'true' : 'false'}`,
@@ -67,7 +67,7 @@ export function formatRepairSummary(result: RepairResult): string {
 
 export function formatBackendInspectSummary(result: BackendInspectResult): string {
   const lines = [
-    '[webstir-bun] backend-inspect complete',
+    '[webstir] backend-inspect complete',
     `workspace: ${result.workspace.name}`,
     `mode: ${result.workspace.mode}`,
     `root: ${result.workspace.root}`,
@@ -100,7 +100,7 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
 
 export function formatTestSummary(result: TestCommandResult): string {
   const lines = [
-    '[webstir-bun] test complete',
+    '[webstir] test complete',
     `workspace: ${result.workspace.name}`,
     `mode: ${result.workspace.mode}`,
     `root: ${result.workspace.root}`,
@@ -130,7 +130,7 @@ export function formatTestSummary(result: TestCommandResult): string {
 
 export function formatSmokeSummary(result: SmokeResult): string {
   const lines = [
-    '[webstir-bun] smoke complete',
+    '[webstir] smoke complete',
     `workspace: ${result.workspace.name}`,
     `mode: ${result.workspace.mode}`,
     `root: ${result.workspace.root}`,
@@ -184,7 +184,7 @@ export function formatAddSummary(
 
 function formatExecutionSummary(result: CommandExecutionResult): string {
   const lines = [
-    `[webstir-bun] ${result.mode} complete`,
+    `[webstir] ${result.mode} complete`,
     `workspace: ${result.workspace.name}`,
     `mode: ${result.workspace.mode}`,
     `root: ${result.workspace.root}`,

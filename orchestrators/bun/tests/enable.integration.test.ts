@@ -13,7 +13,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-enable-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-enable-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -55,7 +55,7 @@ test('CLI enables search on the SSG demo workspace end to end', async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir-bun] enable complete');
+  expect(result.stdout).toContain('[webstir] enable complete');
   expect(result.stdout).toContain('feature: search');
 
   const packageJson = await readJsonFile(path.join(copiedWorkspace, 'package.json'));

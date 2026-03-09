@@ -157,7 +157,7 @@ jobs:
           bun-version: '1.3.5'
 
       - name: Build static site
-        run: bun run orchestrate:bun -- publish --workspace "$PWD"
+        run: bun run webstir -- publish --workspace "$PWD"
 
       - name: Deploy to GitHub Pages
         run: |
@@ -175,7 +175,7 @@ High-level steps:
 1. Build the static frontend:
 
    ```bash
-   bun run orchestrate:bun -- publish --workspace "$PWD"
+   bun run webstir -- publish --workspace "$PWD"
    ```
 
 2. Sync `dist/frontend/**` to your bucket (example using AWS CLI):

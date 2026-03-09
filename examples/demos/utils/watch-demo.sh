@@ -8,7 +8,7 @@ WORKSPACE_ROOT="$(cd "${DEMOS_ROOT}/../.." && pwd)"
 usage() {
   cat <<'EOF'
 Usage:
-  watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-bun-watch-args...>]
+  watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-watch-args...>]
 
 Examples:
   watch-demo.sh ssg base
@@ -92,4 +92,4 @@ fi
 
 trap restore_stty EXIT
 
-exec bun run orchestrate:bun -- watch --workspace "${DEMO_DIR}" "$@"
+exec bun run webstir -- watch --workspace "${DEMO_DIR}" "$@"

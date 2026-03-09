@@ -1,37 +1,37 @@
 # CLI
 
-Active command reference for the Bun orchestrator. In this monorepo, the supported orchestration path is `webstir-bun`, usually invoked from the repo root as `bun run orchestrate:bun -- <command>`.
+Active command reference for the Bun orchestrator. In this monorepo, the supported orchestration path is `webstir`, usually invoked from the repo root as `bun run webstir -- <command>`.
 
 > Historical note: the archived `.NET` orchestrator remains in-tree under `orchestrators/dotnet`, but it is no longer the active CLI for local development or framework evolution.
 
 ## Overview
-- Primary entrypoint in this repo: `bun run orchestrate:bun -- <command>`
-- Package binary name: `webstir-bun`
+- Primary entrypoint in this repo: `bun run webstir -- <command>`
+- Package binary name: `webstir`
 - Works against a workspace root selected with `--workspace <path>` for all mutating or execution commands except `init` and `smoke`
 - Supports the current workspace modes: `spa`, `ssg`, `api`, and `full`
 
 ## Usage
 
 ```bash
-webstir-bun <command> [options]
-bun run orchestrate:bun -- <command> [options]
+webstir <command> [options]
+bun run webstir -- <command> [options]
 ```
 
 Common patterns:
-- `bun run orchestrate:bun -- init ssg ./docs`
-- `bun run orchestrate:bun -- repair --workspace "$PWD/examples/demos/spa"`
-- `bun run orchestrate:bun -- watch --workspace "$PWD/examples/demos/full"`
-- `bun run orchestrate:bun -- test --workspace "$PWD/examples/demos/spa"`
-- `bun run orchestrate:bun -- publish --workspace "$PWD/examples/demos/ssg/site"`
-- `bun run orchestrate:bun -- add-route accounts --workspace "$PWD/examples/demos/api"`
-- `bun run orchestrate:bun -- smoke`
+- `bun run webstir -- init ssg ./docs`
+- `bun run webstir -- repair --workspace "$PWD/examples/demos/spa"`
+- `bun run webstir -- watch --workspace "$PWD/examples/demos/full"`
+- `bun run webstir -- test --workspace "$PWD/examples/demos/spa"`
+- `bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"`
+- `bun run webstir -- add-route accounts --workspace "$PWD/examples/demos/api"`
+- `bun run webstir -- smoke`
 
 ## Commands
 
 ### init
 Usage:
-- `webstir-bun init <mode> <directory>`
-- `webstir-bun init <directory>`
+- `webstir init <mode> <directory>`
+- `webstir init <directory>`
 
 What it does:
 - Scaffolds a new workspace for `full`, `ssg`, `spa`, or `api`
@@ -43,7 +43,7 @@ Notes:
 - Follow with `watch`, `build`, `test`, or `publish` against the new workspace
 
 ### refresh
-Usage: `webstir-bun refresh <mode> --workspace <path>`
+Usage: `webstir refresh <mode> --workspace <path>`
 
 What it does:
 - Clears and re-scaffolds an existing workspace directory for the selected mode
@@ -54,7 +54,7 @@ Notes:
 - Demo refresh helper scripts in `examples/demos/utils/*.sh` use this Bun path now
 
 ### repair
-Usage: `webstir-bun repair --workspace <path> [--dry-run]`
+Usage: `webstir repair --workspace <path> [--dry-run]`
 
 What it does:
 - Restores missing scaffold-managed files for the current workspace mode
@@ -66,7 +66,7 @@ Notes:
 - This is the Bun-native recovery path when a workspace is missing expected scaffold files but you do not want the full reset behavior of `refresh`
 
 ### enable
-Usage: `webstir-bun enable <feature> [feature-args...] --workspace <path>`
+Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
 
 What it does:
 - Adds optional scaffolded features to an existing workspace
@@ -78,7 +78,7 @@ Notes:
 - Demo feature-enablement flows now use the Bun orchestrator directly
 
 ### build
-Usage: `webstir-bun build --workspace <path>`
+Usage: `webstir build --workspace <path>`
 
 What it does:
 - Builds the selected workspace through the canonical provider packages
@@ -86,7 +86,7 @@ What it does:
 - Produces `build/frontend/**` and/or `build/backend/**` depending on workspace mode
 
 ### publish
-Usage: `webstir-bun publish --workspace <path>`
+Usage: `webstir publish --workspace <path>`
 
 What it does:
 - Produces publish artifacts in `dist/**`
@@ -94,7 +94,7 @@ What it does:
 - Handles the required frontend prebuild for `ssg` and `full` before publish output is finalized
 
 ### watch
-Usage: `webstir-bun watch --workspace <path> [--host <host>] [--port <port>] [--verbose] [--hmr-verbose]`
+Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--verbose] [--hmr-verbose]`
 
 What it does:
 - Starts the Bun dev loop for the selected workspace
@@ -109,7 +109,7 @@ Notes:
 - Full watch composes both paths into one Bun-first full-stack loop
 
 ### test
-Usage: `webstir-bun test --workspace <path> [--runtime <frontend|backend|all>]`
+Usage: `webstir test --workspace <path> [--runtime <frontend|backend|all>]`
 
 What it does:
 - Builds the relevant workspace targets before test execution
@@ -123,7 +123,7 @@ Notes:
 - `all` is the default and runs whatever the workspace mode supports
 
 ### smoke
-Usage: `webstir-bun smoke [--workspace <path>]`
+Usage: `webstir smoke [--workspace <path>]`
 
 What it does:
 - Runs a bounded end-to-end Bun verification flow:
@@ -139,7 +139,7 @@ Notes:
 - For external copied workspaces, backend type-checking is skipped only when necessary to avoid monorepo-only TypeScript resolution assumptions
 
 ### backend-inspect
-Usage: `webstir-bun backend-inspect --workspace <path>`
+Usage: `webstir backend-inspect --workspace <path>`
 
 What it does:
 - Builds the backend and reads the resulting manifest data
@@ -147,7 +147,7 @@ What it does:
 - Supports `api` and `full` workspaces only
 
 ### add-page
-Usage: `webstir-bun add-page <name> --workspace <path>`
+Usage: `webstir add-page <name> --workspace <path>`
 
 What it does:
 - Scaffolds a frontend page in the selected workspace
@@ -155,7 +155,7 @@ What it does:
 - Handles SSG page generation without forcing page scripts when the workspace mode is `ssg`
 
 ### add-test
-Usage: `webstir-bun add-test <name-or-path> --workspace <path>`
+Usage: `webstir add-test <name-or-path> --workspace <path>`
 
 What it does:
 - Creates a `.test.ts` file under the nearest matching `tests/` folder
@@ -163,7 +163,7 @@ What it does:
 - Reuses the canonical testing package scaffold helper
 
 ### add-route
-Usage: `webstir-bun add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify] [...schema/metadata flags]`
+Usage: `webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify] [...schema/metadata flags]`
 
 What it does:
 - Adds a backend route entry to `webstir.moduleManifest.routes` in `package.json`
@@ -171,7 +171,7 @@ What it does:
 - Supports route metadata and schema reference flags already documented by the module contract
 
 ### add-job
-Usage: `webstir-bun add-job <name> --workspace <path> [--schedule <expression>] [--description <text>] [--priority <value>]`
+Usage: `webstir add-job <name> --workspace <path> [--schedule <expression>] [--description <text>] [--priority <value>]`
 
 What it does:
 - Creates `src/backend/jobs/<name>/index.ts`
@@ -179,7 +179,7 @@ What it does:
 - Preserves schedule, description, and priority metadata in the manifest
 
 ## Dependency Management
-- There is no Bun `webstir-bun install` command.
+- There is no Bun `webstir install` command.
 - Manage workspace dependencies with `bun install`.
 - Provider-specific packages are normal workspace dependencies, not a separate framework-managed install flow.
 

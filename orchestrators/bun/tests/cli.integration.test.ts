@@ -17,7 +17,7 @@ async function runCliInCopiedWorkspace(
 ) {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   const processResult = Bun.spawnSync({
@@ -50,7 +50,7 @@ test('CLI builds the spa demo workspace end to end', async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir-bun] build complete');
+  expect(result.stdout).toContain('[webstir] build complete');
   expect(existsSync(path.join(result.copiedWorkspace, 'build', 'frontend', 'pages', 'home', 'index.js'))).toBe(true);
 });
 
@@ -59,7 +59,7 @@ test('CLI publishes the spa demo workspace end to end', async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir-bun] publish complete');
+  expect(result.stdout).toContain('[webstir] publish complete');
   expect(existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'pages', 'home'))).toBe(true);
 });
 
@@ -70,7 +70,7 @@ test('CLI publishes the api demo workspace end to end', async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir-bun] publish complete');
+  expect(result.stdout).toContain('[webstir] publish complete');
   expect(existsSync(path.join(result.copiedWorkspace, 'build', 'backend', 'index.js'))).toBe(true);
 });
 
@@ -79,6 +79,6 @@ test('CLI publishes the ssg demo workspace end to end', async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir-bun] publish complete');
+  expect(result.stdout).toContain('[webstir] publish complete');
   expect(existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'index.html'))).toBe(true);
 });

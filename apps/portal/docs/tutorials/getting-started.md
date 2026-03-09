@@ -15,14 +15,14 @@ Install prerequisites and run the CLI locally.
 ```
 # From repo root
 bun install
-bun run orchestrate:bun -- --help
+bun run webstir -- --help
 ```
 
 2) Create a new project and start dev mode
 
 ```
-bun run orchestrate:bun -- init my-app
-bun run orchestrate:bun -- watch --workspace "$PWD/my-app"
+bun run webstir -- init my-app
+bun run webstir -- watch --workspace "$PWD/my-app"
 ```
 
 3) Open the printed dev server URL. Edit files under `src/**` to see live reload.

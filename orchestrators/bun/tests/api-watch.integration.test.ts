@@ -22,7 +22,7 @@ afterEach(async () => {
 
 test('CLI watch serves the API demo, restarts after a successful rebuild, and survives a failed rebuild', async () => {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', 'api');
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-api-watch-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-api-watch-'));
   const workspace = path.join(tempRoot, 'api');
   await cp(fixtureRoot, workspace, { recursive: true });
 

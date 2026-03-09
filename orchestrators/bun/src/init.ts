@@ -99,7 +99,7 @@ function parseInitRequest(
 
   if (workspaceOverride) {
     if (!firstArg) {
-      throw new Error('Usage: webstir-bun init <mode> --workspace <path> or webstir-bun init <mode> <directory>.');
+      throw new Error('Usage: webstir init <mode> --workspace <path> or webstir init <mode> <directory>.');
     }
 
     return {
@@ -109,7 +109,7 @@ function parseInitRequest(
   }
 
   if (!firstArg) {
-    throw new Error('Usage: webstir-bun init <mode> <directory> or webstir-bun init <directory>.');
+    throw new Error('Usage: webstir init <mode> <directory> or webstir init <directory>.');
   }
 
   if (!secondArg) {

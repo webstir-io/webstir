@@ -13,7 +13,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-repair-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-repair-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, path.basename(fixtureName));
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -51,7 +51,7 @@ test('CLI repair restores missing scaffold files in a SPA workspace', async () =
     const result = await runCli(['repair', '--workspace', copiedWorkspace]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('[webstir-bun] repair complete');
+    expect(result.stdout).toContain('[webstir] repair complete');
     expect(result.stdout).toContain('dry-run: false');
     expect(result.stdout).toContain('Errors.404.html');
     expect(result.stdout).toContain('src/frontend/app/app.html');

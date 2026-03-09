@@ -26,7 +26,7 @@ export async function runFrontendWatch(
   const session = await startFrontendWatchSession(workspace, options, io);
 
   io.stdout.write(
-    `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.address.origin}\n`
+    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.address.origin}\n`
   );
 
   const stopSignal = createStopSignal();
@@ -74,7 +74,7 @@ export async function startFrontendWatchSession(
     onDiagnostic(payload) {
       if (!initialBuildReady && payload.code === 'frontend.watch.pipeline.success') {
         initialBuildReady = true;
-        io.stdout.write(`[webstir-bun] frontend ready at ${address.origin}\n`);
+        io.stdout.write(`[webstir] frontend ready at ${address.origin}\n`);
       }
 
       void applyDiagnostic(payload, server);

@@ -39,21 +39,21 @@ interface CliIo {
 }
 
 const HELP_TEXT = `Usage:
-  webstir-bun init <mode> <directory>
-  webstir-bun init <directory>
-  webstir-bun add-page <name> --workspace <path>
-  webstir-bun add-test <name-or-path> --workspace <path>
-  webstir-bun add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify]
-  webstir-bun add-job <name> --workspace <path> [--schedule <expression>]
-  webstir-bun backend-inspect --workspace <path>
-  webstir-bun test --workspace <path> [--runtime <frontend|backend|all>]
-  webstir-bun smoke [--workspace <path>]
-  webstir-bun build --workspace <path>
-  webstir-bun publish --workspace <path>
-  webstir-bun enable <feature> [feature-args...] --workspace <path>
-  webstir-bun repair --workspace <path> [--dry-run]
-  webstir-bun refresh <mode> --workspace <path>
-  webstir-bun watch --workspace <path> [--host <host>] [--port <port>]
+  webstir init <mode> <directory>
+  webstir init <directory>
+  webstir add-page <name> --workspace <path>
+  webstir add-test <name-or-path> --workspace <path>
+  webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify]
+  webstir add-job <name> --workspace <path> [--schedule <expression>]
+  webstir backend-inspect --workspace <path>
+  webstir test --workspace <path> [--runtime <frontend|backend|all>]
+  webstir smoke [--workspace <path>]
+  webstir build --workspace <path>
+  webstir publish --workspace <path>
+  webstir enable <feature> [feature-args...] --workspace <path>
+  webstir repair --workspace <path> [--dry-run]
+  webstir refresh <mode> --workspace <path>
+  webstir watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
   init       Scaffold a new Webstir workspace.
@@ -159,7 +159,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         args: options.positionals,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir-bun] add-page complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-page complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
       );
       return 0;
     }
@@ -175,7 +175,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         args: options.positionals,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir-bun] add-test complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-test complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
       );
       return 0;
     }
@@ -191,7 +191,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         rawArgs: options.rawArgs,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir-bun] add-route complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-route complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
       );
       return 0;
     }
@@ -207,7 +207,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         rawArgs: options.rawArgs,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir-bun] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
       );
       return 0;
     }
@@ -346,7 +346,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    io.stderr.write(`[webstir-bun] ${command} failed: ${message}\n`);
+    io.stderr.write(`[webstir] ${command} failed: ${message}\n`);
     return 1;
   }
 }

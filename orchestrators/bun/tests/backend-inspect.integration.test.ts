@@ -12,7 +12,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-backend-inspect-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-backend-inspect-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -93,7 +93,7 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
 
     expect(inspectResult.exitCode).toBe(0);
     expect(inspectResult.stderr).toBe('');
-    expect(inspectResult.stdout).toContain('[webstir-bun] backend-inspect complete');
+    expect(inspectResult.stdout).toContain('[webstir] backend-inspect complete');
     expect(inspectResult.stdout).toContain('mode: api');
     expect(inspectResult.stdout).toContain('module: webstir-demo-api@1.0.0');
     expect(inspectResult.stdout).toContain('routes: 1');

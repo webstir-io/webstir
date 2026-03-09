@@ -12,7 +12,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-test-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-test-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -51,7 +51,7 @@ test('CLI test runs the SPA demo frontend suite end to end', async () => {
     const result = await runCli(['test', '--workspace', copiedWorkspace]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('[webstir-bun] test complete');
+    expect(result.stdout).toContain('[webstir] test complete');
     expect(result.stdout).toContain('mode: spa');
     expect(result.stdout).toContain('runtime: all');
     expect(result.stdout).toContain('build-targets: frontend');
@@ -76,7 +76,7 @@ test('CLI test honors --runtime backend for full workspaces', async () => {
     );
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('[webstir-bun] test complete');
+    expect(result.stdout).toContain('[webstir] test complete');
     expect(result.stdout).toContain('mode: full');
     expect(result.stdout).toContain('runtime: backend');
     expect(result.stdout).toContain('build-targets: backend');

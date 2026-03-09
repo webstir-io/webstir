@@ -22,7 +22,7 @@ afterEach(async () => {
 
 test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and backend changes', async () => {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', 'full');
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-full-watch-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-full-watch-'));
   const workspace = path.join(tempRoot, 'full');
   await cp(fixtureRoot, workspace, { recursive: true });
 

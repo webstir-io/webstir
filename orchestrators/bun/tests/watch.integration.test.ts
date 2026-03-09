@@ -22,7 +22,7 @@ afterEach(async () => {
 
 test('CLI watch serves the SPA demo and rebuilds after a source edit', async () => {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', 'spa');
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-watch-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-watch-'));
   const workspace = path.join(tempRoot, 'spa');
   await cp(fixtureRoot, workspace, { recursive: true });
 

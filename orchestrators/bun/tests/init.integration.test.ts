@@ -36,7 +36,7 @@ async function readPackageVersion(relativePath: string): Promise<string> {
 }
 
 test('CLI init scaffolds an external SSG workspace with published package versions', async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-init-ssg-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-init-ssg-'));
   const workspaceRoot = path.join(tempRoot, 'docs-site');
 
   try {
@@ -46,7 +46,7 @@ test('CLI init scaffolds an external SSG workspace with published package versio
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('[webstir-bun] init complete');
+    expect(result.stdout).toContain('[webstir] init complete');
 
     const packageJson = await readJson(path.join(workspaceRoot, 'package.json'));
     const baseTsconfig = await readJson(path.join(workspaceRoot, 'base.tsconfig.json'));
@@ -86,7 +86,7 @@ test('CLI init keeps workspace dependencies for repo-local workspaces', async ()
 });
 
 test('CLI refresh clears and re-scaffolds an existing workspace', async () => {
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-refresh-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-refresh-'));
   const workspaceRoot = path.join(tempRoot, 'full-app');
 
   try {
@@ -103,7 +103,7 @@ test('CLI refresh clears and re-scaffolds an existing workspace', async () => {
 
     expect(refreshResult.exitCode).toBe(0);
     expect(refreshResult.stderr).toBe('');
-    expect(refreshResult.stdout).toContain('[webstir-bun] refresh complete');
+    expect(refreshResult.stdout).toContain('[webstir] refresh complete');
     expect(await readFile(appHtmlPath, 'utf8')).toBe(originalHtml);
     expect(existsSync(path.join(workspaceRoot, 'junk.txt'))).toBe(false);
     expect(existsSync(path.join(workspaceRoot, 'src', 'backend', 'index.ts'))).toBe(true);
