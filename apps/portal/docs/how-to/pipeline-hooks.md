@@ -2,8 +2,8 @@
 
 Webstir exposes optional hook points so you can layer custom logic onto the
 frontend build/publish pipelines without forking the framework packages. Hooks
-run after the CLI verifies package versions, so they always execute against
-the pinned dependencies from `webstir install`.
+run after the workspace dependency graph is already resolved, so they execute
+against the current packages installed by `bun install`.
 
 ## Create `webstir.config.js`
 Place a `webstir.config.js` file at the workspace root (next to `package.json`).
