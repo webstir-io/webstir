@@ -97,7 +97,7 @@ fi
 echo "Publishing ${MODE} demo at ${DEMO_DIR}..."
 (
   cd "${WORKSPACE_ROOT}"
-  bun run orchestrate:bun -- publish --workspace "${DEMO_DIR}"
+  bun run webstir -- publish --workspace "${DEMO_DIR}"
 )
 
 if [[ "${MODE}" == "api" ]]; then

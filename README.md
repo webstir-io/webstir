@@ -24,7 +24,7 @@ bun run --filter webstir-portal build
 The Bun orchestrator is the primary local workflow now:
 
 ```bash
-bun run orchestrate:bun -- init ssg ./my-site
+bun run webstir -- init ssg ./my-site
 bun run watch:spa
 bun run watch:ssg:base
 bun run watch:api
@@ -34,8 +34,8 @@ bun run watch:full
 You can also target any workspace directly:
 
 ```bash
-bun run orchestrate:bun -- watch --workspace "$PWD/examples/demos/full"
-bun run orchestrate:bun -- publish --workspace "$PWD/examples/demos/ssg/site"
+bun run webstir -- watch --workspace "$PWD/examples/demos/full"
+bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 ```
 
 ## Notes

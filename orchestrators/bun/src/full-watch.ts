@@ -27,7 +27,7 @@ export async function runFullWatch(
   try {
     frontendSession = await startFrontendWatchSession(workspace, { ...options, server }, io);
     io.stdout.write(
-      `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`
+      `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`
     );
 
     const stopSignal = createStopSignal();

@@ -22,7 +22,7 @@ afterEach(async () => {
 
 test('CLI watch serves the SSG demo and rebuilds generated content after a markdown edit', async () => {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-ssg-watch-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-ssg-watch-'));
   const workspace = path.join(tempRoot, 'ssg-base');
   await cp(fixtureRoot, workspace, { recursive: true });
 

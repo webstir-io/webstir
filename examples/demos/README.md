@@ -1,7 +1,7 @@
 # webstir-demos
 
 Helper scripts:
-- `utils/watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-bun-watch-args...>]` — start Bun watch without re-initializing.
+- `utils/watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-watch-args...>]` — start Bun watch without re-initializing.
 - `utils/enable-feature.sh <project|ssg|ssg-base|ssg-site|spa|api|full> <feature> [<feature-args...>]` — enable a feature in a demo or any project folder.
 
 Demo folders:

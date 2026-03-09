@@ -23,6 +23,6 @@ refresh_demo_dir() {
 
   (
     cd "${WORKSPACE_ROOT_REFRESH_LIB}"
-    bun run orchestrate:bun -- refresh "${init_mode}" --workspace "${demo_dir}"
+    bun run webstir -- refresh "${init_mode}" --workspace "${demo_dir}"
   )
 }

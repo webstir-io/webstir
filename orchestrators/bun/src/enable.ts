@@ -42,7 +42,7 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   const [featureToken, ...rest] = options.args;
   if (!featureToken) {
     throw new Error(
-      'Missing enable feature. Usage: webstir-bun enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy> --workspace <path>.'
+      'Missing enable feature. Usage: webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy> --workspace <path>.'
     );
   }
 
@@ -117,7 +117,7 @@ function parseEnableFeature(value: string): EnableFeature {
 async function enableScripts(workspaceRoot: string, args: readonly string[], changes: string[]): Promise<void> {
   const pageName = args[0];
   if (!pageName) {
-    throw new Error('Usage: webstir-bun enable scripts <page> --workspace <path>.');
+    throw new Error('Usage: webstir enable scripts <page> --workspace <path>.');
   }
 
   const pageDir = path.join(workspaceRoot, 'src', 'frontend', 'pages', pageName);

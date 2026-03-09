@@ -13,7 +13,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-add-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-add-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -47,7 +47,7 @@ test('CLI add-page scaffolds a SPA page end to end', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('[webstir-bun] add-page complete');
+    expect(result.stdout).toContain('[webstir] add-page complete');
     expect(result.stdout).toContain('target: about');
     expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'pages', 'about', 'index.html'))).toBe(true);
     expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'pages', 'about', 'index.css'))).toBe(true);
@@ -69,7 +69,7 @@ test('CLI add-page scaffolds an SSG page without a page script', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('[webstir-bun] add-page complete');
+    expect(result.stdout).toContain('[webstir] add-page complete');
     expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'pages', 'guides', 'index.html'))).toBe(true);
     expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'pages', 'guides', 'index.css'))).toBe(true);
     expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'pages', 'guides', 'index.ts'))).toBe(false);
@@ -89,7 +89,7 @@ test('CLI add-test scaffolds a root-level test file', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('[webstir-bun] add-test complete');
+    expect(result.stdout).toContain('[webstir] add-test complete');
     expect(existsSync(path.join(copiedWorkspace, 'src', 'tests', 'sample.test.ts'))).toBe(true);
 
     const fileContent = await readFile(path.join(copiedWorkspace, 'src', 'tests', 'sample.test.ts'), 'utf8');

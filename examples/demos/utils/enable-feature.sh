@@ -17,7 +17,7 @@ Usage:
 Notes:
   - If <project> is one of ssg|ssg-base|ssg-site|spa|api|full, it targets the corresponding demo folder.
   - Otherwise, <project> can be a directory path (absolute or relative).
-  - Additional args are passed to `webstir-bun enable ...` before the workspace flag.
+  - Additional args are passed to `webstir enable ...` before the workspace flag.
 
 Examples:
   enable-feature.sh ssg search
@@ -84,4 +84,4 @@ fi
 
 echo "Enabling '${FEATURE}' in ${PROJECT_DIR}..."
 cd "${WORKSPACE_ROOT}"
-exec bun run orchestrate:bun -- enable "${FEATURE}" "$@" --workspace "${PROJECT_DIR}"
+exec bun run webstir -- enable "${FEATURE}" "$@" --workspace "${PROJECT_DIR}"

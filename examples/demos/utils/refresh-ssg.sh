@@ -82,9 +82,9 @@ if [[ "${VARIANT}" == "site" ]]; then
     (
       cd "${WORKSPACE_ROOT_REFRESH_LIB}"
       if [[ "${feature}" == "gh-deploy" || "${feature}" == "github-pages" || "${feature}" == "gh-pages" ]]; then
-        bun run orchestrate:bun -- enable "${feature}" "${VARIANT}" --workspace "${DEMO_DIR}"
+        bun run webstir -- enable "${feature}" "${VARIANT}" --workspace "${DEMO_DIR}"
       else
-        bun run orchestrate:bun -- enable "${feature}" --workspace "${DEMO_DIR}"
+        bun run webstir -- enable "${feature}" --workspace "${DEMO_DIR}"
       fi
     )
   done

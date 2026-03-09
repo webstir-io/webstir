@@ -36,7 +36,7 @@ function createFakeProvider(kind: BuildTargetKind, calls: Array<{ kind: BuildTar
 }
 
 test('runBuild composes frontend and backend providers for full workspaces', async () => {
-  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-build-'));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-build-'));
   await writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify(
@@ -74,7 +74,7 @@ test('runBuild composes frontend and backend providers for full workspaces', asy
 });
 
 test('runPublish prebuilds frontend targets before publish and reports dist output', async () => {
-  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-publish-'));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-publish-'));
   await writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify(

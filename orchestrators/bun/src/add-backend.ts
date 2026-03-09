@@ -29,7 +29,7 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
   const name = parsed.positionals[0];
   if (!name) {
     throw new Error(
-      'Usage: webstir-bun add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify].'
+      'Usage: webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify].'
     );
   }
 
@@ -72,7 +72,7 @@ export async function runAddJobCommand(options: RunAddBackendOptions): Promise<A
 
   const name = parsed.positionals[0];
   if (!name) {
-    throw new Error('Usage: webstir-bun add-job <name> --workspace <path> [--schedule <expression>].');
+    throw new Error('Usage: webstir add-job <name> --workspace <path> [--schedule <expression>].');
   }
 
   const result = await runAddJob({

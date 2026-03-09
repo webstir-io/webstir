@@ -18,7 +18,7 @@ test('parseWorkspaceMode rejects unsupported modes', () => {
 });
 
 test('readWorkspaceDescriptor resolves workspace name and mode', async () => {
-  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-workspace-'));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-workspace-'));
   await writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify(

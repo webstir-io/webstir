@@ -31,7 +31,7 @@ export async function runApiWatch(
   const session = await startApiWatchSession(workspace, options, io);
 
   io.stdout.write(
-    `[webstir-bun] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.origin}\n`
+    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.origin}\n`
   );
 
   const stopSignal = createStopSignal();
@@ -72,18 +72,18 @@ export async function startApiWatchSession(
       }
 
       if (event.succeeded !== true) {
-        io.stderr.write('[webstir-bun] backend rebuild failed; keeping the current runtime process.\n');
+        io.stderr.write('[webstir] backend rebuild failed; keeping the current runtime process.\n');
         return;
       }
 
       await runtime.restart();
       if (!initialReadyLogged) {
         initialReadyLogged = true;
-        io.stdout.write(`[webstir-bun] backend ready at ${runtime.getOrigin()}\n`);
+        io.stdout.write(`[webstir] backend ready at ${runtime.getOrigin()}\n`);
         return;
       }
 
-      io.stdout.write(`[webstir-bun] backend restarted at ${runtime.getOrigin()}\n`);
+      io.stdout.write(`[webstir] backend restarted at ${runtime.getOrigin()}\n`);
     },
   });
 

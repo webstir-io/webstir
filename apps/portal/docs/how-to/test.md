@@ -11,8 +11,8 @@ Build the workspace and execute tests through the active Bun orchestrator. By de
 - In CI to gate merges and releases.
 
 ## CLI
-- `webstir-bun test --workspace <path> [--runtime <frontend|backend|all>]`
-- In this repo: `bun run orchestrate:bun -- test --workspace "$PWD/<workspace>"`
+- `webstir test --workspace <path> [--runtime <frontend|backend|all>]`
+- In this repo: `bun run webstir -- test --workspace "$PWD/<workspace>"`
 
 ## Steps
 1. Build the relevant frontend and/or backend targets for the workspace mode.
@@ -35,7 +35,7 @@ Build the workspace and execute tests through the active Bun orchestrator. By de
 1. Install the provider in the workspace with your package manager.
 2. Ensure `vitest` is available (the provider resolves the workspace dependency).
 3. Run the suite:\
-   `WEBSTIR_TESTING_PROVIDER=@webstir-io/vitest-testing bun run orchestrate:bun -- test --workspace "$PWD"`
+   `WEBSTIR_TESTING_PROVIDER=@webstir-io/vitest-testing bun run webstir -- test --workspace "$PWD"`
 4. Any provider-specific installation remains a normal workspace dependency concern; use `bun install` when the workspace dependency graph changes.
 
 > Tip: Keep `WEBSTIR_TESTING_PROVIDER_SPEC` empty (default) when consuming the published provider from the registry.

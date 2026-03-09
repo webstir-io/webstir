@@ -24,20 +24,20 @@ Hub for the CLI and host tooling. This doc explains what the solution is, how it
 
 ## How It Works
 1. Init
-   - `webstir-bun init` scaffolds a `spa`, `ssg`, `api`, or `full` workspace.
+   - `webstir init` scaffolds a `spa`, `ssg`, `api`, or `full` workspace.
 2. Build
-   - `webstir-bun build` composes the canonical provider packages to emit `build/**`.
+   - `webstir build` composes the canonical provider packages to emit `build/**`.
 3. Watch
-   - `webstir-bun watch` runs the Bun dev loop for frontend-only, backend-only, or full-stack workspaces.
+   - `webstir watch` runs the Bun dev loop for frontend-only, backend-only, or full-stack workspaces.
 4. Test
-   - `webstir-bun test` builds the relevant targets, compiles discovered tests, and executes them through the canonical testing providers.
+   - `webstir test` builds the relevant targets, compiles discovered tests, and executes them through the canonical testing providers.
 5. Publish
-   - `webstir-bun publish` writes publish artifacts to `dist/**`.
+   - `webstir publish` writes publish artifacts to `dist/**`.
 6. Inspect and smoke
-   - `webstir-bun backend-inspect` prints backend manifest data.
-   - `webstir-bun smoke` runs a bounded end-to-end verification flow across build, test, publish, and backend inspect.
+   - `webstir backend-inspect` prints backend manifest data.
+   - `webstir smoke` runs a bounded end-to-end verification flow across build, test, publish, and backend inspect.
 7. Generators and mutators
-   - `webstir-bun add-page`, `add-test`, `add-route`, `add-job`, `enable`, and `refresh` mutate workspaces directly from the Bun orchestrator.
+   - `webstir add-page`, `add-test`, `add-route`, `add-job`, `enable`, and `refresh` mutate workspaces directly from the Bun orchestrator.
 
 ## Conventions & Structure
  - Base HTML: `src/frontend/app/app.html` must contain a `<main>`; page fragments merge into it.

@@ -26,7 +26,7 @@ export interface AddCommandResult {
 export async function runAddPageCommand(options: RunAddPageOptions): Promise<AddCommandResult> {
   const pageName = options.args[0];
   if (!pageName) {
-    throw new Error('Usage: webstir-bun add-page <name> --workspace <path>.');
+    throw new Error('Usage: webstir add-page <name> --workspace <path>.');
   }
 
   const pageRoot = path.join(options.workspaceRoot, 'src', 'frontend', 'pages', pageName);
@@ -57,7 +57,7 @@ export async function runAddPageCommand(options: RunAddPageOptions): Promise<Add
 export async function runAddTestCommand(options: RunAddTestOptions): Promise<AddCommandResult> {
   const nameArg = options.args[0];
   if (!nameArg) {
-    throw new Error('Usage: webstir-bun add-test <name-or-path> --workspace <path>.');
+    throw new Error('Usage: webstir add-test <name-or-path> --workspace <path>.');
   }
 
   const result = await runAddTest({

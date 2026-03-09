@@ -125,7 +125,7 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
   }
 
   const sourceRoot = path.join(repoRoot, 'examples', 'demos', 'full');
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-bun-smoke-'));
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-smoke-'));
   const tempWorkspace = path.join(tempRoot, 'full');
   await cp(sourceRoot, tempWorkspace, { recursive: true });
 

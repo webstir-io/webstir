@@ -10,8 +10,8 @@ Scaffold a new `.test.ts` in the nearest `tests/` folder so it runs with the `te
 - Adding coverage for a feature, workflow, or contract.
 
 ## CLI
-- `webstir-bun add-test <name-or-path> --workspace <path>`
-- In this repo: `bun run orchestrate:bun -- add-test <name-or-path> --workspace "$PWD/<workspace>"`
+- `webstir add-test <name-or-path> --workspace <path>`
+- In this repo: `bun run webstir -- add-test <name-or-path> --workspace "$PWD/<workspace>"`
 
 ## Inputs
 - `<name-or-path>`: file name or relative path. The workflow resolves the closest `tests/` folder from the provided context.

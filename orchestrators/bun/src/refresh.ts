@@ -20,7 +20,7 @@ export async function runRefresh(options: RunRefreshOptions): Promise<RefreshRes
   const workspaceRoot = path.resolve(options.cwd ?? process.cwd(), options.workspaceRoot);
   const modeToken = options.args[0];
   if (!modeToken) {
-    throw new Error('Usage: webstir-bun refresh <mode> --workspace <path>.');
+    throw new Error('Usage: webstir refresh <mode> --workspace <path>.');
   }
 
   const mode = parseWorkspaceMode(modeToken);

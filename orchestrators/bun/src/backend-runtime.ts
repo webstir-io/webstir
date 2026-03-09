@@ -152,7 +152,7 @@ export class BackendRuntimeSupervisor {
       if (!ready) {
         return;
       } else if (!processRecord.expectedExit && !this.isStopping && this.current === processRecord) {
-        this.io.stderr.write(`[webstir-bun] backend runtime exited unexpectedly with code ${code ?? 'null'}.\n`);
+        this.io.stderr.write(`[webstir] backend runtime exited unexpectedly with code ${code ?? 'null'}.\n`);
       }
     }).finally(() => {
       if (this.current === processRecord) {

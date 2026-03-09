@@ -13,7 +13,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
   const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-bun-backend-add-${tempPrefix}-`));
+  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-backend-add-${tempPrefix}-`));
   const copiedWorkspace = path.join(workspace, fixtureName);
   await cp(fixtureRoot, copiedWorkspace, { recursive: true });
   return copiedWorkspace;
@@ -72,7 +72,7 @@ test('CLI add-route writes backend route manifest metadata end to end', async ()
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('[webstir-bun] add-route complete');
+    expect(result.stdout).toContain('[webstir] add-route complete');
     expect(result.stdout).toContain('target: POST /api/accounts');
 
     const packageJson = await readJson(path.join(copiedWorkspace, 'package.json'));
@@ -125,7 +125,7 @@ test('CLI add-job scaffolds a backend job end to end', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(result.stdout).toContain('[webstir-bun] add-job complete');
+    expect(result.stdout).toContain('[webstir] add-job complete');
     expect(existsSync(path.join(copiedWorkspace, 'src', 'backend', 'jobs', 'nightly', 'index.ts'))).toBe(true);
 
     const packageJson = await readJson(path.join(copiedWorkspace, 'package.json'));
