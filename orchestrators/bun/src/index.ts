@@ -9,6 +9,7 @@ export * from './execute.ts';
 export * from './format.ts';
 export * from './init.ts';
 export * from './publish.ts';
+export * from './repair.ts';
 export * from './refresh.ts';
 export * from './runtime.ts';
 export * from './smoke.ts';

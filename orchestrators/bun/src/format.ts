@@ -1,6 +1,7 @@
 import type { EnableResult } from './enable.ts';
 import type { InitResult } from './init.ts';
 import type { RefreshResult } from './refresh.ts';
+import type { RepairResult } from './repair.ts';
 import type { BackendInspectResult } from './backend-inspect.ts';
 import type { SmokeResult } from './smoke.ts';
 import type { TestCommandResult } from './test.ts';
@@ -41,6 +42,27 @@ export function formatInitSummary(result: InitResult): string {
 
 export function formatRefreshSummary(result: RefreshResult): string {
   return formatWorkspaceMutationSummary('[webstir-bun] refresh complete', result.mode, result.workspaceRoot, result.changes);
+}
+
+export function formatRepairSummary(result: RepairResult): string {
+  const lines = [
+    '[webstir-bun] repair complete',
+    `mode: ${result.mode}`,
+    `root: ${result.workspaceRoot}`,
+    `dry-run: ${result.dryRun ? 'true' : 'false'}`,
+  ];
+
+  if (result.changes.length === 0) {
+    lines.push('changes: none');
+    return lines.join('\n');
+  }
+
+  lines.push(`changes: ${result.changes.length}`);
+  for (const change of result.changes) {
+    lines.push(`  - ${change}`);
+  }
+
+  return lines.join('\n');
 }
 
 export function formatBackendInspectSummary(result: BackendInspectResult): string {

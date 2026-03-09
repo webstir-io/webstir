@@ -15,11 +15,13 @@ import {
   formatEnableSummary,
   formatInitSummary,
   formatPublishSummary,
+  formatRepairSummary,
   formatRefreshSummary,
   formatSmokeSummary,
   formatTestSummary,
 } from './format.ts';
 import { runInit } from './init.ts';
+import { runRepair } from './repair.ts';
 import { runRefresh } from './refresh.ts';
 import { runBuild } from './build.ts';
 import { runPublish } from './publish.ts';
@@ -49,6 +51,7 @@ const HELP_TEXT = `Usage:
   webstir-bun build --workspace <path>
   webstir-bun publish --workspace <path>
   webstir-bun enable <feature> [feature-args...] --workspace <path>
+  webstir-bun repair --workspace <path> [--dry-run]
   webstir-bun refresh <mode> --workspace <path>
   webstir-bun watch --workspace <path> [--host <host>] [--port <port>]
 
@@ -64,6 +67,7 @@ Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
+  repair     Restore missing scaffold-managed workspace files.
   refresh    Reset and re-scaffold an existing workspace directory.
   watch      Run the Bun dev loop for a supported Webstir workspace.
 
@@ -71,6 +75,7 @@ Options:
   -w, --workspace <path>   Workspace root to operate on.
   --host <host>            Dev host or bind address (default: 127.0.0.1).
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
+  --dry-run                Report repair changes without writing files.
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
   -h, --help               Show this help text.
@@ -95,6 +100,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     && command !== 'build'
     && command !== 'publish'
     && command !== 'enable'
+    && command !== 'repair'
     && command !== 'refresh'
     && command !== 'watch'
   ) {
@@ -112,6 +118,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
   if (options.error) {
     io.stderr.write(`${options.error}\n\n${HELP_TEXT}`);
+    return 1;
+  }
+
+  if (command !== 'repair' && options.dryRun) {
+    io.stderr.write(`Only repair accepts --dry-run.\n\n${HELP_TEXT}`);
     return 1;
   }
 
@@ -286,6 +297,25 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return 0;
     }
 
+    if (command === 'repair') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Repair does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Repair does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const result = await runRepair({
+        workspaceRoot: resolvedWorkspaceRoot!,
+        rawArgs: options.rawArgs,
+      });
+      io.stdout.write(`${formatRepairSummary(result)}\n`);
+      return 0;
+    }
+
     if (command === 'refresh') {
       if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Refresh does not accept watch options.\n\n${HELP_TEXT}`);
@@ -325,6 +355,7 @@ interface ParsedCommandOptions {
   readonly workspaceRoot?: string;
   readonly host?: string;
   readonly port?: number;
+  readonly dryRun: boolean;
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
   readonly positionals: readonly string[];
@@ -340,6 +371,7 @@ function parseCommandOptions(
   let workspaceRoot: string | undefined;
   let host: string | undefined;
   let port: number | undefined;
+  let dryRun = false;
   let verbose = false;
   let hmrVerbose = false;
   const positionals: string[] = [];
@@ -358,6 +390,7 @@ function parseCommandOptions(
           workspaceRoot,
           host,
           port,
+          dryRun,
           verbose,
           hmrVerbose,
           positionals,
@@ -379,6 +412,7 @@ function parseCommandOptions(
           workspaceRoot,
           host,
           port,
+          dryRun,
           verbose,
           hmrVerbose,
           positionals,
@@ -401,6 +435,7 @@ function parseCommandOptions(
           workspaceRoot,
           host,
           port,
+          dryRun,
           verbose,
           hmrVerbose,
           positionals,
@@ -422,6 +457,7 @@ function parseCommandOptions(
           workspaceRoot,
           host,
           port,
+          dryRun,
           verbose,
           hmrVerbose,
           positionals,
@@ -454,12 +490,18 @@ function parseCommandOptions(
         workspaceRoot,
         host,
         port,
+        dryRun,
         verbose,
         hmrVerbose,
         positionals,
         rawArgs: args,
         help: true,
       };
+    }
+
+    if (arg === '--dry-run') {
+      dryRun = true;
+      continue;
     }
 
     if (options.allowUnknownOptions) {
@@ -470,6 +512,7 @@ function parseCommandOptions(
       workspaceRoot,
       host,
       port,
+      dryRun,
       verbose,
       hmrVerbose,
       positionals,
@@ -483,6 +526,7 @@ function parseCommandOptions(
     workspaceRoot,
     host,
     port,
+    dryRun,
     verbose,
     hmrVerbose,
     positionals,
