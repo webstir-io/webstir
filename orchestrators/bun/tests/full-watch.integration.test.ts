@@ -25,6 +25,11 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-full-watch-'));
   const workspace = path.join(tempRoot, 'full');
   await cp(fixtureRoot, workspace, { recursive: true });
+  await Promise.all([
+    rm(path.join(workspace, 'build'), { recursive: true, force: true }),
+    rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
+    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true })
+  ]);
 
   const port = await getFreePort();
   const child = Bun.spawn({
