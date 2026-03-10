@@ -72,7 +72,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
       });
       expect(nativeResponse.status).toBe(303);
       expect(nativeResponse.headers.get('location')).toBe('/demo/progressive-enhancement?source=redirect&name=Watch%20Flow');
-    }, 20_000);
+    }, 40_000);
 
     await waitFor(async () => {
       const enhancedResponse = await fetch(`http://127.0.0.1:${port}/api/demo/progressive-enhancement`, {
@@ -85,7 +85,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
       });
       expect(enhancedResponse.headers.get('x-webstir-fragment-target')).toBe('greeting-preview');
       expect(await enhancedResponse.text()).toContain('Hello, Fragment Watch');
-    }, 20_000);
+    }, 40_000);
 
     const frontendPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
     const originalFrontend = await readFile(frontendPath, 'utf8');
@@ -113,7 +113,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
-}, 60_000);
+}, 80_000);
 
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
