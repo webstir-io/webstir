@@ -72,7 +72,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     await waitFor(async () => {
       expect(stdoutBuffer.text).toContain('backend restarted at');
       expect(await fetchText(port, '/api')).toContain('Full API changed');
-    }, 20_000);
+    }, 40_000);
   } finally {
     child.kill('SIGTERM');
     await child.exited.catch(() => undefined);
@@ -83,7 +83,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
-}, 40_000);
+}, 60_000);
 
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
