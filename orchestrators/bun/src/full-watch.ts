@@ -15,7 +15,6 @@ export async function runFullWatch(
 ): Promise<void> {
   const backendPort = await allocateBackendPort();
   const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io);
-  await apiSession.ready;
   const server = new DevServer({
     buildRoot: path.join(workspace.root, 'build', 'frontend'),
     host: options.host,
