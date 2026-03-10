@@ -9,6 +9,7 @@ import type { WatchIo, WatchOptions } from './watch.ts';
 
 export interface ApiWatchSession {
   readonly origin: string;
+  readonly ready: Promise<void>;
   stop(): Promise<void>;
 }
 
@@ -50,6 +51,10 @@ export async function startApiWatchSession(
   await runtime.prepare();
 
   let initialReadyLogged = false;
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    resolveReady = resolve;
+  });
   const watchHandle = await startBackendWatch({
     workspaceRoot: workspace.root,
     env: runtimeEnv,
@@ -66,6 +71,7 @@ export async function startApiWatchSession(
       await runtime.restart();
       if (!initialReadyLogged) {
         initialReadyLogged = true;
+        resolveReady();
         io.stdout.write(`[webstir] backend ready at ${runtime.getOrigin()}\n`);
         return;
       }
@@ -76,6 +82,7 @@ export async function startApiWatchSession(
 
   return {
     origin: runtime.getOrigin(),
+    ready,
     async stop() {
       await runtime.stop();
       await watchHandle.stop();
