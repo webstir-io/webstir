@@ -40,6 +40,8 @@ import { fromTsRestRoute, fromTsRestRouter } from '@webstir-io/module-contract/t
 - `RequestContext` and `SSRContext` describe what the orchestrator supplies to route and view handlers.
 - `fromTsRestRoute` converts an `@ts-rest/core` route contract into a Webstir `RouteSpec`, and `fromTsRestRouter` adapts an entire ts-rest router tree at once.
 - Routes and views support optional SSG metadata: `renderMode?: 'ssg' | 'ssr' | 'spa'`, `staticPaths?: string[]`, and a reserved `ssg?: { revalidateSeconds?: number }` bag for future incremental/static revalidation hints.
+- Routes can also declare progressive-enhancement metadata with `interaction?: 'navigation' | 'mutation'`, optional `form` metadata, and an optional `fragment` target for partial updates.
+- Route handlers may now return normal document/json bodies, targeted fragment updates, or redirects through the shared result contract.
 
 > Install `@ts-rest/core` to use the adapters; it's published as an optional peer dependency of this package.
 
@@ -70,6 +72,7 @@ const responseSchema = z.object({
   email: z.string().email()
 });
 const viewDataSchema = z.object({ account: responseSchema });
+const updateAccountEmailSchema = z.object({ email: z.string().email() });
 
 const getAccount = defineRoute<RequestContext, typeof paramsSchema, undefined, undefined, typeof responseSchema>({
   definition: {
@@ -91,6 +94,43 @@ const getAccount = defineRoute<RequestContext, typeof paramsSchema, undefined, u
   handler: async (ctx) => ({
     status: 200,
     body: await ctx.db.accounts.findById(ctx.params.id)
+  })
+});
+
+const updateAccountEmail = defineRoute<RequestContext, typeof paramsSchema, undefined, typeof updateAccountEmailSchema, typeof responseSchema>({
+  definition: {
+    name: 'updateAccountEmail',
+    method: 'POST',
+    path: '/accounts/:id/email',
+    interaction: 'mutation',
+    form: {
+      contentType: 'application/x-www-form-urlencoded',
+      csrf: true
+    },
+    fragment: {
+      target: 'account-email',
+      mode: 'replace'
+    },
+    input: {
+      params: { kind: 'zod', name: 'AccountRouteParams', source: 'src/backend/server/routes/accounts.ts' },
+      body: { kind: 'zod', name: 'UpdateAccountEmailInput', source: 'src/backend/server/routes/accounts.ts' }
+    },
+    output: {
+      redirect: {
+        status: 303
+      }
+    }
+  },
+  schemas: {
+    params: paramsSchema,
+    body: updateAccountEmailSchema,
+    response: responseSchema
+  },
+  handler: async (ctx) => ({
+    status: 303,
+    redirect: {
+      location: `/accounts/${ctx.params.id}`
+    }
   })
 });
 
@@ -119,12 +159,28 @@ export const accountsModule = createModule({
     // Optional: pass-through metadata for providers
     assets: [],
     middlewares: [],
-    routes: [getAccount.definition],
+    routes: [getAccount.definition, updateAccountEmail.definition],
     views: [accountView.definition]
   },
-  routes: [getAccount],
+  routes: [getAccount, updateAccountEmail],
   views: [accountView]
 });
+```
+
+Fragment-capable handlers can also return partial updates directly:
+
+```ts
+return {
+  status: 200,
+  fragment: {
+    target: 'account-email',
+    mode: 'replace',
+    body: {
+      id: ctx.params.id,
+      email: 'updated@example.com'
+    }
+  }
+};
 ```
 
 ### ts-rest Router Example

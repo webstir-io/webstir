@@ -102,6 +102,8 @@ The default `src/backend/index.ts` entry (and the optional Fastify scaffold) sha
 - Request context: handlers receive `params`, `query`, `body`, `env`, `logger`, `request`, `reply`, `requestId`, and `now()` helpers that align with the `RequestContext` shape from `@webstir-io/module-contract`.
 - Request IDs: each response sets `x-request-id` and the context/logger include the same identifier so you can correlate logs.
 - Failure safety: handler exceptions are caught and surfaced as `{ error: 'internal_error' }` without tearing down the process.
+- Progressive enhancement responses: handlers can return redirects (`303` by default) or targeted fragment payloads; the scaffold emits `Location` and `x-webstir-fragment-*` headers accordingly.
+- Form handling: JSON bodies still work as before, and the scaffold now parses `application/x-www-form-urlencoded` requests into plain objects for HTML form workflows.
 
 Stick with the built-in server while exploring the manifest helpers, then drop in the Fastify scaffold when you need its plugin ecosystem—the readiness + manifest wiring stays the same.
 

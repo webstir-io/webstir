@@ -23,6 +23,10 @@ const accountViewDataSchema = z.object({
   account: accountResponseSchema
 });
 
+const updateAccountEmailSchema = z.object({
+  email: z.string().email()
+});
+
 const getAccountRoute = defineRoute<RequestContext, typeof accountParamsSchema, undefined, undefined, typeof accountResponseSchema>({
   definition: {
     name: 'getAccount',
@@ -49,6 +53,53 @@ const getAccountRoute = defineRoute<RequestContext, typeof accountParamsSchema, 
         id: ctx.params.id,
         email: 'demo@example.com',
         createdAt: new Date().toISOString()
+      }
+    };
+  }
+});
+
+const updateAccountEmailRoute = defineRoute<
+  RequestContext,
+  typeof accountParamsSchema,
+  undefined,
+  typeof updateAccountEmailSchema,
+  typeof accountResponseSchema
+>({
+  definition: {
+    name: 'updateAccountEmail',
+    method: 'POST',
+    path: '/accounts/:id/email',
+    summary: 'Update an account email address',
+    interaction: 'mutation',
+    form: {
+      contentType: 'application/x-www-form-urlencoded',
+      csrf: true
+    },
+    fragment: {
+      target: 'account-email',
+      mode: 'replace'
+    },
+    input: {
+      params: { kind: 'zod', name: 'AccountRouteParams' },
+      body: { kind: 'zod', name: 'UpdateAccountEmailInput' }
+    },
+    output: {
+      redirect: {
+        status: 303
+      }
+    }
+  },
+  schemas: {
+    params: accountParamsSchema,
+    body: updateAccountEmailSchema,
+    response: accountResponseSchema
+  },
+  handler: async (ctx) => {
+    ctx.logger.info('update-account-email', { id: ctx.params.id, email: ctx.body.email });
+    return {
+      status: 303,
+      redirect: {
+        location: `/accounts/${ctx.params.id}`
       }
     };
   }
@@ -83,10 +134,10 @@ export const accountsModule = createModule({
     version: '0.0.1',
     kind: 'backend',
     capabilities: ['auth', 'db', 'views'],
-    routes: [getAccountRoute.definition],
+    routes: [getAccountRoute.definition, updateAccountEmailRoute.definition],
     views: [accountView.definition]
   },
-  routes: [getAccountRoute],
+  routes: [getAccountRoute, updateAccountEmailRoute],
   views: [accountView],
   init: async ({ logger }) => {
     logger.info('accounts module init');

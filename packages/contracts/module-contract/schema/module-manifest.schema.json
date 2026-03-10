@@ -78,6 +78,55 @@
                   "type": "string"
                 }
               },
+              "interaction": {
+                "type": "string",
+                "enum": [
+                  "navigation",
+                  "mutation"
+                ]
+              },
+              "form": {
+                "type": "object",
+                "properties": {
+                  "contentType": {
+                    "type": "string",
+                    "enum": [
+                      "application/x-www-form-urlencoded",
+                      "multipart/form-data",
+                      "text/plain"
+                    ]
+                  },
+                  "csrf": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "fragment": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "selector": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "replace",
+                      "append",
+                      "prepend"
+                    ]
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "additionalProperties": false
+              },
               "input": {
                 "type": "object",
                 "properties": {
@@ -118,24 +167,81 @@
                 "additionalProperties": false
               },
               "output": {
-                "type": "object",
-                "properties": {
-                  "body": {
-                    "$ref": "#/definitions/module-manifest/properties/routes/items/properties/input/properties/params"
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 599
+                      },
+                      "headers": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/input/properties/params"
+                      },
+                      "body": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/input/properties/params"
+                      }
+                    },
+                    "required": [
+                      "body"
+                    ],
+                    "additionalProperties": false
                   },
-                  "status": {
-                    "type": "integer",
-                    "minimum": 100,
-                    "maximum": 599
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/output/anyOf/0/properties/status"
+                      },
+                      "headers": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/output/anyOf/0/properties/headers"
+                      },
+                      "redirect": {
+                        "type": "object",
+                        "properties": {
+                          "status": {
+                            "type": "number",
+                            "enum": [
+                              301,
+                              302,
+                              303,
+                              307,
+                              308
+                            ]
+                          },
+                          "location": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "redirect"
+                    ],
+                    "additionalProperties": false
                   },
-                  "headers": {
-                    "$ref": "#/definitions/module-manifest/properties/routes/items/properties/input/properties/params"
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/output/anyOf/0/properties/status"
+                      },
+                      "headers": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/output/anyOf/0/properties/headers"
+                      },
+                      "fragment": {
+                        "$ref": "#/definitions/module-manifest/properties/routes/items/properties/fragment"
+                      }
+                    },
+                    "required": [
+                      "fragment"
+                    ],
+                    "additionalProperties": false
                   }
-                },
-                "required": [
-                  "body"
-                ],
-                "additionalProperties": false
+                ]
               },
               "errors": {
                 "type": "array",

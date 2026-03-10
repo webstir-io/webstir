@@ -27,11 +27,21 @@ interface ModuleRouteDefinition {
   name?: string;
   method?: string;
   path?: string;
+  interaction?: 'navigation' | 'mutation';
+  form?: {
+    contentType?: 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain';
+    csrf?: boolean;
+  };
+  fragment?: {
+    target: string;
+    selector?: string;
+    mode?: 'replace' | 'append' | 'prepend';
+  };
 }
 
 interface ModuleRoute {
   definition?: ModuleRouteDefinition;
-  handler?: (ctx: Record<string, unknown>) => Promise<any> | any;
+  handler?: (ctx: Record<string, unknown>) => Promise<RouteHandlerResult> | RouteHandlerResult;
 }
 
 interface ModuleManifestLike {
@@ -44,6 +54,22 @@ interface ModuleManifestLike {
 interface ModuleDefinitionLike {
   manifest?: ModuleManifestLike;
   routes?: ModuleRoute[];
+}
+
+interface RouteHandlerResult {
+  status?: number;
+  headers?: Record<string, string>;
+  body?: unknown;
+  redirect?: {
+    location: string;
+  };
+  fragment?: {
+    target: string;
+    selector?: string;
+    mode?: 'replace' | 'append' | 'prepend';
+    body: unknown;
+  };
+  errors?: { code: string; message: string; details?: unknown }[];
 }
 
 interface ManifestSummary {
@@ -64,6 +90,16 @@ export async function start(): Promise<void> {
   readiness.booting();
 
   const app = Fastify({ logger: false });
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+    try {
+      done(null, parseFormEncodedBody(body));
+    } catch (error) {
+      done(error as Error);
+    }
+  });
+  app.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => {
+    done(null, body);
+  });
 
   app.get('/api/health', async () => ({ ok: true, uptime: process.uptime() }));
   app.get('/healthz', async () => ({ ok: true }));
@@ -133,15 +169,18 @@ function mountRoutes(app: import('fastify').FastifyInstance, definition: ModuleD
             body: (req as any).body ?? {}
           };
           const result = await handler(ctx);
-          const status = result?.status ?? (result?.errors ? 400 : 200);
-          const headers = result?.headers ?? { 'content-type': 'application/json' };
+          const status = resolveResponseStatus(result);
+          const headers = resolveResponseHeaders(result);
           for (const [k, v] of Object.entries(headers)) {
             reply.header(k, String(v));
           }
           if (result?.errors) {
             reply.code(status).send({ errors: result.errors });
+          } else if (result?.redirect) {
+            reply.code(status).send('');
           } else {
-            reply.code(status).send(result?.body ?? null);
+            const payload = result?.fragment ? result.fragment.body : result?.body ?? null;
+            reply.code(status).send(payload);
           }
         }
       });
@@ -225,6 +264,72 @@ function createRequestLogger(requestId: string, bindings: Record<string, unknown
       return createRequestLogger(requestId, { ...bindings, ...extra });
     }
   };
+}
+
+function resolveResponseStatus(result: RouteHandlerResult | undefined): number {
+  if (result?.redirect) {
+    return result.status ?? 303;
+  }
+  return result?.status ?? (result?.errors ? 400 : 200);
+}
+
+function resolveResponseHeaders(result: RouteHandlerResult | undefined): Record<string, string> {
+  const headers: Record<string, string> = { ...(result?.headers ?? {}) };
+
+  if (result?.redirect) {
+    headers.location = result.redirect.location;
+  }
+
+  if (result?.fragment) {
+    headers['x-webstir-fragment-target'] = result.fragment.target;
+    if (result.fragment.selector) {
+      headers['x-webstir-fragment-selector'] = result.fragment.selector;
+    }
+    if (result.fragment.mode) {
+      headers['x-webstir-fragment-mode'] = result.fragment.mode;
+    }
+  }
+
+  if (!('content-type' in lowerCaseHeaderMap(headers))) {
+    const payload = result?.fragment ? result.fragment.body : result?.body;
+    if (payload !== undefined && payload !== null) {
+      headers['content-type'] = resolveContentType(payload);
+    }
+  }
+
+  return headers;
+}
+
+function lowerCaseHeaderMap(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+}
+
+function resolveContentType(payload: unknown): string {
+  if (typeof payload === 'string') {
+    return 'text/html; charset=utf-8';
+  }
+  if (Buffer.isBuffer(payload)) {
+    return 'application/octet-stream';
+  }
+  return 'application/json';
+}
+
+function parseFormEncodedBody(input: string): Record<string, string | string[]> {
+  const entries = new URLSearchParams(input);
+  const result: Record<string, string | string[]> = {};
+  for (const [key, value] of entries) {
+    const existing = result[key];
+    if (existing === undefined) {
+      result[key] = value;
+      continue;
+    }
+    if (Array.isArray(existing)) {
+      existing.push(value);
+      continue;
+    }
+    result[key] = [existing, value];
+  }
+  return result;
 }
 
 function extractRequestId(req: { id?: string; headers?: Record<string, unknown> }): string {
