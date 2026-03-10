@@ -148,6 +148,14 @@ export function getEmbeddedManagedPaths(pkg) {
   ];
 }
 
+export function getEmbeddedStagePaths(pkg) {
+  if (!hasEmbeddedSnapshot(pkg)) {
+    return [];
+  }
+
+  return [pkg.embeddedDir];
+}
+
 export function isManagedEmbeddedContentPath(relativePath) {
   const normalizedPath = normalizeRelativePath(relativePath);
   return normalizedPath === '.editorconfig'
