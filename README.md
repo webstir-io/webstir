@@ -41,5 +41,5 @@ bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 ## Notes
 
 - Published npm package names remain unchanged.
-- `orchestrators/dotnet` remains in-tree for historical reference only; active local workflows should go through `orchestrators/bun`.
+- `orchestrators/dotnet` remains in-tree as a frozen historical snapshot only; active local workflows, releases, and package maintenance go through the Bun monorepo.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

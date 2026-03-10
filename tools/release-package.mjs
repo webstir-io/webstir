@@ -4,7 +4,6 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  getEmbeddedStagePaths,
   getFrameworkPackageByCanonicalDir,
   getFrameworkReleaseTag,
   getRepoRoot,
@@ -129,11 +128,6 @@ run('npm', ['version', options.bump, '--no-git-tag-version'], options.packageDir
 const packageJson = readPackageJson(options.packageDir);
 const releaseTag = getFrameworkReleaseTag(frameworkPackage, packageJson.version);
 
-if (frameworkPackage.embeddedDir) {
-  console.log('› node tools/sync-framework-embedded.mjs');
-  run('node', ['tools/sync-framework-embedded.mjs', '--package-dir', relativePackageDir], repoRoot);
-}
-
 for (const scriptName of ['clean', 'build', 'test', 'smoke']) {
   if (!hasScript(packageJson, scriptName)) {
     continue;
@@ -144,7 +138,6 @@ for (const scriptName of ['clean', 'build', 'test', 'smoke']) {
 }
 
 const filesToStage = [path.posix.join(relativePackageDir, 'package.json')];
-filesToStage.push(...getEmbeddedStagePaths(frameworkPackage));
 
 console.log(`› git add ${filesToStage.join(' ')}`);
 run('git', ['add', ...filesToStage], repoRoot);
