@@ -55,7 +55,30 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     await waitFor(async () => {
       expect(await fetchText(port, '/')).toContain('Home');
       expect(await fetchText(port, '/api')).toContain('API server running');
+      expect(await fetchText(port, '/api/demo/progressive-enhancement')).toContain('Progressive enhancement form flow');
     }, 20_000);
+
+    const nativeResponse = await fetch(`http://127.0.0.1:${port}/api/demo/progressive-enhancement`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: 'name=Watch+Flow',
+      redirect: 'manual'
+    });
+    expect(nativeResponse.status).toBe(303);
+    expect(nativeResponse.headers.get('location')).toBe('/demo/progressive-enhancement?source=redirect&name=Watch%20Flow');
+
+    const enhancedResponse = await fetch(`http://127.0.0.1:${port}/api/demo/progressive-enhancement`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1'
+      },
+      body: 'name=Fragment+Watch'
+    });
+    expect(enhancedResponse.headers.get('x-webstir-fragment-target')).toBe('greeting-preview');
+    expect(await enhancedResponse.text()).toContain('Hello, Fragment Watch');
 
     const frontendPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
     const originalFrontend = await readFile(frontendPath, 'utf8');

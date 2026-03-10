@@ -6,6 +6,7 @@
     gap: 2rem;
     align-items: center;
     text-align: center;
+    padding: 4rem 1.5rem;
 }
 
 .hero h1 {
@@ -18,4 +19,11 @@
     color: var(--text-secondary);
     margin: 0 auto;
     max-width: 42ch;
+}
+
+.eyebrow {
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
 }
