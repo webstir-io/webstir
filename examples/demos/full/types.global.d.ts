@@ -18,23 +18,6 @@ declare module '@webstir-io/webstir-testing' {
   export function run(): Promise<void>;
 }
 
-declare module '@webstir-io/webstir-backend/testing' {
-  export interface BackendTestContext {
-    readonly baseUrl: string;
-    readonly url: URL;
-    readonly port: number;
-    readonly manifest: unknown;
-    readonly routes: readonly unknown[];
-    readonly env: Readonly<Record<string, string>>;
-    request(pathOrUrl?: string | URL, init?: RequestInit): Promise<Response>;
-  }
-
-  export function backendTest(
-    description: string,
-    callback: (context: BackendTestContext) => void | Promise<void>
-  ): void;
-}
-
 declare module 'node:fs' {
   export function readFileSync(path: string, options?: { encoding?: string } | string): string;
 }

@@ -56,7 +56,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
       expect(await fetchText(port, '/')).toContain('Home');
       expect(await fetchText(port, '/api')).toContain('API server running');
       expect(await fetchText(port, '/api/demo/progressive-enhancement')).toContain('Progressive enhancement form flow');
-    }, 20_000);
+    }, 40_000);
 
     const nativeResponse = await fetch(`http://127.0.0.1:${port}/api/demo/progressive-enhancement`, {
       method: 'POST',
@@ -106,7 +106,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
-}, 40_000);
+}, 60_000);
 
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);

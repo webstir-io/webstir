@@ -1,10 +1,7 @@
-import { assert } from '@webstir-io/webstir-testing';
-import {
-  backendTest,
-  type BackendTestContext
-} from '@webstir-io/webstir-backend/testing';
+import { assert, test } from '@webstir-io/webstir-testing';
 
-backendTest('progressive enhancement demo page renders a form shell', async (ctx: BackendTestContext) => {
+test('progressive enhancement demo page renders a form shell', async () => {
+  const ctx = requireBackendTestContext();
   const response = await ctx.request('/demo/progressive-enhancement');
   const html = await response.text();
 
@@ -15,7 +12,8 @@ backendTest('progressive enhancement demo page renders a form shell', async (ctx
   assert.isTrue(html.includes('type="module" src="/app/'));
 });
 
-backendTest('native form submissions redirect back to the document route', async (ctx: BackendTestContext) => {
+test('native form submissions redirect back to the document route', async () => {
+  const ctx = requireBackendTestContext();
   const response = await ctx.request('/demo/progressive-enhancement', {
     method: 'POST',
     headers: {
@@ -32,7 +30,8 @@ backendTest('native form submissions redirect back to the document route', async
   );
 });
 
-backendTest('enhanced form submissions return fragment metadata and html', async (ctx: BackendTestContext) => {
+test('enhanced form submissions return fragment metadata and html', async () => {
+  const ctx = requireBackendTestContext();
   const response = await ctx.request('/demo/progressive-enhancement', {
     method: 'POST',
     headers: {
@@ -51,3 +50,16 @@ backendTest('enhanced form submissions return fragment metadata and html', async
   assert.isTrue(html.includes('Hello, Fragment Flow'));
   assert.isTrue(html.includes('replace just this region'));
 });
+
+interface BackendTestContext {
+  request(pathOrUrl?: string | URL, init?: RequestInit): Promise<Response>;
+}
+
+function requireBackendTestContext(): BackendTestContext {
+  const store = globalThis as Record<string | symbol, unknown>;
+  const context = store[Symbol.for('webstir.backendTestContext')] as BackendTestContext | undefined;
+  if (!context) {
+    throw new Error('Backend test context not available.');
+  }
+  return context;
+}
