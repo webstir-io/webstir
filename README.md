@@ -31,7 +31,7 @@ bun run watch:api
 bun run watch:full
 ```
 
-You can also target any workspace directly:
+You can also target a workspace directly:
 
 ```bash
 bun run webstir -- watch --workspace "$PWD/examples/demos/full"
