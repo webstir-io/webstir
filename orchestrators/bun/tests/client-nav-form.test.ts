@@ -4,6 +4,7 @@ import {
   buildEnhancedFormRequest,
   isHtmlDocumentContentType,
   readFragmentResponseMetadata,
+  shouldReplaceFragmentTarget,
 } from '../resources/features/client_nav/form_enhancement.ts';
 
 test('buildEnhancedFormRequest serializes form-urlencoded POST bodies', () => {
@@ -72,4 +73,50 @@ test('isHtmlDocumentContentType recognizes html responses', () => {
   expect(isHtmlDocumentContentType('text/html; charset=utf-8')).toBe(true);
   expect(isHtmlDocumentContentType('application/xhtml+xml')).toBe(true);
   expect(isHtmlDocumentContentType('application/json')).toBe(false);
+});
+
+test('shouldReplaceFragmentTarget prefers replacing the target for matching fragment roots', () => {
+  expect(shouldReplaceFragmentTarget({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [{
+      id: 'greeting-preview',
+      fragmentTarget: 'greeting-preview',
+    }],
+  })).toBe(true);
+
+  expect(shouldReplaceFragmentTarget({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [{
+      matchesSelector: true,
+    }],
+  })).toBe(true);
+});
+
+test('shouldReplaceFragmentTarget keeps child replacement for non-matching or multi-root payloads', () => {
+  expect(shouldReplaceFragmentTarget({
+    mode: 'append',
+    target: 'greeting-preview',
+    roots: [{
+      id: 'greeting-preview',
+    }],
+  })).toBe(false);
+
+  expect(shouldReplaceFragmentTarget({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [{
+      id: 'other-preview',
+    }],
+  })).toBe(false);
+
+  expect(shouldReplaceFragmentTarget({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [
+      { id: 'greeting-preview' },
+      { id: 'secondary' },
+    ],
+  })).toBe(false);
 });

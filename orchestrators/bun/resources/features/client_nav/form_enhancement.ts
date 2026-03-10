@@ -6,6 +6,12 @@ export interface FragmentResponseMetadata {
     readonly mode: FragmentUpdateMode;
 }
 
+export interface FragmentRootCandidate {
+    readonly id?: string | null;
+    readonly fragmentTarget?: string | null;
+    readonly matchesSelector?: boolean;
+}
+
 export interface EnhancedFormRequest {
     readonly url: string;
     readonly init: RequestInit;
@@ -94,6 +100,21 @@ export function isHtmlDocumentContentType(value: string | null): boolean {
     return normalized.includes('text/html') || normalized.includes('application/xhtml+xml');
 }
 
+export function shouldReplaceFragmentTarget(options: {
+    readonly mode: FragmentUpdateMode;
+    readonly target: string;
+    readonly roots: readonly FragmentRootCandidate[];
+}): boolean {
+    if (options.mode !== 'replace' || options.roots.length !== 1) {
+        return false;
+    }
+
+    const [root] = options.roots;
+    return root.matchesSelector === true
+        || matchesFragmentTarget(root.id, options.target)
+        || matchesFragmentTarget(root.fragmentTarget, options.target);
+}
+
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
     const params = new URLSearchParams();
     let hasBinaryValue = false;
@@ -105,4 +126,8 @@ function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
         params.append(key, value);
     });
     return hasBinaryValue ? null : params;
+}
+
+function matchesFragmentTarget(value: string | null | undefined, target: string): boolean {
+    return typeof value === 'string' && value.trim() === target;
 }

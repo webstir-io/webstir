@@ -3,7 +3,8 @@ import {
     isHtmlDocumentContentType,
     normalizeFormEnctype,
     normalizeFormMethod,
-    readFragmentResponseMetadata
+    readFragmentResponseMetadata,
+    shouldReplaceFragmentTarget
 } from './form-enhancement.js';
 import {
     cssEscape,
@@ -381,8 +382,8 @@ async function handleFragmentResponse(response: Response, requestId: number): Pr
         return true;
     }
 
-    applyFragmentHtml(target, html, fragment.mode);
-    focusAutofocus(target);
+    const appliedTarget = applyFragmentHtml(target, html, fragment);
+    focusAutofocus(appliedTarget);
     window.dispatchEvent(new CustomEvent('webstir:fragment-update', {
         detail: {
             target: fragment.target,
@@ -406,23 +407,60 @@ function resolveFragmentTarget(target: string, selector?: string): Element | nul
     return document.querySelector(`[data-webstir-fragment-target="${cssEscape(target)}"]`);
 }
 
-function applyFragmentHtml(target: Element, html: string, mode: 'replace' | 'append' | 'prepend'): void {
+function applyFragmentHtml(target: Element, html: string, fragment: {
+    readonly target: string;
+    readonly selector?: string;
+    readonly mode: 'replace' | 'append' | 'prepend';
+}): Element {
     const template = document.createElement('template');
     template.innerHTML = html;
     const insertedRoots = Array.from(template.content.children);
+    const replaceTarget = shouldReplaceFragmentTarget({
+        mode: fragment.mode,
+        target: fragment.target,
+        roots: insertedRoots.map((root) => ({
+            id: root.id,
+            fragmentTarget: root.getAttribute('data-webstir-fragment-target'),
+            matchesSelector: elementMatchesSelector(root, fragment.selector)
+        }))
+    });
 
-    if (mode === 'append') {
+    if (replaceTarget) {
+        const [insertedRoot] = insertedRoots;
+        target.replaceWith(template.content);
+        if (insertedRoot) {
+            executeScripts(insertedRoot, DOM_RUNTIME);
+            return insertedRoot;
+        }
+        return target;
+    }
+
+    if (fragment.mode === 'append') {
         target.append(template.content);
-    } else if (mode === 'prepend') {
+    } else if (fragment.mode === 'prepend') {
         target.prepend(template.content);
     } else {
         target.replaceChildren(template.content);
         executeScripts(target, DOM_RUNTIME);
-        return;
+        return target;
     }
 
     for (const root of insertedRoots) {
         executeScripts(root, DOM_RUNTIME);
+    }
+
+    return target;
+}
+
+function elementMatchesSelector(element: Element, selector: string | undefined): boolean {
+    if (!selector) {
+        return false;
+    }
+
+    try {
+        return element.matches(selector);
+    } catch {
+        return false;
     }
 }
 
