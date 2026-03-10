@@ -215,6 +215,28 @@ export const httpMethodSchema = z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', '
 
 export type HttpMethod = z.infer<typeof httpMethodSchema>;
 
+export const routeInteractionKindSchema = z.enum(['navigation', 'mutation']);
+
+export type RouteInteractionKind = z.infer<typeof routeInteractionKindSchema>;
+
+export const formEncodingSchema = z.enum(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain']);
+
+export type FormEncoding = z.infer<typeof formEncodingSchema>;
+
+export const fragmentUpdateModeSchema = z.enum(['replace', 'append', 'prepend']);
+
+export type FragmentUpdateMode = z.infer<typeof fragmentUpdateModeSchema>;
+
+export const redirectStatusSchema = z.union([
+  z.literal(301),
+  z.literal(302),
+  z.literal(303),
+  z.literal(307),
+  z.literal(308)
+]);
+
+export type RedirectStatus = z.infer<typeof redirectStatusSchema>;
+
 export const schemaReferenceSchema = z.object({
   kind: z.enum(['zod', 'json-schema', 'ts-rest']).default('zod'),
   name: z.string(),
@@ -235,11 +257,59 @@ export const routeInputSchema = z
 
 export type RouteInputDefinition = z.infer<typeof routeInputSchema>;
 
-export const routeOutputSchema = z.object({
-  body: schemaReferenceSchema,
+export const routeFormSchema = z
+  .object({
+    contentType: formEncodingSchema.optional(),
+    csrf: z.boolean().optional()
+  })
+  .strict();
+
+export type RouteFormDefinition = z.infer<typeof routeFormSchema>;
+
+export const routeFragmentSchema = z
+  .object({
+    target: z.string().min(1),
+    selector: z.string().min(1).optional(),
+    mode: fragmentUpdateModeSchema.optional()
+  })
+  .strict();
+
+export type RouteFragmentDefinition = z.infer<typeof routeFragmentSchema>;
+
+export const routeRedirectSchema = z
+  .object({
+    status: redirectStatusSchema.optional(),
+    location: z.string().min(1).optional()
+  })
+  .strict();
+
+export type RouteRedirectDefinition = z.infer<typeof routeRedirectSchema>;
+
+const routeOutputBaseShape = {
   status: z.number().int().min(100).max(599).optional(),
   headers: schemaReferenceSchema.optional()
-});
+} as const;
+
+export const routeOutputSchema = z.union([
+  z
+    .object({
+      ...routeOutputBaseShape,
+      body: schemaReferenceSchema
+    })
+    .strict(),
+  z
+    .object({
+      ...routeOutputBaseShape,
+      redirect: routeRedirectSchema
+    })
+    .strict(),
+  z
+    .object({
+      ...routeOutputBaseShape,
+      fragment: routeFragmentSchema
+    })
+    .strict()
+]);
 
 export type RouteOutputDefinition = z.infer<typeof routeOutputSchema>;
 
@@ -250,6 +320,9 @@ export const routeDefinitionSchema = z.object({
   summary: z.string().optional(),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  interaction: routeInteractionKindSchema.optional(),
+  form: routeFormSchema.optional(),
+  fragment: routeFragmentSchema.optional(),
   input: routeInputSchema.optional(),
   output: routeOutputSchema.optional(),
   errors: z.array(moduleErrorSchema).optional(),
@@ -297,13 +370,36 @@ export interface RouteSuccessResponse<TResponse extends z.ZodTypeAny> {
   readonly headers?: Record<string, string>;
 }
 
+export interface RouteFragmentResponse<TResponse extends z.ZodTypeAny> {
+  readonly status?: number;
+  readonly fragment: {
+    readonly target: string;
+    readonly selector?: string;
+    readonly mode?: FragmentUpdateMode;
+    readonly body: z.infer<TResponse>;
+  };
+  readonly headers?: Record<string, string>;
+}
+
+export interface RouteRedirectResponse {
+  readonly status?: RedirectStatus;
+  readonly redirect: {
+    readonly location: string;
+  };
+  readonly headers?: Record<string, string>;
+}
+
 export interface RouteErrorResponse {
   readonly status?: number;
   readonly errors: readonly ModuleError[];
   readonly headers?: Record<string, string>;
 }
 
-export type RouteHandlerResult<TResponse extends z.ZodTypeAny> = RouteSuccessResponse<TResponse> | RouteErrorResponse;
+export type RouteHandlerResult<TResponse extends z.ZodTypeAny> =
+  | RouteSuccessResponse<TResponse>
+  | RouteFragmentResponse<TResponse>
+  | RouteRedirectResponse
+  | RouteErrorResponse;
 
 export type RouteHandler<
   TContext extends RequestContext,

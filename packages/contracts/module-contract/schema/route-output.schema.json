@@ -2,45 +2,124 @@
   "$ref": "#/definitions/route-output",
   "definitions": {
     "route-output": {
-      "type": "object",
-      "properties": {
-        "body": {
+      "anyOf": [
+        {
           "type": "object",
           "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "zod",
-                "json-schema",
-                "ts-rest"
+            "status": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 599
+            },
+            "headers": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "zod",
+                    "json-schema",
+                    "ts-rest"
+                  ],
+                  "default": "zod"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
               ],
-              "default": "zod"
+              "additionalProperties": false
             },
-            "name": {
-              "type": "string"
-            },
-            "source": {
-              "type": "string"
+            "body": {
+              "$ref": "#/definitions/route-output/anyOf/0/properties/headers"
             }
           },
           "required": [
-            "name"
+            "body"
           ],
           "additionalProperties": false
         },
-        "status": {
-          "type": "integer",
-          "minimum": 100,
-          "maximum": 599
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/route-output/anyOf/0/properties/status"
+            },
+            "headers": {
+              "$ref": "#/definitions/route-output/anyOf/0/properties/headers"
+            },
+            "redirect": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "number",
+                  "enum": [
+                    301,
+                    302,
+                    303,
+                    307,
+                    308
+                  ]
+                },
+                "location": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "redirect"
+          ],
+          "additionalProperties": false
         },
-        "headers": {
-          "$ref": "#/definitions/route-output/properties/body"
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/route-output/anyOf/0/properties/status"
+            },
+            "headers": {
+              "$ref": "#/definitions/route-output/anyOf/0/properties/headers"
+            },
+            "fragment": {
+              "type": "object",
+              "properties": {
+                "target": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "selector": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mode": {
+                  "type": "string",
+                  "enum": [
+                    "replace",
+                    "append",
+                    "prepend"
+                  ]
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "fragment"
+          ],
+          "additionalProperties": false
         }
-      },
-      "required": [
-        "body"
-      ],
-      "additionalProperties": false
+      ]
     }
   },
   "$schema": "http://json-schema.org/draft-07/schema#"

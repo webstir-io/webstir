@@ -20,6 +20,15 @@ type RouteHandlerResult = {
   status?: number;
   headers?: Record<string, string>;
   body?: unknown;
+  redirect?: {
+    location: string;
+  };
+  fragment?: {
+    target: string;
+    selector?: string;
+    mode?: 'replace' | 'append' | 'prepend';
+    body: unknown;
+  };
   errors?: { code: string; message: string; details?: unknown }[];
 };
 
@@ -44,6 +53,16 @@ interface ModuleRouteDefinition {
   name?: string;
   method?: string;
   path?: string;
+  interaction?: 'navigation' | 'mutation';
+  form?: {
+    contentType?: 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain';
+    csrf?: boolean;
+  };
+  fragment?: {
+    target: string;
+    selector?: string;
+    mode?: 'replace' | 'append' | 'prepend';
+  };
 }
 
 interface ModuleRoute {
@@ -252,8 +271,8 @@ async function handleRequest(options: {
 }
 
 function sendRouteResponse(res: http.ServerResponse, result: RouteHandlerResult): void {
-  const status = result.status ?? (result.errors ? 400 : 200);
-  const headers = result.headers ?? { 'content-type': 'application/json' };
+  const status = resolveResponseStatus(result);
+  const headers = resolveResponseHeaders(result);
   res.statusCode = status;
   for (const [key, value] of Object.entries(headers)) {
     res.setHeader(key, value);
@@ -264,17 +283,73 @@ function sendRouteResponse(res: http.ServerResponse, result: RouteHandlerResult)
     return;
   }
 
-  if (result.body === undefined || result.body === null) {
+  if (result.redirect) {
     res.end('');
     return;
   }
 
-  if (typeof result.body === 'string' || Buffer.isBuffer(result.body)) {
-    res.end(result.body);
+  const payload = result.fragment ? result.fragment.body : result.body;
+
+  if (payload === undefined || payload === null) {
+    res.end('');
     return;
   }
 
-  respondJson(res, status, result.body);
+  if (typeof payload === 'string' || Buffer.isBuffer(payload)) {
+    res.end(payload);
+    return;
+  }
+
+  respondJson(res, status, payload);
+}
+
+function resolveResponseStatus(result: RouteHandlerResult): number {
+  if (result.redirect) {
+    return result.status ?? 303;
+  }
+  return result.status ?? (result.errors ? 400 : 200);
+}
+
+function resolveResponseHeaders(result: RouteHandlerResult): Record<string, string> {
+  const headers: Record<string, string> = { ...(result.headers ?? {}) };
+
+  if (result.redirect) {
+    headers.location = result.redirect.location;
+  }
+
+  if (result.fragment) {
+    headers['x-webstir-fragment-target'] = result.fragment.target;
+    if (result.fragment.selector) {
+      headers['x-webstir-fragment-selector'] = result.fragment.selector;
+    }
+    if (result.fragment.mode) {
+      headers['x-webstir-fragment-mode'] = result.fragment.mode;
+    }
+  }
+
+  if (!('content-type' in lowerCaseHeaderMap(headers))) {
+    const payload = result.fragment ? result.fragment.body : result.body;
+    if (payload === undefined || payload === null) {
+      return headers;
+    }
+    headers['content-type'] = resolveContentType(payload);
+  }
+
+  return headers;
+}
+
+function lowerCaseHeaderMap(headers: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+}
+
+function resolveContentType(payload: unknown): string {
+  if (typeof payload === 'string') {
+    return 'text/html; charset=utf-8';
+  }
+  if (Buffer.isBuffer(payload)) {
+    return 'application/octet-stream';
+  }
+  return 'application/json';
 }
 
 function createEnvAccessor(): EnvAccessor {
@@ -503,7 +578,31 @@ async function readRequestBody(req: http.IncomingMessage): Promise<unknown> {
       return undefined;
     }
   }
+  if (contentType.includes('application/x-www-form-urlencoded')) {
+    return parseFormEncodedBody(buffer.toString('utf8'));
+  }
+  if (contentType.includes('text/plain')) {
+    return buffer.toString('utf8');
+  }
   return buffer.toString('utf8');
+}
+
+function parseFormEncodedBody(input: string): Record<string, string | string[]> {
+  const entries = new URLSearchParams(input);
+  const result: Record<string, string | string[]> = {};
+  for (const [key, value] of entries) {
+    const existing = result[key];
+    if (existing === undefined) {
+      result[key] = value;
+      continue;
+    }
+    if (Array.isArray(existing)) {
+      existing.push(value);
+      continue;
+    }
+    result[key] = [existing, value];
+  }
+  return result;
 }
 
 function normalizePath(value: string | undefined): string {
