@@ -226,6 +226,7 @@ test('built backend server honors redirect and fragment route responses', async 
   const workspace = await createTempWorkspace('webstir-backend-runtime-');
   await hydrateBackendScaffold(workspace);
   await linkWorkspaceNodeModules(workspace);
+  await fs.writeFile(path.join(workspace, 'package.json'), JSON.stringify({ type: 'module' }, null, 2), 'utf8');
 
   const moduleSource = `const routes = [
   {
