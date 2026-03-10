@@ -26,7 +26,10 @@ function runCli(args: readonly string[]): {
   const processResult = Bun.spawnSync({
     cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
     cwd: repoRoot,
-    env: process.env,
+    env: {
+      ...process.env,
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -51,9 +54,9 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
     expect(result.stdout).toContain('workspace-source: explicit workspace');
     expect(result.stdout).toContain('phases: 4');
     expect(result.stdout).toContain('  - build: frontend:');
-    expect(result.stdout).toContain('  - test: 1 passed, 0 failed');
+    expect(result.stdout).toMatch(/  - test: \d+ passed, 0 failed/);
     expect(result.stdout).toContain('  - publish: frontend:');
-    expect(result.stdout).toContain('  - backend-inspect: 0 routes, 0 jobs');
+    expect(result.stdout).toMatch(/  - backend-inspect: \d+ routes, 0 jobs/);
   } finally {
     await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
   }

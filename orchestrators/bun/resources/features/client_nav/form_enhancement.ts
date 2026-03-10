@@ -96,11 +96,13 @@ export function isHtmlDocumentContentType(value: string | null): boolean {
 
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
     const params = new URLSearchParams();
-    for (const [key, value] of formData.entries()) {
+    let hasBinaryValue = false;
+    formData.forEach((value, key) => {
         if (typeof value !== 'string') {
-            return null;
+            hasBinaryValue = true;
+            return;
         }
         params.append(key, value);
-    }
-    return params;
+    });
+    return hasBinaryValue ? null : params;
 }

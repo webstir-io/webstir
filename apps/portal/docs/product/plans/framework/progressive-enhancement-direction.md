@@ -36,7 +36,10 @@
 - Completed: the Bun client/runtime enhancement path can now consume fragment responses from enhanced forms.
   - `client-nav` now intercepts eligible same-origin `POST` forms, applies fragment updates, and keeps full-document HTML swaps for non-fragment responses.
   - Bun tests now cover fragment response metadata parsing and the expanded `client-nav` asset scaffolding.
-- Current focus: prove the form-submit -> fragment-update flow in a canonical application and extend the default scaffold ergonomics around validation, flash/session messaging, and auth-aware form workflows.
+- Completed: the canonical full-demo application now proves the form-submit -> fragment-update flow end to end.
+  - `examples/demos/full` now exposes a backend-served HTML form route that redirects cleanly without JavaScript and returns fragment updates when `client-nav` enhances the submission.
+  - The demo now validates the route directly via backend tests and through the `/api` proxy path in the full watch integration test, and the page resolves shared frontend assets in both watch and publish flows.
+- Current focus: extend the default scaffold/runtime ergonomics around validation, flash/session messaging, auth-aware form workflows, and broader fragment-mode hardening.
 
 ## Repo-Specific Worklist
 
@@ -55,7 +58,7 @@
 - Add an official way to update a region of the page after form submissions or user interactions.
 - This should feel native to the framework and preserve the non-JavaScript baseline.
 - Main touchpoints: `orchestrators/bun/resources/features/client_nav/*`, `packages/tooling/webstir-backend/templates/backend/index.ts`, `packages/tooling/webstir-backend/templates/backend/server/fastify.ts`.
-- Status: the first client-side slice is in place for enhanced same-origin `POST` forms; broader hardening, richer modes, and canonical application coverage are still outstanding.
+- Status: the first client-side slice is in place for enhanced same-origin `POST` forms, and `examples/demos/full` now proves the canonical form -> fragment path end to end; broader hardening and richer modes are still outstanding.
 
 ### 4. Forms and mutations as the primary workflow
 - Make server-handled forms easier than client-heavy mutation flows.
@@ -86,6 +89,7 @@
 - Add canonical end-to-end apps that prove the model on real software, not just toy demos.
 - Target examples such as auth, CRUD backoffice, content plus forms, dashboards with partial refreshes, and background jobs.
 - Main touchpoint: `examples/demos/*`.
+- Status: the initial canonical form-flow proof now exists in `examples/demos/full`; follow-up apps should expand the surface area to auth, CRUD, and dashboard-style partial refreshes.
 
 ### 10. Opinionated documentation
 - Teach the Webstir way of building applications instead of only documenting APIs and provider seams.
@@ -93,9 +97,9 @@
 - Main touchpoint: `apps/portal/docs/`.
 
 ## Working Priorities
-- Prove a full form-submit -> fragment-update flow end to end in one canonical application.
 - Extend the default scaffold/runtime ergonomics for validation errors, flash/session messaging, and auth-aware form handling.
 - Broaden production hardening around fragment modes, browser-level integration coverage, and missing-target/error behavior.
+- Add the next proof applications that cover auth, CRUD/backoffice flows, and dashboard-style partial refreshes.
 
 ## Decision Filter
 - Does this make HTML-first app development more coherent?
