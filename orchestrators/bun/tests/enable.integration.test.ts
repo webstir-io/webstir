@@ -72,6 +72,24 @@ test('CLI enables search on the SSG demo workspace end to end', async () => {
   expect(appHtml).toContain('<html data-webstir-search-styles="css" lang="en">');
 });
 
+test('CLI enables client-nav and copies the fragment helper asset', async () => {
+  const copiedWorkspace = await copyFixtureWorkspace('ssg/base');
+  const result = await runEnableInWorkspace(copiedWorkspace, ['client-nav']);
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toContain('feature: client-nav');
+
+  const packageJson = await readJsonFile(path.join(copiedWorkspace, 'package.json'));
+  const appTs = await readFile(path.join(copiedWorkspace, 'src', 'frontend', 'app', 'app.ts'), 'utf8');
+
+  expect(packageJson.webstir.enable.clientNav).toBe(true);
+  expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'app', 'scripts', 'features', 'client-nav.ts'))).toBe(true);
+  expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'app', 'scripts', 'features', 'form-enhancement.ts'))).toBe(true);
+  expect(existsSync(path.join(copiedWorkspace, 'src', 'frontend', 'app', 'scripts', 'features', 'document-navigation.ts'))).toBe(true);
+  expect(appTs).toContain('import "./scripts/features/client-nav.js";');
+});
+
 test('CLI enables backend on the SPA demo workspace end to end', async () => {
   const copiedWorkspace = await copyFixtureWorkspace('spa');
   const result = await runEnableInWorkspace(copiedWorkspace, ['backend']);

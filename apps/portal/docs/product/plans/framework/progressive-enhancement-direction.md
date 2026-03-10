@@ -11,7 +11,7 @@
 - Treat forms, links, redirects, and document navigation as primary primitives.
 - Use client JavaScript to enhance the baseline experience, not to replace it.
 - Keep the network, browser, and device cost low by default.
-- Do not assume Webstir lacks a cache or invalidation story without checking the existing contract and runtime surfaces first.
+- Do not assume Webstir lacks any cache or invalidation foundation, but distinguish the current contract/build-cache surfaces from the still-missing request/runtime story.
 
 ## Anti-Goals
 - Do not rebuild the React mental model with different package names.
@@ -33,7 +33,10 @@
 - Completed: backend scaffold runtime honors the new route results.
   - The default server and Fastify scaffold now handle redirects, fragment responses, and `application/x-www-form-urlencoded` request bodies.
   - Backend tests now include an end-to-end runtime check for redirect and fragment responses.
-- Current focus: build the client/runtime counterpart that can consume fragment responses and update the DOM without collapsing into SPA routing.
+- Completed: the Bun client/runtime enhancement path can now consume fragment responses from enhanced forms.
+  - `client-nav` now intercepts eligible same-origin `POST` forms, applies fragment updates, and keeps full-document HTML swaps for non-fragment responses.
+  - Bun tests now cover fragment response metadata parsing and the expanded `client-nav` asset scaffolding.
+- Current focus: prove the form-submit -> fragment-update flow in a canonical application and extend the default scaffold ergonomics around validation, flash/session messaging, and auth-aware form workflows.
 
 ## Repo-Specific Worklist
 
@@ -46,13 +49,13 @@
 ### 2. Real server-rendered HTML runtime
 - Build a runtime path for request-time HTML rendering, not only SSG metadata and `view-data.json` generation.
 - Treat server-rendered HTML as the flagship path in the frontend/backend integration.
-- Main touchpoints: `packages/tooling/webstir-frontend/src/modes/ssg/views.ts`, `packages/tooling/webstir-frontend/src/provider.ts`, `packages/tooling/webstir-backend/src/provider.ts`.
+- Main touchpoints: `packages/tooling/webstir-backend/templates/backend/index.ts`, `packages/tooling/webstir-backend/templates/backend/server/fastify.ts`, and then the frontend/backend provider packaging surfaces once the request-time runtime exists.
 
 ### 3. First-class fragment and partial update model
 - Add an official way to update a region of the page after form submissions or user interactions.
 - This should feel native to the framework and preserve the non-JavaScript baseline.
-- Main touchpoints: `packages/tooling/webstir-frontend/src/builders/htmlBuilder.ts`, `packages/tooling/webstir-frontend/src/html/*`, `orchestrators/bun/src/dev-server.ts`, `orchestrators/bun/src/backend-runtime.ts`.
-- Status: server-side transport is in place; client-side consumption and DOM replacement are still outstanding.
+- Main touchpoints: `orchestrators/bun/resources/features/client_nav/*`, `packages/tooling/webstir-backend/templates/backend/index.ts`, `packages/tooling/webstir-backend/templates/backend/server/fastify.ts`.
+- Status: the first client-side slice is in place for enhanced same-origin `POST` forms; broader hardening, richer modes, and canonical application coverage are still outstanding.
 
 ### 4. Forms and mutations as the primary workflow
 - Make server-handled forms easier than client-heavy mutation flows.
@@ -62,10 +65,10 @@
 ### 5. Request pipeline and middleware execution
 - Wire middleware or request hooks through the actual Bun runtime, not just the manifest schema.
 - Make auth, logging, sessions, redirects, and cache-aware behavior composable in the request path.
-- Main touchpoints: `packages/contracts/module-contract/src/index.ts`, `packages/tooling/webstir-backend/src/provider.ts`, `orchestrators/bun/src/backend-runtime.ts`.
+- Main touchpoints: `packages/contracts/module-contract/src/index.ts`, `packages/tooling/webstir-backend/templates/backend/index.ts`, `packages/tooling/webstir-backend/templates/backend/server/fastify.ts`.
 
 ### 6. Explicit cache and invalidation ergonomics
-- Surface the existing cache story in a way application authors can use and understand.
+- Surface the current cache foundations in a way application authors can use and understand, and close the gap between build-time cache metadata and request/runtime cache behavior.
 - Document what is cached, where it lives, how it is invalidated, and how page or fragment correctness is maintained.
 - Main touchpoints: contract docs, backend runtime, and framework docs.
 
@@ -90,9 +93,9 @@
 - Main touchpoint: `apps/portal/docs/`.
 
 ## Working Priorities
-- Build the client/runtime counterpart for fragment responses.
-- Prove a full form-submit -> fragment-update flow end to end.
-- Build one canonical application that demonstrates the model clearly.
+- Prove a full form-submit -> fragment-update flow end to end in one canonical application.
+- Extend the default scaffold/runtime ergonomics for validation errors, flash/session messaging, and auth-aware form handling.
+- Broaden production hardening around fragment modes, browser-level integration coverage, and missing-target/error behavior.
 
 ## Decision Filter
 - Does this make HTML-first app development more coherent?
