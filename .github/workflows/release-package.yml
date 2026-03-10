@@ -11,12 +11,12 @@ on:
         required: true
         type: choice
         options:
-          - @webstir-io/module-contract
-          - @webstir-io/testing-contract
-          - @webstir-io/webstir-backend
-          - @webstir-io/webstir-frontend
-          - @webstir-io/webstir-testing
-          - @webstir-io/webstir
+          - '@webstir-io/module-contract'
+          - '@webstir-io/testing-contract'
+          - '@webstir-io/webstir-backend'
+          - '@webstir-io/webstir-frontend'
+          - '@webstir-io/webstir-testing'
+          - '@webstir-io/webstir'
 
 permissions:
   contents: read
