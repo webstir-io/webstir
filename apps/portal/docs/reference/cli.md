@@ -187,4 +187,4 @@ What it does:
 - Solution — [solution](../explanations/solution.md)
 - Test workflow — [test](../how-to/test.md)
 - Add test — [add-test](../how-to/add-test.md)
-- Demos — [examples/demos/README.md](../../../../examples/demos/README.md)
+- Demos — [examples/demos/README.md](https://github.com/webstir-io/webstir/blob/main/examples/demos/README.md)

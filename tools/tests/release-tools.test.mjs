@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { getEmbeddedStagePaths, getFrameworkPackageByPackageName } from '../framework-packages.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -101,21 +100,10 @@ test('resolve-release-package resolves orchestrator package metadata', () => {
   assert.match(result.stdout, /release_tag=release\/webstir\/v/);
 });
 
-test('embedded release staging covers the full embedded snapshot directory', () => {
-  const backendPackage = getFrameworkPackageByPackageName('@webstir-io/webstir-backend');
-  assert.ok(backendPackage);
-  assert.deepEqual(getEmbeddedStagePaths(backendPackage), ['orchestrators/dotnet/Framework/Backend']);
-
-  const orchestratorPackage = getFrameworkPackageByPackageName('@webstir-io/webstir');
-  assert.ok(orchestratorPackage);
-  assert.deepEqual(getEmbeddedStagePaths(orchestratorPackage), []);
-});
-
-test('release-package stages the full embedded snapshot directory', () => {
+test('release-package stages only the canonical package manifest', () => {
   withTempWorkspace((tempRoot) => {
     copyTree('tools', tempRoot);
     copyTree('packages/tooling/webstir-backend', tempRoot);
-    copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
 
     const fakeToolLog = path.join(tempRoot, 'fake-tools.log');
     writeExecutable(
@@ -163,13 +151,11 @@ exit 0
     );
 
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /› node tools\/sync-framework-embedded\.mjs/);
+    assert.doesNotMatch(result.stdout, /sync-framework-embedded/);
 
     const toolLog = readFileSync(fakeToolLog, 'utf8');
-    assert.match(
-      toolLog,
-      /git add packages\/tooling\/webstir-backend\/package\.json orchestrators\/dotnet\/Framework\/Backend/
-    );
+    assert.match(toolLog, /git add packages\/tooling\/webstir-backend\/package\.json/);
+    assert.doesNotMatch(toolLog, /orchestrators\/dotnet/);
     assert.doesNotMatch(toolLog, /git push/);
   });
 });
@@ -246,107 +232,5 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       assert.equal(tarListResult.status, 0, tarListResult.stderr);
       assert.doesNotMatch(tarListResult.stdout, /package\/package-lock\.json/);
     }
-  });
-});
-
-test('sync-framework-embedded check fails when a managed helper stub is stale', () => {
-  withTempWorkspace((tempRoot) => {
-    copyTree('tools', tempRoot);
-    copyTree('packages/tooling/webstir-backend', tempRoot);
-    copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
-
-    writeFileSync(
-      path.join(tempRoot, 'orchestrators/dotnet/Framework/Backend/scripts/update-contract.sh'),
-      '# stale\n',
-    );
-
-    const result = runNode(
-      'tools/sync-framework-embedded.mjs',
-      ['--check', '--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-    );
-
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Embedded framework package snapshots are stale/);
-    assert.match(result.stderr, /Backend\/scripts\/update-contract\.sh/);
-  });
-});
-
-test('sync-framework-embedded check fails when a managed embedded source file is stale', () => {
-  withTempWorkspace((tempRoot) => {
-    copyTree('tools', tempRoot);
-    copyTree('packages/tooling/webstir-backend', tempRoot);
-    copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
-
-    writeFileSync(
-      path.join(tempRoot, 'orchestrators/dotnet/Framework/Backend/src/manifest/pipeline.ts'),
-      '// stale\n',
-    );
-
-    const result = runNode(
-      'tools/sync-framework-embedded.mjs',
-      ['--check', '--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-    );
-
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Embedded framework package snapshots are stale/);
-    assert.match(result.stderr, /Backend\/src\/manifest\/pipeline\.ts/);
-  });
-});
-
-test('sync-framework-embedded restores missing canonical managed files into the embedded snapshot', () => {
-  withTempWorkspace((tempRoot) => {
-    copyTree('tools', tempRoot);
-    copyTree('packages/tooling/webstir-backend', tempRoot);
-    copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
-
-    rmSync(
-      path.join(tempRoot, 'orchestrators/dotnet/Framework/Backend/src/build/artifacts.ts'),
-      { force: true },
-    );
-
-    const checkResult = runNode(
-      'tools/sync-framework-embedded.mjs',
-      ['--check', '--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-    );
-
-    assert.equal(checkResult.status, 1);
-    assert.match(checkResult.stderr, /Backend\/src\/build\/artifacts\.ts/);
-
-    const syncResult = runNode(
-      'tools/sync-framework-embedded.mjs',
-      ['--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-    );
-
-    assert.equal(syncResult.status, 0);
-    assert.match(syncResult.stdout, /Backend\/src\/build\/artifacts\.ts/);
-  });
-});
-
-test('sync-framework-embedded check passes after syncing a clean managed package snapshot', () => {
-  withTempWorkspace((tempRoot) => {
-    copyTree('tools', tempRoot);
-    copyTree('packages/tooling/webstir-backend', tempRoot);
-    copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
-
-    const syncResult = runNode(
-      'tools/sync-framework-embedded.mjs',
-      ['--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-    );
-
-    assert.equal(syncResult.status, 0);
-
-    const result = runNode(
-      'tools/sync-framework-embedded.mjs',
-      ['--check', '--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-    );
-
-    assert.equal(result.status, 0);
-    assert.match(result.stdout, /already match canonical sources/);
   });
 });

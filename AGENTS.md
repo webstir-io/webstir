@@ -11,7 +11,7 @@ Monorepo baseline for Webstir.
 
 ## Source Of Truth
 - Prefer editing `packages/**` when changing the publishable TypeScript packages.
-- Treat `orchestrators/dotnet/Framework/**` as orchestrator-local copies unless the task explicitly requires updating the embedded framework snapshot there too.
+- Treat `orchestrators/dotnet/**` as a frozen archival tree. Do not sync canonical package changes into it unless the task is explicitly about historical `.NET` maintenance.
 - When docs refer to repo paths, prefer the monorepo layout above rather than the legacy single-repo names.
 
 ## Code Size
@@ -28,13 +28,12 @@ Monorepo baseline for Webstir.
 - Use `bun run build` for small changes.
 - Use `bun run smoke` for scaffold or template changes; use `WEBSTIR_BACKEND_SMOKE_FASTIFY=skip` or `WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN=skip` when you intentionally need lighter Fastify coverage.
 - Release prep: `bun run build && bun run smoke && bun run test`.
-- After canonical manifest changes, run `bun run sync:framework-embedded` unless you are using `bun run release -- <patch|minor|major>`, which handles the sync for its target package.
 
 ### `packages/tooling/webstir-frontend`
 - Start with `README.md` and the package exports before changing public surfaces.
 - Validate with `bun run build`, `bun run test`, and `bun run smoke` as needed.
 - The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
-- Use `bun run release -- <patch|minor|major>` for version bumps; run `bun run sync:framework-embedded` after canonical manifest changes when you are not using the release helper.
+- Use `bun run release -- <patch|minor|major>` for version bumps.
 
 ### `orchestrators/dotnet`
 - Read `.codex/instructions.md`, `.codex/style.md`, and `.codex/testing.md` before edits.

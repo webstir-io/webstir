@@ -2,7 +2,7 @@
 
 > Archived historical orchestrator
 >
-> This guide is preserved for maintenance of the archived `.NET` orchestrator tree only. Do not use it as the default workflow for new Webstir work; active orchestration now lives under `orchestrators/bun`.
+> This guide is preserved for historical reference only. The `.NET` orchestrator tree is frozen; active Webstir work, releases, and package maintenance now live under `orchestrators/bun` and `packages/**`.
 
 We love contributions!  
 By contributing, you agree that your work is licensed under the project’s MIT License
@@ -47,10 +47,8 @@ and may be incorporated into the project owned by **Electric Coding LLC**.
 - Keep TypeScript/JavaScript changes formatted via `npm run lint`/`npm run format` when available; `format-build.sh` covers the common cases.
 
 ## Release Workflow (Maintainers)
-1. Publish the target npm package from its canonical monorepo directory under `packages/` with `npm run release -- <patch|minor|major|x.y.z>` or the Release Package GitHub workflow.
-2. Run `pnpm run sync:framework-embedded` to copy canonical managed package files into `orchestrators/dotnet/Framework/**`.
-3. Run `Utilities/scripts/sync-framework-versions.sh` to refresh orchestrator metadata, pin released versions, and verify.
-4. Commit source, lockfiles, and `framework-packages.json`.
+
+The active release workflow no longer includes the archived `.NET` tree. Publish from the canonical monorepo packages under `packages/**` or `orchestrators/bun`, and treat the files under `orchestrators/dotnet/**` as frozen historical artifacts.
 
 ## Developer Certificate of Origin
 By signing off, you certify that you have the right to submit the code
