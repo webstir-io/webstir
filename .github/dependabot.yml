@@ -1,13 +1,7 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "America/Los_Angeles"
-    open-pull-requests-limit: 5
+  # Keep npm dependency bumps maintainer-owned until the repo has a Bun-friendly
+  # lockfile update path for automated PRs.
   - package-ecosystem: "nuget"
     directory: "/"
     schedule:
