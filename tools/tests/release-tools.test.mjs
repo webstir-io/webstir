@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { getEmbeddedStagePaths, getFrameworkPackageByPackageName } from '../framework-packages.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -30,6 +31,17 @@ function runNode(relativeScript, args, cwd) {
   });
 }
 
+function runNodeWithEnv(relativeScript, args, cwd, env) {
+  return spawnSync(process.execPath, [relativeScript, ...args], {
+    cwd,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      ...env,
+    },
+  });
+}
+
 function run(command, args, cwd) {
   return spawnSync(command, args, {
     cwd,
@@ -39,6 +51,15 @@ function run(command, args, cwd) {
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), 'utf8'));
+}
+
+function writeExecutable(root, name, content) {
+  const binDir = path.join(root, 'bin');
+  mkdirSync(binDir, { recursive: true });
+  const filePath = path.join(binDir, name);
+  writeFileSync(filePath, content);
+  chmodSync(filePath, 0o755);
+  return filePath;
 }
 
 test('resolve-release-package rejects mismatched tag versions', () => {
@@ -78,6 +99,79 @@ test('resolve-release-package resolves orchestrator package metadata', () => {
   assert.match(result.stdout, /package_dir=orchestrators\/bun/);
   assert.match(result.stdout, /package_name=@webstir-io\/webstir/);
   assert.match(result.stdout, /release_tag=release\/webstir\/v/);
+});
+
+test('embedded release staging covers the full embedded snapshot directory', () => {
+  const backendPackage = getFrameworkPackageByPackageName('@webstir-io/webstir-backend');
+  assert.ok(backendPackage);
+  assert.deepEqual(getEmbeddedStagePaths(backendPackage), ['orchestrators/dotnet/Framework/Backend']);
+
+  const orchestratorPackage = getFrameworkPackageByPackageName('@webstir-io/webstir');
+  assert.ok(orchestratorPackage);
+  assert.deepEqual(getEmbeddedStagePaths(orchestratorPackage), []);
+});
+
+test('release-package stages the full embedded snapshot directory', () => {
+  withTempWorkspace((tempRoot) => {
+    copyTree('tools', tempRoot);
+    copyTree('packages/tooling/webstir-backend', tempRoot);
+    copyTree('orchestrators/dotnet/Framework/Backend', tempRoot);
+
+    const fakeToolLog = path.join(tempRoot, 'fake-tools.log');
+    writeExecutable(
+      tempRoot,
+      'git',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'git %s\\n' "$*" >> "$FAKE_TOOL_LOG"
+if [[ "$1" == "diff" ]]; then
+  exit 0
+fi
+exit 0
+`
+    );
+    writeExecutable(
+      tempRoot,
+      'bun',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'bun %s\\n' "$*" >> "$FAKE_TOOL_LOG"
+exit 0
+`
+    );
+    writeExecutable(
+      tempRoot,
+      'npm',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'npm %s\\n' "$*" >> "$FAKE_TOOL_LOG"
+if [[ "$1" == "version" ]]; then
+  node -e 'const fs = require("node:fs"); const file = process.argv[1]; const version = process.argv[2]; const pkg = JSON.parse(fs.readFileSync(file, "utf8")); pkg.version = version; fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\\n");' package.json "$2"
+fi
+exit 0
+`
+    );
+
+    const result = runNodeWithEnv(
+      'tools/release-package.mjs',
+      ['1.2.3', '--no-push', '--package-dir', 'packages/tooling/webstir-backend'],
+      tempRoot,
+      {
+        FAKE_TOOL_LOG: fakeToolLog,
+        PATH: `${path.join(tempRoot, 'bin')}${path.delimiter}${process.env.PATH ?? ''}`,
+      }
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /› node tools\/sync-framework-embedded\.mjs/);
+
+    const toolLog = readFileSync(fakeToolLog, 'utf8');
+    assert.match(
+      toolLog,
+      /git add packages\/tooling\/webstir-backend\/package\.json orchestrators\/dotnet\/Framework\/Backend/
+    );
+    assert.doesNotMatch(toolLog, /git push/);
+  });
 });
 
 test('publishable package manifests use concrete internal dependency ranges', () => {

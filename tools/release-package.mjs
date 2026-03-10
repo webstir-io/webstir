@@ -4,8 +4,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  getEmbeddedStagePaths,
   getFrameworkPackageByCanonicalDir,
-  getEmbeddedManagedPaths,
   getFrameworkReleaseTag,
   getRepoRoot,
   normalizeRelativePath,
@@ -144,7 +144,7 @@ for (const scriptName of ['clean', 'build', 'test', 'smoke']) {
 }
 
 const filesToStage = [path.posix.join(relativePackageDir, 'package.json')];
-filesToStage.push(...getEmbeddedManagedPaths(frameworkPackage));
+filesToStage.push(...getEmbeddedStagePaths(frameworkPackage));
 
 console.log(`› git add ${filesToStage.join(' ')}`);
 run('git', ['add', ...filesToStage], repoRoot);

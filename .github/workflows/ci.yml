@@ -48,6 +48,9 @@ jobs:
       - name: Test testing tooling
         run: bun run --filter @webstir-io/webstir-testing test
 
+      - name: Test Bun orchestrator
+        run: bun run --filter @webstir-io/webstir test
+
       - name: Build portal
         run: bun run --filter webstir-portal build
 
