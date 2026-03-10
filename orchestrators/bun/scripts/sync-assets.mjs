@@ -52,7 +52,7 @@ const modeTemplates = [
 
 const features = [
   { source: path.join(repoRoot, 'orchestrators', 'dotnet', 'Engine', 'Resources', 'features', 'router'), target: 'router' },
-  { source: path.join(repoRoot, 'orchestrators', 'dotnet', 'Engine', 'Resources', 'features', 'client_nav'), target: 'client_nav' },
+  { source: path.join(packageRoot, 'resources', 'features', 'client_nav'), target: 'client_nav' },
   { source: path.join(repoRoot, 'orchestrators', 'dotnet', 'Engine', 'Resources', 'features', 'search'), target: 'search' },
   { source: path.join(repoRoot, 'orchestrators', 'dotnet', 'Engine', 'Resources', 'features', 'content_nav'), target: 'content_nav' },
 ];
