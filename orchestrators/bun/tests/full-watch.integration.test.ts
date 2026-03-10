@@ -53,9 +53,14 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
 
   try {
     await waitFor(async () => {
+      expect(stdoutBuffer.text).toContain('[webstir] backend ready at');
+      expect(stdoutBuffer.text).toContain('[webstir] watch starting');
+    }, 30_000);
+
+    await waitFor(async () => {
       expect(await fetchText(port, '/')).toContain('Home');
       expect(await fetchText(port, '/api')).toContain('API server running');
-    }, 20_000);
+    }, 10_000);
 
     const frontendPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
     const originalFrontend = await readFile(frontendPath, 'utf8');
@@ -73,6 +78,8 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
       expect(stdoutBuffer.text).toContain('backend restarted at');
       expect(await fetchText(port, '/api')).toContain('Full API changed');
     }, 20_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
   } finally {
     child.kill('SIGTERM');
     await child.exited.catch(() => undefined);
@@ -83,7 +90,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     }
     await rm(tempRoot, { recursive: true, force: true });
   }
-}, 40_000);
+}, 60_000);
 
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
@@ -140,6 +147,22 @@ async function waitFor(
   throw lastError instanceof Error
     ? lastError
     : new Error(`Timed out after ${timeoutMs}ms.`);
+}
+
+function appendWatchLogs(error: unknown, stdout: string, stderr: string): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  return new Error(
+    `${message}\n\nstdout:\n${tailOutput(stdout)}\n\nstderr:\n${tailOutput(stderr)}`
+  );
+}
+
+function tailOutput(text: string): string {
+  const normalized = text.trim();
+  if (normalized.length === 0) {
+    return '(empty)';
+  }
+
+  return normalized.slice(-4_000);
 }
 
 async function collectOutput(

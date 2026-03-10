@@ -2,7 +2,6 @@ import path from 'node:path';
 import http, { type IncomingMessage, type ServerResponse } from 'node:http';
 import { createReadStream } from 'node:fs';
 import { access } from 'node:fs/promises';
-import { setTimeout as delay } from 'node:timers/promises';
 
 import type { HotUpdatePayload, WatchStatus } from './watch-events.ts';
 
@@ -47,8 +46,6 @@ const STATIC_EXTENSIONS = new Set([
   '.webm', '.mov', '.json', '.txt', '.xml', '.map',
 ]);
 const CONTENT_HASH_PATTERN = /\.[a-f0-9]{8,64}\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|mp3|m4a|wav|ogg|mp4|webm|mov)$/i;
-const API_PROXY_RETRY_WINDOW_MS = 5_000;
-const API_PROXY_RETRY_DELAY_MS = 150;
 
 interface SseClient {
   readonly response: ServerResponse<IncomingMessage>;
@@ -210,47 +207,8 @@ export class DevServer {
     apiProxyPath: string
   ): Promise<void> {
     const targetUrl = new URL(apiProxyPath + requestUrl.search, this.apiProxyOrigin);
-    const method = request.method ?? 'GET';
 
-    if (method === 'GET' || method === 'HEAD') {
-      await this.handleRetriableApiProxy(request, response, targetUrl);
-      return;
-    }
-
-    await this.proxyApiRequest(request, response, targetUrl);
-  }
-
-  private async handleRetriableApiProxy(
-    request: IncomingMessage,
-    response: ServerResponse<IncomingMessage>,
-    targetUrl: URL
-  ): Promise<void> {
-    const deadline = Date.now() + API_PROXY_RETRY_WINDOW_MS;
-
-    while (true) {
-      const result = await this.proxyApiRequest(request, response, targetUrl, { retryOnConnectFailure: true });
-      if (result !== 'retry') {
-        return;
-      }
-
-      if (Date.now() >= deadline) {
-        this.writeText(response, 502, 'Backend proxy failed.');
-        return;
-      }
-
-      await delay(API_PROXY_RETRY_DELAY_MS);
-    }
-  }
-
-  private async proxyApiRequest(
-    request: IncomingMessage,
-    response: ServerResponse<IncomingMessage>,
-    targetUrl: URL,
-    options: {
-      readonly retryOnConnectFailure?: boolean;
-    } = {}
-  ): Promise<'completed' | 'retry'> {
-    return await new Promise<'completed' | 'retry'>((resolve) => {
+    await new Promise<void>((resolve) => {
       const proxyRequest = http.request(targetUrl, {
         agent: false,
         method: request.method,
@@ -262,29 +220,24 @@ export class DevServer {
       }, (proxyResponse) => {
         response.writeHead(proxyResponse.statusCode ?? 502, proxyResponse.headers);
         proxyResponse.pipe(response);
-        proxyResponse.once('end', () => resolve('completed'));
+        proxyResponse.once('end', resolve);
         proxyResponse.once('error', () => {
           if (!response.headersSent) {
             this.writeText(response, 502, 'Backend proxy read failed.');
           } else {
             response.destroy();
           }
-          resolve('completed');
+          resolve();
         });
       });
 
-      proxyRequest.once('error', (error) => {
-        if (options.retryOnConnectFailure && isTransientApiProxyError(error)) {
-          resolve('retry');
-          return;
-        }
-
+      proxyRequest.once('error', () => {
         if (!response.headersSent) {
           this.writeText(response, 502, 'Backend proxy failed.');
         } else {
           response.destroy();
         }
-        resolve('completed');
+        resolve();
       });
 
       if (request.method === 'GET' || request.method === 'HEAD') {
@@ -335,15 +288,6 @@ export class DevServer {
     response.setHeader('Content-Type', 'text/plain; charset=utf-8');
     response.end(body);
   }
-}
-
-function isTransientApiProxyError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const code = 'code' in error ? error.code : undefined;
-  return code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'EPIPE' || code === 'ETIMEDOUT';
 }
 
 export function getStaticCandidatePaths(pathname: string): readonly string[] {
