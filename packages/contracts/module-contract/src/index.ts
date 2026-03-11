@@ -223,6 +223,10 @@ export const formEncodingSchema = z.enum(['application/x-www-form-urlencoded', '
 
 export type FormEncoding = z.infer<typeof formEncodingSchema>;
 
+export const requestHookPhaseSchema = z.enum(['beforeAuth', 'beforeHandler', 'afterHandler']);
+
+export type RequestHookPhase = z.infer<typeof requestHookPhaseSchema>;
+
 export const fragmentUpdateModeSchema = z.enum(['replace', 'append', 'prepend']);
 
 export type FragmentUpdateMode = z.infer<typeof fragmentUpdateModeSchema>;
@@ -245,6 +249,26 @@ export const schemaReferenceSchema = z.object({
 
 export type SchemaReference = z.infer<typeof schemaReferenceSchema>;
 
+export const requestHookReferenceSchema = z
+  .object({
+    id: z.string().min(1)
+  })
+  .strict();
+
+export type RequestHookReference = z.infer<typeof requestHookReferenceSchema>;
+
+export const requestHookDefinitionSchema = z
+  .object({
+    id: z.string().min(1),
+    phase: requestHookPhaseSchema,
+    order: z.number().int(),
+    summary: z.string().optional(),
+    description: z.string().optional()
+  })
+  .strict();
+
+export type RequestHookDefinition = z.infer<typeof requestHookDefinitionSchema>;
+
 export const routeInputSchema = z
   .object({
     params: schemaReferenceSchema.optional(),
@@ -257,10 +281,52 @@ export const routeInputSchema = z
 
 export type RouteInputDefinition = z.infer<typeof routeInputSchema>;
 
+export const sessionAccessModeSchema = z.enum(['optional', 'required']);
+
+export type SessionAccessMode = z.infer<typeof sessionAccessModeSchema>;
+
+export const routeSessionSchema = z
+  .object({
+    mode: sessionAccessModeSchema.optional(),
+    write: z.boolean().optional()
+  })
+  .strict();
+
+export type RouteSessionDefinition = z.infer<typeof routeSessionSchema>;
+
+export const flashLevelSchema = z.enum(['info', 'success', 'warning', 'error']);
+
+export type FlashLevel = z.infer<typeof flashLevelSchema>;
+
+export const flashPublishConditionSchema = z.enum(['always', 'success', 'error']);
+
+export type FlashPublishCondition = z.infer<typeof flashPublishConditionSchema>;
+
+export const routeFlashMessageSchema = z
+  .object({
+    key: z.string().min(1),
+    level: flashLevelSchema.optional(),
+    when: flashPublishConditionSchema.optional()
+  })
+  .strict();
+
+export type RouteFlashMessageDefinition = z.infer<typeof routeFlashMessageSchema>;
+
+export const routeFlashSchema = z
+  .object({
+    consume: z.array(z.string().min(1)).optional(),
+    publish: z.array(routeFlashMessageSchema).optional()
+  })
+  .strict();
+
+export type RouteFlashDefinition = z.infer<typeof routeFlashSchema>;
+
 export const routeFormSchema = z
   .object({
     contentType: formEncodingSchema.optional(),
-    csrf: z.boolean().optional()
+    csrf: z.boolean().optional(),
+    session: routeSessionSchema.optional(),
+    flash: routeFlashSchema.optional()
   })
   .strict();
 
@@ -321,6 +387,9 @@ export const routeDefinitionSchema = z.object({
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   interaction: routeInteractionKindSchema.optional(),
+  requestHooks: z.array(requestHookReferenceSchema).optional(),
+  session: routeSessionSchema.optional(),
+  flash: routeFlashSchema.optional(),
   form: routeFormSchema.optional(),
   fragment: routeFragmentSchema.optional(),
   input: routeInputSchema.optional(),
@@ -498,7 +567,7 @@ export const moduleManifestSchema = z.object({
   capabilities: z.array(z.string()).optional(),
   // New: optional pass-through lists
   assets: z.array(z.string()).optional(),
-  middlewares: z.array(z.string()).optional(),
+  requestHooks: z.array(requestHookDefinitionSchema).optional(),
   routes: z.array(routeDefinitionSchema).optional(),
   views: z.array(viewDefinitionSchema).optional(),
   jobs: z.array(jobDefinitionSchema).optional(),
