@@ -42,6 +42,18 @@ export async function getBackendScaffoldAssets(): Promise<readonly ModuleAsset[]
             targetPath: path.join('src', 'backend', 'env.ts')
         },
         {
+            sourcePath: path.join(templatesRoot, 'runtime', 'request-hooks.ts'),
+            targetPath: path.join('src', 'backend', 'runtime', 'request-hooks.ts')
+        },
+        {
+            sourcePath: path.join(templatesRoot, 'runtime', 'session.ts'),
+            targetPath: path.join('src', 'backend', 'runtime', 'session.ts')
+        },
+        {
+            sourcePath: path.join(templatesRoot, 'runtime', 'forms.ts'),
+            targetPath: path.join('src', 'backend', 'runtime', 'forms.ts')
+        },
+        {
             sourcePath: path.join(templatesRoot, 'functions', 'hello', 'index.ts'),
             targetPath: path.join('src', 'backend', 'functions', 'hello', 'index.ts')
         },

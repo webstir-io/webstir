@@ -356,26 +356,51 @@ const routeOutputBaseShape = {
   headers: schemaReferenceSchema.optional()
 } as const;
 
-export const routeOutputSchema = z.union([
-  z
-    .object({
-      ...routeOutputBaseShape,
-      body: schemaReferenceSchema
-    })
-    .strict(),
-  z
-    .object({
-      ...routeOutputBaseShape,
-      redirect: routeRedirectSchema
-    })
-    .strict(),
-  z
-    .object({
-      ...routeOutputBaseShape,
-      fragment: routeFragmentSchema
-    })
-    .strict()
+export const routeBodyOutputSchema = z
+  .object({
+    ...routeOutputBaseShape,
+    body: schemaReferenceSchema
+  })
+  .strict();
+
+export type RouteBodyOutputDefinition = z.infer<typeof routeBodyOutputSchema>;
+
+export const routeRedirectOutputSchema = z
+  .object({
+    ...routeOutputBaseShape,
+    redirect: routeRedirectSchema
+  })
+  .strict();
+
+export type RouteRedirectOutputDefinition = z.infer<typeof routeRedirectOutputSchema>;
+
+export const routeFragmentOutputSchema = z
+  .object({
+    ...routeOutputBaseShape,
+    body: schemaReferenceSchema,
+    fragment: routeFragmentSchema
+  })
+  .strict();
+
+export type RouteFragmentOutputDefinition = z.infer<typeof routeFragmentOutputSchema>;
+
+export const routeOutputVariantSchema = z.union([
+  routeBodyOutputSchema,
+  routeRedirectOutputSchema,
+  routeFragmentOutputSchema
 ]);
+
+export type RouteOutputVariantDefinition = z.infer<typeof routeOutputVariantSchema>;
+
+export const routeOutputResponsesSchema = z
+  .object({
+    responses: z.array(routeOutputVariantSchema).min(1)
+  })
+  .strict();
+
+export type RouteOutputResponsesDefinition = z.infer<typeof routeOutputResponsesSchema>;
+
+export const routeOutputSchema = z.union([routeOutputVariantSchema, routeOutputResponsesSchema]);
 
 export type RouteOutputDefinition = z.infer<typeof routeOutputSchema>;
 
@@ -433,11 +458,13 @@ export type RouteHandlerContext<
   readonly body: InferOrNever<TBody>;
 };
 
-export interface RouteSuccessResponse<TResponse extends z.ZodTypeAny> {
+export interface RouteBodyResponse<TResponse extends z.ZodTypeAny> {
   readonly status?: number;
   readonly body: z.infer<TResponse>;
   readonly headers?: Record<string, string>;
 }
+
+export type RouteSuccessResponse<TResponse extends z.ZodTypeAny> = RouteBodyResponse<TResponse>;
 
 export interface RouteFragmentResponse<TResponse extends z.ZodTypeAny> {
   readonly status?: number;
@@ -464,8 +491,19 @@ export interface RouteErrorResponse {
   readonly headers?: Record<string, string>;
 }
 
+export type RouteNavigationResult<TResponse extends z.ZodTypeAny> =
+  | RouteBodyResponse<TResponse>
+  | RouteRedirectResponse
+  | RouteErrorResponse;
+
+export type RouteMutationResult<TResponse extends z.ZodTypeAny> =
+  | RouteBodyResponse<TResponse>
+  | RouteFragmentResponse<TResponse>
+  | RouteRedirectResponse
+  | RouteErrorResponse;
+
 export type RouteHandlerResult<TResponse extends z.ZodTypeAny> =
-  | RouteSuccessResponse<TResponse>
+  | RouteBodyResponse<TResponse>
   | RouteFragmentResponse<TResponse>
   | RouteRedirectResponse
   | RouteErrorResponse;

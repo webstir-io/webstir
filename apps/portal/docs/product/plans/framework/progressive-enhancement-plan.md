@@ -16,31 +16,26 @@
   - This plan only tracks the remaining work after that initial slice.
   - Iteration 1 split the original contract-primitives umbrella after scanning `packages/contracts/module-contract`, generated schema output, and backend runtime templates; the previous item mixed metadata, handler results, and docs/examples into one flow cycle.
   - Iteration 2 completed the first contract slice in `@webstir-io/module-contract`, adding explicit request-hook declarations plus route/form session-flash metadata with regenerated schema output.
-  - First ready item: 2
+  - Iteration 3 completed the second contract slice in `@webstir-io/module-contract`, adding multi-response route output declarations plus explicit fragment body schemas and progressive-enhancement handler result aliases.
+  - Iteration 4 completed backend runtime request-hook execution across the default scaffold and Fastify scaffold, adding shared hook-phase ordering helpers plus focused scaffold tests for ordering, short-circuit, and context handoff.
+  - Iteration 5 completed backend session and flash runtime plumbing across the default scaffold and Fastify scaffold, adding shared cookie-backed session helpers, redirect-safe flash delivery, and focused scaffold tests for login, read, consume, and logout flows.
+  - Iteration 6 revalidated the session/flash slice locally, fixed Fastify's bundled module-discovery path, and reran package-local checks with both default and Fastify runtime integration cases passing.
+  - Iteration 7 completed backend form-workflow ergonomics by adding a shared forms runtime helper, scaffold example coverage for CSRF-protected redirect-after-post flows, and package-local tests for auth, validation, CSRF, and success cases across both servers.
+  - First ready item: 6
 
 # Latest Cycle
-- Iteration: 2
-- Selected item: 1. Add Request Hook And Session/Flash Contract Metadata
-- Outcome: completed the scoped `module-contract` slice by replacing manifest `middlewares` with explicit `requestHooks`, adding route/form `session` and `flash` metadata, regenerating JSON schema, and updating the package README/example. Slop and review passes found no blocking issues. Yeet/yoink did not run because this workspace still contains unrelated untracked `.plan-cycle/` state and the environment cannot safely complete push/PR work.
+- Iteration: 7
+- Selected item: 5. Add Form Workflow Ergonomics
+- Outcome: completed the backend form slice by adding a shared scaffold runtime helper for CSRF tokens, redirect-after-post validation state, and auth-aware mutation guards, then updating the scaffold example and backend build pipeline so `module.ts` examples can import local runtime helpers. The package-local suite now covers auth failure, validation failure, CSRF failure, and successful redirect-after-post flows across both the default server and Fastify scaffold.
 - Checks run:
-  - `git status --short`
-  - `git diff --stat`
-  - `git diff --name-only --diff-filter=ACMR`
-  - `git diff --cached`
-  - `sed -n '1,340p' packages/contracts/module-contract/src/index.ts`
-  - `sed -n '1,260p' packages/contracts/module-contract/README.md`
-  - `sed -n '1,220p' packages/contracts/module-contract/examples/accounts/module.ts`
-  - `rg -n "request hook|requestHook|requestHooks|middleware|middlewares" packages apps examples -g '!orchestrators/**'`
-  - `rg -n "flash|session" packages/tooling packages/contracts examples apps -g '!orchestrators/**'`
   - `bun run build`
   - `bun run test`
-  - `shasum -a 256 apps/portal/docs/product/plans/framework/progressive-enhancement-plan.md`
-- Branch: none
+- Branch: `main`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Backend scaffold and Fastify runtime templates still do not consume `requestHooks` and still hardcode `session: null`; items 3 and 4 are now the first runtime consumers of the new contract surface.
-  - `moduleManifestSchema` and `routeDefinitionSchema` remain non-strict at the top level, so hard rejection of legacy unknown keys would be a separate follow-up decision rather than part of this slice.
+  - `module.ts` local helper imports now work in the backend build pipeline because module-definition builds bundle workspace-local runtime files while still externalizing packages.
+  - Item 6 is now the first ready fragment-hardening follow-on.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -57,7 +52,7 @@
   - 2026-03-11: Updated the package README and Accounts example to exercise the new contract surface, then verified with `bun run build` and `bun run test` in `packages/contracts/module-contract`.
 
 ## 2. Expand Progressive-Enhancement Handler Results And Contract Docs
-- Status: todo
+- Status: done
 - Depends on: 1
 - Scope: extend route output and handler result contracts for the missing progressive-enhancement response cases, then refresh generated schema, README guidance, and package examples to match.
 - Done when:
@@ -65,10 +60,12 @@
   - Generated schema output reflects the richer response shapes.
   - Package docs/examples show the supported response variants clearly.
 - Progress:
-  - Not started.
+  - 2026-03-11: Added `output.responses` plus explicit fragment body schema references in `@webstir-io/module-contract`, and exported `RouteNavigationResult`/`RouteMutationResult` aliases for the common navigation and mutation handler patterns.
+  - 2026-03-11: Updated the package README and Accounts example to show one route returning a fragment for enhanced requests and a redirect for the no-JavaScript baseline.
+  - 2026-03-11: Regenerated `schema/route-output.schema.json`, `schema/route-definition.schema.json`, and `schema/module-manifest.schema.json`, then verified with `bun run build` and `bun run test` in `packages/contracts/module-contract`.
 
 ## 3. Execute Request Hooks In Backend Runtimes
-- Status: todo
+- Status: done
 - Depends on: 1
 - Scope: wire middleware or request-hook execution through the default backend scaffold and the Fastify scaffold with deterministic ordering, short-circuit behavior, and shared request context handoff.
 - Done when:
@@ -76,10 +73,12 @@
   - Hook failures and early exits produce consistent responses and logging.
   - Runtime tests cover ordering, short-circuiting, and per-request context propagation.
 - Progress:
-  - Not started.
+  - 2026-03-11: Added a shared scaffold helper for resolving route-level request-hook references against manifest metadata, sorting hooks by phase/order, and executing early-response plus after-handler result flows.
+  - 2026-03-11: Wired `beforeAuth`, `beforeHandler`, and `afterHandler` execution through both backend server templates, including auth-resolution handoff, consistent early-exit/error responses, and scaffold asset updates for the new runtime helper.
+  - 2026-03-11: Updated the backend scaffold example module and added focused `webstir-backend` tests for hook ordering, short-circuiting, failure responses, context propagation, and default/Fastify scaffold builds; `bun run test` skipped live TCP-listener cases in this sandbox.
 
 ## 4. Resolve Session And Flash State
-- Status: todo
+- Status: done
 - Depends on: 1, 2, 3
 - Scope: replace the hardcoded `session: null` path with real session resolution, cookie plumbing, and a minimal flash-message transport that works across redirects and document renders.
 - Done when:
@@ -87,10 +86,13 @@
   - Redirect and document flows can carry flash messages without custom app code.
   - Tests cover session creation, lookup, invalidation, and flash delivery semantics.
 - Progress:
-  - Not started.
+  - 2026-03-11: Added `runtime/session.ts` to the backend scaffold with signed cookie parsing, in-memory session storage, session invalidation, and route/form-driven flash publish-consume semantics.
+  - 2026-03-11: Wired resolved `ctx.session` and `ctx.flash` through both `templates/backend/index.ts` and `templates/backend/server/fastify.ts`, including response-time `Set-Cookie` handling and new session env defaults in the scaffold.
+  - 2026-03-11: Added focused `webstir-backend` helper tests plus default/Fastify scaffold runtime coverage for creation, lookup, invalidation, and flash transport.
+  - 2026-03-11: Revalidated the slice by fixing Fastify's bundled module-discovery path and rerunning `bun run build` and `bun run test` in `packages/tooling/webstir-backend`, with all 22 package tests passing locally.
 
 ## 5. Add Form Workflow Ergonomics
-- Status: todo
+- Status: done
 - Depends on: 2, 3, 4
 - Scope: make validation errors, redirect-after-post, CSRF checks, and auth-aware form handling first-class in the default backend scaffold and supporting examples.
 - Done when:
@@ -98,7 +100,9 @@
   - The canonical form flow demonstrates both the no-JavaScript baseline and the enhanced path with the new ergonomics.
   - Package-local tests cover success, validation failure, CSRF failure, and auth-gated submissions.
 - Progress:
-  - Not started.
+  - 2026-03-11: Added `runtime/forms.ts` to the backend scaffold with CSRF token issuance, redirect-after-post validation state storage, field/form issue grouping, and auth-aware mutation guards that reuse the existing session runtime.
+  - 2026-03-11: Updated the scaffold example module to demonstrate an HTML-first account-settings form with inline validation, CSRF hidden inputs, success flash delivery, and auth-gated form submission.
+  - 2026-03-11: Updated the backend build pipeline so scaffold `module.ts` files can import local runtime helpers, then added package-local tests for direct form-helper behavior plus default/Fastify runtime flows covering auth failure, validation failure, CSRF failure, and success with `bun run build` and `bun run test`.
 
 ## 6. Harden Fragment Update Behavior
 - Status: todo

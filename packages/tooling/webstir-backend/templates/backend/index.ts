@@ -9,6 +9,21 @@ import { loadEnv, type AppEnv } from './env.js';
 import { resolveRequestAuth, type AuthContext } from './auth/adapter.js';
 import { createBaseLogger, createRequestLogger } from './observability/logger.js';
 import { createMetricsTracker, type MetricsTracker } from './observability/metrics.js';
+import {
+  executeRequestHookPhase,
+  resolveRequestHooks,
+  type CompiledRequestHook,
+  type RequestHookDefinitionLike,
+  type RequestHookHandler,
+  type RequestHookReferenceLike
+} from './runtime/request-hooks.js';
+import {
+  parseCookieHeader,
+  prepareSessionState,
+  type PreparedSessionState,
+  type SessionAwareRouteDefinitionLike,
+  type SessionFlashMessage
+} from './runtime/session.js';
 
 interface EnvAccessor {
   get(name: string): string | undefined;
@@ -39,7 +54,8 @@ interface RouteContext {
   query: Record<string, string>;
   body: unknown;
   auth: AuthContext | undefined;
-  session: null;
+  session: Record<string, unknown> | null;
+  flash: SessionFlashMessage[];
   db: Record<string, unknown>;
   env: EnvAccessor;
   logger: Logger;
@@ -49,12 +65,13 @@ interface RouteContext {
 
 type RouteHandler = (ctx: RouteContext) => Promise<RouteHandlerResult> | RouteHandlerResult;
 
-interface ModuleRouteDefinition {
+interface ModuleRouteDefinition extends SessionAwareRouteDefinitionLike {
   name?: string;
   method?: string;
   path?: string;
+  requestHooks?: RequestHookReferenceLike[];
   interaction?: 'navigation' | 'mutation';
-  form?: {
+  form?: SessionAwareRouteDefinitionLike['form'] & {
     contentType?: 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain';
     csrf?: boolean;
   };
@@ -74,14 +91,21 @@ interface ModuleManifestLike {
   name?: string;
   version?: string;
   capabilities?: string[];
+  requestHooks?: RequestHookDefinitionLike[];
   routes?: ModuleRouteDefinition[];
 }
 
 type LifecycleHook = (context: { env: EnvAccessor; logger: Logger }) => Promise<void> | void;
 
+interface ModuleRequestHook {
+  id?: string;
+  handler?: RequestHookHandler<RouteContext, RouteHandlerResult, ModuleRouteDefinition>;
+}
+
 interface ModuleDefinitionLike {
   manifest?: ModuleManifestLike;
   routes?: ModuleRoute[];
+  requestHooks?: ModuleRequestHook[];
   init?: LifecycleHook;
   dispose?: LifecycleHook;
 }
@@ -91,6 +115,7 @@ interface CompiledRoute {
   name: string;
   match: (pathname: string) => { matched: boolean; params: Record<string, string> };
   handler: RouteHandler;
+  requestHooks: CompiledRequestHook<RouteContext, RouteHandlerResult, ModuleRouteDefinition>[];
   definition?: ModuleRouteDefinition;
 }
 
@@ -99,6 +124,7 @@ interface ModuleRuntime {
   manifest?: ModuleManifestLike;
   routes: CompiledRoute[];
   source?: string;
+  warnings?: string[];
 }
 
 type ReadinessStatus = 'booting' | 'ready' | 'error';
@@ -143,6 +169,9 @@ export async function start(): Promise<void> {
   }
 
   logManifestSummary(logger, runtime.manifest, runtime.routes.length);
+  for (const warning of runtime.warnings ?? []) {
+    logger.warn({ warning }, '[webstir-backend] request hook configuration warning');
+  }
   const manifestSummary = summarizeManifest(runtime.manifest);
 
   const server = http.createServer((req, res) => {
@@ -229,27 +258,82 @@ async function handleRequest(options: {
 
     const requestLogger = createRequestLogger(logger, { requestId, req, route: routeName });
     const envAccessor = createEnvAccessor();
-    const auth = resolveRequestAuth(req, env.auth, requestLogger);
     const db: Record<string, unknown> = Object.create(null);
+    const now = () => new Date();
+    const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
+      cookies: parseCookieHeader(req.headers.cookie),
+      route: matched.route.definition,
+      config: env.sessions,
+      now
+    });
     const ctx: RouteContext = {
       request: req,
       reply: res,
       params: matched.params,
       query: Object.fromEntries(url.searchParams.entries()),
       body,
-      auth,
-      session: null,
+      auth: undefined,
+      session: sessionState.session,
+      flash: sessionState.flash,
       db,
       env: envAccessor,
       logger: requestLogger,
       requestId,
-      now: () => new Date()
+      now
     };
 
     let handlerFailed = false;
     try {
-      const result = await matched.route.handler(ctx);
-      sendRouteResponse(res, result);
+      const beforeAuth = await executeRequestHookPhase({
+        hooks: matched.route.requestHooks,
+        phase: 'beforeAuth',
+        context: ctx,
+        route: matched.route.definition ?? { name: matched.route.name, path: pathname, method },
+        logger: requestLogger
+      });
+      if (beforeAuth.shortCircuited && beforeAuth.result) {
+        sendCommittedRouteResponse(res, beforeAuth.result, {
+          sessionState,
+          session: ctx.session,
+          route: matched.route.definition
+        });
+        return;
+      }
+
+      if (ctx.auth === undefined) {
+        ctx.auth = resolveRequestAuth(req, env.auth, requestLogger);
+      }
+
+      const beforeHandler = await executeRequestHookPhase({
+        hooks: matched.route.requestHooks,
+        phase: 'beforeHandler',
+        context: ctx,
+        route: matched.route.definition ?? { name: matched.route.name, path: pathname, method },
+        logger: requestLogger
+      });
+      if (beforeHandler.shortCircuited && beforeHandler.result) {
+        sendCommittedRouteResponse(res, beforeHandler.result, {
+          sessionState,
+          session: ctx.session,
+          route: matched.route.definition
+        });
+        return;
+      }
+
+      const handlerResult = await matched.route.handler(ctx);
+      const afterHandler = await executeRequestHookPhase({
+        hooks: matched.route.requestHooks,
+        phase: 'afterHandler',
+        context: ctx,
+        route: matched.route.definition ?? { name: matched.route.name, path: pathname, method },
+        logger: requestLogger,
+        result: handlerResult
+      });
+      sendCommittedRouteResponse(res, afterHandler.result ?? handlerResult, {
+        sessionState,
+        session: ctx.session,
+        route: matched.route.definition
+      });
     } catch (error) {
       handlerFailed = true;
       requestLogger.error({ err: error }, 'route handler failed');
@@ -270,12 +354,36 @@ async function handleRequest(options: {
   }
 }
 
-function sendRouteResponse(res: http.ServerResponse, result: RouteHandlerResult): void {
+function sendCommittedRouteResponse(
+  res: http.ServerResponse,
+  result: RouteHandlerResult,
+  options: {
+    sessionState: PreparedSessionState<Record<string, unknown>, RouteHandlerResult>;
+    session: Record<string, unknown> | null;
+    route?: ModuleRouteDefinition;
+  }
+): void {
+  const commit = options.sessionState.commit({
+    session: options.session,
+    route: options.route,
+    result
+  });
+  sendRouteResponse(res, result, commit.setCookie);
+}
+
+function sendRouteResponse(res: http.ServerResponse, result: RouteHandlerResult, setCookie?: string): void {
   const status = resolveResponseStatus(result);
   const headers = resolveResponseHeaders(result);
   res.statusCode = status;
   for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === 'set-cookie') {
+      appendSetCookieHeader(res, value);
+      continue;
+    }
     res.setHeader(key, value);
+  }
+  if (setCookie) {
+    appendSetCookieHeader(res, setCookie);
   }
 
   if (result.errors) {
@@ -336,6 +444,17 @@ function resolveResponseHeaders(result: RouteHandlerResult): Record<string, stri
   }
 
   return headers;
+}
+
+function appendSetCookieHeader(res: http.ServerResponse, value: string): void {
+  const existing = res.getHeader('set-cookie');
+  if (!existing) {
+    res.setHeader('set-cookie', value);
+    return;
+  }
+  const values = Array.isArray(existing) ? existing.map(String) : [String(existing)];
+  values.push(value);
+  res.setHeader('set-cookie', values);
 }
 
 function lowerCaseHeaderMap(headers: Record<string, string>): Record<string, string> {
@@ -444,12 +563,16 @@ async function loadModuleRuntime(): Promise<ModuleRuntime> {
     return { routes: [] };
   }
   const manifest = sanitizeManifest(loaded.definition.manifest);
-  const routes = compileRoutes(loaded.definition.routes ?? []);
+  const compiled = compileRoutes(loaded.definition.routes ?? [], {
+    manifestRequestHooks: manifest?.requestHooks,
+    requestHookImplementations: loaded.definition.requestHooks
+  });
   return {
     definition: loaded.definition,
     manifest,
-    routes,
-    source: loaded.source
+    routes: compiled.routes,
+    source: loaded.source,
+    warnings: compiled.warnings
   };
 }
 
@@ -460,6 +583,7 @@ function sanitizeManifest(manifest?: ModuleManifestLike): ModuleManifestLike | u
   return {
     ...manifest,
     routes: Array.isArray(manifest.routes) ? manifest.routes : [],
+    requestHooks: Array.isArray(manifest.requestHooks) ? manifest.requestHooks : [],
     capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : undefined
   };
 }
@@ -486,23 +610,39 @@ function logManifestSummary(logger: Logger, manifest: ModuleManifestLike | undef
   logger.info(`[webstir-backend] manifest name=${manifest.name ?? 'unknown'} routes=${routes}${caps}`);
 }
 
-function compileRoutes(routes: ModuleRoute[]): CompiledRoute[] {
+function compileRoutes(
+  routes: ModuleRoute[],
+  options: {
+    manifestRequestHooks?: RequestHookDefinitionLike[];
+    requestHookImplementations?: ModuleRequestHook[];
+  }
+): { routes: CompiledRoute[]; warnings: string[] } {
   const compiled: CompiledRoute[] = [];
+  const warnings: string[] = [];
   for (const route of routes) {
     if (typeof route.handler !== 'function') {
       continue;
     }
     const method = (route.definition?.method ?? 'GET').toUpperCase();
     const pathPattern = normalizePath(route.definition?.path ?? '/');
+    const routeName = route.definition?.name ?? pathPattern;
+    const resolvedHooks = resolveRequestHooks<RouteContext, RouteHandlerResult, ModuleRouteDefinition>({
+      routeName,
+      routeReferences: route.definition?.requestHooks,
+      manifestDefinitions: options.manifestRequestHooks,
+      registrations: options.requestHookImplementations,
+    });
     compiled.push({
       method,
-      name: route.definition?.name ?? pathPattern,
+      name: routeName,
       match: createPathMatcher(pathPattern),
       handler: route.handler,
+      requestHooks: resolvedHooks.hooks,
       definition: route.definition
     });
+    warnings.push(...resolvedHooks.warnings);
   }
-  return compiled;
+  return { routes: compiled, warnings };
 }
 
 function createPathMatcher(pattern: string) {
