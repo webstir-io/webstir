@@ -33,6 +33,13 @@ const getAccountRoute = defineRoute<RequestContext, typeof accountParamsSchema, 
     method: 'GET',
     path: '/accounts/:id',
     summary: 'Fetch an account by id',
+    requestHooks: [{ id: 'resolve-session' }, { id: 'audit-log' }],
+    session: {
+      mode: 'optional'
+    },
+    flash: {
+      consume: ['account-email-updated']
+    },
     input: {
       params: { kind: 'zod', name: 'AccountRouteParams' }
     },
@@ -71,9 +78,21 @@ const updateAccountEmailRoute = defineRoute<
     path: '/accounts/:id/email',
     summary: 'Update an account email address',
     interaction: 'mutation',
+    requestHooks: [{ id: 'resolve-session' }, { id: 'audit-log' }],
+    session: {
+      mode: 'required',
+      write: true
+    },
     form: {
       contentType: 'application/x-www-form-urlencoded',
-      csrf: true
+      csrf: true,
+      session: {
+        mode: 'required',
+        write: true
+      },
+      flash: {
+        publish: [{ key: 'account-email-updated', level: 'success', when: 'success' }]
+      }
     },
     fragment: {
       target: 'account-email',
@@ -134,6 +153,20 @@ export const accountsModule = createModule({
     version: '0.0.1',
     kind: 'backend',
     capabilities: ['auth', 'db', 'views'],
+    requestHooks: [
+      {
+        id: 'resolve-session',
+        phase: 'beforeAuth',
+        order: 10,
+        summary: 'Populate session and auth context'
+      },
+      {
+        id: 'audit-log',
+        phase: 'afterHandler',
+        order: 90,
+        summary: 'Log route outcomes'
+      }
+    ],
     routes: [getAccountRoute.definition, updateAccountEmailRoute.definition],
     views: [accountView.definition]
   },

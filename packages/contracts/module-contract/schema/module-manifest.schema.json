@@ -35,10 +35,39 @@
             "type": "string"
           }
         },
-        "middlewares": {
+        "requestHooks": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "phase": {
+                "type": "string",
+                "enum": [
+                  "beforeAuth",
+                  "beforeHandler",
+                  "afterHandler"
+                ]
+              },
+              "order": {
+                "type": "integer"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "phase",
+              "order"
+            ],
+            "additionalProperties": false
           }
         },
         "routes": {
@@ -85,6 +114,84 @@
                   "mutation"
                 ]
               },
+              "requestHooks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "session": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "optional",
+                      "required"
+                    ]
+                  },
+                  "write": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "flash": {
+                "type": "object",
+                "properties": {
+                  "consume": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "publish": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "level": {
+                          "type": "string",
+                          "enum": [
+                            "info",
+                            "success",
+                            "warning",
+                            "error"
+                          ]
+                        },
+                        "when": {
+                          "type": "string",
+                          "enum": [
+                            "always",
+                            "success",
+                            "error"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "key"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
               "form": {
                 "type": "object",
                 "properties": {
@@ -98,6 +205,12 @@
                   },
                   "csrf": {
                     "type": "boolean"
+                  },
+                  "session": {
+                    "$ref": "#/definitions/module-manifest/properties/routes/items/properties/session"
+                  },
+                  "flash": {
+                    "$ref": "#/definitions/module-manifest/properties/routes/items/properties/flash"
                   }
                 },
                 "additionalProperties": false

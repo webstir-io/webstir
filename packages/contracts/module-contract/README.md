@@ -40,7 +40,8 @@ import { fromTsRestRoute, fromTsRestRouter } from '@webstir-io/module-contract/t
 - `RequestContext` and `SSRContext` describe what the orchestrator supplies to route and view handlers.
 - `fromTsRestRoute` converts an `@ts-rest/core` route contract into a Webstir `RouteSpec`, and `fromTsRestRouter` adapts an entire ts-rest router tree at once.
 - Routes and views support optional SSG metadata: `renderMode?: 'ssg' | 'ssr' | 'spa'`, `staticPaths?: string[]`, and a reserved `ssg?: { revalidateSeconds?: number }` bag for future incremental/static revalidation hints.
-- Routes can also declare progressive-enhancement metadata with `interaction?: 'navigation' | 'mutation'`, optional `form` metadata, and an optional `fragment` target for partial updates.
+- Modules can declare `requestHooks?: { id, phase, order }[]`, and routes can opt into them with `requestHooks?: { id }[]`.
+- Routes can also declare progressive-enhancement metadata with `interaction?: 'navigation' | 'mutation'`, optional `session`/`flash` metadata, optional form-level `session`/`flash` metadata, and an optional `fragment` target for partial updates.
 - Route handlers may now return normal document/json bodies, targeted fragment updates, or redirects through the shared result contract.
 
 > Install `@ts-rest/core` to use the adapters; it's published as an optional peer dependency of this package.
@@ -79,6 +80,13 @@ const getAccount = defineRoute<RequestContext, typeof paramsSchema, undefined, u
     name: 'getAccount',
     method: 'GET',
     path: '/accounts/:id',
+    requestHooks: [{ id: 'resolve-session' }, { id: 'audit-log' }],
+    session: {
+      mode: 'optional'
+    },
+    flash: {
+      consume: ['account-email-updated']
+    },
     input: {
       params: { kind: 'zod', name: 'AccountRouteParams', source: 'src/backend/server/routes/accounts.ts' }
     },
@@ -103,9 +111,21 @@ const updateAccountEmail = defineRoute<RequestContext, typeof paramsSchema, unde
     method: 'POST',
     path: '/accounts/:id/email',
     interaction: 'mutation',
+    requestHooks: [{ id: 'resolve-session' }, { id: 'audit-log' }],
+    session: {
+      mode: 'required',
+      write: true
+    },
     form: {
       contentType: 'application/x-www-form-urlencoded',
-      csrf: true
+      csrf: true,
+      session: {
+        mode: 'required',
+        write: true
+      },
+      flash: {
+        publish: [{ key: 'account-email-updated', level: 'success', when: 'success' }]
+      }
     },
     fragment: {
       target: 'account-email',
@@ -158,7 +178,18 @@ export const accountsModule = createModule({
     capabilities: ['auth', 'db', 'views'],
     // Optional: pass-through metadata for providers
     assets: [],
-    middlewares: [],
+    requestHooks: [
+      {
+        id: 'resolve-session',
+        phase: 'beforeAuth',
+        order: 10
+      },
+      {
+        id: 'audit-log',
+        phase: 'afterHandler',
+        order: 90
+      }
+    ],
     routes: [getAccount.definition, updateAccountEmail.definition],
     views: [accountView.definition]
   },
