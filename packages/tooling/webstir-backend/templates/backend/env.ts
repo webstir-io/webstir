@@ -26,6 +26,13 @@ export interface DatabaseConfig {
   migrationsTable: string;
 }
 
+export interface SessionConfig {
+  secret: string;
+  cookieName: string;
+  secure: boolean;
+  maxAgeSeconds: number;
+}
+
 export interface AppEnv {
   NODE_ENV: string;
   PORT: number;
@@ -34,6 +41,7 @@ export interface AppEnv {
   logging: LoggingConfig;
   metrics: MetricsConfig;
   database: DatabaseConfig;
+  sessions: SessionConfig;
 }
 
 const ENV_FILES = ['.env.local', '.env'];
@@ -67,6 +75,12 @@ export function loadEnv(): AppEnv {
     url: process.env.DATABASE_URL ?? 'file:./data/dev.sqlite',
     migrationsTable: process.env.DATABASE_MIGRATIONS_TABLE ?? '_webstir_migrations'
   };
+  const sessions: SessionConfig = {
+    secret: process.env.SESSION_SECRET ?? process.env.AUTH_JWT_SECRET ?? 'webstir-dev-session-secret',
+    cookieName: process.env.SESSION_COOKIE_NAME ?? 'webstir_session',
+    secure: parseBoolean(process.env.SESSION_COOKIE_SECURE, NODE_ENV === 'production'),
+    maxAgeSeconds: parsePositiveInt(process.env.SESSION_MAX_AGE, 60 * 60 * 24)
+  };
 
   return {
     NODE_ENV,
@@ -75,7 +89,8 @@ export function loadEnv(): AppEnv {
     auth,
     logging,
     metrics,
-    database
+    database,
+    sessions
   };
 }
 

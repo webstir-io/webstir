@@ -27,6 +27,16 @@ const updateAccountEmailSchema = z.object({
   email: z.string().email()
 });
 
+function isEnhancedRequest(request: unknown): boolean {
+  if (!request || typeof request !== 'object') {
+    return false;
+  }
+
+  const headers = (request as { headers?: Record<string, string | string[] | undefined> }).headers;
+  const header = headers?.['x-webstir-client-nav'];
+  return header === '1' || (Array.isArray(header) && header.includes('1'));
+}
+
 const getAccountRoute = defineRoute<RequestContext, typeof accountParamsSchema, undefined, undefined, typeof accountResponseSchema>({
   definition: {
     name: 'getAccount',
@@ -103,9 +113,21 @@ const updateAccountEmailRoute = defineRoute<
       body: { kind: 'zod', name: 'UpdateAccountEmailInput' }
     },
     output: {
-      redirect: {
-        status: 303
-      }
+      responses: [
+        {
+          status: 200,
+          body: { kind: 'zod', name: 'AccountRouteResponse' },
+          fragment: {
+            target: 'account-email',
+            mode: 'replace'
+          }
+        },
+        {
+          redirect: {
+            status: 303
+          }
+        }
+      ]
     }
   },
   schemas: {
@@ -115,6 +137,22 @@ const updateAccountEmailRoute = defineRoute<
   },
   handler: async (ctx) => {
     ctx.logger.info('update-account-email', { id: ctx.params.id, email: ctx.body.email });
+    const account = {
+      id: ctx.params.id,
+      email: ctx.body.email,
+      createdAt: new Date().toISOString()
+    };
+    if (isEnhancedRequest(ctx.request)) {
+      return {
+        status: 200,
+        fragment: {
+          target: 'account-email',
+          mode: 'replace',
+          body: account
+        }
+      };
+    }
+
     return {
       status: 303,
       redirect: {

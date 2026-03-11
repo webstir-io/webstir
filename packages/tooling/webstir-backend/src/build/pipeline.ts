@@ -216,7 +216,8 @@ async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Pro
     try {
         await esbuild({
             entryPoints: [sourceFile],
-            bundle: false,
+            bundle: true,
+            packages: 'external',
             platform: 'node',
             target: 'node20',
             format: 'esm',

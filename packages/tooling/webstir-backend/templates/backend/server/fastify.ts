@@ -4,6 +4,21 @@ import Fastify from 'fastify';
 import { randomUUID } from 'node:crypto';
 
 import { loadEnv } from '../env.js';
+import { resolveRequestAuth } from '../auth/adapter.js';
+import {
+  executeRequestHookPhase,
+  resolveRequestHooks,
+  type RequestHookDefinitionLike,
+  type RequestHookHandler,
+  type RequestHookReferenceLike
+} from '../runtime/request-hooks.js';
+import {
+  parseCookieHeader,
+  prepareSessionState,
+  type PreparedSessionState,
+  type SessionAwareRouteDefinitionLike,
+  type SessionFlashMessage
+} from '../runtime/session.js';
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
@@ -23,12 +38,13 @@ interface EnvAccessor {
   entries(): Record<string, string | undefined>;
 }
 
-interface ModuleRouteDefinition {
+interface ModuleRouteDefinition extends SessionAwareRouteDefinitionLike {
   name?: string;
   method?: string;
   path?: string;
+  requestHooks?: RequestHookReferenceLike[];
   interaction?: 'navigation' | 'mutation';
-  form?: {
+  form?: SessionAwareRouteDefinitionLike['form'] & {
     contentType?: 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain';
     csrf?: boolean;
   };
@@ -39,21 +55,44 @@ interface ModuleRouteDefinition {
   };
 }
 
+interface RouteContext extends Record<string, unknown> {
+  request: import('fastify').FastifyRequest;
+  reply: import('fastify').FastifyReply;
+  auth: unknown;
+  session: Record<string, unknown> | null;
+  flash: SessionFlashMessage[];
+  db: Record<string, unknown>;
+  env: EnvAccessor;
+  logger: Logger;
+  requestId: string;
+  now: () => Date;
+  params: Record<string, unknown>;
+  query: Record<string, unknown>;
+  body: unknown;
+}
+
 interface ModuleRoute {
   definition?: ModuleRouteDefinition;
-  handler?: (ctx: Record<string, unknown>) => Promise<RouteHandlerResult> | RouteHandlerResult;
+  handler?: (ctx: RouteContext) => Promise<RouteHandlerResult> | RouteHandlerResult;
 }
 
 interface ModuleManifestLike {
   name?: string;
   version?: string;
   capabilities?: string[];
+  requestHooks?: RequestHookDefinitionLike[];
   routes?: ModuleRouteDefinition[];
+}
+
+interface ModuleRequestHook {
+  id?: string;
+  handler?: RequestHookHandler<RouteContext, RouteHandlerResult, ModuleRouteDefinition>;
 }
 
 interface ModuleDefinitionLike {
   manifest?: ModuleManifestLike;
   routes?: ModuleRoute[];
+  requestHooks?: ModuleRequestHook[];
 }
 
 interface RouteHandlerResult {
@@ -118,7 +157,7 @@ export async function start(): Promise<void> {
     if (definition) {
       manifestSummary = summarizeManifest(definition.manifest, definition.routes);
       logManifestSummary(definition.manifest, definition.routes);
-      mountRoutes(app, definition);
+      mountRoutes(app, definition, env.auth, env.sessions);
     } else {
       console.info('[fastify] no module definition found. Routes will be empty.');
     }
@@ -138,14 +177,31 @@ export async function start(): Promise<void> {
   console.info(`[webstir-backend] mode=${mode} port=${port}`);
 }
 
-function mountRoutes(app: import('fastify').FastifyInstance, definition: ModuleDefinitionLike) {
+function mountRoutes(
+  app: import('fastify').FastifyInstance,
+  definition: ModuleDefinitionLike,
+  authSecrets: ReturnType<typeof loadEnv>['auth'],
+  sessionConfig: ReturnType<typeof loadEnv>['sessions']
+) {
   const routes = Array.isArray(definition?.routes) ? definition.routes : [];
+  const manifestHooks = Array.isArray(definition.manifest?.requestHooks) ? definition.manifest.requestHooks : [];
+  const requestHookImplementations = Array.isArray(definition.requestHooks) ? definition.requestHooks : [];
   for (const r of routes) {
     try {
       const method = String(r.definition?.method ?? 'GET').toUpperCase();
       const url = String(r.definition?.path ?? '/');
+      const routeName = String(r.definition?.name ?? url);
       const handler = r.handler;
       if (typeof handler !== 'function') continue;
+      const resolvedHooks = resolveRequestHooks<RouteContext, RouteHandlerResult, ModuleRouteDefinition>({
+        routeName,
+        routeReferences: r.definition?.requestHooks,
+        manifestDefinitions: manifestHooks,
+        registrations: requestHookImplementations
+      });
+      for (const warning of resolvedHooks.warnings) {
+        console.warn('[fastify] request hook configuration warning', warning);
+      }
 
       app.route({
         method: method as any,
@@ -154,33 +210,89 @@ function mountRoutes(app: import('fastify').FastifyInstance, definition: ModuleD
           const requestId = extractRequestId(req);
           reply.header('x-request-id', requestId);
           const envAccessor = createEnvAccessor();
-          const ctx: Record<string, unknown> = {
+          const requestLogger = createRequestLogger(requestId).with({ route: routeName });
+          const now = () => new Date();
+          const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
+            cookies: parseCookieHeader(req.headers.cookie as string | string[] | undefined),
+            route: r.definition,
+            config: sessionConfig,
+            now
+          });
+          const ctx: RouteContext = {
             request: req,
             reply,
             auth: undefined,
-            session: null,
+            session: sessionState.session,
+            flash: sessionState.flash,
             db: {},
             env: envAccessor,
-            logger: createRequestLogger(requestId),
+            logger: requestLogger,
             requestId,
-            now: () => new Date(),
+            now,
             params: (req as any).params ?? {},
             query: (req as any).query ?? {},
             body: (req as any).body ?? {}
           };
-          const result = await handler(ctx);
-          const status = resolveResponseStatus(result);
-          const headers = resolveResponseHeaders(result);
-          for (const [k, v] of Object.entries(headers)) {
-            reply.header(k, String(v));
-          }
-          if (result?.errors) {
-            reply.code(status).send({ errors: result.errors });
-          } else if (result?.redirect) {
-            reply.code(status).send('');
-          } else {
-            const payload = result?.fragment ? result.fragment.body : result?.body ?? null;
-            reply.code(status).send(payload);
+          try {
+            const routeDefinition = r.definition ?? { name: routeName, method, path: url };
+            const beforeAuth = await executeRequestHookPhase({
+              hooks: resolvedHooks.hooks,
+              phase: 'beforeAuth',
+              context: ctx,
+              route: routeDefinition,
+              logger: requestLogger
+            });
+            if (beforeAuth.shortCircuited && beforeAuth.result) {
+              sendCommittedRouteResponse(reply, beforeAuth.result, {
+                sessionState,
+                session: ctx.session,
+                route: routeDefinition
+              });
+              return;
+            }
+
+            if (ctx.auth === undefined) {
+              ctx.auth = resolveRequestAuth(req.raw, authSecrets, requestLogger);
+            }
+
+            const beforeHandler = await executeRequestHookPhase({
+              hooks: resolvedHooks.hooks,
+              phase: 'beforeHandler',
+              context: ctx,
+              route: routeDefinition,
+              logger: requestLogger
+            });
+            if (beforeHandler.shortCircuited && beforeHandler.result) {
+              sendCommittedRouteResponse(reply, beforeHandler.result, {
+                sessionState,
+                session: ctx.session,
+                route: routeDefinition
+              });
+              return;
+            }
+
+            const handlerResult = await handler(ctx);
+            const afterHandler = await executeRequestHookPhase({
+              hooks: resolvedHooks.hooks,
+              phase: 'afterHandler',
+              context: ctx,
+              route: routeDefinition,
+              logger: requestLogger,
+              result: handlerResult
+            });
+            sendCommittedRouteResponse(reply, afterHandler.result ?? handlerResult, {
+              sessionState,
+              session: ctx.session,
+              route: routeDefinition
+            });
+          } catch (error) {
+            requestLogger.error('route handler failed', { err: error });
+            if (!reply.sent) {
+              reply.code(500).type('application/json').send({
+                error: 'internal_error',
+                message: (error as Error).message
+              });
+            }
           }
         }
       });
@@ -192,7 +304,7 @@ function mountRoutes(app: import('fastify').FastifyInstance, definition: ModuleD
 }
 
 async function tryLoadModuleDefinition(): Promise<ModuleDefinitionLike | undefined> {
-  const candidates = ['../module.js', '../module/index.js'];
+  const candidates = ['./module.js', './module/index.js', '../module.js', '../module/index.js'];
   for (const rel of candidates) {
     try {
       const url = new URL(rel, import.meta.url);
@@ -273,6 +385,51 @@ function resolveResponseStatus(result: RouteHandlerResult | undefined): number {
   return result?.status ?? (result?.errors ? 400 : 200);
 }
 
+function sendCommittedRouteResponse(
+  reply: import('fastify').FastifyReply,
+  result: RouteHandlerResult,
+  options: {
+    sessionState: PreparedSessionState<Record<string, unknown>, RouteHandlerResult>;
+    session: Record<string, unknown> | null;
+    route?: ModuleRouteDefinition;
+  }
+): void {
+  const commit = options.sessionState.commit({
+    session: options.session,
+    route: options.route,
+    result
+  });
+  sendRouteResponse(reply, result, commit.setCookie);
+}
+
+function sendRouteResponse(reply: import('fastify').FastifyReply, result: RouteHandlerResult, setCookie?: string): void {
+  const status = resolveResponseStatus(result);
+  const headers = resolveResponseHeaders(result);
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === 'set-cookie') {
+      appendSetCookieHeader(reply, String(value));
+      continue;
+    }
+    reply.header(key, String(value));
+  }
+  if (setCookie) {
+    appendSetCookieHeader(reply, setCookie);
+  }
+
+  if (result.errors) {
+    reply.code(status).send({ errors: result.errors });
+    return;
+  }
+
+  if (result.redirect) {
+    reply.code(status).send('');
+    return;
+  }
+
+  const payload = result.fragment ? result.fragment.body : result.body ?? null;
+  reply.code(status).send(payload);
+}
+
 function resolveResponseHeaders(result: RouteHandlerResult | undefined): Record<string, string> {
   const headers: Record<string, string> = { ...(result?.headers ?? {}) };
 
@@ -298,6 +455,17 @@ function resolveResponseHeaders(result: RouteHandlerResult | undefined): Record<
   }
 
   return headers;
+}
+
+function appendSetCookieHeader(reply: import('fastify').FastifyReply, value: string): void {
+  const existing = reply.getHeader('set-cookie');
+  if (!existing) {
+    reply.header('set-cookie', value);
+    return;
+  }
+  const values = Array.isArray(existing) ? existing.map(String) : [String(existing)];
+  values.push(value);
+  reply.header('set-cookie', values);
 }
 
 function lowerCaseHeaderMap(headers: Record<string, string>): Record<string, string> {

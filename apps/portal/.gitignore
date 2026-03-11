@@ -2,6 +2,7 @@ node_modules
 build
 .docusaurus
 .cache
+.plan-cycle
 .env
 npm-debug.log*
 yarn-error.log

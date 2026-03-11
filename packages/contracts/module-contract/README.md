@@ -42,7 +42,8 @@ import { fromTsRestRoute, fromTsRestRouter } from '@webstir-io/module-contract/t
 - Routes and views support optional SSG metadata: `renderMode?: 'ssg' | 'ssr' | 'spa'`, `staticPaths?: string[]`, and a reserved `ssg?: { revalidateSeconds?: number }` bag for future incremental/static revalidation hints.
 - Modules can declare `requestHooks?: { id, phase, order }[]`, and routes can opt into them with `requestHooks?: { id }[]`.
 - Routes can also declare progressive-enhancement metadata with `interaction?: 'navigation' | 'mutation'`, optional `session`/`flash` metadata, optional form-level `session`/`flash` metadata, and an optional `fragment` target for partial updates.
-- Route handlers may now return normal document/json bodies, targeted fragment updates, or redirects through the shared result contract.
+- Route `output` can describe a single response case or a `responses: [...]` list when native and enhanced flows diverge.
+- Route handlers may now return normal document/json bodies, targeted fragment updates, or redirects through the shared result contract, with `RouteNavigationResult` and `RouteMutationResult` aliases for the common progressive-enhancement patterns.
 
 > Install `@ts-rest/core` to use the adapters; it's published as an optional peer dependency of this package.
 
@@ -74,6 +75,16 @@ const responseSchema = z.object({
 });
 const viewDataSchema = z.object({ account: responseSchema });
 const updateAccountEmailSchema = z.object({ email: z.string().email() });
+
+function isEnhancedRequest(request: unknown): boolean {
+  if (!request || typeof request !== 'object') {
+    return false;
+  }
+
+  const headers = (request as { headers?: Record<string, string | string[] | undefined> }).headers;
+  const header = headers?.['x-webstir-client-nav'];
+  return header === '1' || (Array.isArray(header) && header.includes('1'));
+}
 
 const getAccount = defineRoute<RequestContext, typeof paramsSchema, undefined, undefined, typeof responseSchema>({
   definition: {
@@ -136,9 +147,21 @@ const updateAccountEmail = defineRoute<RequestContext, typeof paramsSchema, unde
       body: { kind: 'zod', name: 'UpdateAccountEmailInput', source: 'src/backend/server/routes/accounts.ts' }
     },
     output: {
-      redirect: {
-        status: 303
-      }
+      responses: [
+        {
+          status: 200,
+          body: { kind: 'zod', name: 'AccountRouteResponse', source: 'src/backend/server/routes/accounts.ts' },
+          fragment: {
+            target: 'account-email',
+            mode: 'replace'
+          }
+        },
+        {
+          redirect: {
+            status: 303
+          }
+        }
+      ]
     }
   },
   schemas: {
@@ -146,12 +169,26 @@ const updateAccountEmail = defineRoute<RequestContext, typeof paramsSchema, unde
     body: updateAccountEmailSchema,
     response: responseSchema
   },
-  handler: async (ctx) => ({
-    status: 303,
-    redirect: {
-      location: `/accounts/${ctx.params.id}`
+  handler: async (ctx) => {
+    const account = await ctx.db.accounts.updateEmail(ctx.params.id, ctx.body.email);
+    if (isEnhancedRequest(ctx.request)) {
+      return {
+        status: 200,
+        fragment: {
+          target: 'account-email',
+          mode: 'replace',
+          body: account
+        }
+      };
     }
-  })
+
+    return {
+      status: 303,
+      redirect: {
+        location: `/accounts/${ctx.params.id}`
+      }
+    };
+  }
 });
 
 const accountView = defineView<SSRContext, typeof paramsSchema, typeof viewDataSchema>({
@@ -198,7 +235,29 @@ export const accountsModule = createModule({
 });
 ```
 
-Fragment-capable handlers can also return partial updates directly:
+Use `output.responses` when a route may return different enhanced and baseline shapes from the same handler:
+
+```ts
+output: {
+  responses: [
+    {
+      status: 200,
+      body: { kind: 'zod', name: 'AccountRouteResponse' },
+      fragment: {
+        target: 'account-email',
+        mode: 'replace'
+      }
+    },
+    {
+      redirect: {
+        status: 303
+      }
+    }
+  ]
+};
+```
+
+Fragment-capable handlers can still return partial updates directly:
 
 ```ts
 return {
