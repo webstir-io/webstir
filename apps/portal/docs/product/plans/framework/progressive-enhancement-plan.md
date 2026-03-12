@@ -23,20 +23,24 @@
   - Iteration 7 completed backend form-workflow ergonomics by adding a shared forms runtime helper, scaffold example coverage for CSRF-protected redirect-after-post flows, and package-local tests for auth, validation, CSRF, and success cases across both servers.
   - Item 6 was split into smaller fragment-hardening slices so fresh `plan-cycle` runs can stay within one runtime surface plus one validation surface.
   - Iteration 14 completed item 6 by normalizing backend fragment metadata in both server scaffolds, converting invalid fragment responses into explicit `invalid_fragment_response` errors, and adding runtime coverage for missing target, invalid mode, invalid selector, and missing body cases.
-  - First ready item: 7
+  - Iteration 15 completed item 7 by making `client-nav` treat invalid fragment headers, missing targets, and non-HTML mutation responses as explicit document-navigation fallbacks, with Bun-level coverage on the feature-source copies.
+  - First ready item: 8
 
 # Latest Cycle
-- Iteration: 14
-- Selected item: 6. Harden Backend Fragment Response Validation
-- Outcome: tightened backend fragment response handling in both scaffold servers by trimming and validating fragment metadata before commit, converting malformed fragment responses into explicit `500 invalid_fragment_response` payloads, and adding integration coverage for missing target, invalid mode, invalid selector, and missing body cases alongside the existing valid redirect/fragment path.
+- Iteration: 15
+- Selected item: 7. Harden Client-Nav Missing-Target And Non-HTML Fallbacks
+- Outcome: made the canonical demo `client-nav` helpers and Bun feature-source copies classify invalid fragment metadata, missing fragment targets, and non-HTML mutation responses explicitly, then fall back to document navigation instead of silently trying to treat every response as an applicable fragment.
 - Checks run:
-  - `bun run build`
-  - `bun run test`
-- Branch: `codex/harden-backend-fragment-response-validation`
+- `bun test tests/client-nav-form.test.ts`
+- `bun x tsc -p tsconfig.json --noEmit`
+- `diff -u examples/demos/full/src/frontend/app/scripts/features/client-nav.ts orchestrators/bun/resources/features/client_nav/client_nav.ts`
+- `diff -u examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts orchestrators/bun/resources/features/client_nav/form_enhancement.ts`
+- Branch: `main`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Package-local runtime coverage passed for both the default scaffold and the Fastify scaffold in this environment, so item 7 is now the first ready fragment-hardening follow-on.
+  - Bun-level tests now cover invalid fragment headers, missing-target fallback, and non-HTML response fallback decisions without needing a browser runtime in the orchestrator package.
+  - Item 8 is now the first ready fragment-application follow-on.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -119,7 +123,7 @@
   - 2026-03-11: Verified the slice with `bun run build` and `bun run test` in `packages/tooling/webstir-backend`, with all 26 package tests passing locally across both scaffold servers.
 
 ## 7. Harden Client-Nav Missing-Target And Non-HTML Fallbacks
-- Status: todo
+- Status: done
 - Depends on: 5, 6
 - Scope: make `client-nav` explicit about missing targets, invalid fragment metadata, and non-HTML responses in `examples/demos/full/src/frontend/app/scripts/features/client-nav.ts`, `examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts`, and `orchestrators/bun/resources/features/client_nav/*`.
 - Done when:
@@ -127,7 +131,9 @@
   - Missing-target and non-HTML cases have direct Bun-level coverage in `orchestrators/bun/tests`.
   - The mirrored demo client-nav code and Bun asset sources stay behaviorally aligned.
 - Progress:
-  - Not started.
+  - 2026-03-11: Added explicit fragment-metadata resolution in the canonical demo and Bun feature-source `form-enhancement` helpers so blank targets, blank selectors, and unsupported fragment modes are treated as invalid instead of being silently coerced.
+  - 2026-03-11: Updated the canonical demo and Bun feature-source `client-nav` helpers to resolve mutation responses through explicit fragment/document/navigation branches, including document-navigation fallback when fragment targets are missing or the response is non-HTML.
+  - 2026-03-11: Added Bun-level coverage for invalid fragment metadata, missing-target fallback, and non-HTML fallback decisions, then verified the canonical demo and Bun feature-source copies stayed identical.
 
 ## 8. Cover Replace/Append/Prepend Fragment Edge Cases
 - Status: todo
