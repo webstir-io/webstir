@@ -24,6 +24,15 @@ import {
   type SessionAwareRouteDefinitionLike,
   type SessionFlashMessage
 } from './runtime/session.js';
+import {
+  compileViews,
+  matchView,
+  renderRequestTimeView,
+  toHeaderRecord,
+  type CompiledView,
+  type ModuleViewLike,
+  type ViewDefinitionLike
+} from './runtime/views.js';
 
 interface EnvAccessor {
   get(name: string): string | undefined;
@@ -96,12 +105,17 @@ interface ModuleRoute {
   handler?: RouteHandler;
 }
 
+interface ModuleViewDefinition extends ViewDefinitionLike {}
+
+interface ModuleView extends ModuleViewLike {}
+
 interface ModuleManifestLike {
   name?: string;
   version?: string;
   capabilities?: string[];
   requestHooks?: RequestHookDefinitionLike[];
   routes?: ModuleRouteDefinition[];
+  views?: ModuleViewDefinition[];
 }
 
 type LifecycleHook = (context: { env: EnvAccessor; logger: Logger }) => Promise<void> | void;
@@ -114,6 +128,7 @@ interface ModuleRequestHook {
 interface ModuleDefinitionLike {
   manifest?: ModuleManifestLike;
   routes?: ModuleRoute[];
+  views?: ModuleView[];
   requestHooks?: ModuleRequestHook[];
   init?: LifecycleHook;
   dispose?: LifecycleHook;
@@ -132,6 +147,7 @@ interface ModuleRuntime {
   definition?: ModuleDefinitionLike;
   manifest?: ModuleManifestLike;
   routes: CompiledRoute[];
+  views: CompiledView[];
   source?: string;
   warnings?: string[];
 }
@@ -149,6 +165,7 @@ interface ManifestSummary {
   name?: string;
   version?: string;
   routes: number;
+  views: number;
   capabilities?: string[];
 }
 
@@ -168,7 +185,7 @@ export async function start(): Promise<void> {
     loadError = (error as Error).message ?? 'Failed to load module definition';
     logger.error({ err: error }, '[webstir-backend] module load failed');
     readiness.error(loadError);
-    runtime = { routes: [] };
+    runtime = { routes: [], views: [] };
   }
 
   if (runtime.source) {
@@ -177,7 +194,7 @@ export async function start(): Promise<void> {
     logger.warn('[webstir-backend] no module definition found. Add src/backend/module.ts to describe routes.');
   }
 
-  logManifestSummary(logger, runtime.manifest, runtime.routes.length);
+  logManifestSummary(logger, runtime.manifest, runtime.routes.length, runtime.views.length);
   for (const warning of runtime.warnings ?? []) {
     logger.warn({ warning }, '[webstir-backend] request hook configuration warning');
   }
@@ -252,59 +269,106 @@ async function handleRequest(options: {
       return;
     }
 
-    const matched = matchRoute(runtime.routes, method, pathname);
-    if (!matched) {
+    const matchedRoute = matchRoute(runtime.routes, method, pathname);
+    const matchedView =
+      !matchedRoute && (method === 'GET' || method === 'HEAD')
+        ? matchView(runtime.views, pathname)
+        : undefined;
+
+    if (!matchedRoute && !matchedView) {
       respondJson(res, 404, { error: 'not_found', path: pathname });
       metrics.record({ method, route: pathname, status: 404, durationMs: 0 });
       return;
     }
 
-    const routeName = matched.route.name ?? matched.route.definition?.path ?? pathname;
+    const routeName = matchedRoute
+      ? matchedRoute.route.name ?? matchedRoute.route.definition?.path ?? pathname
+      : matchedView?.view.name ?? pathname;
     const startTime = process.hrtime.bigint();
-    const body = await readRequestBody(req);
     const requestId = extractRequestId(req);
     res.setHeader('x-request-id', requestId);
 
     const requestLogger = createRequestLogger(logger, { requestId, req, route: routeName });
     const envAccessor = createEnvAccessor();
-    const db: Record<string, unknown> = Object.create(null);
     const now = () => new Date();
-    const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
-      cookies: parseCookieHeader(req.headers.cookie),
-      route: matched.route.definition,
-      config: env.sessions,
-      now
-    });
-    const ctx: RouteContext = {
-      request: req,
-      reply: res,
-      params: matched.params,
-      query: Object.fromEntries(url.searchParams.entries()),
-      body,
-      auth: undefined,
-      session: sessionState.session,
-      flash: sessionState.flash,
-      db,
-      env: envAccessor,
-      logger: requestLogger,
-      requestId,
-      now
-    };
 
     let handlerFailed = false;
     try {
+      if (matchedView) {
+        const cookies = parseCookieHeader(req.headers.cookie);
+        const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
+          cookies,
+          config: env.sessions,
+          now
+        });
+        const html = await renderRequestTimeView({
+          workspaceRoot: process.cwd(),
+          url,
+          view: matchedView.view,
+          params: matchedView.params,
+          cookies,
+          headers: toHeaderRecord(req.headers),
+          auth: resolveRequestAuth(req, env.auth, requestLogger),
+          session: sessionState.session,
+          env: envAccessor,
+          logger: requestLogger,
+          requestId,
+          now
+        });
+        const commit = sessionState.commit({
+          session: sessionState.session,
+          result: { status: 200 }
+        });
+
+        res.statusCode = 200;
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        if (commit.setCookie) {
+          appendSetCookieHeader(res, commit.setCookie);
+        }
+        if (method === 'HEAD') {
+          res.end('');
+        } else {
+          res.end(html);
+        }
+        return;
+      }
+
+      const body = await readRequestBody(req);
+      const db: Record<string, unknown> = Object.create(null);
+      const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
+        cookies: parseCookieHeader(req.headers.cookie),
+        route: matchedRoute.route.definition,
+        config: env.sessions,
+        now
+      });
+      const ctx: RouteContext = {
+        request: req,
+        reply: res,
+        params: matchedRoute.params,
+        query: Object.fromEntries(url.searchParams.entries()),
+        body,
+        auth: undefined,
+        session: sessionState.session,
+        flash: sessionState.flash,
+        db,
+        env: envAccessor,
+        logger: requestLogger,
+        requestId,
+        now
+      };
+
       const beforeAuth = await executeRequestHookPhase({
-        hooks: matched.route.requestHooks,
+        hooks: matchedRoute.route.requestHooks,
         phase: 'beforeAuth',
         context: ctx,
-        route: matched.route.definition ?? { name: matched.route.name, path: pathname, method },
+        route: matchedRoute.route.definition ?? { name: matchedRoute.route.name, path: pathname, method },
         logger: requestLogger
       });
       if (beforeAuth.shortCircuited && beforeAuth.result) {
         sendCommittedRouteResponse(res, beforeAuth.result, {
           sessionState,
           session: ctx.session,
-          route: matched.route.definition
+          route: matchedRoute.route.definition
         });
         return;
       }
@@ -314,38 +378,38 @@ async function handleRequest(options: {
       }
 
       const beforeHandler = await executeRequestHookPhase({
-        hooks: matched.route.requestHooks,
+        hooks: matchedRoute.route.requestHooks,
         phase: 'beforeHandler',
         context: ctx,
-        route: matched.route.definition ?? { name: matched.route.name, path: pathname, method },
+        route: matchedRoute.route.definition ?? { name: matchedRoute.route.name, path: pathname, method },
         logger: requestLogger
       });
       if (beforeHandler.shortCircuited && beforeHandler.result) {
         sendCommittedRouteResponse(res, beforeHandler.result, {
           sessionState,
           session: ctx.session,
-          route: matched.route.definition
+          route: matchedRoute.route.definition
         });
         return;
       }
 
-      const handlerResult = await matched.route.handler(ctx);
+      const handlerResult = await matchedRoute.route.handler(ctx);
       const afterHandler = await executeRequestHookPhase({
-        hooks: matched.route.requestHooks,
+        hooks: matchedRoute.route.requestHooks,
         phase: 'afterHandler',
         context: ctx,
-        route: matched.route.definition ?? { name: matched.route.name, path: pathname, method },
+        route: matchedRoute.route.definition ?? { name: matchedRoute.route.name, path: pathname, method },
         logger: requestLogger,
         result: handlerResult
       });
       sendCommittedRouteResponse(res, afterHandler.result ?? handlerResult, {
         sessionState,
         session: ctx.session,
-        route: matched.route.definition
+        route: matchedRoute.route.definition
       });
     } catch (error) {
       handlerFailed = true;
-      requestLogger.error({ err: error }, 'route handler failed');
+      requestLogger.error({ err: error }, 'request handler failed');
       throw error;
     } finally {
       const durationMs = Number(process.hrtime.bigint() - startTime) / 1_000_000;
@@ -650,17 +714,19 @@ function matchRoute(routes: CompiledRoute[], method: string, pathname: string): 
 async function loadModuleRuntime(): Promise<ModuleRuntime> {
   const loaded = await tryLoadModuleDefinition();
   if (!loaded) {
-    return { routes: [] };
+    return { routes: [], views: [] };
   }
   const manifest = sanitizeManifest(loaded.definition.manifest);
   const compiled = compileRoutes(loaded.definition.routes ?? [], {
     manifestRequestHooks: manifest?.requestHooks,
     requestHookImplementations: loaded.definition.requestHooks
   });
+  const views = compileViews(resolveModuleViews(loaded.definition, manifest));
   return {
     definition: loaded.definition,
     manifest,
     routes: compiled.routes,
+    views,
     source: loaded.source,
     warnings: compiled.warnings
   };
@@ -673,6 +739,7 @@ function sanitizeManifest(manifest?: ModuleManifestLike): ModuleManifestLike | u
   return {
     ...manifest,
     routes: Array.isArray(manifest.routes) ? manifest.routes : [],
+    views: Array.isArray(manifest.views) ? manifest.views : [],
     requestHooks: Array.isArray(manifest.requestHooks) ? manifest.requestHooks : [],
     capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : undefined
   };
@@ -686,18 +753,25 @@ function summarizeManifest(manifest?: ModuleManifestLike): ManifestSummary | und
     name: manifest.name,
     version: manifest.version,
     routes: Array.isArray(manifest.routes) ? manifest.routes.length : 0,
+    views: Array.isArray(manifest.views) ? manifest.views.length : 0,
     capabilities: manifest.capabilities && manifest.capabilities.length > 0 ? manifest.capabilities : undefined
   };
 }
 
-function logManifestSummary(logger: Logger, manifest: ModuleManifestLike | undefined, routeCount: number): void {
+function logManifestSummary(
+  logger: Logger,
+  manifest: ModuleManifestLike | undefined,
+  routeCount: number,
+  viewCount: number
+): void {
   if (!manifest) {
-    logger.info(`[webstir-backend] manifest routes=${routeCount} (no manifest metadata found)`);
+    logger.info(`[webstir-backend] manifest routes=${routeCount} views=${viewCount} (no manifest metadata found)`);
     return;
   }
   const caps = manifest.capabilities?.length ? ` [${manifest.capabilities.join(', ')}]` : '';
   const routes = Array.isArray(manifest.routes) ? manifest.routes.length : routeCount;
-  logger.info(`[webstir-backend] manifest name=${manifest.name ?? 'unknown'} routes=${routes}${caps}`);
+  const views = Array.isArray(manifest.views) ? manifest.views.length : viewCount;
+  logger.info(`[webstir-backend] manifest name=${manifest.name ?? 'unknown'} routes=${routes} views=${views}${caps}`);
 }
 
 function compileRoutes(
@@ -733,6 +807,19 @@ function compileRoutes(
     warnings.push(...resolvedHooks.warnings);
   }
   return { routes: compiled, warnings };
+}
+
+function resolveModuleViews(
+  definition: ModuleDefinitionLike,
+  manifest?: ModuleManifestLike
+): ModuleView[] {
+  if (Array.isArray(definition.views) && definition.views.length > 0) {
+    return definition.views;
+  }
+  if (Array.isArray(manifest?.views) && manifest.views.length > 0) {
+    return manifest.views.map((view) => ({ definition: view }));
+  }
+  return [];
 }
 
 function createPathMatcher(pattern: string) {

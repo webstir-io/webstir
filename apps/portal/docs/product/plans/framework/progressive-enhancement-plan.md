@@ -27,22 +27,22 @@
   - Iteration 16 completed item 8 by making fragment insertion explicit for replace-target vs child replacement, unwrapping matching-root append/prepend payloads into target children, and limiting autofocus/script work to newly inserted roots in the canonical demo plus Bun feature-source copies.
   - Iteration 17 completed item 9 by syncing the hardened `client_nav` feature sources into the shipped Bun assets and widening the canonical backend demo coverage so the redirect baseline and fragment payload shape are both asserted.
   - Iteration 18 completed item 10 by adding browser-level watch and publish coverage for the canonical progressive-enhancement demo, fixing proxy redirect rewriting for `/api`-mounted no-JavaScript flows, and extending the demo page so session/auth fragments and focus targets are observable in real browsers.
-  - First ready item: 11
+  - Iteration 19 completed item 11 by adding request-time backend view rendering through the default server and Fastify scaffold, using live SSR context plus built frontend documents instead of only emitting SSG `view-data.json`.
+  - First ready item: 12
 
 # Latest Cycle
-- Iteration: 18
-- Selected item: 10. Add Browser-Level Progressive Enhancement Coverage
-- Outcome: added browser-driven Bun orchestrator coverage for the full demo in both watch and publish mode, widened the canonical backend demo with a cookie-backed session/auth panel plus observable fragment focus state, and fixed dev-server proxy redirect rewriting so `/api`-mounted no-JavaScript form redirects stay on the backend surface.
+- Iteration: 19
+- Selected item: 11. Implement Request-Time HTML Rendering
+- Outcome: added a shared backend view runtime that resolves compiled view definitions against built frontend documents, wires live SSR context through both the default server and Fastify scaffold, and injects request-time view state into the served HTML document.
 - Checks run:
-- `bun run webstir -- test --workspace "$PWD/examples/demos/full" --runtime backend`
-- `bun test orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`
-- `bun run --filter @webstir-io/webstir test`
+- `bun run test` in `packages/tooling/webstir-backend`
+- `bun run smoke` in `packages/tooling/webstir-backend`
 - Branch: `main`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Browser coverage now proves the core HTML-first flow in both watch and publish mode, including `/api` proxy redirects, fragment updates, focus handling, scroll reset calls, and cookie-backed session persistence.
-  - The first ready slice is now item 11 for request-time HTML rendering.
+  - Request-time views now reuse the same first-segment page resolution as SSG metadata, but execute the loader on each request with live cookies, headers, auth, session, request ID, and URL context.
+  - The first ready slice is now item 12 for runtime cache and invalidation ergonomics.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -177,7 +177,7 @@
   - 2026-03-12: Updated `orchestrators/bun/src/dev-server.ts` so proxied backend redirects rewrite back onto the `/api` mount, then verified the full Bun orchestrator package and the canonical backend demo tests end to end.
 
 ## 11. Implement Request-Time HTML Rendering
-- Status: todo
+- Status: done
 - Depends on: 3, 4
 - Scope: build the request-time HTML rendering path for backend views so Webstir can serve server-rendered documents directly, not only SSG metadata and `view-data.json`.
 - Done when:
@@ -185,7 +185,9 @@
   - The Fastify scaffold supports the same request-time view flow.
   - End-to-end tests cover request-time document rendering with real SSR context.
 - Progress:
-  - Not started.
+  - 2026-03-12: Added `templates/backend/runtime/views.ts` plus scaffold asset wiring so backend views can resolve the matching built frontend document, execute their loader with live SSR context, and inject serialized request-time view state into the HTML response.
+  - 2026-03-12: Wired the built-in backend server and the Fastify scaffold to fall through from unmatched GET/HEAD requests into the shared view runtime, preserving route precedence while serving request-time documents from compiled view definitions.
+  - 2026-03-12: Added package-local runtime coverage for default and Fastify scaffolds, proving request-time view rendering with live session/auth/request headers, then revalidated with `bun run test` and `bun run smoke` in `packages/tooling/webstir-backend`.
 
 ## 12. Define Runtime Cache And Invalidation Ergonomics
 - Status: todo
