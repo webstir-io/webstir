@@ -19,6 +19,14 @@ export interface FragmentRootCandidate {
     readonly matchesSelector?: boolean;
 }
 
+export type FragmentInsertionBehavior =
+    | 'replace-target'
+    | 'replace-children'
+    | 'append-payload'
+    | 'append-matching-root-children'
+    | 'prepend-payload'
+    | 'prepend-matching-root-children';
+
 export interface EnhancedFormRequest {
     readonly url: string;
     readonly init: RequestInit;
@@ -219,14 +227,28 @@ export function shouldReplaceFragmentTarget(options: {
     readonly target: string;
     readonly roots: readonly FragmentRootCandidate[];
 }): boolean {
-    if (options.mode !== 'replace' || options.roots.length !== 1) {
-        return false;
+    return resolveFragmentInsertionBehavior(options) === 'replace-target';
+}
+
+export function resolveFragmentInsertionBehavior(options: {
+    readonly mode: FragmentUpdateMode;
+    readonly target: string;
+    readonly roots: readonly FragmentRootCandidate[];
+    readonly hasMeaningfulSiblingContent?: boolean;
+}): FragmentInsertionBehavior {
+    const hasMatchingRoot = options.roots.length === 1
+        && options.hasMeaningfulSiblingContent !== true
+        && rootMatchesFragmentTarget(options.roots[0], options.target);
+
+    if (options.mode === 'replace') {
+        return hasMatchingRoot ? 'replace-target' : 'replace-children';
     }
 
-    const [root] = options.roots;
-    return root.matchesSelector === true
-        || matchesFragmentTarget(root.id, options.target)
-        || matchesFragmentTarget(root.fragmentTarget, options.target);
+    if (options.mode === 'append') {
+        return hasMatchingRoot ? 'append-matching-root-children' : 'append-payload';
+    }
+
+    return hasMatchingRoot ? 'prepend-matching-root-children' : 'prepend-payload';
 }
 
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
@@ -244,4 +266,10 @@ function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
 
 function matchesFragmentTarget(value: string | null | undefined, target: string): boolean {
     return typeof value === 'string' && value.trim() === target;
+}
+
+function rootMatchesFragmentTarget(root: FragmentRootCandidate, target: string): boolean {
+    return root.matchesSelector === true
+        || matchesFragmentTarget(root.id, target)
+        || matchesFragmentTarget(root.fragmentTarget, target);
 }

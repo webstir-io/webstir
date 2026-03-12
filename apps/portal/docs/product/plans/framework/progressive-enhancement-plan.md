@@ -10,7 +10,7 @@
 
 # Status Summary
 - Overall status: active
-- Last updated: 2026-03-11
+- Last updated: 2026-03-12
 - Notes:
   - Foundation already landed for route metadata, redirect/fragment runtime handling, enhanced form submission in `client-nav`, and the canonical form-flow demo.
   - This plan only tracks the remaining work after that initial slice.
@@ -24,23 +24,25 @@
   - Item 6 was split into smaller fragment-hardening slices so fresh `plan-cycle` runs can stay within one runtime surface plus one validation surface.
   - Iteration 14 completed item 6 by normalizing backend fragment metadata in both server scaffolds, converting invalid fragment responses into explicit `invalid_fragment_response` errors, and adding runtime coverage for missing target, invalid mode, invalid selector, and missing body cases.
   - Iteration 15 completed item 7 by making `client-nav` treat invalid fragment headers, missing targets, and non-HTML mutation responses as explicit document-navigation fallbacks, with Bun-level coverage on the feature-source copies.
-  - First ready item: 8
+  - Iteration 16 completed item 8 by making fragment insertion explicit for replace-target vs child replacement, unwrapping matching-root append/prepend payloads into target children, and limiting autofocus/script work to newly inserted roots in the canonical demo plus Bun feature-source copies.
+  - First ready item: 9
 
 # Latest Cycle
-- Iteration: 15
-- Selected item: 7. Harden Client-Nav Missing-Target And Non-HTML Fallbacks
-- Outcome: made the canonical demo `client-nav` helpers and Bun feature-source copies classify invalid fragment metadata, missing fragment targets, and non-HTML mutation responses explicitly, then fall back to document navigation instead of silently trying to treat every response as an applicable fragment.
+- Iteration: 16
+- Selected item: 8. Cover Replace/Append/Prepend Fragment Edge Cases
+- Outcome: made the canonical demo `client-nav` helpers and Bun feature-source copies resolve fragment insertion behavior explicitly across replace-target, child replacement, matching-root append/prepend unwrapping, and multi-root payloads, while keeping autofocus and script execution scoped to the newly inserted fragment roots.
 - Checks run:
 - `bun test tests/client-nav-form.test.ts`
 - `bun x tsc -p tsconfig.json --noEmit`
+- `bun x tsc -p src/frontend/tsconfig.json --noEmit`
 - `diff -u examples/demos/full/src/frontend/app/scripts/features/client-nav.ts orchestrators/bun/resources/features/client_nav/client_nav.ts`
 - `diff -u examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts orchestrators/bun/resources/features/client_nav/form_enhancement.ts`
 - Branch: `main`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Bun-level tests now cover invalid fragment headers, missing-target fallback, and non-HTML response fallback decisions without needing a browser runtime in the orchestrator package.
-  - Item 8 is now the first ready fragment-application follow-on.
+  - Bun-level tests now cover replace-target vs child replacement plus append/prepend matching-root unwrapping decisions without needing a browser runtime in the orchestrator package.
+  - Item 9 is now the first ready slice for syncing the shipped Bun assets and widening canonical demo coverage.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -136,7 +138,7 @@
   - 2026-03-11: Added Bun-level coverage for invalid fragment metadata, missing-target fallback, and non-HTML fallback decisions, then verified the canonical demo and Bun feature-source copies stayed identical.
 
 ## 8. Cover Replace/Append/Prepend Fragment Edge Cases
-- Status: todo
+- Status: done
 - Depends on: 7
 - Scope: harden replace-versus-child-replacement behavior plus append/prepend edge cases in `examples/demos/full/src/frontend/app/scripts/features/client-nav.ts`, `examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts`, and `orchestrators/bun/tests/client-nav-form.test.ts`.
 - Done when:
@@ -144,7 +146,9 @@
   - Replace, append, and prepend behavior have direct tests for the supported edge cases.
   - Fragment updates still execute scripts and autofocus handling on the correct inserted roots.
 - Progress:
-  - Not started.
+  - 2026-03-12: Added `resolveFragmentInsertionBehavior` to the canonical demo and Bun feature-source `form-enhancement` helpers so replace-target, child replacement, and matching-root append/prepend unwrapping are resolved explicitly, including a guard for meaningful top-level sibling content.
+  - 2026-03-12: Updated the canonical demo and Bun feature-source `client-nav` helpers to apply fragment payloads with the new insertion behavior and scope autofocus/script re-execution to newly inserted roots instead of the whole target container.
+  - 2026-03-12: Extended `orchestrators/bun/tests/client-nav-form.test.ts` with direct Bun coverage for replace-target vs child replacement, append/prepend matching-root unwrapping, and sibling-content fallback to full payload insertion.
 
 ## 9. Sync Fragment Hardening Into Bun Assets And Canonical Demo Coverage
 - Status: todo
