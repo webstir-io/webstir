@@ -21,21 +21,22 @@
   - Iteration 5 completed backend session and flash runtime plumbing across the default scaffold and Fastify scaffold, adding shared cookie-backed session helpers, redirect-safe flash delivery, and focused scaffold tests for login, read, consume, and logout flows.
   - Iteration 6 revalidated the session/flash slice locally, fixed Fastify's bundled module-discovery path, and reran package-local checks with both default and Fastify runtime integration cases passing.
   - Iteration 7 completed backend form-workflow ergonomics by adding a shared forms runtime helper, scaffold example coverage for CSRF-protected redirect-after-post flows, and package-local tests for auth, validation, CSRF, and success cases across both servers.
-  - First ready item: 6
+  - Item 6 was split into smaller fragment-hardening slices so fresh `plan-cycle` runs can stay within one runtime surface plus one validation surface.
+  - Iteration 14 completed item 6 by normalizing backend fragment metadata in both server scaffolds, converting invalid fragment responses into explicit `invalid_fragment_response` errors, and adding runtime coverage for missing target, invalid mode, invalid selector, and missing body cases.
+  - First ready item: 7
 
 # Latest Cycle
-- Iteration: 7
-- Selected item: 5. Add Form Workflow Ergonomics
-- Outcome: completed the backend form slice by adding a shared scaffold runtime helper for CSRF tokens, redirect-after-post validation state, and auth-aware mutation guards, then updating the scaffold example and backend build pipeline so `module.ts` examples can import local runtime helpers. The package-local suite now covers auth failure, validation failure, CSRF failure, and successful redirect-after-post flows across both the default server and Fastify scaffold.
+- Iteration: 14
+- Selected item: 6. Harden Backend Fragment Response Validation
+- Outcome: tightened backend fragment response handling in both scaffold servers by trimming and validating fragment metadata before commit, converting malformed fragment responses into explicit `500 invalid_fragment_response` payloads, and adding integration coverage for missing target, invalid mode, invalid selector, and missing body cases alongside the existing valid redirect/fragment path.
 - Checks run:
   - `bun run build`
   - `bun run test`
-- Branch: `main`
+- Branch: `codex/harden-backend-fragment-response-validation`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - `module.ts` local helper imports now work in the backend build pipeline because module-definition builds bundle workspace-local runtime files while still externalizing packages.
-  - Item 6 is now the first ready fragment-hardening follow-on.
+  - Package-local runtime coverage passed for both the default scaffold and the Fastify scaffold in this environment, so item 7 is now the first ready fragment-hardening follow-on.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -104,20 +105,55 @@
   - 2026-03-11: Updated the scaffold example module to demonstrate an HTML-first account-settings form with inline validation, CSRF hidden inputs, success flash delivery, and auth-gated form submission.
   - 2026-03-11: Updated the backend build pipeline so scaffold `module.ts` files can import local runtime helpers, then added package-local tests for direct form-helper behavior plus default/Fastify runtime flows covering auth failure, validation failure, CSRF failure, and success with `bun run build` and `bun run test`.
 
-## 6. Harden Fragment Update Behavior
-- Status: todo
+## 6. Harden Backend Fragment Response Validation
+- Status: done
 - Depends on: 3, 5
-- Scope: harden fragment handling across `client-nav` and backend responses, especially missing targets, malformed headers, non-HTML payloads, and replace/append/prepend edge cases.
+- Scope: tighten fragment response validation and fallback behavior in `packages/tooling/webstir-backend/templates/backend/index.ts`, `packages/tooling/webstir-backend/templates/backend/server/fastify.ts`, and `packages/tooling/webstir-backend/tests/integration.test.js` without changing client-nav behavior yet.
 - Done when:
-  - Fragment behavior is explicit for missing-target, invalid-metadata, and fallback-to-document cases.
-  - `client-nav` and backend runtime tests cover the supported fragment modes and failure paths.
-  - The enhanced path preserves correct document behavior when fragment application is skipped.
+  - Backend runtimes handle malformed or incomplete fragment metadata explicitly instead of silently emitting ambiguous headers and bodies.
+  - Default-server and Fastify integration tests cover the supported backend fragment failure paths.
+  - Non-fragment document behavior remains unchanged for valid redirect and full-document responses.
+- Progress:
+  - 2026-03-11: Added shared fragment-result normalization in the default scaffold and Fastify scaffold so empty targets, invalid modes/selectors, and missing bodies become explicit `invalid_fragment_response` errors instead of ambiguous fragment headers or empty payloads.
+  - 2026-03-11: Extended `packages/tooling/webstir-backend/tests/integration.test.js` with default-server and Fastify runtime cases covering the valid redirect/fragment path plus missing target, invalid mode, invalid selector, and missing body failures.
+  - 2026-03-11: Verified the slice with `bun run build` and `bun run test` in `packages/tooling/webstir-backend`, with all 26 package tests passing locally across both scaffold servers.
+
+## 7. Harden Client-Nav Missing-Target And Non-HTML Fallbacks
+- Status: todo
+- Depends on: 5, 6
+- Scope: make `client-nav` explicit about missing targets, invalid fragment metadata, and non-HTML responses in `examples/demos/full/src/frontend/app/scripts/features/client-nav.ts`, `examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts`, and `orchestrators/bun/resources/features/client_nav/*`.
+- Done when:
+  - Enhanced form submissions fall back to correct document navigation when fragment application is skipped.
+  - Missing-target and non-HTML cases have direct Bun-level coverage in `orchestrators/bun/tests`.
+  - The mirrored demo client-nav code and Bun asset sources stay behaviorally aligned.
 - Progress:
   - Not started.
 
-## 7. Add Browser-Level Progressive Enhancement Coverage
+## 8. Cover Replace/Append/Prepend Fragment Edge Cases
 - Status: todo
-- Depends on: 5, 6
+- Depends on: 7
+- Scope: harden replace-versus-child-replacement behavior plus append/prepend edge cases in `examples/demos/full/src/frontend/app/scripts/features/client-nav.ts`, `examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts`, and `orchestrators/bun/tests/client-nav-form.test.ts`.
+- Done when:
+  - Fragment application rules are explicit for matching roots, child replacement, and multi-root payloads.
+  - Replace, append, and prepend behavior have direct tests for the supported edge cases.
+  - Fragment updates still execute scripts and autofocus handling on the correct inserted roots.
+- Progress:
+  - Not started.
+
+## 9. Sync Fragment Hardening Into Bun Assets And Canonical Demo Coverage
+- Status: todo
+- Depends on: 7, 8
+- Scope: propagate the fragment-hardening behavior into mirrored Bun assets and canonical demo coverage via `orchestrators/bun/scripts/sync-assets.mjs`, `orchestrators/bun/assets/features/client_nav/*`, and `examples/demos/full/src/backend/tests/progressive-enhancement.test.ts`.
+- Done when:
+  - Generated/shipped client-nav assets reflect the same fragment behavior as the canonical source files.
+  - The full demo coverage proves the no-JavaScript baseline still works after the hardening changes.
+  - The fragment-hardening slice is complete enough that browser-level coverage can build on it without re-opening runtime behavior questions.
+- Progress:
+  - Not started.
+
+## 10. Add Browser-Level Progressive Enhancement Coverage
+- Status: todo
+- Depends on: 5, 6, 7, 8, 9
 - Scope: add browser-level integration coverage for progressive-enhancement flows in watch and publish mode, including redirects, fragment updates, focus/scroll behavior, auth/session flows, and `/api` proxy handling.
 - Done when:
   - End-to-end browser tests cover the core progressive-enhancement flows instead of relying only on unit/runtime assertions.
@@ -126,7 +162,7 @@
 - Progress:
   - Not started.
 
-## 8. Implement Request-Time HTML Rendering
+## 11. Implement Request-Time HTML Rendering
 - Status: todo
 - Depends on: 3, 4
 - Scope: build the request-time HTML rendering path for backend views so Webstir can serve server-rendered documents directly, not only SSG metadata and `view-data.json`.
@@ -137,9 +173,9 @@
 - Progress:
   - Not started.
 
-## 9. Define Runtime Cache And Invalidation Ergonomics
+## 12. Define Runtime Cache And Invalidation Ergonomics
 - Status: todo
-- Depends on: 6, 8
+- Depends on: 9, 11
 - Scope: close the gap between existing build/cache metadata and the missing request/runtime cache story for documents and fragments.
 - Done when:
   - Runtime cache behavior and invalidation rules are explicit for page and fragment responses.
@@ -148,9 +184,9 @@
 - Progress:
   - Not started.
 
-## 10. Add An Auth And CRUD Proof App
+## 13. Add An Auth And CRUD Proof App
 - Status: todo
-- Depends on: 5, 7, 8
+- Depends on: 5, 10, 11
 - Scope: add a canonical end-to-end application that proves sessions, auth gates, validation errors, redirect-after-post, and CRUD backoffice flows on top of the progressive-enhancement model.
 - Done when:
   - A new demo under `examples/demos/*` exercises auth and CRUD workflows with no-JavaScript and enhanced paths.
@@ -159,9 +195,9 @@
 - Progress:
   - Not started.
 
-## 11. Add A Dashboard Proof App And Refresh Docs
+## 14. Add A Dashboard Proof App And Refresh Docs
 - Status: todo
-- Depends on: 6, 8, 9, 10
+- Depends on: 9, 11, 12, 13
 - Scope: add a second proof application for dashboard-style partial refreshes, then reframe package READMEs and portal docs around HTML-first delivery, forms, fragments, sessions, caching, navigation, and deployment.
 - Done when:
   - A dashboard-oriented demo proves partial refresh behavior without forcing SPA architecture.

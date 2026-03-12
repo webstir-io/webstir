@@ -47,6 +47,15 @@ type RouteHandlerResult = {
   errors?: { code: string; message: string; details?: unknown }[];
 };
 
+type NormalizedRouteHandlerResult = RouteHandlerResult & {
+  fragment?: {
+    target: string;
+    selector?: string;
+    mode?: 'replace' | 'append' | 'prepend';
+    body: unknown;
+  };
+};
+
 interface RouteContext {
   request: http.IncomingMessage;
   reply: http.ServerResponse;
@@ -363,15 +372,20 @@ function sendCommittedRouteResponse(
     route?: ModuleRouteDefinition;
   }
 ): void {
+  const normalizedResult = normalizeRouteHandlerResult(result);
   const commit = options.sessionState.commit({
     session: options.session,
     route: options.route,
-    result
+    result: normalizedResult
   });
-  sendRouteResponse(res, result, commit.setCookie);
+  sendRouteResponse(res, normalizedResult, commit.setCookie);
 }
 
-function sendRouteResponse(res: http.ServerResponse, result: RouteHandlerResult, setCookie?: string): void {
+function sendRouteResponse(
+  res: http.ServerResponse,
+  result: NormalizedRouteHandlerResult,
+  setCookie?: string
+): void {
   const status = resolveResponseStatus(result);
   const headers = resolveResponseHeaders(result);
   res.statusCode = status;
@@ -411,14 +425,14 @@ function sendRouteResponse(res: http.ServerResponse, result: RouteHandlerResult,
   respondJson(res, status, payload);
 }
 
-function resolveResponseStatus(result: RouteHandlerResult): number {
+function resolveResponseStatus(result: NormalizedRouteHandlerResult): number {
   if (result.redirect) {
     return result.status ?? 303;
   }
   return result.status ?? (result.errors ? 400 : 200);
 }
 
-function resolveResponseHeaders(result: RouteHandlerResult): Record<string, string> {
+function resolveResponseHeaders(result: NormalizedRouteHandlerResult): Record<string, string> {
   const headers: Record<string, string> = { ...(result.headers ?? {}) };
 
   if (result.redirect) {
@@ -444,6 +458,82 @@ function resolveResponseHeaders(result: RouteHandlerResult): Record<string, stri
   }
 
   return headers;
+}
+
+function normalizeRouteHandlerResult(result: RouteHandlerResult): NormalizedRouteHandlerResult {
+  const validatedFragment = validateFragmentResult(result.fragment);
+  if (!validatedFragment.valid) {
+    return {
+      status: result.status && result.status >= 400 ? result.status : 500,
+      headers: result.headers,
+      errors: [
+        {
+          code: 'invalid_fragment_response',
+          message: 'Fragment responses require a non-empty target, supported mode, and body.',
+          details: validatedFragment.issues
+        }
+      ]
+    };
+  }
+
+  if (!validatedFragment.fragment) {
+    return result;
+  }
+
+  return {
+    ...result,
+    fragment: validatedFragment.fragment
+  };
+}
+
+function validateFragmentResult(fragment: RouteHandlerResult['fragment']):
+  | { valid: true; fragment?: NormalizedRouteHandlerResult['fragment'] }
+  | { valid: false; issues: string[] } {
+  if (!fragment) {
+    return { valid: true };
+  }
+
+  const issues: string[] = [];
+  const target = typeof fragment.target === 'string' ? fragment.target.trim() : '';
+  if (!target) {
+    issues.push('target');
+  }
+
+  let selector: string | undefined;
+  if (fragment.selector !== undefined) {
+    if (typeof fragment.selector !== 'string' || !fragment.selector.trim()) {
+      issues.push('selector');
+    } else {
+      selector = fragment.selector.trim();
+    }
+  }
+
+  let mode: 'replace' | 'append' | 'prepend' | undefined;
+  if (fragment.mode !== undefined) {
+    if (fragment.mode === 'replace' || fragment.mode === 'append' || fragment.mode === 'prepend') {
+      mode = fragment.mode;
+    } else {
+      issues.push('mode');
+    }
+  }
+
+  if (fragment.body === undefined || fragment.body === null) {
+    issues.push('body');
+  }
+
+  if (issues.length > 0) {
+    return { valid: false, issues };
+  }
+
+  return {
+    valid: true,
+    fragment: {
+      target,
+      selector,
+      mode,
+      body: fragment.body
+    }
+  };
 }
 
 function appendSetCookieHeader(res: http.ServerResponse, value: string): void {
