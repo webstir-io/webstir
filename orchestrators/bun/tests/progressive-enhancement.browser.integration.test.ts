@@ -86,7 +86,7 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
     await assertFragmentUpdateAndFocus(enhancedPage);
     await assertSessionFlow(enhancedPage);
   } finally {
-    await enhancedContext.close();
+    await enhancedContext.close().catch(() => undefined);
   }
 
   const baselineContext = await browser.newContext({
@@ -98,7 +98,7 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
   try {
     await assertNativeRedirectFlow(baselinePage, origin);
   } finally {
-    await baselineContext.close();
+    await baselineContext.close().catch(() => undefined);
   }
 }
 
