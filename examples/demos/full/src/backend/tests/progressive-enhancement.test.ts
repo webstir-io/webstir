@@ -28,6 +28,20 @@ test('native form submissions redirect back to the document route', async () => 
     response.headers.get('location'),
     '/demo/progressive-enhancement?source=redirect&name=Native%20Flow'
   );
+  assert.equal(response.headers.get('x-webstir-fragment-target'), null);
+  assert.equal(response.headers.get('content-type'), null);
+});
+
+test('redirected document route preserves the no-javascript form flow', async () => {
+  const ctx = requireBackendTestContext();
+  const response = await ctx.request('/demo/progressive-enhancement?source=redirect&name=Native%20Flow');
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.isTrue(html.includes('Last submit used the no-JavaScript redirect path.'));
+  assert.isTrue(html.includes('Hello, Native Flow'));
+  assert.isTrue(html.includes('The browser completed a full-page redirect after the form POST.'));
+  assert.isTrue(html.includes('<form method="post">'));
 });
 
 test('enhanced form submissions return fragment metadata and html', async () => {
@@ -44,9 +58,12 @@ test('enhanced form submissions return fragment metadata and html', async () => 
   const html = await response.text();
 
   assert.equal(response.status, 200);
+  assert.isTrue(String(response.headers.get('content-type')).includes('text/html'));
   assert.equal(response.headers.get('x-webstir-fragment-target'), 'greeting-preview');
   assert.equal(response.headers.get('x-webstir-fragment-selector'), '#greeting-preview');
   assert.equal(response.headers.get('x-webstir-fragment-mode'), 'replace');
+  assert.isTrue(html.startsWith('<section id="greeting-preview"'));
+  assert.equal(html.includes('<!DOCTYPE html>'), false);
   assert.isTrue(html.includes('Hello, Fragment Flow'));
   assert.isTrue(html.includes('replace just this region'));
 });
