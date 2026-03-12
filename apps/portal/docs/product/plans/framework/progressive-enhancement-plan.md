@@ -28,21 +28,24 @@
   - Iteration 17 completed item 9 by syncing the hardened `client_nav` feature sources into the shipped Bun assets and widening the canonical backend demo coverage so the redirect baseline and fragment payload shape are both asserted.
   - Iteration 18 completed item 10 by adding browser-level watch and publish coverage for the canonical progressive-enhancement demo, fixing proxy redirect rewriting for `/api`-mounted no-JavaScript flows, and extending the demo page so session/auth fragments and focus targets are observable in real browsers.
   - Iteration 19 completed item 11 by adding request-time backend view rendering through the default server and Fastify scaffold, using live SSR context plus built frontend documents instead of only emitting SSG `view-data.json`.
-  - First ready item: 12
+  - Iteration 20 completed item 12 by adding process-local request-time document caching with explicit invalidation on built HTML changes, uncached fragment response headers, and package/docs coverage for miss/hit/stale behavior.
+  - First ready item: 13
 
 # Latest Cycle
-- Iteration: 19
-- Selected item: 11. Implement Request-Time HTML Rendering
-- Outcome: added a shared backend view runtime that resolves compiled view definitions against built frontend documents, wires live SSR context through both the default server and Fastify scaffold, and injects request-time view state into the served HTML document.
+- Iteration: 20
+- Selected item: 12. Define Runtime Cache And Invalidation Ergonomics
+- Outcome: added a shared request-time document cache in the backend view runtime, invalidated stale document shells when the built frontend HTML changed on disk, and made document/fragment cache behavior observable through scaffold response headers and docs.
 - Checks run:
 - `bun run test` in `packages/tooling/webstir-backend`
 - `bun run smoke` in `packages/tooling/webstir-backend`
-- Branch: `main`
+- Branch: `codex/item-12-runtime-cache`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Request-time views now reuse the same first-segment page resolution as SSG metadata, but execute the loader on each request with live cookies, headers, auth, session, request ID, and URL context.
-  - The first ready slice is now item 12 for runtime cache and invalidation ergonomics.
+  - Request-time views now cache only the built document shell in memory; live loader data, auth, cookies, headers, and session context still execute per request.
+  - The first request reports `x-webstir-document-cache: miss`, warm reads report `hit`, and the first request after a built HTML rewrite reports `stale` after reloading the document shell.
+  - Fragment responses are explicitly request-scoped with `x-webstir-fragment-cache: bypass` and `Cache-Control: no-store`.
+  - The first ready slice is now item 13 for the auth and CRUD proof application.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -190,7 +193,7 @@
   - 2026-03-12: Added package-local runtime coverage for default and Fastify scaffolds, proving request-time view rendering with live session/auth/request headers, then revalidated with `bun run test` and `bun run smoke` in `packages/tooling/webstir-backend`.
 
 ## 12. Define Runtime Cache And Invalidation Ergonomics
-- Status: todo
+- Status: done
 - Depends on: 9, 11
 - Scope: close the gap between existing build/cache metadata and the missing request/runtime cache story for documents and fragments.
 - Done when:
@@ -198,7 +201,9 @@
   - Application authors have a supported way to understand what is cached, where it lives, and when it invalidates.
   - Tests and docs cover correctness expectations for stale and refreshed document/fragment content.
 - Progress:
-  - Not started.
+  - 2026-03-12: Added process-local document-shell caching in `templates/backend/runtime/views.ts`, keyed by the resolved built frontend HTML path and invalidated when the file size or mtime changes on disk.
+  - 2026-03-12: Updated the built-in backend server and Fastify scaffold to emit `x-webstir-document-cache` for request-time documents plus `x-webstir-fragment-cache: bypass` and `Cache-Control: no-store` for fragment responses.
+  - 2026-03-12: Expanded `packages/tooling/webstir-backend/tests/integration.test.js` with miss/hit/stale request-time document assertions and fragment cache-header coverage, then documented the runtime cache model in `packages/tooling/webstir-backend/README.md`.
 
 ## 13. Add An Auth And CRUD Proof App
 - Status: todo

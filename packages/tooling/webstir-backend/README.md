@@ -107,6 +107,14 @@ The default `src/backend/index.ts` entry (and the optional Fastify scaffold) sha
 
 Stick with the built-in server while exploring the manifest helpers, then drop in the Fastify scaffold when you need its plugin ecosystem—the readiness + manifest wiring stays the same.
 
+### Runtime cache ergonomics
+
+- Request-time views cache the built frontend HTML document shell in process memory, keyed by the resolved built file under `build/frontend/pages/**` (or `dist/frontend/**` when serving published output).
+- The first request for a document is a cache `miss`; unchanged follow-up requests are `hit`; if the built HTML file changes on disk, the next request invalidates the stale entry, reloads it, and reports `stale`.
+- Request-time document responses always send `Cache-Control: no-store` and expose the cache outcome via `x-webstir-document-cache`, so you can verify whether the runtime reused or refreshed the shell.
+- Fragment responses are never reused by the scaffold runtime. They always send `Cache-Control: no-store` plus `x-webstir-fragment-cache: bypass`, because fragment bodies come from live route execution and should reflect current session/auth/request state.
+- Process restarts clear the in-memory document cache. There is no separate persisted request-time HTML cache today; the existing `.webstir` cache files remain build/publish metadata, not response payload storage.
+
 ### Secrets & auth adapters
 
 The backend template now ships a lightweight auth adapter so you can secure routes without wiring a full identity provider on day one:

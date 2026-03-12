@@ -301,7 +301,7 @@ async function handleRequest(options: {
           config: env.sessions,
           now
         });
-        const html = await renderRequestTimeView({
+        const rendered = await renderRequestTimeView({
           workspaceRoot: process.cwd(),
           url,
           view: matchedView.view,
@@ -321,14 +321,16 @@ async function handleRequest(options: {
         });
 
         res.statusCode = 200;
+        res.setHeader('cache-control', 'no-store');
         res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.setHeader('x-webstir-document-cache', rendered.documentCache.status);
         if (commit.setCookie) {
           appendSetCookieHeader(res, commit.setCookie);
         }
         if (method === 'HEAD') {
           res.end('');
         } else {
-          res.end(html);
+          res.end(rendered.html);
         }
         return;
       }
@@ -498,12 +500,14 @@ function resolveResponseStatus(result: NormalizedRouteHandlerResult): number {
 
 function resolveResponseHeaders(result: NormalizedRouteHandlerResult): Record<string, string> {
   const headers: Record<string, string> = { ...(result.headers ?? {}) };
+  const lowerCaseHeaders = lowerCaseHeaderMap(headers);
 
   if (result.redirect) {
     headers.location = result.redirect.location;
   }
 
   if (result.fragment) {
+    headers['x-webstir-fragment-cache'] = 'bypass';
     headers['x-webstir-fragment-target'] = result.fragment.target;
     if (result.fragment.selector) {
       headers['x-webstir-fragment-selector'] = result.fragment.selector;
@@ -511,9 +515,12 @@ function resolveResponseHeaders(result: NormalizedRouteHandlerResult): Record<st
     if (result.fragment.mode) {
       headers['x-webstir-fragment-mode'] = result.fragment.mode;
     }
+    if (!('cache-control' in lowerCaseHeaders)) {
+      headers['cache-control'] = 'no-store';
+    }
   }
 
-  if (!('content-type' in lowerCaseHeaderMap(headers))) {
+  if (!('content-type' in lowerCaseHeaders)) {
     const payload = result.fragment ? result.fragment.body : result.body;
     if (payload === undefined || payload === null) {
       return headers;
