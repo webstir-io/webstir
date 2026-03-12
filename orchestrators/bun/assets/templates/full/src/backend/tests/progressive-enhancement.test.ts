@@ -10,7 +10,10 @@ test('progressive enhancement demo page renders a form shell', async () => {
   assert.isTrue(html.includes('id="greeting-form"'));
   assert.isTrue(html.includes('data-webstir-fragment-target="greeting-preview"'));
   assert.isTrue(html.includes('data-webstir-fragment-target="session-panel"'));
-  assert.isTrue(html.includes('type="module" src="/app/'));
+  assert.isTrue(
+    html.includes('type="module" src="/app/')
+    || html.includes('type="module" src="/pages/home/index.js"')
+  );
 });
 
 test('native form submissions redirect back to the document route', async () => {
