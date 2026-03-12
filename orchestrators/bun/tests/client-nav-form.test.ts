@@ -4,6 +4,7 @@ import {
   buildEnhancedFormRequest,
   isHtmlDocumentContentType,
   resolveEnhancedFormResponse,
+  resolveFragmentInsertionBehavior,
   resolveFragmentResponseMetadata,
   readFragmentResponseMetadata,
   shouldReplaceFragmentTarget,
@@ -233,6 +234,79 @@ test('shouldReplaceFragmentTarget prefers replacing the target for matching frag
       matchesSelector: true,
     }],
   })).toBe(true);
+});
+
+test('resolveFragmentInsertionBehavior keeps replace-vs-child replacement explicit', () => {
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [{
+      id: 'greeting-preview',
+    }],
+  })).toBe('replace-target');
+
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [{
+      id: 'other-preview',
+    }],
+  })).toBe('replace-children');
+
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'replace',
+    target: 'greeting-preview',
+    roots: [
+      { id: 'greeting-preview' },
+      { id: 'secondary' },
+    ],
+  })).toBe('replace-children');
+});
+
+test('resolveFragmentInsertionBehavior unwraps matching roots for append and prepend', () => {
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'append',
+    target: 'greeting-preview',
+    roots: [{
+      fragmentTarget: 'greeting-preview',
+    }],
+  })).toBe('append-matching-root-children');
+
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'prepend',
+    target: 'greeting-preview',
+    roots: [{
+      matchesSelector: true,
+    }],
+  })).toBe('prepend-matching-root-children');
+});
+
+test('resolveFragmentInsertionBehavior keeps full payload insertion when outer content remains', () => {
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'append',
+    target: 'greeting-preview',
+    hasMeaningfulSiblingContent: true,
+    roots: [{
+      id: 'greeting-preview',
+    }],
+  })).toBe('append-payload');
+
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'prepend',
+    target: 'greeting-preview',
+    hasMeaningfulSiblingContent: true,
+    roots: [{
+      id: 'greeting-preview',
+    }],
+  })).toBe('prepend-payload');
+
+  expect(resolveFragmentInsertionBehavior({
+    mode: 'append',
+    target: 'greeting-preview',
+    roots: [{
+      id: 'other-preview',
+    }],
+  })).toBe('append-payload');
 });
 
 test('shouldReplaceFragmentTarget keeps child replacement for non-matching or multi-root payloads', () => {
