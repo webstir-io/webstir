@@ -25,24 +25,27 @@
   - Iteration 14 completed item 6 by normalizing backend fragment metadata in both server scaffolds, converting invalid fragment responses into explicit `invalid_fragment_response` errors, and adding runtime coverage for missing target, invalid mode, invalid selector, and missing body cases.
   - Iteration 15 completed item 7 by making `client-nav` treat invalid fragment headers, missing targets, and non-HTML mutation responses as explicit document-navigation fallbacks, with Bun-level coverage on the feature-source copies.
   - Iteration 16 completed item 8 by making fragment insertion explicit for replace-target vs child replacement, unwrapping matching-root append/prepend payloads into target children, and limiting autofocus/script work to newly inserted roots in the canonical demo plus Bun feature-source copies.
-  - First ready item: 9
+  - Iteration 17 completed item 9 by syncing the hardened `client_nav` feature sources into the shipped Bun assets and widening the canonical backend demo coverage so the redirect baseline and fragment payload shape are both asserted.
+  - First ready item: 10
 
 # Latest Cycle
-- Iteration: 16
-- Selected item: 8. Cover Replace/Append/Prepend Fragment Edge Cases
-- Outcome: made the canonical demo `client-nav` helpers and Bun feature-source copies resolve fragment insertion behavior explicitly across replace-target, child replacement, matching-root append/prepend unwrapping, and multi-root payloads, while keeping autofocus and script execution scoped to the newly inserted fragment roots.
+- Iteration: 17
+- Selected item: 9. Sync Fragment Hardening Into Bun Assets And Canonical Demo Coverage
+- Outcome: synced the hardened `client_nav` feature sources into `orchestrators/bun/assets/features/client_nav/*` and expanded the canonical backend demo tests to assert both the no-JavaScript redirect flow and the enhanced fragment-only response shape.
 - Checks run:
-- `bun test tests/client-nav-form.test.ts`
-- `bun x tsc -p tsconfig.json --noEmit`
-- `bun x tsc -p src/frontend/tsconfig.json --noEmit`
 - `diff -u examples/demos/full/src/frontend/app/scripts/features/client-nav.ts orchestrators/bun/resources/features/client_nav/client_nav.ts`
 - `diff -u examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts orchestrators/bun/resources/features/client_nav/form_enhancement.ts`
+- `diff -u orchestrators/bun/resources/features/client_nav/client_nav.ts orchestrators/bun/assets/features/client_nav/client_nav.ts`
+- `diff -u orchestrators/bun/resources/features/client_nav/form_enhancement.ts orchestrators/bun/assets/features/client_nav/form_enhancement.ts`
+- `bun test tests/client-nav-form.test.ts`
+- `bun x tsc -p examples/demos/full/src/backend/tsconfig.json --noEmit`
+- `bun run webstir -- test --workspace "$PWD/examples/demos/full" --runtime backend`
 - Branch: `main`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Bun-level tests now cover replace-target vs child replacement plus append/prepend matching-root unwrapping decisions without needing a browser runtime in the orchestrator package.
-  - Item 9 is now the first ready slice for syncing the shipped Bun assets and widening canonical demo coverage.
+  - The shipped Bun asset copy now matches the hardened feature-source behavior, so future pack/publish flows will carry the same fragment fallback and insertion rules.
+  - The first ready slice is now item 10 for browser-level progressive-enhancement coverage across watch and publish flows.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -151,7 +154,7 @@
   - 2026-03-12: Extended `orchestrators/bun/tests/client-nav-form.test.ts` with direct Bun coverage for replace-target vs child replacement, append/prepend matching-root unwrapping, and sibling-content fallback to full payload insertion.
 
 ## 9. Sync Fragment Hardening Into Bun Assets And Canonical Demo Coverage
-- Status: todo
+- Status: done
 - Depends on: 7, 8
 - Scope: propagate the fragment-hardening behavior into mirrored Bun assets and canonical demo coverage via `orchestrators/bun/scripts/sync-assets.mjs`, `orchestrators/bun/assets/features/client_nav/*`, and `examples/demos/full/src/backend/tests/progressive-enhancement.test.ts`.
 - Done when:
@@ -159,7 +162,9 @@
   - The full demo coverage proves the no-JavaScript baseline still works after the hardening changes.
   - The fragment-hardening slice is complete enough that browser-level coverage can build on it without re-opening runtime behavior questions.
 - Progress:
-  - Not started.
+  - 2026-03-12: Regenerated `orchestrators/bun/assets/features/client_nav/*` from the hardened feature-source copies so the shipped Bun assets now match the canonical fragment metadata, fallback, and insertion behavior.
+  - 2026-03-12: Expanded `examples/demos/full/src/backend/tests/progressive-enhancement.test.ts` to assert the no-JavaScript redirect baseline, redirected document render, and fragment-only enhanced response shape.
+  - 2026-03-12: Verified the slice with canonical-to-resource diffs, resource-to-asset diffs, `bun test tests/client-nav-form.test.ts`, `bun x tsc -p examples/demos/full/src/backend/tsconfig.json --noEmit`, and `bun run webstir -- test --workspace "$PWD/examples/demos/full" --runtime backend`.
 
 ## 10. Add Browser-Level Progressive Enhancement Coverage
 - Status: todo

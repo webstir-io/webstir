@@ -6,16 +6,40 @@ export interface FragmentResponseMetadata {
     readonly mode: FragmentUpdateMode;
 }
 
+export type FragmentResponseMetadataIssue = 'target' | 'selector' | 'mode';
+
+export type FragmentResponseMetadataResolution =
+    | { readonly kind: 'none' }
+    | { readonly kind: 'invalid'; readonly issues: readonly FragmentResponseMetadataIssue[] }
+    | { readonly kind: 'fragment'; readonly fragment: FragmentResponseMetadata };
+
 export interface FragmentRootCandidate {
     readonly id?: string | null;
     readonly fragmentTarget?: string | null;
     readonly matchesSelector?: boolean;
 }
 
+export type FragmentInsertionBehavior =
+    | 'replace-target'
+    | 'replace-children'
+    | 'append-payload'
+    | 'append-matching-root-children'
+    | 'prepend-payload'
+    | 'prepend-matching-root-children';
+
 export interface EnhancedFormRequest {
     readonly url: string;
     readonly init: RequestInit;
 }
+
+export type EnhancedFormResponseResolution =
+    | { readonly kind: 'fragment'; readonly fragment: FragmentResponseMetadata }
+    | { readonly kind: 'document' }
+    | {
+        readonly kind: 'navigate';
+        readonly location: string;
+        readonly reason: 'redirect' | 'missing-target' | 'invalid-fragment' | 'non-html';
+    };
 
 const CLIENT_NAV_HEADER = 'X-Webstir-Client-Nav';
 const DEFAULT_FORM_ENCODING = 'application/x-www-form-urlencoded';
@@ -74,20 +98,118 @@ export function buildEnhancedFormRequest(options: {
     return null;
 }
 
-export function readFragmentResponseMetadata(headers: Headers): FragmentResponseMetadata | null {
-    const target = headers.get('x-webstir-fragment-target')?.trim();
-    if (!target) {
-        return null;
+export function resolveFragmentResponseMetadata(headers: Headers): FragmentResponseMetadataResolution {
+    const rawTarget = headers.get('x-webstir-fragment-target');
+    const rawSelector = headers.get('x-webstir-fragment-selector');
+    const rawMode = headers.get('x-webstir-fragment-mode');
+
+    if (rawTarget === null && rawSelector === null && rawMode === null) {
+        return { kind: 'none' };
     }
 
-    const selector = headers.get('x-webstir-fragment-selector')?.trim() || undefined;
-    const rawMode = headers.get('x-webstir-fragment-mode')?.trim().toLowerCase();
-    const mode = rawMode === 'append' || rawMode === 'prepend' ? rawMode : 'replace';
+    const issues: FragmentResponseMetadataIssue[] = [];
+    const target = rawTarget?.trim() ?? '';
+    if (!target) {
+        issues.push('target');
+    }
+
+    let selector: string | undefined;
+    if (rawSelector !== null) {
+        const normalizedSelector = rawSelector.trim();
+        if (!normalizedSelector) {
+            issues.push('selector');
+        } else {
+            selector = normalizedSelector;
+        }
+    }
+
+    let mode: FragmentUpdateMode = 'replace';
+    if (rawMode !== null) {
+        const normalizedMode = rawMode.trim().toLowerCase();
+        if (normalizedMode === 'replace' || normalizedMode === 'append' || normalizedMode === 'prepend') {
+            mode = normalizedMode;
+        } else {
+            issues.push('mode');
+        }
+    }
+
+    if (issues.length > 0) {
+        return {
+            kind: 'invalid',
+            issues
+        };
+    }
 
     return {
-        target,
-        selector,
-        mode
+        kind: 'fragment',
+        fragment: {
+            target,
+            selector,
+            mode
+        }
+    };
+}
+
+export function readFragmentResponseMetadata(headers: Headers): FragmentResponseMetadata | null {
+    const resolution = resolveFragmentResponseMetadata(headers);
+    return resolution.kind === 'fragment' ? resolution.fragment : null;
+}
+
+export function resolveEnhancedFormResponse(options: {
+    readonly metadata: FragmentResponseMetadataResolution;
+    readonly hasFragmentTarget: boolean;
+    readonly contentType: string | null;
+    readonly redirected: boolean;
+    readonly responseUrl?: string | null;
+    readonly requestUrl: string;
+}): EnhancedFormResponseResolution {
+    if (options.metadata.kind === 'fragment') {
+        if (options.hasFragmentTarget) {
+            return {
+                kind: 'fragment',
+                fragment: options.metadata.fragment
+            };
+        }
+
+        if (isHtmlDocumentContentType(options.contentType)) {
+            return { kind: 'document' };
+        }
+
+        return {
+            kind: 'navigate',
+            location: options.responseUrl || options.requestUrl,
+            reason: 'missing-target'
+        };
+    }
+
+    if (options.metadata.kind === 'invalid') {
+        if (isHtmlDocumentContentType(options.contentType)) {
+            return { kind: 'document' };
+        }
+
+        return {
+            kind: 'navigate',
+            location: options.responseUrl || options.requestUrl,
+            reason: 'invalid-fragment'
+        };
+    }
+
+    if (isHtmlDocumentContentType(options.contentType)) {
+        return { kind: 'document' };
+    }
+
+    if (options.redirected && options.responseUrl) {
+        return {
+            kind: 'navigate',
+            location: options.responseUrl,
+            reason: 'redirect'
+        };
+    }
+
+    return {
+        kind: 'navigate',
+        location: options.responseUrl || options.requestUrl,
+        reason: 'non-html'
     };
 }
 
@@ -105,14 +227,28 @@ export function shouldReplaceFragmentTarget(options: {
     readonly target: string;
     readonly roots: readonly FragmentRootCandidate[];
 }): boolean {
-    if (options.mode !== 'replace' || options.roots.length !== 1) {
-        return false;
+    return resolveFragmentInsertionBehavior(options) === 'replace-target';
+}
+
+export function resolveFragmentInsertionBehavior(options: {
+    readonly mode: FragmentUpdateMode;
+    readonly target: string;
+    readonly roots: readonly FragmentRootCandidate[];
+    readonly hasMeaningfulSiblingContent?: boolean;
+}): FragmentInsertionBehavior {
+    const hasMatchingRoot = options.roots.length === 1
+        && options.hasMeaningfulSiblingContent !== true
+        && rootMatchesFragmentTarget(options.roots[0], options.target);
+
+    if (options.mode === 'replace') {
+        return hasMatchingRoot ? 'replace-target' : 'replace-children';
     }
 
-    const [root] = options.roots;
-    return root.matchesSelector === true
-        || matchesFragmentTarget(root.id, options.target)
-        || matchesFragmentTarget(root.fragmentTarget, options.target);
+    if (options.mode === 'append') {
+        return hasMatchingRoot ? 'append-matching-root-children' : 'append-payload';
+    }
+
+    return hasMatchingRoot ? 'prepend-matching-root-children' : 'prepend-payload';
 }
 
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
@@ -130,4 +266,10 @@ function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
 
 function matchesFragmentTarget(value: string | null | undefined, target: string): boolean {
     return typeof value === 'string' && value.trim() === target;
+}
+
+function rootMatchesFragmentTarget(root: FragmentRootCandidate, target: string): boolean {
+    return root.matchesSelector === true
+        || matchesFragmentTarget(root.id, target)
+        || matchesFragmentTarget(root.fragmentTarget, target);
 }
