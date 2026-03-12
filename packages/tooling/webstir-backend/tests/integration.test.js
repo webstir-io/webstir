@@ -698,6 +698,200 @@ async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
   }
 }
 
+function createFragmentRuntimeModuleSource() {
+  return `const routes = [
+  {
+    definition: {
+      name: 'redirectRoute',
+      method: 'POST',
+      path: '/actions/redirect',
+      interaction: 'mutation',
+      form: { contentType: 'application/x-www-form-urlencoded' }
+    },
+    handler: async (ctx) => ({
+      status: 303,
+      redirect: {
+        location: \`/done?name=\${encodeURIComponent(String(ctx.body?.name ?? 'unknown'))}\`
+      }
+    })
+  },
+  {
+    definition: {
+      name: 'fragmentRoute',
+      method: 'POST',
+      path: '/actions/fragment',
+      interaction: 'mutation',
+      form: { contentType: 'application/x-www-form-urlencoded' },
+      fragment: { target: 'greeting', mode: 'replace' }
+    },
+    handler: async (ctx) => ({
+      status: 200,
+      fragment: {
+        target: 'greeting',
+        mode: 'replace',
+        body: \`<p>Hello \${String(ctx.body?.name ?? 'world')}</p>\`
+      }
+    })
+  },
+  {
+    definition: {
+      name: 'fragmentMissingTargetRoute',
+      method: 'POST',
+      path: '/actions/fragment-missing-target',
+      interaction: 'mutation',
+      form: { contentType: 'application/x-www-form-urlencoded' }
+    },
+    handler: async () => ({
+      status: 200,
+      fragment: {
+        target: '   ',
+        mode: 'replace',
+        body: '<p>Missing target</p>'
+      }
+    })
+  },
+  {
+    definition: {
+      name: 'fragmentInvalidModeRoute',
+      method: 'POST',
+      path: '/actions/fragment-invalid-mode',
+      interaction: 'mutation',
+      form: { contentType: 'application/x-www-form-urlencoded' }
+    },
+    handler: async () => ({
+      status: 200,
+      fragment: {
+        target: 'greeting',
+        mode: 'swap',
+        body: '<p>Invalid mode</p>'
+      }
+    })
+  },
+  {
+    definition: {
+      name: 'fragmentInvalidSelectorRoute',
+      method: 'POST',
+      path: '/actions/fragment-invalid-selector',
+      interaction: 'mutation',
+      form: { contentType: 'application/x-www-form-urlencoded' }
+    },
+    handler: async () => ({
+      status: 200,
+      fragment: {
+        target: 'greeting',
+        selector: '   ',
+        mode: 'replace',
+        body: '<p>Invalid selector</p>'
+      }
+    })
+  },
+  {
+    definition: {
+      name: 'fragmentMissingBodyRoute',
+      method: 'POST',
+      path: '/actions/fragment-missing-body',
+      interaction: 'mutation',
+      form: { contentType: 'application/x-www-form-urlencoded' }
+    },
+    handler: async () => ({
+      status: 200,
+      fragment: {
+        target: 'greeting',
+        mode: 'replace'
+      }
+    })
+  }
+];
+
+export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/runtime',
+    version: '0.1.0',
+    kind: 'backend',
+    capabilities: ['http'],
+    routes: routes.map((route) => route.definition)
+  },
+  routes
+};
+`;
+}
+
+async function assertFragmentRuntimeBehavior({ useFastify }) {
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-fragments-' : 'webstir-backend-fragments-'
+  );
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createFragmentRuntimeModuleSource(),
+    useFastify
+  });
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port);
+
+  try {
+    const redirectResponse = await fetch(`http://127.0.0.1:${port}/actions/redirect`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: 'name=Webstir',
+      redirect: 'manual'
+    });
+    assert.equal(redirectResponse.status, 303);
+    assert.equal(redirectResponse.headers.get('location'), '/done?name=Webstir');
+
+    const fragmentResponse = await fetch(`http://127.0.0.1:${port}/actions/fragment`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: 'name=Webstir'
+    });
+    assert.equal(fragmentResponse.status, 200);
+    assert.equal(fragmentResponse.headers.get('x-webstir-fragment-target'), 'greeting');
+    assert.equal(fragmentResponse.headers.get('x-webstir-fragment-mode'), 'replace');
+    assert.equal(fragmentResponse.headers.get('content-type'), 'text/html; charset=utf-8');
+    assert.equal(await fragmentResponse.text(), '<p>Hello Webstir</p>');
+
+    for (const pathname of [
+      '/actions/fragment-missing-target',
+      '/actions/fragment-invalid-mode',
+      '/actions/fragment-invalid-selector',
+      '/actions/fragment-missing-body'
+    ]) {
+      const invalidResponse = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded'
+        },
+        body: 'name=Webstir'
+      });
+      assert.equal(invalidResponse.status, 500);
+      assert.equal(invalidResponse.headers.get('x-webstir-fragment-target'), null);
+      assert.match(String(invalidResponse.headers.get('content-type')), /^application\/json\b/);
+      assert.deepEqual(await invalidResponse.json(), {
+        errors: [
+          {
+            code: 'invalid_fragment_response',
+            message: 'Fragment responses require a non-empty target, supported mode, and body.',
+            details:
+              pathname === '/actions/fragment-missing-target'
+                ? ['target']
+                : pathname === '/actions/fragment-invalid-mode'
+                  ? ['mode']
+                  : pathname === '/actions/fragment-invalid-selector'
+                    ? ['selector']
+                  : ['body']
+          }
+        ]
+      });
+    }
+  } finally {
+    await server.stop();
+  }
+}
+
 test('request hook scaffold helper preserves ordered phase execution', async () => {
   const workspace = await createTempWorkspace('webstir-backend-hook-helper-');
   await buildRuntimeWorkspace(workspace, {
@@ -1253,97 +1447,22 @@ test('publish mode emits sourcemaps when opt-in flag is set', async () => {
   );
 });
 
-test('built backend server honors redirect and fragment route responses', async (t) => {
+test('built backend server validates fragment route responses', async (t) => {
   if (!(await canListenOnTcp())) {
     t.skip('TCP listen is not permitted in this environment.');
     return;
   }
 
-  const workspace = await createTempWorkspace('webstir-backend-runtime-');
+  await assertFragmentRuntimeBehavior({ useFastify: false });
+});
 
-  const moduleSource = `const routes = [
-  {
-    definition: {
-      name: 'redirectRoute',
-      method: 'POST',
-      path: '/actions/redirect',
-      interaction: 'mutation',
-      form: { contentType: 'application/x-www-form-urlencoded' }
-    },
-    handler: async (ctx) => ({
-      status: 303,
-      redirect: {
-        location: \`/done?name=\${encodeURIComponent(String(ctx.body?.name ?? 'unknown'))}\`
-      }
-    })
-  },
-  {
-    definition: {
-      name: 'fragmentRoute',
-      method: 'POST',
-      path: '/actions/fragment',
-      interaction: 'mutation',
-      form: { contentType: 'application/x-www-form-urlencoded' },
-      fragment: { target: 'greeting', mode: 'replace' }
-    },
-    handler: async (ctx) => ({
-      status: 200,
-      fragment: {
-        target: 'greeting',
-        mode: 'replace',
-        body: \`<p>Hello \${String(ctx.body?.name ?? 'world')}</p>\`
-      }
-    })
+test('fastify backend scaffold validates fragment route responses', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
   }
-];
 
-export const module = {
-  manifest: {
-    contractVersion: '1.0.0',
-    name: '@demo/runtime',
-    version: '0.1.0',
-    kind: 'backend',
-    capabilities: ['http'],
-    routes: routes.map((route) => route.definition)
-  },
-  routes
-};
-`;
-
-  await buildRuntimeWorkspace(workspace, { moduleSource });
-
-  const port = await getOpenPort();
-  const server = await startBuiltServer(workspace, port);
-
-  try {
-    const redirectResponse = await fetch(`http://127.0.0.1:${port}/actions/redirect`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded'
-      },
-      body: 'name=Webstir',
-      redirect: 'manual'
-    });
-
-    assert.equal(redirectResponse.status, 303);
-    assert.equal(redirectResponse.headers.get('location'), '/done?name=Webstir');
-
-    const fragmentResponse = await fetch(`http://127.0.0.1:${port}/actions/fragment`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded'
-      },
-      body: 'name=Webstir'
-    });
-
-    assert.equal(fragmentResponse.status, 200);
-    assert.equal(fragmentResponse.headers.get('x-webstir-fragment-target'), 'greeting');
-    assert.equal(fragmentResponse.headers.get('x-webstir-fragment-mode'), 'replace');
-    assert.equal(fragmentResponse.headers.get('content-type'), 'text/html; charset=utf-8');
-    assert.equal(await fragmentResponse.text(), '<p>Hello Webstir</p>');
-  } finally {
-    await server.stop();
-  }
+  await assertFragmentRuntimeBehavior({ useFastify: true });
 });
 
 test('built backend server executes request hooks with ordered context handoff', async (t) => {
