@@ -171,6 +171,12 @@ async function buildRuntimeWorkspace(workspace, { moduleSource, useFastify = fal
   });
 }
 
+async function writeFrontendDocument(workspace, pageName, html) {
+  const targetPath = path.join(workspace, 'build', 'frontend', 'pages', pageName, 'index.html');
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, html, 'utf8');
+}
+
 function createRequestHookRuntimeModuleSource() {
   return `const routes = [
   {
@@ -693,6 +699,149 @@ async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
     assert.match(successHtml, /data-flash="settings-saved:success"/);
     assert.match(successHtml, /data-form-errors=""/);
     assert.match(successHtml, /data-field-errors=""/);
+  } finally {
+    await server.stop();
+  }
+}
+
+function createViewRuntimeModuleSource() {
+  return `const loginRoute = {
+  definition: {
+    name: 'viewSessionLogin',
+    method: 'POST',
+    path: '/session/login',
+    interaction: 'mutation',
+    form: {
+      contentType: 'application/x-www-form-urlencoded',
+      session: { write: true }
+    }
+  },
+  handler: async (ctx) => {
+    const email = String(ctx.body?.email ?? 'viewer@example.com');
+    ctx.session = {
+      userId: email,
+      profile: { email }
+    };
+    return {
+      status: 303,
+      redirect: { location: '/accounts/demo' }
+    };
+  }
+};
+
+const accountView = {
+  definition: {
+    name: 'AccountView',
+    path: '/accounts/:id',
+    renderMode: 'ssr'
+  },
+  load: async (ctx) => ({
+    accountId: ctx.params.id,
+    authSource: ctx.auth?.source ?? null,
+    sessionUser: ctx.session?.userId ?? null,
+    requestId: ctx.requestId ?? null,
+    pathname: ctx.url.pathname,
+    host: ctx.headers.host ?? null
+  })
+};
+
+export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/runtime-views',
+    version: '0.1.0',
+    kind: 'backend',
+    capabilities: ['http', 'auth', 'views'],
+    routes: [loginRoute.definition],
+    views: [accountView.definition]
+  },
+  routes: [loginRoute],
+  views: [accountView]
+};
+`;
+}
+
+async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-views-' : 'webstir-backend-views-'
+  );
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createViewRuntimeModuleSource(),
+    useFastify
+  });
+  await writeFrontendDocument(
+    workspace,
+    'accounts',
+    [
+      '<!DOCTYPE html>',
+      '<html lang="en">',
+      '<head><title>Account shell</title></head>',
+      '<body><main><h1>Account shell</h1></main></body>',
+      '</html>'
+    ].join('\n')
+  );
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port, {
+    AUTH_SERVICE_TOKENS: 'service-secret'
+  });
+
+  try {
+    const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded'
+      },
+      body: 'email=viewer%40example.com',
+      redirect: 'manual'
+    });
+    assert.equal(loginResponse.status, 303);
+    assert.equal(loginResponse.headers.get('location'), '/accounts/demo');
+
+    const cookieHeader = extractCookieHeader(loginResponse.headers.get('set-cookie'));
+    assert.match(cookieHeader, /^webstir_session=/);
+
+    const accountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
+      headers: {
+        cookie: cookieHeader,
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(accountResponse.status, 200);
+    assert.equal(accountResponse.headers.get('content-type'), 'text/html; charset=utf-8');
+    const requestId = accountResponse.headers.get('x-request-id');
+    assert.ok(requestId, 'Expected request-time view responses to expose x-request-id.');
+
+    const accountHtml = await accountResponse.text();
+    assert.match(accountHtml, /<h1>Account shell<\/h1>/);
+    assert.match(accountHtml, /data-webstir-view-name="AccountView"/);
+    assert.match(accountHtml, /data-webstir-view-pathname="\/accounts\/demo"/);
+
+    const viewState = extractViewState(accountHtml);
+    assert.deepEqual(viewState, {
+      view: {
+        name: 'AccountView',
+        path: '/accounts/:id',
+        pathname: '/accounts/demo',
+        params: { id: 'demo' }
+      },
+      data: {
+        accountId: 'demo',
+        authSource: 'service-token',
+        sessionUser: 'viewer@example.com',
+        requestId,
+        pathname: '/accounts/demo',
+        host: `127.0.0.1:${port}`
+      },
+      requestId
+    });
+
+    const missingResponse = await fetch(`http://127.0.0.1:${port}/missing-page`);
+    assert.equal(missingResponse.status, 404);
+    assert.deepEqual(await missingResponse.json(), {
+      error: 'not_found',
+      path: '/missing-page'
+    });
   } finally {
     await server.stop();
   }
@@ -1326,6 +1475,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'forms.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
+  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'views.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'build', 'backend', 'index.js')), true);
 
   const fastifyWorkspace = await createTempWorkspace('webstir-backend-fastify-hooks-build-');
@@ -1337,6 +1487,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'forms.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
+  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'views.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'build', 'backend', 'index.js')), true);
 });
 
@@ -1349,6 +1500,12 @@ function extractHiddenInputValue(html, name) {
   const match = pattern.exec(String(html));
   assert.ok(match, `Expected hidden input ${name} to exist.`);
   return match[1];
+}
+
+function extractViewState(html) {
+  const match = /<script type="application\/json" id="webstir-view-state">([\s\S]*?)<\/script>/i.exec(String(html));
+  assert.ok(match, 'Expected request-time view payload to be injected.');
+  return JSON.parse(match[1]);
 }
 
 async function onceExit(child) {
@@ -1517,4 +1674,22 @@ test('fastify backend scaffold handles auth-aware form workflows with csrf and v
   }
 
   await assertFormWorkflowRuntimeBehavior({ useFastify: true });
+});
+
+test('built backend server renders request-time views with live SSR context', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestTimeViewRuntimeBehavior({ useFastify: false });
+});
+
+test('fastify backend scaffold renders request-time views with live SSR context', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestTimeViewRuntimeBehavior({ useFastify: true });
 });

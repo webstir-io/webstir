@@ -19,6 +19,15 @@ import {
   type SessionAwareRouteDefinitionLike,
   type SessionFlashMessage
 } from '../runtime/session.js';
+import {
+  compileViews,
+  matchView,
+  renderRequestTimeView,
+  toHeaderRecord,
+  type CompiledView,
+  type ModuleViewLike,
+  type ViewDefinitionLike
+} from '../runtime/views.js';
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 
@@ -76,12 +85,17 @@ interface ModuleRoute {
   handler?: (ctx: RouteContext) => Promise<RouteHandlerResult> | RouteHandlerResult;
 }
 
+interface ModuleViewDefinition extends ViewDefinitionLike {}
+
+interface ModuleView extends ModuleViewLike {}
+
 interface ModuleManifestLike {
   name?: string;
   version?: string;
   capabilities?: string[];
   requestHooks?: RequestHookDefinitionLike[];
   routes?: ModuleRouteDefinition[];
+  views?: ModuleViewDefinition[];
 }
 
 interface ModuleRequestHook {
@@ -92,6 +106,7 @@ interface ModuleRequestHook {
 interface ModuleDefinitionLike {
   manifest?: ModuleManifestLike;
   routes?: ModuleRoute[];
+  views?: ModuleView[];
   requestHooks?: ModuleRequestHook[];
 }
 
@@ -124,6 +139,7 @@ interface ManifestSummary {
   name?: string;
   version?: string;
   routes: number;
+  views: number;
   capabilities?: string[];
 }
 
@@ -153,6 +169,7 @@ export async function start(): Promise<void> {
   app.get('/healthz', async () => ({ ok: true }));
 
   let manifestSummary: ManifestSummary | undefined;
+  let compiledViews: CompiledView[] = [];
 
   app.get('/readyz', async (_req, reply) => {
     const snapshot = readiness.snapshot();
@@ -164,8 +181,9 @@ export async function start(): Promise<void> {
   try {
     const definition = await tryLoadModuleDefinition();
     if (definition) {
-      manifestSummary = summarizeManifest(definition.manifest, definition.routes);
-      logManifestSummary(definition.manifest, definition.routes);
+      compiledViews = compileViews(resolveModuleViews(definition));
+      manifestSummary = summarizeManifest(definition.manifest, definition.routes, compiledViews);
+      logManifestSummary(definition.manifest, definition.routes, compiledViews);
       mountRoutes(app, definition, env.auth, env.sessions);
     } else {
       console.info('[fastify] no module definition found. Routes will be empty.');
@@ -174,6 +192,8 @@ export async function start(): Promise<void> {
     readiness.error((error as Error).message ?? 'module load failed');
     console.error('[fastify] failed to load module definition:', error);
   }
+
+  configureViewNotFoundHandler(app, compiledViews, env.auth, env.sessions);
 
   await app.listen({ port, host: '0.0.0.0' });
 
@@ -295,7 +315,7 @@ function mountRoutes(
               route: routeDefinition
             });
           } catch (error) {
-            requestLogger.error('route handler failed', { err: error });
+            requestLogger.error('request handler failed', { err: error });
             if (!reply.sent) {
               reply.code(500).type('application/json').send({
                 error: 'internal_error',
@@ -310,6 +330,87 @@ function mountRoutes(
       console.warn('[fastify] failed to mount route', error);
     }
   }
+}
+
+function configureViewNotFoundHandler(
+  app: import('fastify').FastifyInstance,
+  views: readonly CompiledView[],
+  authSecrets: ReturnType<typeof loadEnv>['auth'],
+  sessionConfig: ReturnType<typeof loadEnv>['sessions']
+): void {
+  app.setNotFoundHandler(async (req, reply) => {
+    const requestUrl = new URL(req.raw.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const method = String(req.method ?? 'GET').toUpperCase();
+    const matchedView =
+      method === 'GET' || method === 'HEAD'
+        ? matchView(views, requestUrl.pathname)
+        : undefined;
+
+    if (!matchedView) {
+      reply.code(404).type('application/json').send({
+        error: 'not_found',
+        path: requestUrl.pathname
+      });
+      return;
+    }
+
+    const requestId = extractRequestId(req);
+    reply.header('x-request-id', requestId);
+    const envAccessor = createEnvAccessor();
+    const requestLogger = createRequestLogger(requestId).with({ route: matchedView.view.name });
+    const now = () => new Date();
+    const cookies = parseCookieHeader(req.headers.cookie as string | string[] | undefined);
+    const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
+      cookies,
+      config: sessionConfig,
+      now
+    });
+
+    try {
+      const html = await renderRequestTimeView({
+        workspaceRoot: process.cwd(),
+        url: requestUrl,
+        view: matchedView.view,
+        params: matchedView.params,
+        cookies,
+        headers: toHeaderRecord(req.headers as Record<string, string | string[] | undefined>),
+        auth: resolveRequestAuth(req.raw, authSecrets, requestLogger),
+        session: sessionState.session,
+        env: envAccessor,
+        logger: requestLogger,
+        requestId,
+        now
+      });
+      const commit = sessionState.commit({
+        session: sessionState.session,
+        result: { status: 200 }
+      });
+
+      if (commit.setCookie) {
+        appendSetCookieHeader(reply, commit.setCookie);
+      }
+
+      reply.code(200).type('text/html; charset=utf-8').send(method === 'HEAD' ? '' : html);
+    } catch (error) {
+      requestLogger.error('request handler failed', { err: error });
+      if (!reply.sent) {
+        reply.code(500).type('application/json').send({
+          error: 'internal_error',
+          message: (error as Error).message
+        });
+      }
+    }
+  });
+}
+
+function resolveModuleViews(definition: ModuleDefinitionLike): ModuleView[] {
+  if (Array.isArray(definition.views) && definition.views.length > 0) {
+    return definition.views;
+  }
+  if (Array.isArray(definition.manifest?.views) && definition.manifest.views.length > 0) {
+    return definition.manifest.views.map((view) => ({ definition: view }));
+  }
+  return [];
 }
 
 async function tryLoadModuleDefinition(): Promise<ModuleDefinitionLike | undefined> {
@@ -327,25 +428,36 @@ async function tryLoadModuleDefinition(): Promise<ModuleDefinitionLike | undefin
   return undefined;
 }
 
-function summarizeManifest(manifest?: ModuleManifestLike, routes?: ModuleRoute[]): ManifestSummary | undefined {
+function summarizeManifest(
+  manifest?: ModuleManifestLike,
+  routes?: ModuleRoute[],
+  views?: readonly CompiledView[]
+): ManifestSummary | undefined {
   if (!manifest) return undefined;
   const routeCount = Array.isArray(manifest.routes) ? manifest.routes.length : Array.isArray(routes) ? routes.length : 0;
+  const viewCount = Array.isArray(manifest.views) ? manifest.views.length : Array.isArray(views) ? views.length : 0;
   return {
     name: manifest.name,
     version: manifest.version,
     routes: routeCount,
+    views: viewCount,
     capabilities: manifest.capabilities && manifest.capabilities.length > 0 ? manifest.capabilities : undefined
   };
 }
 
-function logManifestSummary(manifest: ModuleManifestLike | undefined, routes?: ModuleRoute[]): void {
+function logManifestSummary(
+  manifest: ModuleManifestLike | undefined,
+  routes?: ModuleRoute[],
+  views?: readonly CompiledView[]
+): void {
   if (!manifest) {
     console.info('[fastify] manifest metadata not found.');
     return;
   }
   const caps = manifest.capabilities?.length ? ` [${manifest.capabilities.join(', ')}]` : '';
-  const count = Array.isArray(manifest.routes) ? manifest.routes.length : Array.isArray(routes) ? routes.length : 0;
-  console.info(`[fastify] manifest name=${manifest.name ?? 'unknown'} routes=${count}${caps}`);
+  const routeCount = Array.isArray(manifest.routes) ? manifest.routes.length : Array.isArray(routes) ? routes.length : 0;
+  const viewCount = Array.isArray(manifest.views) ? manifest.views.length : Array.isArray(views) ? views.length : 0;
+  console.info(`[fastify] manifest name=${manifest.name ?? 'unknown'} routes=${routeCount} views=${viewCount}${caps}`);
 }
 
 function createEnvAccessor(): EnvAccessor {
