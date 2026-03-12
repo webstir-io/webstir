@@ -3,6 +3,8 @@ import { expect, test } from 'bun:test';
 import {
   buildEnhancedFormRequest,
   isHtmlDocumentContentType,
+  resolveEnhancedFormResponse,
+  resolveFragmentResponseMetadata,
   readFragmentResponseMetadata,
   shouldReplaceFragmentTarget,
 } from '../resources/features/client_nav/form_enhancement.ts';
@@ -69,10 +71,149 @@ test('readFragmentResponseMetadata reads fragment headers and defaults replace m
   });
 });
 
+test('resolveFragmentResponseMetadata rejects incomplete fragment headers', () => {
+  expect(resolveFragmentResponseMetadata(new Headers({
+    'x-webstir-fragment-target': '   ',
+  }))).toEqual({
+    kind: 'invalid',
+    issues: ['target'],
+  });
+
+  expect(resolveFragmentResponseMetadata(new Headers({
+    'x-webstir-fragment-target': 'greeting',
+    'x-webstir-fragment-selector': '   ',
+  }))).toEqual({
+    kind: 'invalid',
+    issues: ['selector'],
+  });
+
+  expect(resolveFragmentResponseMetadata(new Headers({
+    'x-webstir-fragment-target': 'greeting',
+    'x-webstir-fragment-mode': 'swap',
+  }))).toEqual({
+    kind: 'invalid',
+    issues: ['mode'],
+  });
+});
+
 test('isHtmlDocumentContentType recognizes html responses', () => {
   expect(isHtmlDocumentContentType('text/html; charset=utf-8')).toBe(true);
   expect(isHtmlDocumentContentType('application/xhtml+xml')).toBe(true);
   expect(isHtmlDocumentContentType('application/json')).toBe(false);
+});
+
+test('resolveEnhancedFormResponse falls back to document navigation when fragment application is skipped', () => {
+  const metadata = resolveFragmentResponseMetadata(new Headers({
+    'x-webstir-fragment-target': 'greeting-preview',
+    'x-webstir-fragment-selector': '#greeting-preview',
+  }));
+
+  expect(resolveEnhancedFormResponse({
+    metadata,
+    hasFragmentTarget: false,
+    contentType: 'text/html; charset=utf-8',
+    redirected: false,
+    responseUrl: 'https://example.com/account',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'document',
+  });
+
+  expect(resolveEnhancedFormResponse({
+    metadata,
+    hasFragmentTarget: false,
+    contentType: 'application/json',
+    redirected: false,
+    responseUrl: 'https://example.com/account',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'navigate',
+    location: 'https://example.com/account',
+    reason: 'missing-target',
+  });
+
+  expect(resolveEnhancedFormResponse({
+    metadata: resolveFragmentResponseMetadata(new Headers({
+      'x-webstir-fragment-target': 'greeting-preview',
+      'x-webstir-fragment-mode': 'swap',
+    })),
+    hasFragmentTarget: false,
+    contentType: 'text/html; charset=utf-8',
+    redirected: false,
+    responseUrl: 'https://example.com/account',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'document',
+  });
+
+  expect(resolveEnhancedFormResponse({
+    metadata: resolveFragmentResponseMetadata(new Headers({
+      'x-webstir-fragment-target': 'greeting-preview',
+      'x-webstir-fragment-mode': 'swap',
+    })),
+    hasFragmentTarget: false,
+    contentType: 'text/html; charset=utf-8',
+    redirected: false,
+    responseUrl: 'https://example.com/account',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'document',
+  });
+
+  expect(resolveEnhancedFormResponse({
+    metadata: resolveFragmentResponseMetadata(new Headers({
+      'x-webstir-fragment-target': 'greeting-preview',
+      'x-webstir-fragment-mode': 'swap',
+    })),
+    hasFragmentTarget: false,
+    contentType: 'application/json',
+    redirected: false,
+    responseUrl: 'https://example.com/account',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'navigate',
+    location: 'https://example.com/account',
+    reason: 'invalid-fragment',
+  });
+});
+
+test('resolveEnhancedFormResponse distinguishes document, redirect, and non-html fallbacks', () => {
+  expect(resolveEnhancedFormResponse({
+    metadata: { kind: 'none' },
+    hasFragmentTarget: false,
+    contentType: 'text/html; charset=utf-8',
+    redirected: false,
+    responseUrl: 'https://example.com/account',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'document',
+  });
+
+  expect(resolveEnhancedFormResponse({
+    metadata: { kind: 'none' },
+    hasFragmentTarget: false,
+    contentType: 'application/json',
+    redirected: true,
+    responseUrl: 'https://example.com/account?done=1',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'navigate',
+    location: 'https://example.com/account?done=1',
+    reason: 'redirect',
+  });
+
+  expect(resolveEnhancedFormResponse({
+    metadata: { kind: 'none' },
+    hasFragmentTarget: false,
+    contentType: 'application/json',
+    redirected: false,
+    responseUrl: '',
+    requestUrl: 'https://example.com/actions/fragment',
+  })).toEqual({
+    kind: 'navigate',
+    location: 'https://example.com/actions/fragment',
+    reason: 'non-html',
+  });
 });
 
 test('shouldReplaceFragmentTarget prefers replacing the target for matching fragment roots', () => {

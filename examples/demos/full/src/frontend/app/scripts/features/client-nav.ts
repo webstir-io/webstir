@@ -1,9 +1,9 @@
 import {
     buildEnhancedFormRequest,
-    isHtmlDocumentContentType,
     normalizeFormEnctype,
     normalizeFormMethod,
-    readFragmentResponseMetadata,
+    resolveEnhancedFormResponse,
+    resolveFragmentResponseMetadata,
     shouldReplaceFragmentTarget
 } from './form-enhancement.js';
 import {
@@ -198,12 +198,25 @@ async function submitForm(
         return;
     }
 
-    const fragmentHandled = await handleFragmentResponse(response, requestId);
-    if (fragmentHandled) {
+    const metadata = resolveFragmentResponseMetadata(response.headers);
+    const fragmentTarget = metadata.kind === 'fragment'
+        ? resolveFragmentTarget(metadata.fragment.target, metadata.fragment.selector)
+        : null;
+    const resolution = resolveEnhancedFormResponse({
+        metadata,
+        hasFragmentTarget: fragmentTarget !== null,
+        contentType: response.headers.get('content-type'),
+        redirected: response.redirected,
+        responseUrl: response.url,
+        requestUrl: submission.url
+    });
+
+    if (resolution.kind === 'fragment') {
+        await handleFragmentResponse(response, requestId, resolution.fragment, fragmentTarget);
         return;
     }
 
-    if (isHtmlDocumentContentType(response.headers.get('content-type'))) {
+    if (resolution.kind === 'document') {
         await renderDocumentResponse(response, requestId, {
             pushHistory: true,
             url: response.url || submission.url
@@ -211,12 +224,7 @@ async function submitForm(
         return;
     }
 
-    if (response.redirected && response.url) {
-        window.location.href = response.url;
-        return;
-    }
-
-    window.location.href = submission.url;
+    window.location.href = resolution.location;
 }
 
 function beginRequest(): { readonly controller: AbortController; readonly requestId: number } {
@@ -366,20 +374,23 @@ function createFormData(
     return formData;
 }
 
-async function handleFragmentResponse(response: Response, requestId: number): Promise<boolean> {
-    const fragment = readFragmentResponseMetadata(response.headers);
-    if (!fragment) {
-        return false;
-    }
-
-    const target = resolveFragmentTarget(fragment.target, fragment.selector);
+async function handleFragmentResponse(
+    response: Response,
+    requestId: number,
+    fragment: {
+        readonly target: string;
+        readonly selector?: string;
+        readonly mode: 'replace' | 'append' | 'prepend';
+    },
+    target: Element | null
+): Promise<void> {
     if (!target) {
-        return false;
+        return;
     }
 
     const html = await response.text();
     if (requestId !== activeRequestId) {
-        return true;
+        return;
     }
 
     const appliedTarget = applyFragmentHtml(target, html, fragment);
@@ -391,7 +402,6 @@ async function handleFragmentResponse(response: Response, requestId: number): Pr
             mode: fragment.mode
         }
     }));
-    return true;
 }
 
 function resolveFragmentTarget(target: string, selector?: string): Element | null {
