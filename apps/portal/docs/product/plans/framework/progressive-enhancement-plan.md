@@ -26,26 +26,23 @@
   - Iteration 15 completed item 7 by making `client-nav` treat invalid fragment headers, missing targets, and non-HTML mutation responses as explicit document-navigation fallbacks, with Bun-level coverage on the feature-source copies.
   - Iteration 16 completed item 8 by making fragment insertion explicit for replace-target vs child replacement, unwrapping matching-root append/prepend payloads into target children, and limiting autofocus/script work to newly inserted roots in the canonical demo plus Bun feature-source copies.
   - Iteration 17 completed item 9 by syncing the hardened `client_nav` feature sources into the shipped Bun assets and widening the canonical backend demo coverage so the redirect baseline and fragment payload shape are both asserted.
-  - First ready item: 10
+  - Iteration 18 completed item 10 by adding browser-level watch and publish coverage for the canonical progressive-enhancement demo, fixing proxy redirect rewriting for `/api`-mounted no-JavaScript flows, and extending the demo page so session/auth fragments and focus targets are observable in real browsers.
+  - First ready item: 11
 
 # Latest Cycle
-- Iteration: 17
-- Selected item: 9. Sync Fragment Hardening Into Bun Assets And Canonical Demo Coverage
-- Outcome: synced the hardened `client_nav` feature sources into `orchestrators/bun/assets/features/client_nav/*` and expanded the canonical backend demo tests to assert both the no-JavaScript redirect flow and the enhanced fragment-only response shape.
+- Iteration: 18
+- Selected item: 10. Add Browser-Level Progressive Enhancement Coverage
+- Outcome: added browser-driven Bun orchestrator coverage for the full demo in both watch and publish mode, widened the canonical backend demo with a cookie-backed session/auth panel plus observable fragment focus state, and fixed dev-server proxy redirect rewriting so `/api`-mounted no-JavaScript form redirects stay on the backend surface.
 - Checks run:
-- `diff -u examples/demos/full/src/frontend/app/scripts/features/client-nav.ts orchestrators/bun/resources/features/client_nav/client_nav.ts`
-- `diff -u examples/demos/full/src/frontend/app/scripts/features/form-enhancement.ts orchestrators/bun/resources/features/client_nav/form_enhancement.ts`
-- `diff -u orchestrators/bun/resources/features/client_nav/client_nav.ts orchestrators/bun/assets/features/client_nav/client_nav.ts`
-- `diff -u orchestrators/bun/resources/features/client_nav/form_enhancement.ts orchestrators/bun/assets/features/client_nav/form_enhancement.ts`
-- `bun test tests/client-nav-form.test.ts`
-- `bun x tsc -p examples/demos/full/src/backend/tsconfig.json --noEmit`
 - `bun run webstir -- test --workspace "$PWD/examples/demos/full" --runtime backend`
+- `bun test orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`
+- `bun run --filter @webstir-io/webstir test`
 - Branch: `main`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - The shipped Bun asset copy now matches the hardened feature-source behavior, so future pack/publish flows will carry the same fragment fallback and insertion rules.
-  - The first ready slice is now item 10 for browser-level progressive-enhancement coverage across watch and publish flows.
+  - Browser coverage now proves the core HTML-first flow in both watch and publish mode, including `/api` proxy redirects, fragment updates, focus handling, scroll reset calls, and cookie-backed session persistence.
+  - The first ready slice is now item 11 for request-time HTML rendering.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -167,7 +164,7 @@
   - 2026-03-12: Verified the slice with canonical-to-resource diffs, resource-to-asset diffs, `bun test tests/client-nav-form.test.ts`, `bun x tsc -p examples/demos/full/src/backend/tsconfig.json --noEmit`, and `bun run webstir -- test --workspace "$PWD/examples/demos/full" --runtime backend`.
 
 ## 10. Add Browser-Level Progressive Enhancement Coverage
-- Status: todo
+- Status: done
 - Depends on: 5, 6, 7, 8, 9
 - Scope: add browser-level integration coverage for progressive-enhancement flows in watch and publish mode, including redirects, fragment updates, focus/scroll behavior, auth/session flows, and `/api` proxy handling.
 - Done when:
@@ -175,7 +172,9 @@
   - Watch and publish integration suites both exercise the canonical HTML form workflows.
   - Known flaky coverage gaps are removed or explicitly documented as blockers.
 - Progress:
-  - Not started.
+  - 2026-03-12: Expanded `examples/demos/full/src/backend/index.ts` with a cookie-backed session/auth panel plus fragment-focus hooks so browser tests can observe session persistence, fragment replacement, and autofocus behavior without adding a separate proof app.
+  - 2026-03-12: Added `orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts` to drive the canonical demo through real-browser watch and publish flows, covering `/api` proxy navigation, enhanced fragment updates, document scroll resets, focus handoff, cookie-backed auth/session persistence, and no-JavaScript redirect-after-post behavior.
+  - 2026-03-12: Updated `orchestrators/bun/src/dev-server.ts` so proxied backend redirects rewrite back onto the `/api` mount, then verified the full Bun orchestrator package and the canonical backend demo tests end to end.
 
 ## 11. Implement Request-Time HTML Rendering
 - Status: todo

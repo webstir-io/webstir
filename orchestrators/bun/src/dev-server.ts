@@ -218,7 +218,8 @@ export class DevServer {
           connection: 'close',
         },
       }, (proxyResponse) => {
-        response.writeHead(proxyResponse.statusCode ?? 502, proxyResponse.headers);
+        const headers = rewriteProxyResponseHeaders(proxyResponse.headers, targetUrl);
+        response.writeHead(proxyResponse.statusCode ?? 502, headers);
         proxyResponse.pipe(response);
         proxyResponse.once('end', resolve);
         proxyResponse.once('error', () => {
@@ -323,6 +324,51 @@ export function getApiProxyPath(pathname: string): string | null {
   }
 
   return null;
+}
+
+function rewriteProxyResponseHeaders(
+  headers: http.IncomingHttpHeaders,
+  targetUrl: URL
+): http.OutgoingHttpHeaders {
+  const nextHeaders: http.OutgoingHttpHeaders = { ...headers };
+  const rewrite = (value: string) => rewriteProxyLocation(value, targetUrl);
+
+  if (typeof headers.location === 'string') {
+    nextHeaders.location = rewrite(headers.location);
+  }
+
+  return nextHeaders;
+}
+
+function rewriteProxyLocation(value: string, targetUrl: URL): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return value;
+  }
+
+  if (trimmed.startsWith('/')) {
+    return prefixApiMount(trimmed);
+  }
+
+  try {
+    const resolved = new URL(trimmed, targetUrl.origin);
+    if (resolved.origin !== targetUrl.origin) {
+      return value;
+    }
+    return prefixApiMount(`${resolved.pathname}${resolved.search}${resolved.hash}`);
+  } catch {
+    return value;
+  }
+}
+
+function prefixApiMount(pathname: string): string {
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
+    return pathname;
+  }
+
+  return pathname === '/'
+    ? '/api'
+    : `/api${pathname}`;
 }
 
 async function resolveStaticFile(

@@ -48,6 +48,9 @@ jobs:
       - name: Test testing tooling
         run: bun run --filter @webstir-io/webstir-testing test
 
+      - name: Install Playwright browser
+        run: bun x playwright install --with-deps chromium
+
       - name: Test Bun orchestrator
         run: bun run --filter @webstir-io/webstir test
 
