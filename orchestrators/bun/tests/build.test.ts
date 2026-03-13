@@ -7,7 +7,13 @@ import { runBuild } from '../src/build.ts';
 import { runPublish } from '../src/publish.ts';
 import type { BuildProvider, BuildTargetKind } from '../src/types.ts';
 
-function createFakeProvider(kind: BuildTargetKind, calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }>): BuildProvider {
+function createFakeProvider(
+  kind: BuildTargetKind,
+  calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }>,
+  options: {
+    readonly diagnosticsForMode?: (mode: string | undefined) => Array<{ severity: 'error' | 'warn' | 'info'; message: string }>;
+  } = {}
+): BuildProvider {
   return {
     resolveWorkspace({ workspaceRoot }) {
       return {
@@ -18,6 +24,7 @@ function createFakeProvider(kind: BuildTargetKind, calls: Array<{ kind: BuildTar
     },
     async build({ workspaceRoot, env }) {
       calls.push({ kind, env });
+      const diagnostics = options.diagnosticsForMode?.(env.WEBSTIR_MODULE_MODE);
       return {
         artifacts: [
           {
@@ -28,7 +35,7 @@ function createFakeProvider(kind: BuildTargetKind, calls: Array<{ kind: BuildTar
         manifest: {
           entryPoints: ['index.js'],
           staticAssets: [],
-          diagnostics: [],
+          diagnostics: diagnostics ?? [],
         },
       };
     },
@@ -103,4 +110,69 @@ test('runPublish prebuilds frontend targets before publish and reports dist outp
   expect(result.targets[0]?.outputRoot).toBe(path.join(workspace, 'dist', 'frontend'));
   expect(calls).toHaveLength(2);
   expect(calls.map((call) => call.env.WEBSTIR_MODULE_MODE)).toEqual(['build', 'publish']);
+});
+
+test('runBuild fails when a provider reports fatal diagnostics', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-build-fatal-'));
+  await writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'spa-workspace',
+        webstir: {
+          mode: 'spa',
+        },
+      },
+      null,
+      2
+    )
+  );
+
+  const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
+
+  await expect(
+    runBuild({
+      workspaceRoot: workspace,
+      loadProvider: async () =>
+        createFakeProvider('frontend', calls, {
+          diagnosticsForMode: () => [{ severity: 'error', message: 'broken manifest' }],
+        }),
+    })
+  ).rejects.toThrow(/frontend build reported 1 error diagnostic/);
+
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.env.WEBSTIR_MODULE_MODE).toBe('build');
+});
+
+test('runPublish fails when the frontend prebuild reports fatal diagnostics', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-publish-fatal-'));
+  await writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'spa-workspace',
+        webstir: {
+          mode: 'spa',
+        },
+      },
+      null,
+      2
+    )
+  );
+
+  const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
+
+  await expect(
+    runPublish({
+      workspaceRoot: workspace,
+      loadProvider: async () =>
+        createFakeProvider('frontend', calls, {
+          diagnosticsForMode: (mode) =>
+            mode === 'build' ? [{ severity: 'error', message: 'broken prebuild' }] : [],
+        }),
+    })
+  ).rejects.toThrow(/frontend prebuild reported 1 error diagnostic/);
+
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.env.WEBSTIR_MODULE_MODE).toBe('build');
 });
