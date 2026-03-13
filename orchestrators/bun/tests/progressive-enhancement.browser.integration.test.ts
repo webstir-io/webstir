@@ -70,23 +70,36 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   browsers.push(browser);
 
-  const enhancedContext = await browser.newContext({
+  const fragmentContext = await browser.newContext({
     javaScriptEnabled: true,
     viewport: { width: 1280, height: 720 }
   });
-  const enhancedPage = await enhancedContext.newPage();
+  const fragmentPage = await fragmentContext.newPage();
 
   try {
-    await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator('a[href="/api/demo/progressive-enhancement"]').click();
-    await enhancedPage.waitForURL(`${origin}/api/demo/progressive-enhancement`);
-    await enhancedPage.locator('h1').waitFor({ state: 'visible' });
+    await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+    await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click();
+    await fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`);
+    await fragmentPage.locator('h1').waitFor({ state: 'visible' });
 
-    await assertDocumentNavigationResetsScroll(enhancedPage, origin);
-    await assertFragmentUpdateAndFocus(enhancedPage);
-    await assertSessionFlow(enhancedPage);
+    await assertDocumentNavigationResetsScroll(fragmentPage, origin);
+    await assertFragmentUpdateAndFocus(fragmentPage);
   } finally {
-    await enhancedContext.close().catch(() => undefined);
+    await fragmentContext.close().catch(() => undefined);
+  }
+
+  const sessionContext = await browser.newContext({
+    javaScriptEnabled: true,
+    viewport: { width: 1280, height: 720 }
+  });
+  const sessionPage = await sessionContext.newPage();
+
+  try {
+    await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
+    await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
+    await assertSessionFlow(sessionPage);
+  } finally {
+    await sessionContext.close().catch(() => undefined);
   }
 
   const baselineContext = await browser.newContext({
