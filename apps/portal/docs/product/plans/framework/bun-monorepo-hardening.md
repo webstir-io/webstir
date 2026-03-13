@@ -30,8 +30,8 @@
 - Contributors and external users cannot reliably tell which docs are active guidance versus historical context.
 
 ### 2. Archive Boundary Gap
-- `orchestrators/bun/scripts/sync-assets.mjs` still copies feature assets out of `orchestrators/dotnet`.
-- That keeps the archived tree on the critical path for active Bun builds and muddies ownership of the canonical feature sources.
+- Bun-owned resources now back `orchestrators/bun/scripts/sync-assets.mjs`, but the archive boundary still needs explicit CI enforcement and doc hygiene so the decoupling stays visible and durable.
+- Without that guardrail, future changes could quietly reintroduce archived-tree assumptions or leave active docs describing the old ownership model.
 
 ### 3. Consumer-Coverage Gap
 - PR CI runs package tests and orchestrator tests, but first-party app verification is too light.

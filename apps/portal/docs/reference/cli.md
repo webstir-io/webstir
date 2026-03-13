@@ -131,11 +131,11 @@ What it does:
   - `test`
   - `publish`
   - `backend-inspect` for backend-capable workspaces
-- If `--workspace` is omitted, uses a temporary copy of `examples/demos/full`
+- If `--workspace` is omitted, scaffolds a temporary full workspace from Bun-owned templates and enables `client-nav`
 - Prints a compact phase-by-phase summary
 
 Notes:
-- The default temp-copy behavior avoids mutating tracked demo workspaces
+- The default temporary workspace avoids mutating tracked demo workspaces while still exercising the full Bun-owned smoke surface
 - For external copied workspaces, backend type-checking is skipped only when necessary to avoid monorepo-only TypeScript resolution assumptions
 
 ### backend-inspect
