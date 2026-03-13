@@ -347,27 +347,30 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
       await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
       await baselinePage.locator('#project-title').fill('Native blocked project');
       await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
-      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/auth-crud'
-        && document.body.textContent?.includes('Sign in required to manage projects.')
-      );
+      await Promise.all([
+        baselinePage.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+        baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit())
+      ]);
+      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
+      expect(await baselinePage.locator('body').textContent()).toContain('Sign in required to manage projects.');
 
       await baselinePage.locator('#auth-email').fill('native@example.com');
-      await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/auth-crud'
-        && document.body.textContent?.includes('Signed in as native@example.com.')
-      );
+      await Promise.all([
+        baselinePage.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+        baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit())
+      ]);
+      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
+      expect(await baselinePage.locator('body').textContent()).toContain('Signed in as native@example.com.');
 
       await baselinePage.locator('#project-title').fill('Native create project');
       await baselinePage.locator('#project-status').selectOption('active');
       await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
-      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/auth-crud'
-        && document.body.textContent?.includes('Created project "Native create project".')
-      );
+      await Promise.all([
+        baselinePage.waitForNavigation({ waitUntil: 'domcontentloaded' }),
+        baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit())
+      ]);
+      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
+      expect(await baselinePage.locator('body').textContent()).toContain('Created project "Native create project".');
 
       expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
     } finally {
