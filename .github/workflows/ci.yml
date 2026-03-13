@@ -45,6 +45,10 @@ jobs:
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build contract packages
+        if: github.event_name == 'pull_request'
+        run: bun run build:contracts
+
       - name: Test release tools
         if: steps.app-builds.outputs.test_release_tools == 'true'
         run: bun run test:tools
