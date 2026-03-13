@@ -74,6 +74,18 @@ test('CLI publishes the api demo workspace end to end', async () => {
   expect(existsSync(path.join(result.copiedWorkspace, 'build', 'backend', 'index.js'))).toBe(true);
 });
 
+test('CLI publishes the auth-crud demo workspace end to end', async () => {
+  const result = await runCliInCopiedWorkspace('publish', 'auth-crud', {
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
+  });
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toContain('[webstir] publish complete');
+  expect(existsSync(path.join(result.copiedWorkspace, 'build', 'backend', 'index.js'))).toBe(true);
+  expect(existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'pages', 'home', 'index.html'))).toBe(true);
+});
+
 test('CLI publishes the ssg demo workspace end to end', async () => {
   const result = await runCliInCopiedWorkspace('publish', 'ssg/base');
 

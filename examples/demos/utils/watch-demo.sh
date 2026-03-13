@@ -8,7 +8,7 @@ WORKSPACE_ROOT="$(cd "${DEMOS_ROOT}/../.." && pwd)"
 usage() {
   cat <<'EOF'
 Usage:
-  watch-demo.sh <ssg|spa|api|full> [base|site] [<webstir-watch-args...>]
+  watch-demo.sh <ssg|spa|api|full|auth-crud> [base|site] [<webstir-watch-args...>]
 
 Examples:
   watch-demo.sh ssg base
@@ -54,6 +54,9 @@ case "${MODE}" in
     ;;
   full|fullstack )
     DEMO_FOLDER="full"
+    ;;
+  auth-crud|authcrud )
+    DEMO_FOLDER="auth-crud"
     ;;
   * )
     echo "Unknown demo mode: ${MODE}" >&2

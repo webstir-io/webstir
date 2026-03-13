@@ -12,10 +12,10 @@ build_local_providers
 usage() {
   cat <<'EOF'
 Usage:
-  enable-feature.sh <project|ssg|ssg-base|ssg-site|spa|api|full> <feature> [<feature-args...>]
+  enable-feature.sh <project|ssg|ssg-base|ssg-site|spa|api|full|auth-crud> <feature> [<feature-args...>]
 
 Notes:
-  - If <project> is one of ssg|ssg-base|ssg-site|spa|api|full, it targets the corresponding demo folder.
+  - If <project> is one of ssg|ssg-base|ssg-site|spa|api|full|auth-crud, it targets the corresponding demo folder.
   - Otherwise, <project> can be a directory path (absolute or relative).
   - Additional args are passed to `webstir enable ...` before the workspace flag.
 
@@ -58,6 +58,9 @@ project_dir_from_mode() {
       ;;
     full|fullstack )
       echo "${DEMOS_ROOT}/full"
+      ;;
+    auth-crud|authcrud )
+      echo "${DEMOS_ROOT}/auth-crud"
       ;;
     * )
       return 1
