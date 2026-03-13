@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
-import { copyDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
@@ -15,14 +16,29 @@ async function runCliInCopiedWorkspace(
   envOverrides: Record<string, string | undefined> = {}
 ) {
   const copiedWorkspace = await copyDemoWorkspace(fixtureName, `webstir-${fixtureName.replace(/[\\/]/g, '-')}-`);
+  const processResult = runCli(
+    [command, '--workspace', copiedWorkspace.workspaceRoot],
+    envOverrides
+  );
+
+  return {
+    copiedWorkspace: copiedWorkspace.workspaceRoot,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode,
+  };
+}
+
+function runCli(
+  args: readonly string[],
+  envOverrides: Record<string, string | undefined> = {}
+): {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+} {
   const processResult = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      command,
-      '--workspace',
-      copiedWorkspace.workspaceRoot,
-    ],
+    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -33,7 +49,6 @@ async function runCliInCopiedWorkspace(
   });
 
   return {
-    copiedWorkspace: copiedWorkspace.workspaceRoot,
     stdout: decodeOutput(processResult.stdout),
     stderr: decodeOutput(processResult.stderr),
     exitCode: processResult.exitCode,
@@ -100,4 +115,32 @@ test('CLI publishes the ssg demo workspace end to end', async () => {
   expect(result.stderr).toBe('');
   expect(result.stdout).toContain('[webstir] publish complete');
   expect(existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'index.html'))).toBe(true);
+});
+
+test('CLI build fails when a provider reports fatal diagnostics', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-api-invalid-');
+
+  try {
+    const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+      webstir?: { moduleManifest?: Record<string, unknown> };
+    };
+    packageJson.webstir ??= {};
+    packageJson.webstir.moduleManifest ??= {};
+    packageJson.webstir.moduleManifest.services = 'invalid';
+    await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+
+    const result = runCli(
+      ['build', '--workspace', copiedWorkspace.workspaceRoot],
+      { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).not.toContain('[webstir] build complete');
+    expect(result.stderr).toContain('[webstir] build failed:');
+    expect(result.stderr).toContain('backend build reported');
+    expect(result.stderr).toContain('module manifest validation failed');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
 });

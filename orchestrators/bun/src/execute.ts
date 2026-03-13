@@ -37,6 +37,7 @@ export async function runCommand(
       env: createWorkspaceRuntimeEnv(workspace.root, mode, options.env),
       incremental: false,
     });
+    assertNoFatalDiagnostics(kind, mode, result);
 
     targets.push({
       kind,
@@ -64,11 +65,12 @@ async function prepareCommandTarget(
   }
 
   // Frontend publish consumes build/frontend artifacts while generating dist output.
-  await provider.build({
+  const result = await provider.build({
     workspaceRoot,
     env: createWorkspaceRuntimeEnv(workspaceRoot, 'build', env),
     incremental: false,
   });
+  assertNoFatalDiagnostics(kind, 'prebuild', result);
 }
 
 function resolveOutputRoot(
@@ -82,4 +84,22 @@ function resolveOutputRoot(
   }
 
   return buildRoot;
+}
+
+function assertNoFatalDiagnostics(
+  kind: BuildTargetKind,
+  phase: CommandMode | 'prebuild',
+  result: CommandExecutionResult['targets'][number]['result']
+): void {
+  const errors = result.manifest.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+  if (errors.length === 0) {
+    return;
+  }
+
+  const summary = errors
+    .slice(0, 3)
+    .map((diagnostic) => diagnostic.message)
+    .join(' | ');
+  const extra = errors.length > 3 ? ` (+${errors.length - 3} more)` : '';
+  throw new Error(`${kind} ${phase} reported ${errors.length} error diagnostic(s): ${summary}${extra}`);
 }
