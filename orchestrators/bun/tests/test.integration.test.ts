@@ -1,21 +1,11 @@
 import { expect, test } from 'bun:test';
-import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from './demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
-
-async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
-  const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-test-${tempPrefix}-`));
-  const copiedWorkspace = path.join(workspace, fixtureName);
-  await cp(fixtureRoot, copiedWorkspace, { recursive: true });
-  return copiedWorkspace;
 }
 
 async function runCli(
@@ -45,10 +35,10 @@ async function runCli(
 }
 
 test('CLI test runs the SPA demo frontend suite end to end', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('spa');
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-test-spa-');
 
   try {
-    const result = await runCli(['test', '--workspace', copiedWorkspace]);
+    const result = await runCli(['test', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir] test complete');
@@ -59,19 +49,19 @@ test('CLI test runs the SPA demo frontend suite end to end', async () => {
     expect(result.stdout).toContain('passed: 1');
     expect(result.stdout).toContain('failed: 0');
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
 test('CLI test honors --runtime backend for full workspaces', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('full');
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-');
 
   try {
-    const addTestResult = await runCli(['add-test', 'backend/ping', '--workspace', copiedWorkspace]);
+    const addTestResult = await runCli(['add-test', 'backend/ping', '--workspace', copiedWorkspace.workspaceRoot]);
     expect(addTestResult.exitCode).toBe(0);
 
     const result = await runCli(
-      ['test', '--runtime', 'backend', '--workspace', copiedWorkspace],
+      ['test', '--runtime', 'backend', '--workspace', copiedWorkspace.workspaceRoot],
       { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
     );
 
@@ -85,6 +75,6 @@ test('CLI test honors --runtime backend for full workspaces', async () => {
     expect(result.stdout).toMatch(/passed: \d+/);
     expect(result.stdout).toContain('failed: 0');
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });

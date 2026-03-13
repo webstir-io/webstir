@@ -1,21 +1,11 @@
 import { expect, test } from 'bun:test';
-import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from './demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
-
-async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
-  const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-backend-inspect-${tempPrefix}-`));
-  const copiedWorkspace = path.join(workspace, fixtureName);
-  await cp(fixtureRoot, copiedWorkspace, { recursive: true });
-  return copiedWorkspace;
 }
 
 async function runCli(args: readonly string[]): Promise<{
@@ -53,7 +43,7 @@ async function runCliWithEnv(
 }
 
 test('CLI backend-inspect reports routes and jobs for an API workspace', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('api');
+  const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-backend-inspect-api-');
 
   try {
     const addRoute = await runCli([
@@ -64,7 +54,7 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
       '--path',
       '/api/accounts',
       '--workspace',
-      copiedWorkspace,
+      copiedWorkspace.workspaceRoot,
     ]);
     expect(addRoute.exitCode).toBe(0);
 
@@ -78,7 +68,7 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
       '--priority',
       '5',
       '--workspace',
-      copiedWorkspace,
+      copiedWorkspace.workspaceRoot,
     ]);
     expect(addJob.exitCode).toBe(0);
 
@@ -86,7 +76,7 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
       [
         'backend-inspect',
         '--workspace',
-        copiedWorkspace,
+        copiedWorkspace.workspaceRoot,
       ],
       { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
     );
@@ -101,23 +91,23 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
     expect(inspectResult.stdout).toContain('jobs: 1');
     expect(inspectResult.stdout).toContain('nightly (schedule: 0 0 * * *, description: Nightly maintenance run, priority: 5)');
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
 test('CLI backend-inspect rejects frontend-only workspaces', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('spa');
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-backend-inspect-spa-');
 
   try {
     const inspectResult = await runCli([
       'backend-inspect',
       '--workspace',
-      copiedWorkspace,
+      copiedWorkspace.workspaceRoot,
     ]);
 
     expect(inspectResult.exitCode).toBe(1);
     expect(inspectResult.stderr).toContain('backend-inspect only supports api and full workspaces');
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });

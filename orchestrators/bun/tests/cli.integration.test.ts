@@ -1,10 +1,9 @@
 import { expect, test } from 'bun:test';
-import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace } from './demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
@@ -15,18 +14,14 @@ async function runCliInCopiedWorkspace(
   fixtureName: string,
   envOverrides: Record<string, string | undefined> = {}
 ) {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
-  const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-${tempPrefix}-`));
-  const copiedWorkspace = path.join(workspace, fixtureName);
-  await cp(fixtureRoot, copiedWorkspace, { recursive: true });
+  const copiedWorkspace = await copyDemoWorkspace(fixtureName, `webstir-${fixtureName.replace(/[\\/]/g, '-')}-`);
   const processResult = Bun.spawnSync({
     cmd: [
       process.execPath,
       path.join(packageRoot, 'src', 'cli.ts'),
       command,
       '--workspace',
-      copiedWorkspace,
+      copiedWorkspace.workspaceRoot,
     ],
     cwd: repoRoot,
     env: {
@@ -38,7 +33,7 @@ async function runCliInCopiedWorkspace(
   });
 
   return {
-    copiedWorkspace,
+    copiedWorkspace: copiedWorkspace.workspaceRoot,
     stdout: decodeOutput(processResult.stdout),
     stderr: decodeOutput(processResult.stderr),
     exitCode: processResult.exitCode,
