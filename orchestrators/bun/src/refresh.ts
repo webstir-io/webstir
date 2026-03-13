@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 
 import { scaffoldWorkspace } from './init.ts';
 import type { WorkspaceMode } from './types.ts';
@@ -24,10 +25,11 @@ export async function runRefresh(options: RunRefreshOptions): Promise<RefreshRes
   }
 
   const mode = parseWorkspaceMode(modeToken);
+  const metadata = await readWorkspaceManifestMetadata(workspaceRoot);
   await mkdir(workspaceRoot, { recursive: true });
   await emptyDirectory(workspaceRoot);
 
-  const result = await scaffoldWorkspace(mode, workspaceRoot, { force: true });
+  const result = await scaffoldWorkspace(mode, workspaceRoot, { force: true, metadata });
   return {
     workspaceRoot: result.workspaceRoot,
     mode: result.mode,
@@ -53,4 +55,23 @@ function parseWorkspaceMode(value: string): WorkspaceMode {
   }
 
   throw new Error(`Unknown refresh mode "${value}". Expected ssg, spa, api, or full.`);
+}
+
+async function readWorkspaceManifestMetadata(
+  workspaceRoot: string
+): Promise<{ readonly packageName?: string; readonly description?: string } | undefined> {
+  const packageJsonPath = path.join(workspaceRoot, 'package.json');
+  if (!existsSync(packageJsonPath)) {
+    return undefined;
+  }
+
+  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+    readonly name?: string;
+    readonly description?: string;
+  };
+
+  return {
+    packageName: packageJson.name,
+    description: packageJson.description,
+  };
 }

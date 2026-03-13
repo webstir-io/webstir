@@ -111,3 +111,29 @@ test('CLI refresh clears and re-scaffolds an existing workspace', async () => {
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('CLI refresh preserves package identity from an existing workspace manifest', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-refresh-metadata-'));
+  const workspaceRoot = path.join(tempRoot, 'demo-workspace');
+
+  try {
+    await runCli(['init', 'full', workspaceRoot]);
+
+    const packageJsonPath = path.join(workspaceRoot, 'package.json');
+    const packageJson = await readJson(packageJsonPath);
+    packageJson.name = 'webstir-demo-full';
+    packageJson.description = 'Webstir frontend defaults and tooling';
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+
+    const refreshResult = await runCli(['refresh', 'full', '--workspace', workspaceRoot]);
+
+    expect(refreshResult.exitCode).toBe(0);
+    expect(refreshResult.stderr).toBe('');
+
+    const refreshedPackageJson = await readJson(packageJsonPath);
+    expect(refreshedPackageJson.name).toBe('webstir-demo-full');
+    expect(refreshedPackageJson.description).toBe('Webstir frontend defaults and tooling');
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
