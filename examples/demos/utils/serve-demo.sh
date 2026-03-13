@@ -7,7 +7,7 @@ WORKSPACE_ROOT="$(cd "${DEMOS_ROOT}/../.." && pwd)"
 usage() {
   cat <<'EOF'
 Usage:
-  serve-demo.sh <ssg|spa|api|full> [base|site] [--host <host>] [--port <port>]
+  serve-demo.sh <ssg|spa|api|full|auth-crud|dashboard> [base|site] [--host <host>] [--port <port>]
 
 Notes:
   - Publishes the demo, then serves dist/frontend locally.
@@ -32,7 +32,7 @@ if [[ -z "${MODE}" || "${MODE}" == "--help" || "${MODE}" == "-h" ]]; then
 fi
 
 case "${MODE}" in
-  ssg|spa|api|full )
+  ssg|spa|api|full|auth-crud|dashboard )
     ;;
   * )
     echo "Unknown demo mode: ${MODE}" >&2

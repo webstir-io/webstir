@@ -100,6 +100,40 @@ test('browser auth and CRUD flows work in publish mode', async () => {
   }
 }, 120_000);
 
+test('browser dashboard flows work in watch mode', async () => {
+  const workspace = await copyDemoWorkspace('webstir-dashboard-watch-', 'dashboard');
+  let session: RuntimeSession | undefined;
+
+  try {
+    session = await startWatchSession(workspace);
+    await exerciseDashboardBrowserScenario(session.origin);
+  } catch (error) {
+    throw appendLogs(error, session?.logs ?? {});
+  } finally {
+    if (session) {
+      await session.stop();
+    }
+    await rm(path.dirname(workspace), { recursive: true, force: true });
+  }
+}, 120_000);
+
+test('browser dashboard flows work in publish mode', async () => {
+  const workspace = await copyDemoWorkspace('webstir-dashboard-publish-', 'dashboard');
+  let session: RuntimeSession | undefined;
+
+  try {
+    session = await startPublishSession(workspace);
+    await exerciseDashboardBrowserScenario(session.origin);
+  } catch (error) {
+    throw appendLogs(error, session?.logs ?? {});
+  } finally {
+    if (session) {
+      await session.stop();
+    }
+    await rm(path.dirname(workspace), { recursive: true, force: true });
+  }
+}, 120_000);
+
 async function exerciseBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   browsers.push(browser);
@@ -335,6 +369,102 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
   } finally {
     await baselineContext.close().catch(() => undefined);
   }
+}
+
+async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
+  const browser = await chromium.launch({ headless: true });
+  browsers.push(browser);
+
+  const enhancedContext = await browser.newContext({
+    javaScriptEnabled: true,
+    viewport: { width: 1280, height: 720 }
+  });
+  const enhancedPage = await enhancedContext.newPage();
+
+  try {
+    await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+    await enhancedPage.locator('a[href="/api/demo/dashboard"]').click();
+    await enhancedPage.waitForURL(`${origin}/api/demo/dashboard`);
+    await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
+
+    await enhancedPage.locator('#dashboard-team').selectOption('growth');
+    await enhancedPage.locator('#dashboard-range').selectOption('month');
+    await enhancedPage.locator('#dashboard-apply-filters').click();
+    await enhancedPage.waitForFunction(
+      () => document.querySelector('#dashboard-heading')?.textContent === 'Dashboard focus: Growth · last 30 days'
+    );
+
+    const enhancedRefreshCount = await readRefreshCount(enhancedPage);
+    await enhancedPage.locator('#metrics-refresh').click();
+    await enhancedPage.waitForFunction(
+      (previousCount) => {
+        const text = document.querySelector('#metrics-refresh-count')?.textContent ?? '';
+        const match = text.match(/Refresh count: (\d+)/);
+        return match ? Number(match[1]) > previousCount : false;
+      },
+      enhancedRefreshCount
+    );
+
+    const alertRow = enhancedPage.locator('[data-alert-row="true"]').first();
+    const alertId = await alertRow.getAttribute('data-alert-id');
+    if (!alertId) {
+      throw new Error('Expected an alert row in the dashboard proof app.');
+    }
+
+    await enhancedPage.locator(`#acknowledge-alert-${alertId}`).click();
+    await enhancedPage.waitForFunction(
+      (id) => !document.querySelector(`[data-alert-id="${id}"]`),
+      alertId
+    );
+    expect(await enhancedPage.locator('#alerts-status').textContent()).toContain('Acknowledged');
+
+    await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
+    await enhancedPage.locator('#dashboard-heading').waitFor({ state: 'visible' });
+    expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: Growth · last 30 days');
+    expect(await readRefreshCount(enhancedPage)).toBeGreaterThan(enhancedRefreshCount);
+    expect(await enhancedPage.locator(`[data-alert-id="${alertId}"]`).count()).toBe(0);
+  } finally {
+    await enhancedContext.close().catch(() => undefined);
+  }
+
+  const baselineContext = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1280, height: 720 }
+  });
+  const baselinePage = await baselineContext.newPage();
+
+  try {
+    await baselinePage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
+    await baselinePage.locator('#dashboard-team').selectOption('north');
+    await baselinePage.locator('#dashboard-range').selectOption('today');
+    await baselinePage.locator('#dashboard-filter-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await baselinePage.waitForFunction(() =>
+      window.location.pathname === '/api/demo/dashboard'
+      && document.body.textContent?.includes('Filtered to North region for today.')
+    );
+
+    const baselineRefreshCount = await readRefreshCount(baselinePage);
+    await baselinePage.locator('#metrics-refresh-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await baselinePage.waitForFunction(() =>
+      window.location.pathname === '/api/demo/dashboard'
+      && document.body.textContent?.includes('Snapshot refreshed 1 time for North region.')
+    );
+
+    expect(await baselinePage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: North region · today');
+    expect(await readRefreshCount(baselinePage)).toBeGreaterThan(baselineRefreshCount);
+  } finally {
+    await baselineContext.close().catch(() => undefined);
+  }
+}
+
+async function readRefreshCount(page: Page): Promise<number> {
+  const text = await page.locator('#metrics-refresh-count').textContent();
+  const match = text?.match(/Refresh count: (\d+)/);
+  if (!match) {
+    throw new Error(`Expected a refresh count chip, received: ${text ?? '(empty)'}`);
+  }
+
+  return Number(match[1]);
 }
 
 async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<string> {

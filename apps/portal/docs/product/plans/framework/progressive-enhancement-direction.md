@@ -45,7 +45,9 @@
 - Completed: the auth-and-CRUD proof application now exists as the canonical server-handled forms example.
   - `examples/demos/auth-crud` now proves sign-in gates, validation recovery, redirect-after-post, and fragment-enhanced create/update/delete workflows on top of the HTML-first runtime.
   - Watch and publish browser coverage now exercise the demo through real `/api` proxy navigation, enhanced CRUD mutations, and no-JavaScript fallback paths.
-- Current focus: add the dashboard proof application and broaden the docs around the shipped HTML-first runtime across forms, sessions, caching, navigation, and deployment flows.
+- Completed: the dashboard proof application and HTML-first docs refresh are now in place.
+  - `examples/demos/dashboard` now proves shell-level filter changes plus single-panel KPI and alert refreshes on top of normal HTML forms.
+  - Package READMEs and portal entry docs now center the shipped runtime across forms, fragments, sessions, caching, navigation, and deployment instead of the older experimental-pipeline framing.
 
 ## Repo-Specific Worklist
 
@@ -95,7 +97,7 @@
 - Add canonical end-to-end apps that prove the model on real software, not just toy demos.
 - Target examples such as auth, CRUD backoffice, content plus forms, dashboards with partial refreshes, and background jobs.
 - Main touchpoint: `examples/demos/*`.
-- Status: `examples/demos/full` proves the baseline form -> fragment path, `examples/demos/auth-crud` now proves the canonical auth-and-CRUD backoffice flow, and the next follow-up app should cover dashboard-style partial refreshes.
+- Status: `examples/demos/full` proves the baseline form -> fragment path, `examples/demos/auth-crud` proves the canonical auth-and-CRUD backoffice flow, and `examples/demos/dashboard` proves dashboard-style partial refreshes.
 
 ### 10. Opinionated documentation
 - Teach the Webstir way of building applications instead of only documenting APIs and provider seams.
@@ -103,9 +105,9 @@
 - Main touchpoint: `apps/portal/docs/`.
 
 ## Working Priorities
-- Extend the default scaffold/runtime ergonomics for validation errors, flash/session messaging, and auth-aware form handling.
-- Broaden production hardening around fragment modes, browser-level integration coverage, and missing-target/error behavior.
-- Add the next proof application for dashboard-style partial refreshes, then reframe the public docs around the shipped proof apps and runtime model.
+- Continue hardening the default scaffold/runtime around the shipped HTML-first primitives.
+- Expand proof coverage where browser-level or publish-mode gaps still exist.
+- Keep the public docs aligned with the proof apps and the runtime behavior that already ships.
 
 ## Decision Filter
 - Does this make HTML-first app development more coherent?

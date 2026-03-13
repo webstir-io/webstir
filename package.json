@@ -28,11 +28,13 @@
     "watch:api": "bash examples/demos/utils/watch-api.sh",
     "watch:full": "bash examples/demos/utils/watch-full.sh",
     "watch:auth-crud": "bash examples/demos/utils/watch-auth-crud.sh",
+    "watch:dashboard": "bash examples/demos/utils/watch-dashboard.sh",
     "publish:spa": "bun run webstir -- publish --workspace \"$PWD/examples/demos/spa\"",
     "publish:ssg:base": "bun run webstir -- publish --workspace \"$PWD/examples/demos/ssg/base\"",
     "publish:ssg:site": "bun run webstir -- publish --workspace \"$PWD/examples/demos/ssg/site\"",
     "publish:api": "bun run webstir -- publish --workspace \"$PWD/examples/demos/api\"",
     "publish:full": "bun run webstir -- publish --workspace \"$PWD/examples/demos/full\"",
-    "publish:auth-crud": "bun run webstir -- publish --workspace \"$PWD/examples/demos/auth-crud\""
+    "publish:auth-crud": "bun run webstir -- publish --workspace \"$PWD/examples/demos/auth-crud\"",
+    "publish:dashboard": "bun run webstir -- publish --workspace \"$PWD/examples/demos/dashboard\""
   }
 }

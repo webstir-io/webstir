@@ -30,24 +30,26 @@
   - Iteration 19 completed item 11 by adding request-time backend view rendering through the default server and Fastify scaffold, using live SSR context plus built frontend documents instead of only emitting SSG `view-data.json`.
   - Iteration 20 completed item 12 by adding process-local request-time document caching with explicit invalidation on built HTML changes, uncached fragment response headers, and package/docs coverage for miss/hit/stale behavior.
   - Iteration 21 completed item 13 by adding a dedicated auth-and-CRUD proof demo with server-handled sign-in, validation recovery, redirect-after-post, and fragment-enhanced create/update/delete flows plus watch/publish coverage.
-  - First ready item: 14
+  - Iteration 22 completed item 14 by adding the dashboard proof demo plus the HTML-first docs refresh across the package READMEs, demo helpers, and portal entry docs.
+  - First ready item: none
 
 # Latest Cycle
-- Iteration: 21
-- Selected item: 13. Add An Auth And CRUD Proof App
-- Outcome: added a dedicated full-stack auth and CRUD proof demo with server-handled sign-in, validation, redirect-after-post, and fragment-enhanced create/update/delete flows, then covered it through workspace tests plus watch/publish browser validation.
+- Iteration: 22
+- Selected item: 14. Add A Dashboard Proof App And Refresh Docs
+- Outcome: added a dedicated dashboard proof demo for shell-level and panel-level fragment refreshes, extended Bun watch/publish coverage to the new demo, and rewrote the key package and portal docs around the shipped HTML-first runtime.
 - Checks run:
-- `bun run webstir -- test --workspace "$PWD/examples/demos/auth-crud"`
-- `bun run webstir -- publish --workspace "$PWD/examples/demos/auth-crud"`
-- `bun test orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`
-- `bun test orchestrators/bun/tests/cli.integration.test.ts -t "auth-crud demo workspace"`
-- Branch: `codex/item-13-auth-crud-proof-app`
+- `bun install`
+- `bun run webstir -- test --workspace "$PWD/examples/demos/dashboard"`
+- `bun run webstir -- publish --workspace "$PWD/examples/demos/dashboard"`
+- `bun test orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts -t "dashboard flows"`
+- `bun test orchestrators/bun/tests/cli.integration.test.ts -t "dashboard demo workspace"`
+- Branch: `codex/item-14-dashboard-proof-app-docs`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - `examples/demos/auth-crud` is now the canonical proof app for HTML-first auth and CRUD flows, with auth gates, validation recovery, fragment updates, and no-JavaScript redirects sharing the same forms.
-  - Watch and publish browser coverage now exercise the demo through real sign-in, create, update, delete, and no-JavaScript fallback paths.
-  - The first ready slice is now item 14 for the dashboard proof application and broader doc refresh.
+  - `examples/demos/dashboard` now proves that shell-level filters and single-panel refreshes can stay server-handled while still using fragment updates when JavaScript is present.
+  - The docs now point at `auth-crud` and `dashboard` as the canonical proof apps and frame Webstir around HTML-first delivery, forms, fragments, runtime caching, and deployment.
+  - This progressive-enhancement plan is fully complete as written.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -221,7 +223,7 @@
   - 2026-03-13: Added watch and publish browser validation for the auth-and-CRUD proof app in `orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`, plus CLI publish coverage and demo helper script/docs updates so the proof app is easy to run and reference.
 
 ## 14. Add A Dashboard Proof App And Refresh Docs
-- Status: todo
+- Status: done
 - Depends on: 9, 11, 12, 13
 - Scope: add a second proof application for dashboard-style partial refreshes, then reframe package READMEs and portal docs around HTML-first delivery, forms, fragments, sessions, caching, navigation, and deployment.
 - Done when:
@@ -229,4 +231,6 @@
   - `@webstir-io/webstir-frontend`, `@webstir-io/webstir-backend`, and portal docs center the HTML-first application story instead of the older experimental-pipeline framing.
   - Key docs link to the proof applications and describe the shipped runtime/cache/form model accurately.
 - Progress:
-  - Not started.
+  - 2026-03-13: Added `examples/demos/dashboard`, a full-stack dashboard proof app with server-handled filter changes, targeted KPI refreshes, alert acknowledgements, and no-JavaScript redirect fallbacks.
+  - 2026-03-13: Added backend runtime coverage for the dashboard shell, filter persistence, panel refresh fragments, and alert acknowledgement fragments in `examples/demos/dashboard/src/backend/tests/progressive-enhancement.test.ts`, plus Bun watch/publish browser coverage and CLI publish coverage.
+  - 2026-03-13: Refreshed `examples/demos/README.md`, the frontend/backend package READMEs, and the main portal docs entry/tutorial/workflow pages so the public story now centers the HTML-first proof apps and runtime model.
