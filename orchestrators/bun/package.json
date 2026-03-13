@@ -6,6 +6,7 @@
     "webstir": "src/cli.ts"
   },
   "scripts": {
+    "check:assets": "node scripts/sync-assets.mjs --check",
     "build": "node scripts/sync-assets.mjs && bun run build:deps && tsc -p tsconfig.json",
     "build:deps": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build && bun run --filter @webstir-io/webstir-frontend build && bun run --filter @webstir-io/webstir-backend build && bun run --filter @webstir-io/webstir-testing build",
     "test": "bun run build && bun test ./tests/*.ts ./tests/**/*.ts",
