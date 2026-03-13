@@ -63,9 +63,11 @@ jobs:
         run: bun x playwright install --with-deps chromium
 
       - name: Smoke Bun scaffolded flows
+        if: github.event_name == 'pull_request'
         run: bun run --filter @webstir-io/webstir smoke:ci
 
       - name: Test Bun orchestrator
+        if: github.event_name != 'pull_request'
         run: bun run --filter @webstir-io/webstir test
 
       - name: Build portal
