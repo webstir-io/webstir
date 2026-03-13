@@ -121,10 +121,8 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
 
     try {
       await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-      await Promise.all([
-        fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`),
-        fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true })
-      ]);
+      await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
+      await waitForPathname(fragmentPage, '/api/demo/progressive-enhancement');
       await fragmentPage.locator('h1').waitFor({ state: 'visible' });
 
       await assertDocumentNavigationResetsScroll(fragmentPage, origin);
@@ -180,10 +178,8 @@ async function assertDocumentNavigationResetsScroll(page: Page, origin: string):
     }
   });
 
-  await Promise.all([
-    page.waitForURL(`${origin}/`),
-    page.locator('a[href="/"]').click({ noWaitAfter: true })
-  ]);
+  await page.locator('a[href="/"]').click({ noWaitAfter: true });
+  await waitForPathname(page, '/');
   await page.locator('h1').waitFor({ state: 'visible' });
   const scrollCalls = await page.evaluate(() => {
     const state = window as typeof window & { __webstirScrollCalls?: unknown[][] };
@@ -200,10 +196,8 @@ async function assertDocumentNavigationResetsScroll(page: Page, origin: string):
     expect(lastCall).toEqual(expect.objectContaining({ top: 0 }));
   }
 
-  await Promise.all([
-    page.waitForURL(`${origin}/api/demo/progressive-enhancement`),
-    page.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true })
-  ]);
+  await page.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
+  await waitForPathname(page, '/api/demo/progressive-enhancement');
   await page.locator('#demo-name').waitFor({ state: 'visible' });
 }
 
@@ -446,6 +440,13 @@ async function readRefreshCount(page: Page): Promise<number> {
   }
 
   return Number(match[1]);
+}
+
+async function waitForPathname(page: Page, pathname: string): Promise<void> {
+  await page.waitForFunction(
+    (expectedPathname) => window.location.pathname === expectedPathname,
+    pathname
+  );
 }
 
 async function launchBrowser(): Promise<Browser> {
