@@ -111,7 +111,7 @@ test('browser dashboard flows work in publish mode', async () => {
 }, 120_000);
 
 async function exerciseBrowserScenario(origin: string): Promise<void> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser();
   try {
     const fragmentContext = await browser.newContext({
       javaScriptEnabled: true,
@@ -255,7 +255,7 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
 }
 
 async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser();
   try {
     const enhancedContext = await browser.newContext({
       javaScriptEnabled: true,
@@ -264,11 +264,7 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
     const enhancedPage = await enhancedContext.newPage();
 
     try {
-      await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-      await Promise.all([
-        enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`),
-        enhancedPage.locator('a[href="/api/demo/auth-crud"]').click({ noWaitAfter: true })
-      ]);
+      await enhancedPage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
       await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
 
       await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
@@ -328,28 +324,22 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
       await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
       await baselinePage.locator('#project-title').fill('Native blocked project');
       await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
-      await Promise.all([
-        baselinePage.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-        baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit())
-      ]);
+      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.locator('#auth-email').waitFor({ state: 'visible' });
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Sign in required to manage projects.');
 
       await baselinePage.locator('#auth-email').fill('native@example.com');
-      await Promise.all([
-        baselinePage.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-        baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit())
-      ]);
+      await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.locator('#session-user').waitFor({ state: 'visible' });
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Signed in as native@example.com.');
 
       await baselinePage.locator('#project-title').fill('Native create project');
       await baselinePage.locator('#project-status').selectOption('active');
       await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
-      await Promise.all([
-        baselinePage.waitForNavigation({ waitUntil: 'domcontentloaded' }),
-        baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit())
-      ]);
+      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.locator('text=Created project "Native create project".').waitFor({ state: 'visible' });
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Created project "Native create project".');
 
@@ -363,7 +353,7 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
 }
 
 async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await launchBrowser();
   try {
     const enhancedContext = await browser.newContext({
       javaScriptEnabled: true,
@@ -372,11 +362,7 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
     const enhancedPage = await enhancedContext.newPage();
 
     try {
-      await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-      await Promise.all([
-        enhancedPage.waitForURL(`${origin}/api/demo/dashboard`),
-        enhancedPage.locator('a[href="/api/demo/dashboard"]').click({ noWaitAfter: true })
-      ]);
+      await enhancedPage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
       await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
 
       await enhancedPage.locator('#dashboard-team').selectOption('growth');
@@ -460,6 +446,13 @@ async function readRefreshCount(page: Page): Promise<number> {
   }
 
   return Number(match[1]);
+}
+
+async function launchBrowser(): Promise<Browser> {
+  return await chromium.launch({
+    headless: true,
+    args: ['--disable-dev-shm-usage']
+  });
 }
 
 async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<string> {
