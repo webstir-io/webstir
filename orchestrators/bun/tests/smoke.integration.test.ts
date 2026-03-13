@@ -62,12 +62,18 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
   }
 });
 
-test('CLI smoke defaults to a temporary copy of the full demo', () => {
+test('CLI smoke defaults to a temporary full workspace built from Bun-owned templates', () => {
   const result = runCli(['smoke']);
 
   expect(result.exitCode).toBe(0);
+  expect(result.stdout).toContain('[webstir-backend] build:start');
   expect(result.stdout).toContain('[webstir] smoke complete');
   expect(result.stdout).toContain('mode: full');
   expect(result.stdout).toContain('workspace-source: temporary copy');
-  expect(result.stdout).toContain(`source: ${path.join(repoRoot, 'examples', 'demos', 'full')}`);
+  expect(result.stdout).toContain('source: built-in full template + client-nav');
+  expect(result.stdout).toContain('phases: 4');
+  expect(result.stdout).toContain('  - build: frontend:');
+  expect(result.stdout).toMatch(/  - test: \d+ passed, 0 failed/);
+  expect(result.stdout).toContain('  - publish: frontend:');
+  expect(result.stdout).toMatch(/  - backend-inspect: \d+ routes, 0 jobs/);
 });
