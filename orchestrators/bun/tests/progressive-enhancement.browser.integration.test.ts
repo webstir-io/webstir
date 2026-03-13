@@ -74,7 +74,14 @@ test('browser dashboard flows work in watch mode', async () => {
   let session: RuntimeSession | undefined;
 
   try {
-    session = await startWatchSession(workspace);
+    session = await startWatchSession(workspace, {
+      readinessChecks: [
+        {
+          requestPath: '/api/demo/dashboard',
+          expectedText: 'id="dashboard-team"'
+        }
+      ]
+    });
     await exerciseDashboardBrowserScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.getLogs() ?? {});
@@ -644,7 +651,10 @@ async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<s
   return workspace;
 }
 
-async function startWatchSession(workspace: string): Promise<RuntimeSession> {
+async function startWatchSession(
+  workspace: string,
+  options: WatchSessionOptions = {}
+): Promise<RuntimeSession> {
   const port = await getFreePort();
   const child = Bun.spawn({
     cmd: [
@@ -675,6 +685,11 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
     expect(stdout.text).toContain('[webstir] backend ready at');
     expect(await fetchText(port, '/')).toContain('Home');
     expect(await fetchText(port, '/api')).toContain('API server running');
+    await Promise.all(
+      (options.readinessChecks ?? []).map(async (check) => {
+        expect(await fetchText(port, check.requestPath)).toContain(check.expectedText);
+      })
+    );
   }, 30_000);
 
   return {
@@ -686,9 +701,7 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
       };
     },
     async stop() {
-      child.kill('SIGTERM');
-      await child.exited.catch(() => undefined);
-      await Promise.allSettled([stdoutDrain, stderrDrain]);
+      await stopChildProcess(child, [stdoutDrain, stderrDrain], 'watch session');
     }
   };
 }
@@ -767,9 +780,7 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
     },
     async stop() {
       await server.stop();
-      backendChild.kill('SIGTERM');
-      await backendChild.exited.catch(() => undefined);
-      await Promise.allSettled([backendStdoutDrain, backendStderrDrain]);
+      await stopChildProcess(backendChild, [backendStdoutDrain, backendStderrDrain], 'publish backend session');
     }
   };
 }
@@ -932,6 +943,32 @@ async function collectOutput(
   }
 }
 
+async function stopChildProcess(
+  child: ReturnType<typeof Bun.spawn>,
+  drains: readonly Promise<void>[],
+  label: string
+): Promise<void> {
+  child.kill('SIGTERM');
+  const exitedGracefully = await waitForProcessExit(child, 5_000);
+  if (!exitedGracefully) {
+    child.kill('SIGKILL');
+    const exitedForcefully = await waitForProcessExit(child, 5_000);
+    if (!exitedForcefully) {
+      throw new Error(`Timed out stopping ${label}.`);
+    }
+  }
+
+  await Promise.allSettled(drains);
+}
+
+async function waitForProcessExit(child: ReturnType<typeof Bun.spawn>, timeoutMs: number): Promise<boolean> {
+  const outcome = await Promise.race([
+    child.exited.then(() => 'exited' as const).catch(() => 'exited' as const),
+    Bun.sleep(timeoutMs).then(() => 'timeout' as const)
+  ]);
+  return outcome === 'exited';
+}
+
 function appendLogs(error: unknown, sections: Record<string, string>): Error {
   const message = error instanceof Error ? error.message : String(error);
   const renderedSections = Object.entries(sections)
@@ -994,4 +1031,13 @@ interface RuntimeSession {
   readonly origin: string;
   getLogs(): Record<string, string>;
   stop(): Promise<void>;
+}
+
+interface WatchSessionOptions {
+  readonly readinessChecks?: readonly WatchReadinessCheck[];
+}
+
+interface WatchReadinessCheck {
+  readonly requestPath: string;
+  readonly expectedText: string;
 }
