@@ -8,14 +8,6 @@ import { monorepoRoot } from './paths.ts';
 import type { WorkspaceMode } from './types.ts';
 
 const PACKAGE_MANAGER = 'bun@1.3.5';
-const REPO_WORKSPACE_PATTERNS = [
-  'packages/contracts/*',
-  'packages/tooling/*',
-  'orchestrators/bun',
-  'apps/*',
-  'examples/demos/*',
-  'examples/demos/ssg/*',
-] as const;
 
 const MODE_DESCRIPTIONS: Record<WorkspaceMode, string> = {
   ssg: 'Static site (SSG) workspace for Webstir.',
@@ -37,6 +29,13 @@ export interface InitResult {
   readonly changes: readonly string[];
 }
 
+interface ScaffoldMetadata {
+  readonly packageName?: string;
+  readonly description?: string;
+}
+
+let repoWorkspacePatternsPromise: Promise<readonly string[]> | undefined;
+
 export async function runInit(options: RunInitOptions): Promise<InitResult> {
   const request = parseInitRequest(options.args, options.workspaceRoot, options.cwd ?? process.cwd());
   return scaffoldWorkspace(request.mode, request.workspaceRoot, { force: false });
@@ -45,7 +44,7 @@ export async function runInit(options: RunInitOptions): Promise<InitResult> {
 export async function scaffoldWorkspace(
   mode: WorkspaceMode,
   workspaceRoot: string,
-  options: { readonly force: boolean }
+  options: { readonly force: boolean; readonly metadata?: ScaffoldMetadata }
 ): Promise<InitResult> {
   if (existsSync(workspaceRoot) && !options.force && !(await isDirectoryEmpty(workspaceRoot))) {
     throw new Error(`Refusing to initialize non-empty directory: ${workspaceRoot}`);
@@ -53,7 +52,7 @@ export async function scaffoldWorkspace(
 
   await mkdir(workspaceRoot, { recursive: true });
 
-  const packageName = resolvePackageName(workspaceRoot);
+  const packageName = resolvePackageName(workspaceRoot, options.metadata);
   const dependencySpecs = await resolveDependencySpecs(workspaceRoot);
   const changes: string[] = [];
 
@@ -74,7 +73,7 @@ export async function scaffoldWorkspace(
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
   await writeFile(
     packageJsonPath,
-    `${JSON.stringify(createPackageJson(mode, workspaceRoot, packageName, dependencySpecs), null, 2)}\n`,
+    `${JSON.stringify(createPackageJson(mode, packageName, dependencySpecs, options.metadata), null, 2)}\n`,
     'utf8'
   );
   changes.push('package.json');
@@ -149,7 +148,8 @@ async function isRepoWorkspacePath(workspaceRoot: string): Promise<boolean> {
     return false;
   }
 
-  return REPO_WORKSPACE_PATTERNS.some((pattern) => matchesWorkspacePattern(relative, pattern));
+  const repoWorkspacePatterns = await readRepoWorkspacePatterns();
+  return repoWorkspacePatterns.some((pattern) => matchesWorkspacePattern(relative, pattern));
 }
 
 async function resolveDependencySpecs(workspaceRoot: string): Promise<Record<string, string>> {
@@ -179,9 +179,9 @@ async function readPackageVersion(packageJsonPath: string): Promise<string> {
 
 function createPackageJson(
   mode: WorkspaceMode,
-  workspaceRoot: string,
   packageName: string,
-  dependencySpecs: Record<string, string>
+  dependencySpecs: Record<string, string>,
+  metadata: ScaffoldMetadata | undefined
 ): Record<string, unknown> {
   const dependencies: Record<string, string> = {
     '@webstir-io/webstir-testing': dependencySpecs['@webstir-io/webstir-testing'],
@@ -200,7 +200,7 @@ function createPackageJson(
     version: '1.0.0',
     private: true,
     type: 'module',
-    description: resolveDescription(mode, workspaceRoot),
+    description: metadata?.description ?? MODE_DESCRIPTIONS[mode],
     dependencies,
     devDependencies: {
       '@types/node': '^20.0.0',
@@ -264,24 +264,9 @@ function createBaseTsconfig(mode: WorkspaceMode): Record<string, unknown> {
   };
 }
 
-function resolveDescription(mode: WorkspaceMode, workspaceRoot: string): string {
-  const relative = monorepoRoot
-    ? path.relative(monorepoRoot, workspaceRoot).replaceAll(path.sep, '/')
-    : '';
-  if (relative === 'examples/demos/full') {
-    return 'Webstir frontend defaults and tooling';
-  }
-
-  return MODE_DESCRIPTIONS[mode];
-}
-
-function resolvePackageName(workspaceRoot: string): string {
-  const relative = monorepoRoot
-    ? path.relative(monorepoRoot, workspaceRoot).replaceAll(path.sep, '/')
-    : '';
-  const known = getKnownWorkspacePackageName(relative);
-  if (known) {
-    return known;
+function resolvePackageName(workspaceRoot: string, metadata: ScaffoldMetadata | undefined): string {
+  if (metadata?.packageName?.trim()) {
+    return metadata.packageName;
   }
 
   return sanitizePackageName(path.basename(workspaceRoot));
@@ -291,23 +276,6 @@ async function readInstalledPackageVersion(packageName: string): Promise<string>
   const packageJsonUrl = import.meta.resolve(`${packageName}/package.json`);
   const packageJsonPath = fileURLToPath(packageJsonUrl);
   return await readPackageVersion(packageJsonPath);
-}
-
-function getKnownWorkspacePackageName(relativePath: string): string | undefined {
-  switch (relativePath) {
-    case 'examples/demos/spa':
-      return 'webstir-demo-spa';
-    case 'examples/demos/api':
-      return 'webstir-demo-api';
-    case 'examples/demos/full':
-      return 'webstir-demo-full';
-    case 'examples/demos/ssg/base':
-      return 'webstir-demo-ssg-base';
-    case 'examples/demos/ssg/site':
-      return 'webstir-demo-ssg-site';
-    default:
-      return undefined;
-  }
 }
 
 function sanitizePackageName(value: string): string {
@@ -336,4 +304,26 @@ function uniqueSorted(values: readonly string[]): string[] {
 
 function toWorkspaceRelative(workspaceRoot: string, absolutePath: string): string {
   return path.relative(workspaceRoot, absolutePath).replaceAll(path.sep, '/');
+}
+
+async function readRepoWorkspacePatterns(): Promise<readonly string[]> {
+  if (!monorepoRoot) {
+    return [];
+  }
+
+  repoWorkspacePatternsPromise ??= loadRepoWorkspacePatterns();
+  return await repoWorkspacePatternsPromise;
+}
+
+async function loadRepoWorkspacePatterns(): Promise<readonly string[]> {
+  if (!monorepoRoot) {
+    return [];
+  }
+
+  const packageJsonPath = path.join(monorepoRoot, 'package.json');
+  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+    readonly workspaces?: readonly string[];
+  };
+
+  return packageJson.workspaces ?? [];
 }
