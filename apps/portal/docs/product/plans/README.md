@@ -13,6 +13,7 @@ Use this section for proposed work, architecture directions, and staged delivery
 - Framework hardening: [Bun monorepo hardening](./framework/bun-monorepo-hardening.md)
 - Framework direction: [Progressive enhancement direction](./framework/progressive-enhancement-direction.md)
 - Backend tooling: [Backend testing tooling](./backend/backend-testing-tooling.md)
+- Backend direction: [Agent-native website plan](./backend/agent-native-website-plan.md)
 - Release and packaging: [Package release automation](./framework/package-release-automation.md)
 - Generators and workflow ideas: [Route and job generators](./route-job-generators.md)
 
