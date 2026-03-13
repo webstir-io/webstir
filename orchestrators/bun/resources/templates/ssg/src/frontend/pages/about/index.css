@@ -1,0 +1,33 @@
+@layer overrides {
+.page {
+  padding: 48px 0 96px;
+  --ws-container: 100%;
+}
+
+.page .ws-stack {
+  --ws-gap: 32px;
+}
+
+.page-header {
+  max-width: none;
+}
+
+.lead {
+  color: var(--ws-muted);
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+li {
+  margin: 10px 0;
+}
+
+.bullets {
+  max-width: none;
+}
+}

@@ -10,7 +10,10 @@ const repoRoot = path.resolve(packageRoot, '..', '..');
 const assetsRoot = path.join(packageRoot, 'assets');
 const templatesRoot = path.join(assetsRoot, 'templates');
 const featuresRoot = path.join(assetsRoot, 'features');
+const resourcesRoot = path.join(packageRoot, 'resources');
+const templateSourcesRoot = path.join(resourcesRoot, 'templates');
 const dotnetRoot = path.join(repoRoot, 'orchestrators', 'dotnet');
+const demosRoot = path.join(repoRoot, 'examples', 'demos');
 const checkOnly = process.argv.includes('--check');
 
 const rootAssets = [
@@ -25,29 +28,29 @@ const modeTemplates = [
   {
     mode: 'ssg',
     roots: [
-      { source: path.join(repoRoot, 'examples', 'demos', 'ssg', 'base', 'src', 'frontend'), target: path.join('src', 'frontend') },
+      { source: path.join(templateSourcesRoot, 'ssg', 'src', 'frontend'), target: path.join('src', 'frontend') },
     ],
   },
   {
     mode: 'spa',
     roots: [
-      { source: path.join(repoRoot, 'examples', 'demos', 'spa', 'src', 'frontend'), target: path.join('src', 'frontend') },
-      { source: path.join(repoRoot, 'examples', 'demos', 'spa', 'src', 'shared'), target: path.join('src', 'shared') },
+      { source: path.join(templateSourcesRoot, 'spa', 'src', 'frontend'), target: path.join('src', 'frontend') },
+      { source: path.join(templateSourcesRoot, 'spa', 'src', 'shared'), target: path.join('src', 'shared') },
     ],
   },
   {
     mode: 'api',
     roots: [
-      { source: path.join(repoRoot, 'examples', 'demos', 'api', 'src', 'backend'), target: path.join('src', 'backend') },
-      { source: path.join(repoRoot, 'examples', 'demos', 'api', 'src', 'shared'), target: path.join('src', 'shared') },
+      { source: path.join(templateSourcesRoot, 'api', 'src', 'backend'), target: path.join('src', 'backend') },
+      { source: path.join(templateSourcesRoot, 'api', 'src', 'shared'), target: path.join('src', 'shared') },
     ],
   },
   {
     mode: 'full',
     roots: [
-      { source: path.join(repoRoot, 'examples', 'demos', 'full', 'src', 'frontend'), target: path.join('src', 'frontend') },
-      { source: path.join(repoRoot, 'examples', 'demos', 'full', 'src', 'backend'), target: path.join('src', 'backend') },
-      { source: path.join(repoRoot, 'examples', 'demos', 'full', 'src', 'shared'), target: path.join('src', 'shared') },
+      { source: path.join(templateSourcesRoot, 'full', 'src', 'frontend'), target: path.join('src', 'frontend') },
+      { source: path.join(templateSourcesRoot, 'full', 'src', 'backend'), target: path.join('src', 'backend') },
+      { source: path.join(templateSourcesRoot, 'full', 'src', 'shared'), target: path.join('src', 'shared') },
     ],
   },
 ];
@@ -60,7 +63,7 @@ const features = [
 ];
 
 async function main() {
-  assertNoDotnetAssetReads();
+  assertNoLegacyAssetReads();
   if (checkOnly) {
     console.log('[webstir] asset sources OK');
     return;
@@ -71,7 +74,7 @@ async function main() {
   await mkdir(featuresRoot, { recursive: true });
 
   for (const relativePath of rootAssets) {
-    const sourcePath = path.join(repoRoot, 'examples', 'demos', 'spa', relativePath);
+    const sourcePath = path.join(templateSourcesRoot, 'shared', relativePath);
     const targetPath = path.join(templatesRoot, 'shared', relativePath);
     await mkdir(path.dirname(targetPath), { recursive: true });
     await cp(sourcePath, targetPath, { recursive: true });
@@ -92,22 +95,25 @@ async function main() {
   }
 }
 
-function assertNoDotnetAssetReads() {
+function assertNoLegacyAssetReads() {
   const sources = [
-    ...rootAssets.map((relativePath) => path.join(repoRoot, 'examples', 'demos', 'spa', relativePath)),
+    ...rootAssets.map((relativePath) => path.join(templateSourcesRoot, 'shared', relativePath)),
     ...modeTemplates.flatMap((template) => template.roots.map((root) => root.source)),
     ...features.map((feature) => feature.source),
   ];
 
-  const violations = sources.filter((source) => isInside(dotnetRoot, source));
+  assertSourcesOutsideRoot(dotnetRoot, 'orchestrators/dotnet', sources);
+  assertSourcesOutsideRoot(demosRoot, 'examples/demos', sources);
+}
+
+function assertSourcesOutsideRoot(disallowedRoot, label, sources) {
+  const violations = sources.filter((source) => isInside(disallowedRoot, source));
   if (violations.length === 0) {
     return;
   }
 
   const details = violations.map((source) => ` - ${path.relative(repoRoot, source)}`).join('\n');
-  throw new Error(
-    `Bun asset sync cannot read active assets from orchestrators/dotnet.\nMove the source into orchestrators/bun/resources first.\n${details}`
-  );
+  throw new Error(`Bun asset sync cannot read active assets from ${label}.\nMove the source into orchestrators/bun/resources first.\n${details}`);
 }
 
 function isInside(root, candidate) {

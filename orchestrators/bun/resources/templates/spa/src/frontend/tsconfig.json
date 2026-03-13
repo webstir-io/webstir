@@ -1,0 +1,20 @@
+{
+  "extends": "../../base.tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "outDir": "../../build/frontend",
+    "rootDir": ".",
+    "baseUrl": ".",
+    "incremental": true,
+    "tsBuildInfoFile": "../../build/frontend/.tsbuildinfo",
+    "paths": {
+      "@shared/*": ["../shared/*"]
+    }
+  },
+  "include": ["**/*.ts", "../../types/**/*.d.ts"],
+  "exclude": ["node_modules", "../../build", "../../dist"],
+  "references": [
+    { "path": "../shared" }
+  ]
+}
