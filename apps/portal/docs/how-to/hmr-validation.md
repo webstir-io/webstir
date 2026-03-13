@@ -3,19 +3,20 @@
 Follow these steps after touching the frontend hot-update pipeline.
 
 ## Automated Smoke
-- Run `./utilities/scripts/format-build.sh` (invokes TypeScript build + node tests).
-- Start `webstir watch` in a clean workspace and confirm the daemon boots without errors.
+- Run `bun run --filter @webstir-io/webstir-frontend build`.
+- Run `bun run --filter @webstir-io/webstir-frontend test`.
+- Start `webstir watch` in a clean frontend-capable workspace and confirm the daemon boots without errors.
 
 ## JavaScript/Edit Loop
-1. Launch `webstir watch` with `WEBSTIR_FRONTEND_HMR_VERBOSE=1`.
-2. Modify `Engine/Resources/src/frontend/pages/home/index.ts` (e.g., change a string).
+1. Launch `webstir watch --workspace "$PWD/examples/demos/spa" --hmr-verbose`.
+2. Modify `examples/demos/spa/src/frontend/pages/home/index.ts` (for example, change a string).
 3. Verify the browser console logs:
    - `Applied hot update…` message with module/style counts.
    - `Totals — applied: <n>, fallbacks: <m>` increments without forcing a reload.
 4. Repeat with additional JS edits to observe counters climbing without page refreshes.
 
 ## CSS Refresh
-1. Edit `Engine/Resources/src/frontend/pages/home/index.css`.
+1. Edit `examples/demos/spa/src/frontend/pages/home/index.css`.
 2. Confirm the DOM injects a fresh stylesheet and console totals increment.
 
 ## Fallback Scenario
@@ -27,10 +28,10 @@ Follow these steps after touching the frontend hot-update pipeline.
    - Daemon logs show `Hot update totals — …` and `frontend.watch.pipeline.hmrfallback`.
 
 ## HTML/Manifest Change
-1. Modify `Engine/Resources/src/frontend/app/app.html`.
+1. Modify `examples/demos/spa/src/frontend/app/app.html`.
 2. Observe the daemon logging a reload requirement and the browser performing a full refresh.
 
 ## Performance Spot Check
-- Capture `frontend.watch.javascript.build.stats` and `frontend.watch.hmr.summary` timings; ensure hot updates complete in under 200 ms for the seed project.
+- Capture `frontend.watch.javascript.build.stats` and `frontend.watch.hmr.summary` timings; ensure hot updates complete quickly on the demo workspace you used for validation.
 
 Document any deviations (especially fallback rates above 10%) before shipping.

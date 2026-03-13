@@ -11,29 +11,27 @@ Compile and stage the app for development. Processes frontend HTML/CSS/TS and co
 - In CI to check that code compiles.
 
 ## CLI
-- `webstir build [--clean] [--runtime <frontend|backend|all>]`
+- `webstir build --workspace <path>`
 
 ## Steps
-1. Validate workspace structure and required inputs.
-2. Compile TypeScript for frontend/backend using `tsc --build` with the embedded base config.
-3. Bundle JavaScript with **esbuild** for fast, development-friendly output with source maps.
-4. Process CSS imports and copy assets.
-5. Merge page HTML into `src/frontend/app/app.html` and write to `build/frontend/pages/<page>/index.html`.
-6. Copy Images, Fonts, and Media to `build/frontend/{images|fonts|media}/**`.
-7. Copy app assets to `build/frontend/app/`.
+1. Read the workspace mode from `package.json`.
+2. Choose the active build plan for that mode:
+   - `spa` and `ssg` build the frontend only
+   - `api` builds the backend only
+   - `full` builds both
+3. Run the canonical provider packages from `packages/tooling/**`.
+4. Write development artifacts under `build/**`.
 
 ## Outputs
-- `build/frontend/**` with readable assets and page HTML (includes `build/frontend/{images|fonts|media}/**`).
-- `build/backend/index.js` compiled backend entry.
-- `.webstir/backend-manifest.json` — inspect it without starting `watch` via `webstir backend-inspect`.
+- `build/frontend/**` with page HTML, CSS, JS, and copied assets when the workspace has a frontend surface
+- `build/backend/**` with compiled backend output when the workspace has a backend surface
+- `.webstir/frontend-manifest.json` emitted by the frontend package when the frontend surface is active
 
-## Flags
-- `--clean`: remove previous `build/**` before building.
-- `--runtime` / `-r`: limit work to `frontend`, `backend`, or `all` (default). The CLI auto-detects which folders exist, but forcing a scope speeds up backend-only loops or frontend-only sandboxes.
+To print the current backend manifest summary, use:
 
-Examples:
-- `webstir build --runtime backend` — skip frontend pipelines when touching APIs or jobs.
-- `webstir build --runtime frontend --clean` — refresh only the UI surface after deleting `build/`.
+```bash
+webstir backend-inspect --workspace /absolute/path/to/workspace
+```
 
 ## Errors & Exit Codes
 - Non-zero on TypeScript errors, missing base HTML, or pipeline failures.

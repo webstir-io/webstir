@@ -1,115 +1,94 @@
 # Engine
 
-Core implementation that powers the CLI. The engine owns workflows, pipelines, servers, watching, and the project workspace. This doc expands the high-level overview in [solution.md](solution.md).
+Core implementation that powers the active Bun CLI. In the current monorepo, the engine is the orchestration code under `orchestrators/bun/src` plus the canonical provider packages under `packages/tooling/**`.
 
 ## Overview
-- Orchestrates end-to-end workflows: init → build → watch/test → publish.
-- Implements HTML/CSS/TS and static asset pipelines (Images, Fonts, Media), plus dev servers.
-- Uses a strongly typed workspace (`AppWorkspace`) for all paths.
-- Keeps defaults simple; favors conventions over configuration.
+
+- Parses CLI commands and workspace paths.
+- Chooses the active build plan from `webstir.mode`.
+- Loads the canonical frontend, backend, and testing packages.
+- Coordinates build, publish, watch, test, and scaffold flows.
+- Keeps the live runtime Bun-first while leaving the older `.NET` tree archival.
 
 ## Responsibilities
-- Parse and validate input workspace (folders, files, options).
-- Run pipelines for frontend, backend, and shared code.
-- Serve `build/` in dev; proxy `/api/*` to the Node server.
-- Watch `src/**`, perform incremental rebuilds, and reload browsers via SSE.
-- Optimize and emit production assets in `dist/` with manifests.
+
+- Resolve the workspace descriptor from `package.json`.
+- Run frontend and backend providers in the right order for the workspace mode.
+- Serve `build/frontend/**` in watch mode and proxy `/api/*` when both surfaces are active.
+- Supervise the frontend watch daemon and backend runtime in long-running loops.
+- Keep command output compact and machine-friendly enough for CI and smoke flows.
 
 ## Structure
-- Workflows — high-level orchestration: [workflows](../reference/workflows.md)
-- Pipelines — HTML, CSS, JS/TS stages: [pipelines](pipelines.md)
-- Services — dev, watch, change coordination: [dev service](devservice.md)
-- Workers — per-area units (frontend/backend/shared)
-- Servers — dev static server (ASP.NET Core) + Node API host
-- Templates — embedded project scaffolding: [templates](../reference/templates.md)
-- Workspace — paths and constants: [workspace](workspace.md)
 
-## Workflows
-- init: Create a project from templates (frontend, backend, shared, types). Writes a ready-to-run structure.
-- build: Compile TS, process CSS, merge page HTML with `app.html`, emit to `build/`.
-- watch: Run build and tests, start servers, then react to changes with targeted rebuilds and reloads.
-- test: Build, execute compiled tests in Node, return CI-friendly exit codes.
-- publish: Optimize and fingerprint assets into `dist/` and rewrite HTML with per-page manifests.
-- generators: `add-page`, `add-test` create files in the right locations.
+- CLI entrypoint: `orchestrators/bun/src/cli.ts`
+- Command execution: `build.ts`, `publish.ts`, `watch.ts`, `test.ts`, `smoke.ts`
+- Workspace and mode resolution: `workspace.ts`, `build-plan.ts`, `types.ts`
+- Provider loading: `providers.ts`
+- Watch runtime: `frontend-watch.ts`, `api-watch.ts`, `full-watch.ts`
+- Dev server and runtime supervision: `dev-server.ts`, `backend-runtime.ts`
 
-Workflows call workers and services; they should not contain low-level file logic.
+## Workflow Model
 
-## Workers
-- FrontendWorker: Shells out to the `@webstir-io/webstir-frontend` TypeScript CLI for build/publish/add-page while enforcing package pinning.
-- BackendWorker: Compiles backend TS → `build/backend/`, tracks restart state.
-- SharedWorker: Ensures shared types are compiled and available to both sides.
+### `init`
 
-Contracts and DI
-- IWorkflowWorker: Common contract used by all workers (`BuildOrder`, `InitAsync`, `BuildAsync`, `PublishAsync`).
-- IFrontendWorker: Extends `IWorkflowWorker` with `AddPageAsync`.
-- DI registers all workers as `IWorkflowWorker`; workflows inject `IEnumerable<IWorkflowWorker>` and filter by project mode.
-- Generators (e.g., add-page) resolve the single `IFrontendWorker` and it relays to the TypeScript CLI, keeping scaffolds in sync with framework templates.
+- Copies Bun-owned template assets from `orchestrators/bun/assets/templates/**`
+- Writes `package.json`, `base.tsconfig.json`, and the mode-specific `src/**` layout
 
-Workers are incremental where possible: only touched pages or modules are reprocessed.
+### `build`
 
-## Pipelines
-- HTML: Merge page fragments into `src/frontend/app/app.html` (requires a `<main>`), validate, write to `build/frontend/pages/<page>/index.html`. In publish, minify and rewrite links from the manifest.
-- CSS: **esbuild** handles CSS bundling alongside JavaScript for a unified pipeline. Resolves `@import`, processes CSS Modules, rewrites URLs. In publish, minifies and fingerprints output.
-- JS/TS: Use `tsc --build` for type checking, then **esbuild** for bundling (10-100x faster). ESM format; tree-shake/minify in publish.
-- Assets: Copy Images, Fonts, and Media from `src/frontend/**` → `build/frontend/**` (dev). In publish, optimize (compress images, convert fonts to WOFF2) when tools available, then copy to `dist/frontend/**`.
+- Runs the current build plan for the workspace mode
+- Emits readable development artifacts under `build/**`
 
-See details in [pipelines](pipelines.md).
+### `publish`
 
-## Services
-- DevService: Hosts the dev web server that serves `build/frontend/**`, exposes an SSE endpoint for reloads, and proxies `/api/*` to the Node server.
-- WatchService: Manages file watching over `src/**`, batching events to avoid thrash.
-- ChangeService: Classifies changes (frontend/backend/shared), deduplicates, and schedules the minimal work.
+- Reuses the same providers in publish mode
+- Emits optimized frontend assets under `dist/frontend/**`
+- Emits backend publish output under `build/backend/**`
 
-See [dev service](devservice.md) for behavior and lifecycle.
+### `watch`
 
-## Servers
-- Web server: ASP.NET Core minimal app serving `build/frontend/**`, clean URLs, dev cache headers, SSE for reload.
-- Node server: Runs `build/backend/index.js`. Restarts on backend code changes. Dev server proxies `/api/*` to this process.
+- `spa` and `ssg`: frontend watch daemon + Bun dev server
+- `api`: backend watcher + runtime supervisor
+- `full`: both, plus `/api/*` proxying through the frontend dev server
 
-## Change Detection
-- FileSystemWatcher feeds a buffered queue to coalesce rapid changes.
-- Routing rules:
-  - Frontend changes → frontend pipelines → write to `build/frontend/**` → broadcast SSE reload.
-  - Backend changes → backend compile → restart Node process.
-  - Shared changes → rebuild affected frontend and backend targets.
+### `test`
+
+- Rebuilds the requested surfaces
+- Compiles discovered `src/**/tests/**` suites
+- Runs them through the canonical testing provider
+
+## Watch Runtime Pieces
+
+- `DevServer`: static file server with SSE status/reload events and optional `/api/*` proxying
+- `FrontendWatchDaemonClient`: launches and talks to `webstir-frontend watch-daemon`
+- `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload events
+- `BackendRuntimeSupervisor`: starts `build/backend/index.js`, waits for readiness, and restarts on successful rebuilds
+
+## Provider Boundary
+
+The orchestrator does not implement frontend and backend compilation itself. It delegates to the canonical packages:
+
+- `@webstir-io/webstir-frontend`
+- `@webstir-io/webstir-backend`
+- `@webstir-io/webstir-testing`
+
+That boundary is the active source of truth for build and runtime behavior.
 
 ## Outputs
-- Dev: `build/frontend/**` and `build/backend/**`, readable output with source context.
-- Prod: `dist/frontend/pages/<page>/index.<hash>.{css|js}`, HTML rewritten to fingerprinted assets, per-page `manifest.json`.
 
-## Errors & Logging
-- Use clear, actionable errors; do not swallow exceptions silently.
-- Surface build/test failures with non-zero exit codes to the CLI.
-- Prefer structured logs that highlight the failing stage and file.
-
-## Client Error Reporting
-- Client handler: template includes `/app/error.js`, which installs `window.__WEBSTIR_ON_ERROR__` and listens for `error` and `unhandledrejection` events.
-- Endpoint: the web server exposes `POST /client-errors`. Payload must be `application/json` and `<= 32KB`.
-- Limits: server returns `415` for non-JSON and `413` for oversized payloads; `204` on success.
-- Correlation: handler includes a client-generated correlation id; server also reads `X-Correlation-ID` when present and forwards all reports to `ErrorTrackingService`.
-- Guardrails: client deduplicates repeats within 60s and throttles to 1 event/second with a 20-report cap per page session.
-
-## Extensibility
-- No plugin system. Extend by adding pipeline stages or worker capabilities.
-- Keep changes local and behavior-preserving; prefer mechanical, minimal diffs.
+- Dev: `build/frontend/**` and/or `build/backend/**`
+- Publish: `dist/frontend/**` plus backend publish output in `build/backend/**`
+- Generated workspace state: `.webstir/frontend-manifest.json`
 
 ## Testing
-- Favor end-to-end workflow tests over unit tests. See [tests](testing.md) and the [orchestrator testing guide](https://github.com/webstir-io/webstir/blob/main/orchestrators/dotnet/.codex/testing.md).
-- Lock down contracts: commands, flags, exit codes, directory structure, and publish outputs.
-- Use snapshot tests for scaffolding and publish artifacts where practical.
 
-## Contracts (Key Invariants)
-- Source roots: `src/frontend/**`, `src/backend/**`, `src/shared/**`, `types/**`.
-- Dev outputs: `build/frontend/**`, `build/backend/**`.
-- Prod outputs: `dist/frontend/pages/<page>/**` with per-page manifests.
-- API proxy: HTTP requests under `/api/*` route to the Node server in dev.
-- Base HTML requires `<main>` in `src/frontend/app/app.html`.
+Favor end-to-end command coverage and provider/package tests over internal-unit archaeology. The active test surfaces live in `orchestrators/bun/tests/**` and the package `tests/**` directories, not in the archived `.NET` harness.
 
 ## Related Docs
+
 - Solution overview — [solution](solution.md)
 - CLI reference — [cli](../reference/cli.md)
-- Pipelines — [pipelines](pipelines.md)
-- Dev service — [devservice](devservice.md)
 - Workflows — [workflows](../reference/workflows.md)
-- Workspace and paths — [workspace](workspace.md)
-- Templates — [templates](../reference/templates.md)
+- Services — [services](services.md)
+- Servers — [servers](servers.md)
+- Workspace — [workspace](workspace.md)

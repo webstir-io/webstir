@@ -1,20 +1,22 @@
 # Dev Service
 
-Hosts the development web server, live reload, and API proxy. Runs during the `watch` workflow.
+Hosts the development web server behavior used during `watch`.
+
+The current Bun implementation is split across `frontend-watch.ts`, `api-watch.ts`, `full-watch.ts`, and `dev-server.ts`, but the responsibility is still the same: keep the local dev loop running with clear status and minimal ceremony.
 
 ## Responsibilities
 - Serve `build/frontend/**` over HTTP with clean URLs.
 - Expose an SSE endpoint to notify connected browsers to reload after frontend rebuilds.
-- Proxy `/api/*` to the Node server that runs `build/backend/index.js`.
+- Proxy `/api/*` to the backend runtime in `full` mode.
 - Apply sensible cache headers in dev (HTML not cached; assets short-TTL).
 
 ## Lifecycle
-1. `watch` runs `build` and `test`.
-2. Start web server (serves frontend build) and start Node API server.
-3. Begin watching `src/**`; on changes:
-   - Frontend change → rebuild affected assets → broadcast SSE reload.
-   - Backend change → compile backend → restart Node process.
-   - Shared change → trigger both as needed.
+1. Start the dev server for frontend-capable workspaces.
+2. Start the frontend watch daemon and/or backend runtime depending on workspace mode.
+3. Watch `src/**` and `types/**`; on changes:
+   - Frontend change → incremental frontend rebuild → broadcast HMR or reload events.
+   - Backend change → rebuild backend → restart the runtime if the rebuild succeeded.
+   - Root configuration change (`package.json`, `base.tsconfig.json`, `types.global.d.ts`) → full frontend reload.
 
 ## Ports & Env
 - Web server prints the URL on startup; picks a free port or uses a configured one.
@@ -25,7 +27,7 @@ Hosts the development web server, live reload, and API proxy. Runs during the `w
 
 ## Errors & Resilience
 - Clear logs on failures; unrecoverable startup errors return non-zero exit codes via the CLI.
-- Node server restarts are throttled to avoid loops on persistent errors.
+- Backend runtime restarts are serialized to avoid overlap.
 - Proxy returns actionable errors if the API target is down.
 
 ## Related Docs

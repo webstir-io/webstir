@@ -3,7 +3,7 @@
 Guidance for running and troubleshooting the incremental frontend watch workflow.
 
 ## Overview
-- `webstir watch` launches the daemon and streams rebuild results to the .NET CLI runtime.
+- `webstir watch` launches the Bun dev server and supervises the frontend watch daemon when the workspace has a frontend surface.
 - The browser badge reflects build state: orange for in-progress, green for success, red for errors, and red/gray when disconnected.
 - Reload events are debounced so rapid edits coalesce into a single browser refresh.
 
@@ -25,11 +25,11 @@ Guidance for running and troubleshooting the incremental frontend watch workflow
 
 ## Failure Recovery
 1. Restart the daemon: stop `webstir watch` with `Enter`, then run it again.
-2. If lockfiles drift, delete the lockfile and re-run your package manager (`pnpm install` by default); the watch workflow also falls back automatically when the install step fails.
-3. Bypass the daemon with `npx webstir-frontend build --workspace <absolute-path>` for one-off builds.
+2. If dependencies drift, run `bun install` in the workspace, then restart the watch loop.
+3. Bypass the daemon with `npx webstir-frontend build --workspace <absolute-path>` for one-off frontend builds.
 4. When the badge stays red, inspect the last `frontend.watch` error and re-run with verbose logging if needed.
 
 ## Fallbacks
-- You can revert to the previous per-invocation CLI flow by running `webstir-frontend build`/`rebuild` manually.
+- You can fall back to one-off frontend runs with `webstir-frontend build` or `webstir-frontend rebuild`.
 - Clearing `build/frontend` and `dist/frontend` is safe; the daemon will repopulate outputs on the next rebuild.
 - Hot-update stats are included in `frontend.watch.pipeline.success` diagnostics and browser console logs so you can confirm fallbacks stay rare (below 10%).

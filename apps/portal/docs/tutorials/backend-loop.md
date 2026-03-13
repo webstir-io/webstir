@@ -1,27 +1,32 @@
 # Backend Loop
 
-Build a backend-only flow that registers routes, touches the database helper, schedules a job, and inspects the manifest without starting the full dev server.
+Build a backend-only flow that registers routes, touches the database helper, schedules a job, and inspects the manifest in an `api` workspace.
 
-## 1. Scaffold a workspace
+## 1. Scaffold an API workspace
+
 ```bash
-webstir init my-backend --server-only
+webstir init api my-backend
 cd my-backend
+bun install
 cp .env.example .env
 ```
 
-> Tip: The server-only template still includes the frontend folders so the CLI can upgrade later. Passing `--server-only` simply skips the initial frontend assets.
+`api` mode is the current backend-only path. It skips the frontend build plan instead of relying on a `--server-only` flag.
 
-## 2. Run backend-only watch
+## 2. Run the backend watch loop
+
 ```bash
-webstir watch --runtime backend
+webstir watch --workspace "$PWD"
 ```
 
-- The CLI prints a scope summary such as `filter: backend, running: backend-only` so you can confirm it is ignoring the UI workers.
-- The Node server restarts whenever files under `src/backend/**` change. Live reloads remain available for frontend edits if you drop the runtime flag.
+- The API workspace starts the backend build watcher and runtime only.
+- The runtime restarts whenever files under `src/backend/**` change.
 
 ## 3. Add a manifest-backed route
+
 ```bash
 webstir add-route accounts \
+  --workspace "$PWD" \
   --method GET \
   --path /api/accounts \
   --summary "List accounts" \
@@ -70,20 +75,26 @@ export const module = {
 };
 ```
 
-- `RouteContext` (already defined in the template) exposes `params`, `query`, `body`, `auth`, `env`, `logger`, `requestId`, and `now()`.
-- The backend provider loads `build/backend/module.js`, logs the manifest summary, and automatically mounts every exported route—no manual registration required.
+- `RouteContext` exposes `params`, `query`, `body`, `auth`, `env`, `logger`, `requestId`, and `now()`.
+- The backend provider loads `build/backend/module.js`, logs the manifest summary, and mounts exported routes automatically.
 
 ## 4. Connect to the database helper
+
 - The scaffold ships with `src/backend/db/connection.ts`, which can create SQLite (`better-sqlite3`) or Postgres (`pg`) clients based on `DATABASE_URL`.
 - Install the driver you plan to use, for example:
-  ```bash
-  npm install better-sqlite3
-  ```
-- The helper ensures the SQLite directory exists and exposes simple `query/execute/close` methods, making it ideal for cron-style jobs or lightweight APIs.
+
+```bash
+bun add better-sqlite3
+```
 
 ## 5. Schedule a job
+
 ```bash
-webstir add-job nightly --schedule "0 0 * * *" --description "Nightly account sync" --priority 5
+webstir add-job nightly \
+  --workspace "$PWD" \
+  --schedule "0 0 * * *" \
+  --description "Nightly account sync" \
+  --priority 5
 ```
 
 Implement the job in `src/backend/jobs/nightly/index.ts`:
@@ -100,28 +111,30 @@ export async function run() {
 ```
 
 Test it quickly:
+
 ```bash
 node build/backend/jobs/scheduler.js --job nightly
 ```
 
 ## 6. Inspect the manifest
-You no longer need to start the dev service to verify capabilities/routes/jobs:
 
 ```bash
-webstir build --runtime backend
-webstir backend-inspect
+webstir build --workspace "$PWD"
+webstir backend-inspect --workspace "$PWD"
 ```
 
-The inspect command prints the capabilities list plus every route and job recorded in `.webstir/backend-manifest.json`. This is the fastest way to double-check that metadata and schema references are wired correctly before pushing a branch.
+`backend-inspect` rebuilds the backend and prints the current capabilities, routes, and jobs. Use it when you want a manifest summary without starting the watch loop.
 
-## 7. Publish backend assets only
+## 7. Publish the backend workspace
+
 ```bash
-webstir publish --runtime backend
+webstir publish --workspace "$PWD"
 ```
 
-This regenerates just the backend bundle and writes the manifest to `dist/backend/**`, leaving the frontend artifacts untouched. Combine it with the Docker sandbox or your deployment scripts once you are ready.
+In an `api` workspace, publish runs the backend-only plan.
 
 ## Next
+
 - How-to: [Add a Backend Route](../how-to/add-route.md)
 - How-to: [Add a Backend Job](../how-to/add-job.md)
 - Reference: [CLI](../reference/cli.md)

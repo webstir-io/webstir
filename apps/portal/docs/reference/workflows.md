@@ -18,10 +18,14 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 ## Flow Shape
 
 1. Resolve the workspace and detect which surfaces exist.
-2. Run the canonical package logic from `packages/tooling/**`.
-3. Emit `build/**` for development/test work.
-4. Emit `dist/frontend/**` for publish-ready frontend assets.
-5. Start or supervise long-running services only when the workflow requires them.
+2. Choose the active build plan from `webstir.mode`:
+   - `spa` and `ssg` => frontend
+   - `api` => backend
+   - `full` => frontend + backend
+3. Run the canonical package logic from `packages/tooling/**`.
+4. Emit `build/**` for development and test work.
+5. Emit `dist/frontend/**` for publish-ready frontend assets when a frontend surface exists.
+6. Start or supervise long-running services only when the workflow requires them.
 
 ## Workflow Contracts
 
@@ -37,9 +41,8 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 
 ### `watch`
 
-- Runs `build`, then `test`
-- Starts the frontend dev server
-- Starts the backend runtime when `src/backend` exists
+- Starts the frontend dev server and watch daemon for `spa`, `ssg`, and `full`
+- Starts the backend build watcher and runtime for `api` and `full`
 - Proxies `/api/*` in full-stack watch mode
 
 ### `test`
@@ -56,13 +59,9 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 
 ## Runtime Scope
 
-`build`, `watch`, `test`, and `publish` accept `--runtime <frontend|backend|all>` so you can narrow the loop to the surface you are changing.
+Only `webstir test` supports `--runtime <frontend|backend|all>`.
 
-Examples:
-
-- `webstir watch --runtime backend`
-- `webstir test --runtime frontend`
-- `webstir publish --runtime backend`
+`build`, `watch`, and `publish` follow the workspace mode instead of a runtime flag. If you need a backend-only loop, use an `api` workspace. If you need frontend-only output, use `spa` or `ssg`.
 
 ## Practical Reference
 

@@ -36,7 +36,9 @@ bun run watch:dashboard
 
 ```bash
 bun run webstir -- init my-app
-bun run webstir -- watch --workspace "$PWD/my-app"
+cd my-app
+bun install
+bun run webstir -- watch --workspace "$PWD"
 ```
 
 Edit files under `src/**` and let the watch loop rebuild the frontend and backend surfaces that exist in the workspace.
