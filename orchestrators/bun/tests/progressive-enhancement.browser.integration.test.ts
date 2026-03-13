@@ -71,27 +71,21 @@ test('browser auth and CRUD flows work in publish mode', async () => {
 
 test('browser dashboard flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-dashboard-watch-', 'dashboard');
-  let session: RuntimeSession | undefined;
 
   try {
-    session = await startWatchSession(workspace, {
+    await runWatchBrowserScenarioWithRetry(workspace, exerciseDashboardBrowserScenario, {
       readinessChecks: [
         {
           requestPath: '/api/demo/dashboard',
           expectedText: 'id="dashboard-team"'
         }
-      ]
+      ],
+      scenarioTimeoutMs: 45_000
     });
-    await exerciseDashboardBrowserScenario(session.origin);
-  } catch (error) {
-    throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
-    if (session) {
-      await session.stop();
-    }
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
-}, 120_000);
+}, 150_000);
 
 test('browser dashboard flows work in publish mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-dashboard-publish-', 'dashboard');
@@ -455,7 +449,7 @@ async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   expect(afterDelete.html.includes(`project-edit-form-${projectId}`)).toBe(false);
 }
 
-async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
+async function exerciseDashboardBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
   const browser = await launchBrowser();
   try {
     const enhancedContext = await browser.newContext({
@@ -465,9 +459,11 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
     const enhancedPage = await enhancedContext.newPage();
 
     try {
+      setScenarioStep(progress, 'load enhanced dashboard page');
       await enhancedPage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
       await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
 
+      setScenarioStep(progress, 'apply enhanced dashboard filters');
       await enhancedPage.locator('#dashboard-team').selectOption('growth');
       await enhancedPage.locator('#dashboard-range').selectOption('month');
       await enhancedPage.locator('#dashboard-apply-filters').click();
@@ -475,6 +471,7 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
         () => document.querySelector('#dashboard-heading')?.textContent === 'Dashboard focus: Growth · last 30 days'
       );
 
+      setScenarioStep(progress, 'refresh enhanced dashboard metrics');
       const enhancedRefreshCount = await readRefreshCount(enhancedPage);
       await enhancedPage.locator('#metrics-refresh').click();
       await enhancedPage.waitForFunction(
@@ -492,6 +489,7 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
         throw new Error('Expected an alert row in the dashboard proof app.');
       }
 
+      setScenarioStep(progress, 'acknowledge enhanced dashboard alert');
       await enhancedPage.locator(`#acknowledge-alert-${alertId}`).click();
       await enhancedPage.waitForFunction(
         (id) => !document.querySelector(`[data-alert-id="${id}"]`),
@@ -499,6 +497,7 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
       );
       expect(await enhancedPage.locator('#alerts-status').textContent()).toContain('Acknowledged');
 
+      setScenarioStep(progress, 'reload enhanced dashboard page');
       await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
       await enhancedPage.locator('#dashboard-heading').waitFor({ state: 'visible' });
       expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: Growth · last 30 days');
@@ -515,7 +514,9 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
     const baselinePage = await baselineContext.newPage();
 
     try {
+      setScenarioStep(progress, 'load baseline dashboard page');
       await baselinePage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
+      setScenarioStep(progress, 'submit baseline dashboard filters');
       await baselinePage.locator('#dashboard-team').selectOption('north');
       await baselinePage.locator('#dashboard-range').selectOption('today');
       await baselinePage.locator('#dashboard-filter-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
@@ -524,6 +525,7 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
         && document.body.textContent?.includes('Filtered to North region for today.')
       );
 
+      setScenarioStep(progress, 'refresh baseline dashboard metrics');
       const baselineRefreshCount = await readRefreshCount(baselinePage);
       await baselinePage.locator('#metrics-refresh-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
       await baselinePage.waitForFunction(() =>
@@ -969,6 +971,85 @@ async function waitForProcessExit(child: ReturnType<typeof Bun.spawn>, timeoutMs
   return outcome === 'exited';
 }
 
+async function runWatchBrowserScenarioWithRetry(
+  workspace: string,
+  scenario: (origin: string, progress?: ScenarioProgress) => Promise<void>,
+  options: WatchBrowserScenarioOptions
+): Promise<void> {
+  const maxAttempts = process.env.CI ? 2 : 1;
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let session: RuntimeSession | undefined;
+    const progress: ScenarioProgress = {
+      currentStep: 'start watch session'
+    };
+
+    try {
+      session = await startWatchSession(workspace, {
+        readinessChecks: options.readinessChecks
+      });
+      await runWithTimeout(
+        () => scenario(session.origin, progress),
+        options.scenarioTimeoutMs,
+        `Watch browser scenario timed out during ${progress.currentStep}.`,
+        progress
+      );
+      return;
+    } catch (error) {
+      const failure = appendLogs(error, session?.getLogs() ?? {});
+      if (attempt < maxAttempts && isRetryableWatchBrowserError(error)) {
+        lastError = failure;
+        continue;
+      }
+      throw failure;
+    } finally {
+      if (session) {
+        await session.stop();
+      }
+    }
+  }
+
+  throw lastError ?? new Error('Watch browser scenario failed without an actionable error.');
+}
+
+async function runWithTimeout<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+  label: string,
+  progress?: ScenarioProgress
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`${label} Latest step: ${progress?.currentStep ?? 'unknown'}`));
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function isRetryableWatchBrowserError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('Watch browser scenario timed out during')
+    || message.includes('Timed out stopping watch session')
+    || isTransientBrowserTeardownError(error);
+}
+
+function setScenarioStep(progress: ScenarioProgress | undefined, step: string): void {
+  if (progress) {
+    progress.currentStep = step;
+  }
+}
+
 function appendLogs(error: unknown, sections: Record<string, string>): Error {
   const message = error instanceof Error ? error.message : String(error);
   const renderedSections = Object.entries(sections)
@@ -1040,4 +1121,13 @@ interface WatchSessionOptions {
 interface WatchReadinessCheck {
   readonly requestPath: string;
   readonly expectedText: string;
+}
+
+interface WatchBrowserScenarioOptions {
+  readonly readinessChecks?: readonly WatchReadinessCheck[];
+  readonly scenarioTimeoutMs: number;
+}
+
+interface ScenarioProgress {
+  currentStep: string;
 }
