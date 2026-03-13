@@ -157,4 +157,10 @@ test('scaffold assets expose core backend templates', async () => {
   for (const target of requiredTargets) {
     assert.ok(targetSet.has(target), `expected scaffold assets to include ${target}`);
   }
+
+  const runtimeViewAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'views.ts'));
+  assert.ok(runtimeViewAsset, 'expected scaffold assets to include the runtime views helper');
+
+  const runtimeViewSource = await fs.readFile(runtimeViewAsset.sourcePath, 'utf8');
+  assert.match(runtimeViewSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/views';/);
 });

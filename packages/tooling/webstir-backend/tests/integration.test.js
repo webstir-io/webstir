@@ -54,9 +54,47 @@ function getPackageRoot() {
 }
 
 async function linkWorkspaceNodeModules(workspace) {
+  const packageRoot = getPackageRoot();
+  const source = path.join(packageRoot, 'node_modules');
   const target = path.join(workspace, 'node_modules');
-  const source = path.join(getPackageRoot(), 'node_modules');
-  await fs.symlink(source, target, 'dir');
+  await fs.mkdir(target, { recursive: true });
+
+  const entries = await fs.readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === '@webstir-io') {
+      continue;
+    }
+    await createSymlinkIfMissing(
+      path.join(source, entry.name),
+      path.join(target, entry.name),
+      entry.isDirectory() ? 'dir' : 'file'
+    );
+  }
+
+  const scopeSource = path.join(source, '@webstir-io');
+  const scopeTarget = path.join(target, '@webstir-io');
+  await fs.mkdir(scopeTarget, { recursive: true });
+  const scopeEntries = await fs.readdir(scopeSource, { withFileTypes: true });
+  for (const entry of scopeEntries) {
+    await createSymlinkIfMissing(
+      path.join(scopeSource, entry.name),
+      path.join(scopeTarget, entry.name),
+      entry.isDirectory() ? 'dir' : 'file'
+    );
+  }
+
+  await createSymlinkIfMissing(packageRoot, path.join(scopeTarget, 'webstir-backend'), 'dir');
+}
+
+async function createSymlinkIfMissing(source, target, type) {
+  try {
+    await fs.symlink(source, target, type);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') {
+      return;
+    }
+    throw error;
+  }
 }
 
 async function getOpenPort() {

@@ -12,6 +12,11 @@ function getLocalBinPath() {
   return path.join(pkgRoot, 'node_modules', '.bin');
 }
 
+function getPackageRoot() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  return path.resolve(here, '..');
+}
+
 async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
 }
@@ -32,6 +37,50 @@ async function installPackages(workspace, packages, options = { dev: false }) {
     child.on('error', reject);
     child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`npm install failed (${code})`))));
   });
+}
+
+async function linkWorkspaceNodeModules(workspace) {
+  const packageRoot = getPackageRoot();
+  const source = path.join(packageRoot, 'node_modules');
+  const target = path.join(workspace, 'node_modules');
+  await fs.mkdir(target, { recursive: true });
+
+  const entries = await fs.readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === '@webstir-io') {
+      continue;
+    }
+    await createSymlinkIfMissing(
+      path.join(source, entry.name),
+      path.join(target, entry.name),
+      entry.isDirectory() ? 'dir' : 'file'
+    );
+  }
+
+  const scopeSource = path.join(source, '@webstir-io');
+  const scopeTarget = path.join(target, '@webstir-io');
+  await fs.mkdir(scopeTarget, { recursive: true });
+  const scopeEntries = await fs.readdir(scopeSource, { withFileTypes: true });
+  for (const entry of scopeEntries) {
+    await createSymlinkIfMissing(
+      path.join(scopeSource, entry.name),
+      path.join(scopeTarget, entry.name),
+      entry.isDirectory() ? 'dir' : 'file'
+    );
+  }
+
+  await createSymlinkIfMissing(packageRoot, path.join(scopeTarget, 'webstir-backend'), 'dir');
+}
+
+async function createSymlinkIfMissing(source, target, type) {
+  try {
+    await fs.symlink(source, target, type);
+  } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'EEXIST') {
+      return;
+    }
+    throw error;
+  }
 }
 
 async function main() {
@@ -88,6 +137,8 @@ async function main() {
   } else {
     console.info('[smoke] fastify install skipped by WEBSTIR_BACKEND_SMOKE_FASTIFY=skip');
   }
+
+  await linkWorkspaceNodeModules(workspace);
 
   const rootTsconfigPath = path.join(workspace, 'tsconfig.json');
   const rootTsconfig = {

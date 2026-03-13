@@ -11,6 +11,26 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./runtime/forms": {
+      "types": "./dist/runtime/forms.d.ts",
+      "import": "./dist/runtime/forms.js",
+      "default": "./dist/runtime/forms.js"
+    },
+    "./runtime/request-hooks": {
+      "types": "./dist/runtime/request-hooks.d.ts",
+      "import": "./dist/runtime/request-hooks.js",
+      "default": "./dist/runtime/request-hooks.js"
+    },
+    "./runtime/session": {
+      "types": "./dist/runtime/session.d.ts",
+      "import": "./dist/runtime/session.js",
+      "default": "./dist/runtime/session.js"
+    },
+    "./runtime/views": {
+      "types": "./dist/runtime/views.d.ts",
+      "import": "./dist/runtime/views.js",
+      "default": "./dist/runtime/views.js"
+    },
     "./provider": {
       "types": "./dist/provider.d.ts",
       "import": "./dist/provider.js",
