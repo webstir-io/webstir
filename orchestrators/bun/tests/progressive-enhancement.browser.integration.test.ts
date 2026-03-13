@@ -65,7 +65,7 @@ test('browser auth and CRUD flows work in publish mode', async () => {
 
   try {
     session = await startPublishSession(workspace);
-    await exerciseAuthCrudBrowserScenario(session.origin);
+    await exerciseAuthCrudPublishScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.logs ?? {});
   } finally {
@@ -99,7 +99,7 @@ test('browser dashboard flows work in publish mode', async () => {
 
   try {
     session = await startPublishSession(workspace);
-    await exerciseDashboardBrowserScenario(session.origin);
+    await exerciseDashboardPublishScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.logs ?? {});
   } finally {
@@ -355,6 +355,106 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
   }
 }
 
+async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
+  const initial = await requestHtmlDocument(origin, '/api/demo/auth-crud');
+  const signInCsrf = extractFormInputValue(initial.html, 'auth-sign-in-form', '_csrf');
+  const signInResponse = await requestWithCookie(origin, '/api/demo/auth-crud/session/sign-in', initial.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: `_csrf=${encodeURIComponent(signInCsrf)}&email=${encodeURIComponent('casey.browser@example.com')}`,
+    redirect: 'manual'
+  });
+
+  expect(signInResponse.status).toBe(303);
+  expect(signInResponse.headers.get('location')).toBe('/api/demo/auth-crud');
+
+  const signedInCookie = coalesceCookie(signInResponse.headers.get('set-cookie'), initial.cookie);
+  const signedIn = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedInCookie);
+  expect(signedIn.html).toContain('Signed in as <strong>casey.browser@example.com</strong>.');
+
+  const invalidCreateCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
+  const invalidCreateResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/create', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(invalidCreateCsrf)}&title=&status=active&notes=${encodeURIComponent('This should fail first.')}`
+  });
+  const invalidCreateHtml = await invalidCreateResponse.text();
+
+  expect(invalidCreateResponse.status).toBe(422);
+  expect(invalidCreateResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
+  expect(invalidCreateHtml).toContain('Project title is required.');
+
+  const createCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
+  const createResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/create', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: [
+      `_csrf=${encodeURIComponent(createCsrf)}`,
+      `title=${encodeURIComponent('Browser launch checklist')}`,
+      'status=active',
+      `notes=${encodeURIComponent('Created through the publish redirect path.')}`
+    ].join('&'),
+    redirect: 'manual'
+  });
+
+  expect(createResponse.status).toBe(303);
+  expect(createResponse.headers.get('location')).toBe('/api/demo/auth-crud');
+
+  const afterCreate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  expect(afterCreate.html).toContain('Created project &quot;Browser launch checklist&quot;.');
+  expect(afterCreate.html).toContain('Browser launch checklist');
+
+  const projectId = extractFirstEntityId(afterCreate.html, 'project');
+  const updateCsrf = extractFormInputValue(afterCreate.html, `project-edit-form-${projectId}`, '_csrf');
+  const updateResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/update', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: [
+      `_csrf=${encodeURIComponent(updateCsrf)}`,
+      `projectId=${encodeURIComponent(projectId)}`,
+      `title=${encodeURIComponent('Operations cleanup updated')}`,
+      'status=archived',
+      `notes=${encodeURIComponent('Persist this edit across the next document request.')}`
+    ].join('&')
+  });
+  const updateHtml = await updateResponse.text();
+
+  expect(updateResponse.status).toBe(200);
+  expect(updateResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
+  expect(updateHtml).toContain('Operations cleanup updated');
+
+  const afterUpdate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  expect(afterUpdate.html).toContain('Operations cleanup updated');
+
+  const deleteCsrf = extractFormInputValue(afterUpdate.html, `project-delete-form-${projectId}`, '_csrf');
+  const deleteResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/delete', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(deleteCsrf)}&projectId=${encodeURIComponent(projectId)}`
+  });
+  const deleteHtml = await deleteResponse.text();
+
+  expect(deleteResponse.status).toBe(200);
+  expect(deleteResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
+  expect(deleteHtml.includes(`project-edit-form-${projectId}`)).toBe(false);
+
+  const afterDelete = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  expect(afterDelete.html.includes(`project-edit-form-${projectId}`)).toBe(false);
+}
+
 async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
   const browser = await launchBrowser();
   try {
@@ -439,6 +539,79 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
   } finally {
     await browser.close().catch(() => undefined);
   }
+}
+
+async function exerciseDashboardPublishScenario(origin: string): Promise<void> {
+  const initial = await requestHtmlDocument(origin, '/api/demo/dashboard');
+
+  const nativeFilterCsrf = extractFormInputValue(initial.html, 'dashboard-filter-form', '_csrf');
+  const nativeFilterResponse = await requestWithCookie(origin, '/api/demo/dashboard/context', initial.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: `_csrf=${encodeURIComponent(nativeFilterCsrf)}&team=growth&range=month`,
+    redirect: 'manual'
+  });
+
+  expect(nativeFilterResponse.status).toBe(303);
+  expect(nativeFilterResponse.headers.get('location')).toBe('/api/demo/dashboard');
+
+  const filtered = await requestHtmlDocument(origin, '/api/demo/dashboard', initial.cookie);
+  expect(filtered.html).toContain('Dashboard focus: Growth · last 30 days');
+  expect(filtered.html).toContain('Filtered to Growth for last 30 days.');
+
+  const enhancedFilterCsrf = extractFormInputValue(filtered.html, 'dashboard-filter-form', '_csrf');
+  const enhancedFilterResponse = await requestWithCookie(origin, '/api/demo/dashboard/context', filtered.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(enhancedFilterCsrf)}&team=north&range=today`
+  });
+  const enhancedFilterHtml = await enhancedFilterResponse.text();
+
+  expect(enhancedFilterResponse.status).toBe(200);
+  expect(enhancedFilterResponse.headers.get('x-webstir-fragment-target')).toBe('dashboard-shell');
+  expect(enhancedFilterHtml).toContain('Dashboard focus: North region · today');
+
+  const refreshCsrf = extractFormInputValue(filtered.html, 'metrics-refresh-form', '_csrf');
+  const refreshResponse = await requestWithCookie(origin, '/api/demo/dashboard/metrics/refresh', filtered.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(refreshCsrf)}`
+  });
+  const refreshHtml = await refreshResponse.text();
+
+  expect(refreshResponse.status).toBe(200);
+  expect(refreshResponse.headers.get('x-webstir-fragment-target')).toBe('metrics-panel');
+  expect(refreshHtml).toContain('Refresh count: 1');
+
+  const refreshed = await requestHtmlDocument(origin, '/api/demo/dashboard', filtered.cookie);
+  expect(refreshed.html).toContain('Refresh count: 1');
+
+  const alertId = extractFirstEntityId(refreshed.html, 'alert');
+  const acknowledgeCsrf = extractFormInputValue(refreshed.html, `acknowledge-alert-form-${alertId}`, '_csrf');
+  const acknowledgeResponse = await requestWithCookie(origin, '/api/demo/dashboard/alerts/acknowledge', filtered.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(acknowledgeCsrf)}&alertId=${encodeURIComponent(alertId)}`
+  });
+  const acknowledgeHtml = await acknowledgeResponse.text();
+
+  expect(acknowledgeResponse.status).toBe(200);
+  expect(acknowledgeResponse.headers.get('x-webstir-fragment-target')).toBe('alerts-panel');
+  expect(acknowledgeHtml.includes(`data-alert-id="${alertId}"`)).toBe(false);
+
+  const afterAcknowledge = await requestHtmlDocument(origin, '/api/demo/dashboard', filtered.cookie);
+  expect(afterAcknowledge.html.includes(`data-alert-id="${alertId}"`)).toBe(false);
 }
 
 async function readRefreshCount(page: Page): Promise<number> {
@@ -615,6 +788,83 @@ async function fetchText(port: number, requestPath: string): Promise<string> {
   }
 
   return await response.text();
+}
+
+async function requestHtmlDocument(origin: string, requestPath: string, cookie?: string): Promise<{
+  response: Response;
+  html: string;
+  cookie: string;
+}> {
+  const response = await requestWithCookie(origin, requestPath, cookie);
+  const html = await response.text();
+
+  return {
+    response,
+    html,
+    cookie: coalesceCookie(response.headers.get('set-cookie'), cookie)
+  };
+}
+
+async function requestWithCookie(
+  origin: string,
+  requestPath: string,
+  cookie?: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (cookie) {
+    headers.set('cookie', cookie);
+  }
+
+  return await fetch(new URL(requestPath, origin), {
+    ...init,
+    headers
+  });
+}
+
+function extractFormInputValue(html: string, formId: string, name: string): string {
+  const formPattern = new RegExp(
+    `<form[^>]*id="${escapeRegExp(formId)}"[\\s\\S]*?<input[^>]*name="${escapeRegExp(name)}"[^>]*value="([^"]*)"`,
+    'i'
+  );
+  const match = html.match(formPattern);
+  if (!match?.[1]) {
+    throw new Error(`Expected input ${name} in form ${formId}.`);
+  }
+
+  return decodeHtml(match[1]);
+}
+
+function extractFirstEntityId(html: string, entity: 'project' | 'alert'): string {
+  const attributeName = entity === 'project' ? 'data-project-id' : 'data-alert-id';
+  const match = html.match(new RegExp(`${attributeName}="([^"]+)"`));
+  if (!match?.[1]) {
+    throw new Error(`Expected at least one ${entity} row.`);
+  }
+
+  return decodeHtml(match[1]);
+}
+
+function coalesceCookie(setCookie: string | null, existing: string | undefined): string {
+  const cookie = setCookie?.split(';', 1)[0] ?? existing;
+  if (!cookie) {
+    throw new Error('Expected a session cookie.');
+  }
+
+  return cookie;
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function getFreePort(): Promise<number> {
