@@ -1,21 +1,11 @@
 import { expect, test } from 'bun:test';
-import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
-
-async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
-  const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-smoke-${tempPrefix}-`));
-  const copiedWorkspace = path.join(workspace, fixtureName);
-  await cp(fixtureRoot, copiedWorkspace, { recursive: true });
-  return copiedWorkspace;
 }
 
 function runCli(args: readonly string[]): {
@@ -42,10 +32,10 @@ function runCli(args: readonly string[]): {
 }
 
 test('CLI smoke runs the full demo workspace end to end', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('full');
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-smoke-full-');
 
   try {
-    const result = runCli(['smoke', '--workspace', copiedWorkspace]);
+    const result = runCli(['smoke', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir-backend] build:start');
@@ -58,7 +48,7 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
     expect(result.stdout).toContain('  - publish: frontend:');
     expect(result.stdout).toMatch(/  - backend-inspect: \d+ routes, 0 jobs/);
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });
 

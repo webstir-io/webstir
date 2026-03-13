@@ -1,22 +1,13 @@
 import { expect, test } from 'bun:test';
-import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
-
-async function copyFixtureWorkspace(fixtureName: string): Promise<string> {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
-  const tempPrefix = fixtureName.replace(/[\\/]/g, '-');
-  const workspace = await mkdtemp(path.join(os.tmpdir(), `webstir-repair-${tempPrefix}-`));
-  const copiedWorkspace = path.join(workspace, path.basename(fixtureName));
-  await cp(fixtureRoot, copiedWorkspace, { recursive: true });
-  return copiedWorkspace;
 }
 
 async function runCli(args: readonly string[]): Promise<{
@@ -40,15 +31,15 @@ async function runCli(args: readonly string[]): Promise<{
 }
 
 test('CLI repair restores missing scaffold files in a SPA workspace', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('spa');
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-spa-', { workspaceName: 'spa' });
 
   try {
-    const missingRoot = path.join(copiedWorkspace, 'Errors.404.html');
-    const missingFrontend = path.join(copiedWorkspace, 'src', 'frontend', 'app', 'app.html');
+    const missingRoot = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    const missingFrontend = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.html');
     await rm(missingRoot, { force: true });
     await rm(missingFrontend, { force: true });
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace]);
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir] repair complete');
@@ -58,37 +49,37 @@ test('CLI repair restores missing scaffold files in a SPA workspace', async () =
     expect(existsSync(missingRoot)).toBe(true);
     expect(existsSync(missingFrontend)).toBe(true);
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
 test('CLI repair supports dry-run without restoring files', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('spa');
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-spa-', { workspaceName: 'spa' });
 
   try {
-    const missingFile = path.join(copiedWorkspace, 'Errors.500.html');
+    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.500.html');
     await rm(missingFile, { force: true });
 
-    const result = await runCli(['repair', '--dry-run', '--workspace', copiedWorkspace]);
+    const result = await runCli(['repair', '--dry-run', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('dry-run: true');
     expect(result.stdout).toContain('Errors.500.html');
     expect(existsSync(missingFile)).toBe(false);
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
 test('CLI repair restores enabled feature assets and wiring for the SSG site demo', async () => {
-  const copiedWorkspace = await copyFixtureWorkspace('ssg/site');
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-ssg-site-', { workspaceName: 'site' });
 
   try {
-    const searchScript = path.join(copiedWorkspace, 'src', 'frontend', 'app', 'scripts', 'features', 'search.ts');
-    const deployScript = path.join(copiedWorkspace, 'utils', 'deploy-gh-pages.sh');
-    const appTsPath = path.join(copiedWorkspace, 'src', 'frontend', 'app', 'app.ts');
-    const appCssPath = path.join(copiedWorkspace, 'src', 'frontend', 'app', 'app.css');
-    const appHtmlPath = path.join(copiedWorkspace, 'src', 'frontend', 'app', 'app.html');
+    const searchScript = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'scripts', 'features', 'search.ts');
+    const deployScript = path.join(copiedWorkspace.workspaceRoot, 'utils', 'deploy-gh-pages.sh');
+    const appTsPath = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
+    const appCssPath = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.css');
+    const appHtmlPath = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.html');
 
     await rm(searchScript, { force: true });
     await rm(deployScript, { force: true });
@@ -108,7 +99,7 @@ test('CLI repair restores enabled feature assets and wiring for the SSG site dem
       'utf8'
     );
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace]);
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('src/frontend/app/scripts/features/search.ts');
@@ -119,6 +110,6 @@ test('CLI repair restores enabled feature assets and wiring for the SSG site dem
     expect(await readFile(appCssPath, 'utf8')).toContain('@import "./styles/features/search.css";');
     expect(await readFile(appHtmlPath, 'utf8')).toContain('data-webstir-search-styles="css"');
   } finally {
-    await rm(path.dirname(copiedWorkspace), { recursive: true, force: true });
+    await removeDemoWorkspace(copiedWorkspace);
   }
 });

@@ -16,7 +16,7 @@ test('browser progressive enhancement flows work in watch mode', async () => {
     session = await startWatchSession(workspace);
     await exerciseBrowserScenario(session.origin);
   } catch (error) {
-    throw appendLogs(error, session?.logs ?? {});
+    throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
     if (session) {
       await session.stop();
@@ -27,17 +27,10 @@ test('browser progressive enhancement flows work in watch mode', async () => {
 
 test('browser progressive enhancement flows work in publish mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-publish-', 'full');
-  let session: RuntimeSession | undefined;
 
   try {
-    session = await startPublishSession(workspace);
-    await exerciseBrowserScenario(session.origin);
-  } catch (error) {
-    throw appendLogs(error, session?.logs ?? {});
+    await runPublishBrowserScenarioWithRetry(workspace, exerciseBrowserScenario);
   } finally {
-    if (session) {
-      await session.stop();
-    }
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
 }, 120_000);
@@ -50,7 +43,7 @@ test('browser auth and CRUD flows work in watch mode', async () => {
     session = await startWatchSession(workspace);
     await exerciseAuthCrudBrowserScenario(session.origin);
   } catch (error) {
-    throw appendLogs(error, session?.logs ?? {});
+    throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
     if (session) {
       await session.stop();
@@ -67,7 +60,7 @@ test('browser auth and CRUD flows work in publish mode', async () => {
     session = await startPublishSession(workspace);
     await exerciseAuthCrudPublishScenario(session.origin);
   } catch (error) {
-    throw appendLogs(error, session?.logs ?? {});
+    throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
     if (session) {
       await session.stop();
@@ -84,7 +77,7 @@ test('browser dashboard flows work in watch mode', async () => {
     session = await startWatchSession(workspace);
     await exerciseDashboardBrowserScenario(session.origin);
   } catch (error) {
-    throw appendLogs(error, session?.logs ?? {});
+    throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
     if (session) {
       await session.stop();
@@ -101,7 +94,7 @@ test('browser dashboard flows work in publish mode', async () => {
     session = await startPublishSession(workspace);
     await exerciseDashboardPublishScenario(session.origin);
   } catch (error) {
-    throw appendLogs(error, session?.logs ?? {});
+    throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
     if (session) {
       await session.stop();
@@ -686,9 +679,11 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
 
   return {
     origin: `http://127.0.0.1:${port}`,
-    logs: {
-      watchStdout: stdout.text,
-      watchStderr: stderr.text
+    getLogs() {
+      return {
+        watchStdout: stdout.text,
+        watchStderr: stderr.text
+      };
     },
     async stop() {
       child.kill('SIGTERM');
@@ -762,11 +757,13 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
 
   return {
     origin: `http://127.0.0.1:${port}`,
-    logs: {
-      publishStdout,
-      publishStderr,
-      backendStdout: backendStdout.text,
-      backendStderr: backendStderr.text
+    getLogs() {
+      return {
+        publishStdout,
+        publishStderr,
+        backendStdout: backendStdout.text,
+        backendStderr: backendStderr.text
+      };
     },
     async stop() {
       await server.stop();
@@ -953,8 +950,48 @@ function tailOutput(text: string): string {
   return normalized.slice(-4_000);
 }
 
+async function runPublishBrowserScenarioWithRetry(
+  workspace: string,
+  scenario: (origin: string) => Promise<void>
+): Promise<void> {
+  const maxAttempts = process.env.CI ? 2 : 1;
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let session: RuntimeSession | undefined;
+
+    try {
+      session = await startPublishSession(workspace);
+      await scenario(session.origin);
+      return;
+    } catch (error) {
+      const failure = appendLogs(error, session?.getLogs() ?? {});
+      if (attempt < maxAttempts && isTransientBrowserTeardownError(error)) {
+        lastError = failure;
+        continue;
+      }
+      throw failure;
+    } finally {
+      if (session) {
+        await session.stop();
+      }
+    }
+  }
+
+  throw lastError ?? new Error('Publish browser scenario failed without an actionable error.');
+}
+
+function isTransientBrowserTeardownError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('Target page, context or browser has been closed')
+    || message.includes('Target crashed')
+    || message.includes('Page crashed')
+    || message.includes('browser has been closed')
+    || message.includes('browser disconnected');
+}
+
 interface RuntimeSession {
   readonly origin: string;
-  readonly logs: Record<string, string>;
+  getLogs(): Record<string, string>;
   stop(): Promise<void>;
 }
