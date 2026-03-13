@@ -137,49 +137,53 @@ test('browser dashboard flows work in publish mode', async () => {
 async function exerciseBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   browsers.push(browser);
-
-  const fragmentContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const fragmentPage = await fragmentContext.newPage();
-
   try {
-    await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click();
-    await fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`);
-    await fragmentPage.locator('h1').waitFor({ state: 'visible' });
+    const fragmentContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const fragmentPage = await fragmentContext.newPage();
 
-    await assertDocumentNavigationResetsScroll(fragmentPage, origin);
-    await assertFragmentUpdateAndFocus(fragmentPage);
+    try {
+      await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+      await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click();
+      await fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`);
+      await fragmentPage.locator('h1').waitFor({ state: 'visible' });
+
+      await assertDocumentNavigationResetsScroll(fragmentPage, origin);
+      await assertFragmentUpdateAndFocus(fragmentPage);
+    } finally {
+      await fragmentContext.close().catch(() => undefined);
+    }
+
+    const sessionContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const sessionPage = await sessionContext.newPage();
+
+    try {
+      await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
+      await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
+      await assertSessionFlow(sessionPage);
+    } finally {
+      await sessionContext.close().catch(() => undefined);
+    }
+
+    const baselineContext = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 1280, height: 720 }
+    });
+    const baselinePage = await baselineContext.newPage();
+
+    try {
+      await assertNativeRedirectFlow(baselinePage, origin);
+    } finally {
+      await baselineContext.close().catch(() => undefined);
+    }
   } finally {
-    await fragmentContext.close().catch(() => undefined);
-  }
-
-  const sessionContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const sessionPage = await sessionContext.newPage();
-
-  try {
-    await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
-    await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
-    await assertSessionFlow(sessionPage);
-  } finally {
-    await sessionContext.close().catch(() => undefined);
-  }
-
-  const baselineContext = await browser.newContext({
-    javaScriptEnabled: false,
-    viewport: { width: 1280, height: 720 }
-  });
-  const baselinePage = await baselineContext.newPage();
-
-  try {
-    await assertNativeRedirectFlow(baselinePage, origin);
-  } finally {
-    await baselineContext.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
+    removeBrowser(browser);
   }
 }
 
@@ -273,187 +277,195 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
 async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   browsers.push(browser);
-
-  const enhancedContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const enhancedPage = await enhancedContext.newPage();
-
   try {
-    await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator('a[href="/api/demo/auth-crud"]').click();
-    await enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`);
-    await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
+    const enhancedContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const enhancedPage = await enhancedContext.newPage();
 
-    await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
-    await enhancedPage.locator('#auth-sign-in').click();
-    await enhancedPage.waitForFunction(
-      () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
-    );
+    try {
+      await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator('a[href="/api/demo/auth-crud"]').click();
+      await enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`);
+      await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
 
-    await enhancedPage.locator('#project-title').fill('');
-    await enhancedPage.locator('#project-notes').fill('This should fail first.');
-    await enhancedPage.locator('#project-create-submit').click();
-    await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
+      await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
+      await enhancedPage.locator('#auth-sign-in').click();
+      await enhancedPage.waitForFunction(
+        () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
+      );
 
-    await enhancedPage.locator('#project-title').fill('Browser launch checklist');
-    await enhancedPage.locator('#project-status').selectOption('active');
-    await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
-    await enhancedPage.locator('#project-create-submit').click();
-    await enhancedPage.waitForFunction(
-      () => document.body.textContent?.includes('Created project "Browser launch checklist".') ?? false
-    );
+      await enhancedPage.locator('#project-title').fill('');
+      await enhancedPage.locator('#project-notes').fill('This should fail first.');
+      await enhancedPage.locator('#project-create-submit').click();
+      await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
 
-    const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
-    const projectId = await projectRow.getAttribute('data-project-id');
-    if (!projectId) {
-      throw new Error('Expected a created project row.');
+      await enhancedPage.locator('#project-title').fill('Browser launch checklist');
+      await enhancedPage.locator('#project-status').selectOption('active');
+      await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
+      await enhancedPage.locator('#project-create-submit').click();
+      await enhancedPage.waitForFunction(
+        () => document.body.textContent?.includes('Created project "Browser launch checklist".') ?? false
+      );
+
+      const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
+      const projectId = await projectRow.getAttribute('data-project-id');
+      if (!projectId) {
+        throw new Error('Expected a created project row.');
+      }
+
+      await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
+      await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
+      await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await enhancedPage.waitForFunction(
+        (id) => document.querySelector(`[data-project-id="${id}"] h4`)?.textContent === 'Browser launch checklist updated',
+        projectId
+      );
+
+      await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
+      expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
+
+      await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await enhancedPage.waitForFunction(
+        (id) => !document.querySelector(`[data-project-id="${id}"]`),
+        projectId
+      );
+      expect(await enhancedPage.locator('#flash-region').textContent()).toContain('Deleted project "Browser launch checklist updated".');
+    } finally {
+      await enhancedContext.close().catch(() => undefined);
     }
 
-    await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
-    await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
-    await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await enhancedPage.waitForFunction(
-      (id) => document.querySelector(`[data-project-id="${id}"] h4`)?.textContent === 'Browser launch checklist updated',
-      projectId
-    );
+    const baselineContext = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 1280, height: 720 }
+    });
+    const baselinePage = await baselineContext.newPage();
 
-    await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
-    expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
+    try {
+      await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
+      await baselinePage.locator('#project-title').fill('Native blocked project');
+      await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
+      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Sign in required to manage projects.')
+      );
 
-    await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await enhancedPage.waitForFunction(
-      (id) => !document.querySelector(`[data-project-id="${id}"]`),
-      projectId
-    );
-    expect(await enhancedPage.locator('#flash-region').textContent()).toContain('Deleted project "Browser launch checklist updated".');
+      await baselinePage.locator('#auth-email').fill('native@example.com');
+      await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Signed in as native@example.com.')
+      );
+
+      await baselinePage.locator('#project-title').fill('Native create project');
+      await baselinePage.locator('#project-status').selectOption('active');
+      await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
+      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Created project "Native create project".')
+      );
+
+      expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
+    } finally {
+      await baselineContext.close().catch(() => undefined);
+    }
   } finally {
-    await enhancedContext.close().catch(() => undefined);
-  }
-
-  const baselineContext = await browser.newContext({
-    javaScriptEnabled: false,
-    viewport: { width: 1280, height: 720 }
-  });
-  const baselinePage = await baselineContext.newPage();
-
-  try {
-    await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
-    await baselinePage.locator('#project-title').fill('Native blocked project');
-    await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
-    await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/auth-crud'
-      && document.body.textContent?.includes('Sign in required to manage projects.')
-    );
-
-    await baselinePage.locator('#auth-email').fill('native@example.com');
-    await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/auth-crud'
-      && document.body.textContent?.includes('Signed in as native@example.com.')
-    );
-
-    await baselinePage.locator('#project-title').fill('Native create project');
-    await baselinePage.locator('#project-status').selectOption('active');
-    await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
-    await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/auth-crud'
-      && document.body.textContent?.includes('Created project "Native create project".')
-    );
-
-    expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
-  } finally {
-    await baselineContext.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
+    removeBrowser(browser);
   }
 }
 
 async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
   browsers.push(browser);
-
-  const enhancedContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const enhancedPage = await enhancedContext.newPage();
-
   try {
-    await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator('a[href="/api/demo/dashboard"]').click();
-    await enhancedPage.waitForURL(`${origin}/api/demo/dashboard`);
-    await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
+    const enhancedContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const enhancedPage = await enhancedContext.newPage();
 
-    await enhancedPage.locator('#dashboard-team').selectOption('growth');
-    await enhancedPage.locator('#dashboard-range').selectOption('month');
-    await enhancedPage.locator('#dashboard-apply-filters').click();
-    await enhancedPage.waitForFunction(
-      () => document.querySelector('#dashboard-heading')?.textContent === 'Dashboard focus: Growth · last 30 days'
-    );
+    try {
+      await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator('a[href="/api/demo/dashboard"]').click();
+      await enhancedPage.waitForURL(`${origin}/api/demo/dashboard`);
+      await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
 
-    const enhancedRefreshCount = await readRefreshCount(enhancedPage);
-    await enhancedPage.locator('#metrics-refresh').click();
-    await enhancedPage.waitForFunction(
-      (previousCount) => {
-        const text = document.querySelector('#metrics-refresh-count')?.textContent ?? '';
-        const match = text.match(/Refresh count: (\d+)/);
-        return match ? Number(match[1]) > previousCount : false;
-      },
-      enhancedRefreshCount
-    );
+      await enhancedPage.locator('#dashboard-team').selectOption('growth');
+      await enhancedPage.locator('#dashboard-range').selectOption('month');
+      await enhancedPage.locator('#dashboard-apply-filters').click();
+      await enhancedPage.waitForFunction(
+        () => document.querySelector('#dashboard-heading')?.textContent === 'Dashboard focus: Growth · last 30 days'
+      );
 
-    const alertRow = enhancedPage.locator('[data-alert-row="true"]').first();
-    const alertId = await alertRow.getAttribute('data-alert-id');
-    if (!alertId) {
-      throw new Error('Expected an alert row in the dashboard proof app.');
+      const enhancedRefreshCount = await readRefreshCount(enhancedPage);
+      await enhancedPage.locator('#metrics-refresh').click();
+      await enhancedPage.waitForFunction(
+        (previousCount) => {
+          const text = document.querySelector('#metrics-refresh-count')?.textContent ?? '';
+          const match = text.match(/Refresh count: (\d+)/);
+          return match ? Number(match[1]) > previousCount : false;
+        },
+        enhancedRefreshCount
+      );
+
+      const alertRow = enhancedPage.locator('[data-alert-row="true"]').first();
+      const alertId = await alertRow.getAttribute('data-alert-id');
+      if (!alertId) {
+        throw new Error('Expected an alert row in the dashboard proof app.');
+      }
+
+      await enhancedPage.locator(`#acknowledge-alert-${alertId}`).click();
+      await enhancedPage.waitForFunction(
+        (id) => !document.querySelector(`[data-alert-id="${id}"]`),
+        alertId
+      );
+      expect(await enhancedPage.locator('#alerts-status').textContent()).toContain('Acknowledged');
+
+      await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator('#dashboard-heading').waitFor({ state: 'visible' });
+      expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: Growth · last 30 days');
+      expect(await readRefreshCount(enhancedPage)).toBeGreaterThan(enhancedRefreshCount);
+      expect(await enhancedPage.locator(`[data-alert-id="${alertId}"]`).count()).toBe(0);
+    } finally {
+      await enhancedContext.close().catch(() => undefined);
     }
 
-    await enhancedPage.locator(`#acknowledge-alert-${alertId}`).click();
-    await enhancedPage.waitForFunction(
-      (id) => !document.querySelector(`[data-alert-id="${id}"]`),
-      alertId
-    );
-    expect(await enhancedPage.locator('#alerts-status').textContent()).toContain('Acknowledged');
+    const baselineContext = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 1280, height: 720 }
+    });
+    const baselinePage = await baselineContext.newPage();
 
-    await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator('#dashboard-heading').waitFor({ state: 'visible' });
-    expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: Growth · last 30 days');
-    expect(await readRefreshCount(enhancedPage)).toBeGreaterThan(enhancedRefreshCount);
-    expect(await enhancedPage.locator(`[data-alert-id="${alertId}"]`).count()).toBe(0);
+    try {
+      await baselinePage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
+      await baselinePage.locator('#dashboard-team').selectOption('north');
+      await baselinePage.locator('#dashboard-range').selectOption('today');
+      await baselinePage.locator('#dashboard-filter-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/dashboard'
+        && document.body.textContent?.includes('Filtered to North region for today.')
+      );
+
+      const baselineRefreshCount = await readRefreshCount(baselinePage);
+      await baselinePage.locator('#metrics-refresh-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/dashboard'
+        && document.body.textContent?.includes('Snapshot refreshed 1 time for North region.')
+      );
+
+      expect(await baselinePage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: North region · today');
+      expect(await readRefreshCount(baselinePage)).toBeGreaterThan(baselineRefreshCount);
+    } finally {
+      await baselineContext.close().catch(() => undefined);
+    }
   } finally {
-    await enhancedContext.close().catch(() => undefined);
-  }
-
-  const baselineContext = await browser.newContext({
-    javaScriptEnabled: false,
-    viewport: { width: 1280, height: 720 }
-  });
-  const baselinePage = await baselineContext.newPage();
-
-  try {
-    await baselinePage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
-    await baselinePage.locator('#dashboard-team').selectOption('north');
-    await baselinePage.locator('#dashboard-range').selectOption('today');
-    await baselinePage.locator('#dashboard-filter-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/dashboard'
-      && document.body.textContent?.includes('Filtered to North region for today.')
-    );
-
-    const baselineRefreshCount = await readRefreshCount(baselinePage);
-    await baselinePage.locator('#metrics-refresh-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/dashboard'
-      && document.body.textContent?.includes('Snapshot refreshed 1 time for North region.')
-    );
-
-    expect(await baselinePage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: North region · today');
-    expect(await readRefreshCount(baselinePage)).toBeGreaterThan(baselineRefreshCount);
-  } finally {
-    await baselineContext.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
+    removeBrowser(browser);
   }
 }
 
@@ -614,6 +626,13 @@ function removeChildProcess(child: ReturnType<typeof Bun.spawn>): void {
   const index = childProcesses.indexOf(child);
   if (index >= 0) {
     childProcesses.splice(index, 1);
+  }
+}
+
+function removeBrowser(browser: Browser): void {
+  const index = browsers.indexOf(browser);
+  if (index >= 0) {
+    browsers.splice(index, 1);
   }
 }
 
