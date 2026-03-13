@@ -143,6 +143,7 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'observability', 'logger.ts'),
     path.join('src', 'backend', 'observability', 'metrics.ts'),
     path.join('src', 'backend', 'runtime', 'node-http.ts'),
+    path.join('src', 'backend', 'runtime', 'fastify.ts'),
     path.join('src', 'backend', 'runtime', 'views.ts'),
     path.join('src', 'backend', 'functions', 'hello', 'index.ts'),
     path.join('src', 'backend', 'jobs', 'nightly', 'index.ts'),
@@ -170,4 +171,10 @@ test('scaffold assets expose core backend templates', async () => {
 
   const runtimeNodeHttpSource = await fs.readFile(runtimeNodeHttpAsset.sourcePath, 'utf8');
   assert.match(runtimeNodeHttpSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/node-http';/);
+
+  const runtimeFastifyAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'fastify.ts'));
+  assert.ok(runtimeFastifyAsset, 'expected scaffold assets to include the runtime fastify helper');
+
+  const runtimeFastifySource = await fs.readFile(runtimeFastifyAsset.sourcePath, 'utf8');
+  assert.match(runtimeFastifySource, /export \* from '@webstir-io\/webstir-backend\/runtime\/fastify';/);
 });

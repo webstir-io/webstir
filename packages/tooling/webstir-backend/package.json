@@ -36,6 +36,11 @@
       "import": "./dist/runtime/node-http.js",
       "default": "./dist/runtime/node-http.js"
     },
+    "./runtime/fastify": {
+      "types": "./dist/runtime/fastify.d.ts",
+      "import": "./dist/runtime/fastify.js",
+      "default": "./dist/runtime/fastify.js"
+    },
     "./provider": {
       "types": "./dist/provider.d.ts",
       "import": "./dist/provider.js",
