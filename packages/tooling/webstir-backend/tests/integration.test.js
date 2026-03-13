@@ -1496,6 +1496,78 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
   });
 });
 
+test('node-http scaffold helper loads module runtime and preserves response semantics', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-node-http-helper-');
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createRequestHookRuntimeModuleSource(),
+    mode: 'build'
+  });
+
+  const helperBuildPath = path.join(workspace, 'build', 'node-http.mjs');
+  await esbuild({
+    entryPoints: [path.join(workspace, 'src', 'backend', 'runtime', 'node-http.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    outfile: helperBuildPath,
+    logLevel: 'silent'
+  });
+  const helperUrl = pathToFileURL(helperBuildPath).href;
+  const {
+    createReadinessTracker,
+    loadModuleRuntime,
+    matchRoute,
+    normalizeRouteHandlerResult,
+    summarizeManifest
+  } = await import(helperUrl);
+
+  const runtime = await loadModuleRuntime({
+    importMetaUrl: pathToFileURL(path.join(workspace, 'build', 'backend', 'index.js')).href
+  });
+
+  assert.equal(runtime.source, 'module.js');
+  assert.deepEqual(runtime.warnings, []);
+  assert.deepEqual(
+    runtime.routes.map((route) => `${route.method} ${route.definition?.path ?? ''}`),
+    ['GET /hooks/demo']
+  );
+  assert.deepEqual(summarizeManifest(runtime.manifest), {
+    name: '@demo/runtime-hooks',
+    version: '0.1.0',
+    routes: 1,
+    views: 0,
+    capabilities: ['http', 'auth']
+  });
+
+  const matched = matchRoute(runtime.routes, 'get', '/hooks/demo');
+  assert.ok(matched, 'expected route match');
+  assert.equal(matched?.route.name, 'hookRoute');
+  assert.deepEqual(matched?.params, {});
+
+  const readiness = createReadinessTracker();
+  assert.deepEqual(readiness.snapshot(), { status: 'booting', message: undefined });
+  readiness.error('load failed');
+  assert.deepEqual(readiness.snapshot(), { status: 'error', message: 'load failed' });
+  readiness.ready();
+  assert.deepEqual(readiness.snapshot(), { status: 'ready', message: undefined });
+
+  const invalidFragmentResult = normalizeRouteHandlerResult({
+    status: 200,
+    fragment: {
+      target: ' ',
+      body: '<main>bad</main>'
+    }
+  });
+  assert.equal(invalidFragmentResult.status, 500);
+  assert.deepEqual(invalidFragmentResult.errors, [
+    {
+      code: 'invalid_fragment_response',
+      message: 'Fragment responses require a non-empty target, supported mode, and body.',
+      details: ['target']
+    }
+  ]);
+});
+
 test('session scaffold helper resolves, consumes, and invalidates session state', async () => {
   const workspace = await createTempWorkspace('webstir-backend-session-helper-');
   await buildRuntimeWorkspace(workspace, {
@@ -1764,6 +1836,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
     moduleSource: createRequestHookRuntimeModuleSource(),
     mode: 'build'
   });
+  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'forms.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
@@ -1776,6 +1849,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
     useFastify: true,
     mode: 'build'
   });
+  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'forms.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);

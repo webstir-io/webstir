@@ -142,6 +142,7 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'auth', 'adapter.ts'),
     path.join('src', 'backend', 'observability', 'logger.ts'),
     path.join('src', 'backend', 'observability', 'metrics.ts'),
+    path.join('src', 'backend', 'runtime', 'node-http.ts'),
     path.join('src', 'backend', 'runtime', 'views.ts'),
     path.join('src', 'backend', 'functions', 'hello', 'index.ts'),
     path.join('src', 'backend', 'jobs', 'nightly', 'index.ts'),
@@ -163,4 +164,10 @@ test('scaffold assets expose core backend templates', async () => {
 
   const runtimeViewSource = await fs.readFile(runtimeViewAsset.sourcePath, 'utf8');
   assert.match(runtimeViewSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/views';/);
+
+  const runtimeNodeHttpAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'node-http.ts'));
+  assert.ok(runtimeNodeHttpAsset, 'expected scaffold assets to include the runtime node-http helper');
+
+  const runtimeNodeHttpSource = await fs.readFile(runtimeNodeHttpAsset.sourcePath, 'utf8');
+  assert.match(runtimeNodeHttpSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/node-http';/);
 });
