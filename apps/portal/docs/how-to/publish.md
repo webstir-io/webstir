@@ -8,18 +8,10 @@
 webstir publish --workspace /absolute/path/to/workspace
 ```
 
-Optional filters:
-
-```bash
-webstir publish --workspace /absolute/path/to/workspace --runtime frontend
-webstir publish --workspace /absolute/path/to/workspace --runtime backend
-webstir publish --workspace /absolute/path/to/workspace --frontend-mode ssg
-```
-
 ## Outputs
 
-- `dist/frontend/**` for optimized document assets
-- `build/backend/**` for compiled backend output
+- `dist/frontend/**` for optimized document assets when the workspace has a frontend surface
+- `build/backend/**` for compiled backend output when the workspace has a backend surface
 
 ## Runtime Expectations
 
@@ -38,6 +30,8 @@ bun run publish:dashboard
 ```
 
 Those two demos cover the shipped server-handled forms and dashboard refresh paths.
+
+For static-site output, scaffold an `ssg` workspace or use the lower-level `webstir-frontend publish --mode ssg` package CLI directly. The top-level `webstir` CLI does not expose a `--frontend-mode` flag.
 
 ## Related Docs
 

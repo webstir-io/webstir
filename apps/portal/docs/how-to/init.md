@@ -11,25 +11,28 @@ Create a new project from embedded templates. Produces a ready-to-run layout wit
 - Recreating a minimal workspace for tests or examples.
 
 ## CLI
-- `webstir init [--client-only|--server-only] [--project|-p <name>] [directory]`
+- `webstir init <mode> <directory>`
+- `webstir init <directory>`
 
 ## Inputs & Flags
-- Target directory (optional; defaults to current working directory).
-- `--client-only` or `--server-only` to limit templates.
-- `--project|-p` to set the app name in template files.
+- `<mode>`: `full`, `ssg`, `spa`, or `api`.
+- `<directory>`: target directory to create or populate.
+- If you omit `<mode>`, `init` defaults to `full`.
 
 ## Steps
 1. Validate or create the target directory.
-2. Copy templates: frontend, backend, shared, types.
-3. Normalize names and placeholders (project name, defaults).
-4. Write minimal config files used by the engine and templates (including `webstir.providers.json`).
+2. Copy the Bun-owned scaffold assets for the selected workspace mode.
+3. Write `package.json` with the matching Webstir dependencies.
+4. Write `base.tsconfig.json` and the expected `src/**` layout.
+5. Run `bun install` inside the new workspace before `watch`, `build`, `test`, or `publish`.
 
 ## Outputs
-- Source tree under `src/**` and `types/`.
-- Base HTML at `src/frontend/app/app.html` (must contain `<main>`).
-- Backend entry at `src/backend/index.ts`.
-- Shared modules under `src/shared/**`.
-- Provider map at `webstir.providers.json` (defaults to Webstir-managed providers; edit to swap providers).
+- `full`: `src/frontend/**`, `src/backend/**`, `src/shared/**`, and `types/**`
+- `spa`: `src/frontend/**`, `src/shared/**`, and `types/**`
+- `ssg`: `src/frontend/**` and `types/**`
+- `api`: `src/backend/**`, `src/shared/**`, and `types/**`
+- `package.json` with `webstir.mode`
+- `base.tsconfig.json`
 
 ## Errors & Exit Codes
 - Non-zero on invalid directory, name normalization failure, or IO errors.

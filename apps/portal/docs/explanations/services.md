@@ -1,62 +1,40 @@
 # Services
 
-Runtime helpers that coordinate builds, watching, and dev UX. Services keep workflows small by handling long-running behavior and cross-cutting concerns.
+Long-running helpers that keep the Bun watch loop small and predictable.
 
-## Overview
-- DevService: hosts the dev web server, live reload, and API proxy.
-- WatchService: watches `src/**`, batches changes, and triggers minimal work.
-- ChangeService: classifies changes (frontend/backend/shared) and deduplicates.
+The active implementation no longer uses the older `DevService` / `WatchService` / `ChangeService` class structure. Instead, the Bun orchestrator composes a small set of focused helpers.
 
-See also: [Engine](engine.md) and [Servers](servers.md).
+## Active Pieces
 
-## DevService
-- Serves `build/frontend/**` during `watch`.
-- Exposes an SSE endpoint to notify connected browsers to reload after frontend rebuilds.
-- Proxies `/api/*` to the Node API server that runs `build/backend/index.js`.
-- Publishes build status events (`building`, `success`, `error`) that drive the browser badge.
-- Applies clean URLs and dev cache headers.
-
-Lifecycle
-- Start after initial `build` and `test` in the `watch` workflow.
-- On frontend changes: rebuild affected assets → broadcast reload via SSE.
-- On backend changes: restart Node process (proxy keeps routing to the new process).
-
-Configuration
-- Picks a free port or uses a configured one from CLI options/env.
-- Logs the server URL and SSE status on start.
-
-## WatchService
-- Watches `src/**` and ignores `build/**` and `dist/**`.
-- Buffers and coalesces rapid events to avoid thrashing.
-- Emits normalized change events to the ChangeService.
-
-Behavior
-- Debounce/queue changes; process in FIFO while merging duplicates.
-- Survives editor temp files; only triggers when effective content changes.
-
-## ChangeService
-- Categorizes a change as frontend/backend/shared based on path.
-- Computes the smallest rebuild unit (page, backend, or both).
-- Prevents duplicate or circular work.
-- Emits `ClientNotificationType` events so DevService can broadcast status/reload messages.
-
-Routing examples
-- `src/frontend/pages/home/index.ts` → frontend rebuild for `home`.
-- `src/backend/index.ts` → backend rebuild and restart.
-- `src/shared/*.ts` → trigger both sides as needed.
+- `DevServer`: serves `build/frontend/**`, emits SSE status/reload events, and proxies `/api/*` in `full` mode
+- `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload triggers
+- `FrontendWatchDaemonClient`: launches `webstir-frontend watch-daemon` and forwards structured diagnostics
+- `WatchCoordinator` (frontend package): performs incremental frontend rebuilds and decides between HMR and full reloads
+- `BackendRuntimeSupervisor`: starts and restarts `build/backend/index.js` after successful backend builds
 
 ## Responsibilities Split
-- Workflows decide “when” to start services and “what” to do next.
-- Services decide “how” to watch, proxy, notify, and throttle.
 
-## Errors & Logging
-- All services surface clear, actionable logs.
-- Failures bubble to the CLI with non-zero exit codes when unrecoverable.
+- Orchestrator commands decide which helpers are needed for the workspace mode.
+- The frontend package owns incremental frontend build logic and HMR decisions.
+- The Bun orchestrator owns process supervision, HTTP serving, and proxying.
+
+## Change Flow
+
+- Frontend file changes flow through `WorkspaceWatcher` to the frontend watch daemon.
+- The frontend daemon emits diagnostics that the orchestrator turns into browser status, HMR, or reload events.
+- Backend rebuild completions flow through `startBackendWatch()` and trigger `BackendRuntimeSupervisor.restart()`.
+
+## Why This Matters
+
+This split keeps the active system simple:
+
+- frontend logic stays in the frontend package
+- backend build logic stays in the backend package
+- the CLI remains a coordinator instead of a second implementation of those pipelines
 
 ## Related Docs
-- Solution overview — [solution](solution.md)
+
 - Engine — [engine](engine.md)
+- Dev service — [devservice](devservice.md)
 - Servers — [servers](servers.md)
-- Pipelines — [pipelines](pipelines.md)
-- Workspace — [workspace](workspace.md)
-- CLI — [cli](../reference/cli.md)
+- Watch workflow — [watch](../how-to/watch.md)

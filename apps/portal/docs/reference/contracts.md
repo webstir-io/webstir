@@ -50,5 +50,5 @@ Public, user-visible guarantees that Webstir preserves across releases. These ar
  - Template includes a client error handler (`/app/error.js`) that throttles to 1/sec (max 20/session) and deduplicates repeats for 60s.
 
 ## CLI Guarantees
-- Commands: `init`, `build`, `watch`, `test`, `publish`, `add-page`, `add-test`, `help`.
-- Default command: `watch` when no command is provided.
+- Commands: `init`, `refresh`, `repair`, `enable`, `build`, `watch`, `test`, `publish`, `smoke`, `backend-inspect`, `add-page`, `add-test`, `add-route`, `add-job`.
+- Running `webstir` with no command prints help; there is no default implicit workflow.

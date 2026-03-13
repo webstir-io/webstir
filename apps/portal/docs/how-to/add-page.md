@@ -10,7 +10,7 @@ Scaffold a new frontend page with `index.html|css|ts` under `src/frontend/pages/
 - Adding a new top-level page in the app.
 
 ## CLI
-- `webstir add-page <name>`
+- `webstir add-page <name> --workspace <path>`
 
 ## Notes
 - Frontend only: this command scaffolds files under `src/frontend/pages/` and does not touch backend or shared code.
@@ -22,8 +22,8 @@ Scaffold a new frontend page with `index.html|css|ts` under `src/frontend/pages/
 
 ## Steps
 1. Validate `<name>` and resolve `src/frontend/pages/<name>/`.
-2. Delegate to `webstir-frontend add-page` to create page files from the framework templates.
-3. The TypeScript CLI updates intrinsics (imports, references) so the page builds immediately.
+2. Delegate to `webstir-frontend add-page` to create page files from the canonical scaffold.
+3. Pick the standard or SSG page shape based on the workspace mode.
 
 ## Outputs
 - New page folder and files under `src/frontend/pages/<name>/`.

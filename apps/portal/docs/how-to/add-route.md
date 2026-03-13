@@ -8,16 +8,16 @@ This guide shows how to add a backend route to your module manifest and optional
 
 ## Steps
 1. Add a route with defaults:
-   - `webstir add-route users`
+   - `webstir add-route users --workspace "$PWD"`
    - Writes `GET /api/users` to `webstir.moduleManifest.routes` in `package.json`.
 2. Specify method and path explicitly when needed:
-   - `webstir add-route users --method POST --path /api/users`
+   - `webstir add-route users --workspace "$PWD" --method POST --path /api/users`
 3. Attach metadata so documentation and tooling stay in sync:
-   - `webstir add-route accounts --summary "List accounts" --description "Returns the current tenant accounts" --tags accounts,api`
+   - `webstir add-route accounts --workspace "$PWD" --summary "List accounts" --description "Returns the current tenant accounts" --tags accounts,api`
    - Schema references follow the `kind:name@source` format described in the CLI reference. Example:\
-     `webstir add-route accounts --params-schema zod:AccountParams@src/shared/contracts/accounts.ts --response-schema zod:AccountList@src/shared/contracts/accounts.ts`
+     `webstir add-route accounts --workspace "$PWD" --params-schema zod:AccountParams@src/shared/contracts/accounts.ts --response-schema zod:AccountList@src/shared/contracts/accounts.ts`
 4. Scaffold a Fastify handler (optional):
-   - `webstir add-route accounts --fastify`
+   - `webstir add-route accounts --workspace "$PWD" --fastify`
    - Creates `src/backend/server/routes/accounts.ts`.
    - If `src/backend/server/fastify.ts` exists, imports and registers `registerAccounts(app)` automatically.
 
@@ -69,10 +69,10 @@ export const module = {
 - The backend provider auto-loads `build/backend/module.js`, logs the manifest summary, and mounts every exported route. No manual registration is required when you edit `src/backend/module.ts`.
 
 ## Verify the manifest
-- Run `webstir build --runtime backend` (or `webstir watch --runtime backend`) to regenerate `.webstir/backend-manifest.json`.
+- Run `webstir build --workspace "$PWD"` (or `webstir watch --workspace "$PWD"` in an `api` or `full` workspace).
 - Print the manifest summary without starting the dev service:\
-  `webstir backend-inspect`
-- The inspect command lists capabilities, routes, and jobs so you can verify manifest metadata before sharing it with collaborators or publishing packages.
+  `webstir backend-inspect --workspace "$PWD"`
+- The inspect command rebuilds the backend and lists capabilities, routes, and jobs so you can verify manifest metadata before sharing it with collaborators or publishing packages.
 
 ## Notes
 - The CLI prevents duplicate entries for the same method+path.

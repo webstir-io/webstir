@@ -17,8 +17,8 @@ The active implementation lives in the Bun orchestrator plus the canonical TypeS
 
 ## Proof Apps
 
-- [`examples/demos/auth-crud`](../../../examples/demos/auth-crud) proves sessions, auth gates, validation recovery, redirect-after-post, and fragment-enhanced CRUD forms.
-- [`examples/demos/dashboard`](../../../examples/demos/dashboard) proves shell-level and panel-level refreshes without forcing SPA architecture.
+- [`examples/demos/auth-crud`](https://github.com/webstir-io/webstir/tree/main/examples/demos/auth-crud) proves sessions, auth gates, validation recovery, redirect-after-post, and fragment-enhanced CRUD forms.
+- [`examples/demos/dashboard`](https://github.com/webstir-io/webstir/tree/main/examples/demos/dashboard) proves shell-level and panel-level refreshes without forcing SPA architecture.
 
 ## Docs Index
 
@@ -26,7 +26,7 @@ The active implementation lives in the Bun orchestrator plus the canonical TypeS
 - How-to guides: [README](./how-to/README.md)
 - Reference: [README](./reference/README.md)
 - Explanations: [README](./explanations/README.md)
-- Product plans: [`docs/product/plans`](./product/plans/)
+- Product plans: [README](./product/plans/README.md)
 
 ## Current Framing
 

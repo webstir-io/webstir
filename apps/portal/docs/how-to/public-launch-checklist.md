@@ -19,9 +19,9 @@ Make Webstir repos public in a consistent, OSS-friendly way. This guide captures
   - Call out that APIs, contracts, and workflows may change between releases.
   - Suggest not using it for production workloads yet.
 - Quick Start:
-  - Install instructions (npm / dotnet / env vars as needed).
+  - Install instructions (Bun or npm plus any required env vars).
   - Minimal usage example (CLI or code snippet).
-  - Version requirements (Node, .NET, TypeScript, etc.).
+  - Version requirements (Bun, Node, TypeScript, etc.).
 - Concepts / Layout:
   - Brief description of expected workspace or usage patterns.
   - Links into `webstir-portal` docs where applicable.
@@ -46,7 +46,7 @@ Make Webstir repos public in a consistent, OSS-friendly way. This guide captures
 
 ## GitHub Settings Checklist
 - Topics:
-  - Add relevant topics (for example: `web-framework`, `typescript`, `dotnet`, `frontend`, `backend`, `testing`, `vite`, `agentic-assistants`).
+  - Add relevant topics (for example: `web-framework`, `bun`, `typescript`, `frontend`, `backend`, `testing`, `vite`, `agentic-assistants`).
 - Branch protection:
   - Require PRs into the default branch.
   - Require status checks from `ci` workflows to pass.
@@ -58,8 +58,7 @@ Make Webstir repos public in a consistent, OSS-friendly way. This guide captures
 
 ## CI & Release Expectations
 - CI (`ci.yml`):
-  - Node repos: `npm ci`, `npm run build`, and `npm test` (when present).
-  - .NET repos: `dotnet build` and `dotnet test` for the main test project.
+  - Bun/Node repos: `bun install`, `bun run build`, `bun run test`, and package-local smoke checks when present.
   - Ensure CI runs on PRs and pushes to the default branch.
 - Release (`release.yml`):
   - Use a consistent strategy (tags, GitHub Releases, or package publish).
@@ -77,4 +76,3 @@ Make Webstir repos public in a consistent, OSS-friendly way. This guide captures
 - CLI reference — [CLI](../reference/cli.md)
 - Contracts & invariants — [Contracts](../reference/contracts.md)
 - Provider selection — [Provider selection](./provider-selection.md)
-

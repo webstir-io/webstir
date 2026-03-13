@@ -7,6 +7,7 @@ Build a small HTML-first full-stack app, then validate it through the same watch
 ```bash
 bun run webstir -- init my-first-app
 cd my-first-app
+bun install
 ```
 
 ## Run In Dev Mode
@@ -35,8 +36,8 @@ Use `src/backend/index.ts` or `src/backend/module.ts` to add:
 
 The repo proof apps show the target shape:
 
-- [`examples/demos/auth-crud`](../../../../examples/demos/auth-crud)
-- [`examples/demos/dashboard`](../../../../examples/demos/dashboard)
+- [`examples/demos/auth-crud`](https://github.com/webstir-io/webstir/tree/main/examples/demos/auth-crud)
+- [`examples/demos/dashboard`](https://github.com/webstir-io/webstir/tree/main/examples/demos/dashboard)
 
 ## Test And Publish
 

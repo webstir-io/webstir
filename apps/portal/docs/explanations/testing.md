@@ -1,75 +1,60 @@
 # Testing
 
-How we test the Webstir solution and what we lock down. This expands the high-level approach in the [orchestrator testing guide](https://github.com/webstir-io/webstir/blob/main/orchestrators/dotnet/.codex/testing.md) and focuses on the CLI/Engine.
+How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 
 ## Overview
-- Goal: protect the developer experience, not chase coverage.
-- Focus: end-to-end CLI workflows and published outputs.
-- Contract first: commands, flags, exit codes, folder structure, manifests, and dev behavior (reload, proxy).
+
+- Goal: protect the developer-facing contract, not maximize line coverage.
+- Focus: CLI behavior, generated workspaces, watch/runtime behavior, and publish outputs.
+- Primary surfaces: `orchestrators/bun/tests/**` plus package-local `tests/**`.
 
 ## What We Test
-- Workflows: init → build → watch → test → publish. See [workflows](../reference/workflows.md).
-- Generators: `add-page`, `add-test` create expected files and integrate with builds.
-- Contracts: directory layout, build artifacts, per-page `manifest.json`, rewritten HTML links.
-- Dev behavior: dev web server serves pages, proxies `/api/*`, live reload via SSE.
-- Error paths: invalid flags, missing `<main>` in `app.html`, TypeScript errors, failing tests → non-zero exit.
 
-## What We Don’t Test
-- Private helpers, wiring details, or internal classes.
-- Line-by-line coverage metrics.
-- Transient implementation quirks that don’t affect public behavior.
+- CLI workflows: `init`, `build`, `watch`, `test`, `publish`, `smoke`, and generators
+- Contracts: folder layout, emitted artifacts, exit codes, and manifest summaries
+- Watch behavior: HMR, reloads, backend restarts, and `/api/*` proxying
+- Proof apps: `auth-crud` and `dashboard` as consumer-path validation
+- Package behavior inside `@webstir-io/webstir-frontend`, `@webstir-io/webstir-backend`, and `@webstir-io/webstir-testing`
 
 ## Test Types
-- End-to-End CLI: run `webstir` commands against a temp workspace and assert outputs.
-- Snapshot (golden) tests: compare generated files or folder trees to known-good versions.
-- Property tests: invariants like “any project name that matches rules builds”, “page names are normalized consistently”.
-- Smoke checks: dev server responds on a port; watch triggers rebuild on file change.
-- Error scenario tests: bad input produces clear messages and non-zero exit codes.
 
-## Harness & Structure
-- Location: `Tester/` — xUnit project that executes the CLI/Engine workflows under `dotnet test`.
-- Isolation: each test runs in a unique temp directory; no global state.
-- Process: spawn CLI via the test harness, capture stdout/stderr, and check exit codes.
-- Filesystem: assert on existence, contents, and structure of `build/` and `dist/`.
-
-## Snapshots
-- Use snapshots to lock down scaffolding and publish outputs.
-- Keep snapshots readable; prefer whole-file or folder snapshots over brittle line assertions.
-- Normalize dynamic data (timestamps, absolute paths, random IDs) before comparing.
-- When a legitimate change occurs, review and update the snapshot intentionally.
+- Orchestrator integration tests under `orchestrators/bun/tests/**/*.ts`
+- Package tests under `packages/tooling/*/tests/**/*.test.js`
+- Browser integration tests for progressive-enhancement flows in the Bun orchestrator
+- Smoke scripts where a package exposes `bun run smoke`
 
 ## Running Tests
-- Repo tests (engine/CLI): run `dotnet test Tester/Tester.csproj` (set `WEBSTIR_TEST_MODE=full` for the full suite or pass `--filter "Category=..."`).
-- Generated project tests: inside a project created by `webstir init`, run `webstir test` (delegates to the `webstir-test` CLI).
-- CI: relies on standard exit codes; non-zero fails the job.
 
-## Writing Tests
-- Choose behavior to lock down (a workflow, generator, or contract).
-- Arrange: create a temp workspace; optionally run `webstir init` with flags.
-- Act: run the target command (`build`, `watch` smoke, `publish`, generator).
-- Assert: check exit code, logs for key messages, and the filesystem outputs.
-- For snapshots: generate output, normalize dynamic values, compare to the approved snapshot.
+- Repo-wide active workspaces: `bun run test`
+- Bun orchestrator only: `bun run --filter @webstir-io/webstir test`
+- Frontend package: `bun run --filter @webstir-io/webstir-frontend test`
+- Backend package: `bun run --filter @webstir-io/webstir-backend test`
+- Generated workspace tests: `webstir test --workspace /absolute/path/to/workspace`
 
-## Dev Server & Watch
-- Smoke test: after `watch` starts, the web server responds and logs “watching” state.
-- Change test: touch a frontend file → expect frontend rebuild + reload signal; touch a backend file → expect backend restart.
-- Proxy test: request under `/api/*` routes to the Node server.
+## How `webstir test` Works
 
-## Publish Specifics
-- Fingerprinted assets: expect per-page `index.<timestamp>.{css|js}` written to `dist/frontend/pages/<page>/`.
-- HTML rewrite: page HTML references fingerprinted assets using the per-page `manifest.json`.
-- Minification: HTML/CSS/JS are minified; comments and source maps removed.
+1. Rebuild the required workspace surfaces.
+2. Discover tests under `src/**/tests`.
+3. Compile them into `build/**`.
+4. Run the compiled suites through the canonical testing provider.
 
-## Determinism & Flakiness
-- Avoid port conflicts by using OS-assigned ports or a shared allocator.
-- Use generous but bounded timeouts; don’t rely on sleeps where event signals exist.
-- Normalize any time-based names and absolute paths before assertions.
-- Batch file changes to avoid excessive rebuilds in watch tests.
+Only `webstir test` supports `--runtime <frontend|backend|all>`.
+
+## What We Avoid
+
+- Treating archived `.NET` harnesses as the current source of truth
+- Documenting unsupported flags or workflows as if they were active
+- Locking tests to private implementation details when a contract-level assertion is enough
+
+## Reliability Notes
+
+- Integration tests use isolated temp workspaces and copied fixtures.
+- Watch tests prefer explicit readiness and port checks over long sleeps.
+- Browser flows focus on shipped proof apps so regressions surface on real consumer paths.
 
 ## Related Docs
-- Solution overview — [solution](solution.md)
+
 - CLI reference — [cli](../reference/cli.md)
-- Engine internals — [engine](engine.md)
-- Pipelines — [pipelines](pipelines.md)
-- Testing — [tests](testing.md), [orchestrator testing guide](https://github.com/webstir-io/webstir/blob/main/orchestrators/dotnet/.codex/testing.md)
-- Workspace and paths — [workspace](workspace.md)
+- Workflows — [workflows](../reference/workflows.md)
+- Watch — [watch](../how-to/watch.md)
+- Test — [test](../how-to/test.md)

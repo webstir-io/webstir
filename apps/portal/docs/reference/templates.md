@@ -3,33 +3,45 @@
 Embedded scaffolding used by the CLI to create projects and generate files. Keeps new apps consistent and zero-config.
 
 ## Overview
-- Lives inside the engine and is embedded into the CLI.
+- Lives under `orchestrators/bun/assets/templates/**` and is embedded into the Bun CLI package.
 - `webstir init` lays down a full-stack project by default.
 - Generators add files in the right place with sensible defaults.
 
 ## Layout
-Created by `webstir init` unless you choose client-only or server-only:
-- Frontend: `src/frontend/`
-  - App shell: `src/frontend/app/app.html`, `src/frontend/app/*.js|css|png` (copied as-is)
-  - Pages: `src/frontend/pages/<page>/index.html|css|ts` (seed includes `home`)
-- Backend: `src/backend/index.ts` (Node API server entry)
-- Shared: `src/shared/**` (types/modules used on both sides)
-- Types: `types/**` (ambient `.d.ts` and tsconfig support)
-- Tests: `tests/**` (optional; used by `webstir test`)
+Created by `webstir init` according to workspace mode:
+
+- `full`: frontend, backend, shared, and types
+- `spa`: frontend, shared, and types
+- `ssg`: frontend and types
+- `api`: backend, shared, and types
+
+Typical frontend scaffold:
+
+- `src/frontend/app/app.html`
+- `src/frontend/app/**`
+- `src/frontend/pages/<page>/index.html|css|ts`
+- `src/frontend/{content,images,fonts,media}/**`
+
+Typical backend scaffold:
+
+- `src/backend/index.ts`
+- `src/backend/module.ts`
+- `src/backend/jobs/**`
+- `src/backend/tests/**`
 
 ## Conventions
 - Base HTML requires a `<main>` in `src/frontend/app/app.html` for page merge.
 - Page folder names must be URL-safe: letters, numbers, `_` and `-`.
 - Each page has `index.html`, `index.css`, `index.ts`.
 - Backend entry is `src/backend/index.ts` and must export an HTTP server.
- - For optional app features (like the router), prefer absolute dynamic imports (e.g., `await import('/app/router.js')`). This avoids relative-path issues between dev (`build/`) and publish (`dist/`).
+- For optional app features, prefer absolute app-asset imports such as `await import('/app/router.js')` so dev and publish paths stay aligned.
 
 ## TypeScript
 - Uses an embedded `base.tsconfig.json` referenced by template tsconfigs.
-- ESM-only; compiled via `tsc --build` in dev and publish.
+- ESM-only; compiled via the active provider packages.
 - Shared code in `src/shared` is compiled for both frontend and backend.
- - Dev tsconfig enables `sourceMap` and `inlineSources` for smooth debugging; publish never ships source maps and strips any `sourceMappingURL`.
- - Dynamic imports are not bundled in v1; they load at runtime. Keep paths absolute (e.g., `/app/...`) for assets under `src/frontend/app/`.
+- Dev output keeps source maps for local debugging; publish strips them.
+- Dynamic imports load at runtime. Keep `/app/...` imports absolute for assets under `src/frontend/app/`.
 
 ## CSS & Assets
 - Plain CSS by default; optional CSS Modules in publish.
@@ -50,13 +62,13 @@ Created by `webstir init` unless you choose client-only or server-only:
 ## Generators
 
 ### add-page
-- Command: `webstir add-page <name>`
+- Command: `webstir add-page <name> --workspace <path>`
 - Delegates to `webstir-frontend add-page` (TypeScript CLI) to scaffold `index.html|css|ts`.
 - Does not modify existing pages or `app.html`.
 - Name normalization: trims, lowercases, replaces spaces with `-`.
 
 ### add-test
-- Command: `webstir add-test <name-or-path>`
+- Command: `webstir add-test <name-or-path> --workspace <path>`
 - Delegates to `webstir-testing-add` (TypeScript CLI) to create `<name>.test.ts` under the nearest `tests/` directory.
 - Works for both frontend and backend tests.
 
@@ -75,7 +87,7 @@ Created by `webstir init` unless you choose client-only or server-only:
 - App assets copied to `dist/frontend/app/*`.
 
 ## Customizing Templates
-- Edit templates under `Engine/Templates/` in the source.
+- Edit templates under `orchestrators/bun/assets/templates/`.
 - Keep conventions intact (page structure, base HTML `<main>`, server entry path).
 - After changes, rebuild the CLI to embed updated templates.
 

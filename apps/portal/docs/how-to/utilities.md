@@ -1,52 +1,54 @@
 # Utilities
 
-Helper scripts to keep the repo tidy, build-ready, and easy to demo. Core helpers now live under `utilities/scripts/` and are safe to run from the repo root.
+Repo-level utility commands for the active Bun/TypeScript monorepo.
 
-## Scripts
+The current monorepo does not use the older `utilities/` .NET helper scripts as part of the supported workflow. Start from Bun commands at the repo root instead.
 
-### format.sh
-- Purpose: Run `dotnet format` across the solution.
-- Usage:
-  - `./utilities/format.sh`
-  - `./utilities/format.sh --verify-no-changes --severity info`
-- Notes: Passes flags through to `dotnet format`. Use in CI to verify style.
+## Common Commands
 
-### format-build.sh
-- Purpose: Fix whitespace, run style/analyzer formatters, build the solution, and execute frontend package tests.
-- Usage: `./utilities/scripts/format-build.sh`
-- Steps:
-  - Normalizes `.cs` files and runs `dotnet format whitespace`.
-  - `dotnet format style` and `dotnet format analyzers`.
-  - `dotnet build Webstir.sln -v minimal`.
-- Installs frontend dependencies (`pnpm install` by default) and runs the package tests.
-- Tip: Use before committing or when CI fails style checks.
+### Build the whole active workspace set
 
-### deploy-seed.sh
-- Purpose: Create, build, test, and publish a seed project for demos and the Sandbox.
-- Usage: `./utilities/scripts/deploy-seed.sh`
-- Output directories:
-  - Seed root: `CLI/out/seed`
-  - Build artifacts: `CLI/out/seed/build`
-  - Dist artifacts: `CLI/out/seed/dist`
-- Behavior:
-  - `init` a fresh seed at `CLI/out/seed` (replaces if exists).
-  - `build` with the CLI.
-  - `test`; if tests pass, `publish`.
-- Works with: Docker Sandbox setup mounting the seed paths.
+```bash
+bun run build
+```
 
-## Prerequisites
-- .NET SDK installed (`dotnet --info`).
-- Repo restored and buildable.
-- For Sandbox usage of `deploy-seed.sh`, Docker/Compose installed.
+### Run tests across workspaces
 
-## Tips
-- Run from the repo root to ensure relative paths resolve correctly.
-- Add `format.sh --verify-no-changes` to CI to enforce style.
-- If a formatter fails unexpectedly, rerun `./utilities/scripts/format-build.sh` to normalize whitespace before `format.sh`.
+```bash
+bun run test
+```
+
+### Run smoke checks where configured
+
+```bash
+bun run smoke
+```
+
+### Build only the portal docs
+
+```bash
+bun run --filter webstir-portal build
+```
+
+### Inspect the Bun CLI surface
+
+```bash
+bun run webstir -- --help
+```
+
+## Package-Local Validation
+
+- Frontend package: `bun run --filter @webstir-io/webstir-frontend build|test|smoke`
+- Backend package: `bun run --filter @webstir-io/webstir-backend build|test|smoke`
+- Bun orchestrator: `bun run --filter @webstir-io/webstir test`
+
+## Notes
+
+- Run commands from the repo root unless a package README says otherwise.
+- The archived `.NET` tree has its own historical tooling, but it is not part of the active Bun workflow.
 
 ## Related Docs
+
 - Solution overview — [solution](../explanations/solution.md)
-- Engine internals — [engine](../explanations/engine.md)
 - CLI reference — [cli](../reference/cli.md)
-- Sandbox — [sandbox](sandbox.md)
-- Testing — [tests](../explanations/testing.md)
+- Testing — [testing](../explanations/testing.md)
