@@ -42,8 +42,16 @@ jobs:
       - name: Test backend tooling
         run: bun run --filter @webstir-io/webstir-backend test
 
+      - name: Smoke backend tooling scaffold
+        run: bun run --filter @webstir-io/webstir-backend smoke
+        env:
+          WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN: skip
+
       - name: Test frontend tooling
         run: bun run --filter @webstir-io/webstir-frontend test
+
+      - name: Smoke frontend tooling scaffold
+        run: bun run --filter @webstir-io/webstir-frontend smoke
 
       - name: Test testing tooling
         run: bun run --filter @webstir-io/webstir-testing test
