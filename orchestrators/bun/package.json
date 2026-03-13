@@ -9,6 +9,7 @@
     "check:assets": "node scripts/sync-assets.mjs --check",
     "build": "node scripts/sync-assets.mjs && bun run build:deps && tsc -p tsconfig.json",
     "build:deps": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build && bun run --filter @webstir-io/webstir-frontend build && bun run --filter @webstir-io/webstir-backend build && bun run --filter @webstir-io/webstir-testing build",
+    "smoke:ci": "bun run build && bun test --bail=1 ./tests/init.integration.test.ts -t \"CLI init scaffolds an external SSG workspace with published package versions\" && bun test --bail=1 ./tests/smoke.integration.test.ts && bun test --bail=1 ./tests/progressive-enhancement.browser.integration.test.ts -t \"browser progressive enhancement flows work in publish mode\"",
     "test": "bun run build && bun test ./tests/*.ts ./tests/**/*.ts",
     "clean": "rm -rf dist",
     "prepack": "node scripts/sync-assets.mjs",
