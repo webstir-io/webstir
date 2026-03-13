@@ -1,10 +1,11 @@
 import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 
 import type { WorkspaceDescriptor } from './types.ts';
 
 import { runBackendInspect, type BackendInspectResult } from './backend-inspect.ts';
+import { runEnable } from './enable.ts';
 import { monorepoRoot } from './paths.ts';
 import { runBuild, type RunBuildOptions } from './build.ts';
 import { scaffoldWorkspace } from './init.ts';
@@ -127,22 +128,17 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-smoke-'));
   const tempWorkspace = path.join(tempRoot, 'full');
-  let source: string | undefined;
-
-  if (monorepoRoot) {
-    const sourceRoot = path.join(monorepoRoot, 'examples', 'demos', 'full');
-    await cp(sourceRoot, tempWorkspace, { recursive: true });
-    source = sourceRoot;
-  } else {
-    await scaffoldWorkspace('full', tempWorkspace, { force: true });
-    source = 'built-in full template';
-  }
+  await scaffoldWorkspace('full', tempWorkspace, { force: true });
+  await runEnable({
+    workspaceRoot: tempWorkspace,
+    args: ['client-nav'],
+  });
 
   return {
     workspaceRoot: tempWorkspace,
     cleanupRoot: tempRoot,
     usedTempWorkspace: true,
-    source,
+    source: 'built-in full template + client-nav',
   };
 }
 
