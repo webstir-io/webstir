@@ -27,16 +27,38 @@ jobs:
         with:
           node-version: 20.18.1
 
+      - name: Resolve CI targets
+        id: app-builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--event "${GITHUB_EVENT_NAME}")
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            while IFS= read -r file; do
+              [ -n "${file}" ] || continue
+              args+=(--changed-file "${file}")
+            done < <(git diff --name-only FETCH_HEAD...${GITHUB_SHA})
+          fi
+          node tools/resolve-ci-app-builds.mjs "${args[@]}" | tee -a "${GITHUB_OUTPUT}"
+
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build contract packages
+        if: github.event_name == 'pull_request'
+        run: bun run build:contracts
+
       - name: Test release tools
+        if: steps.app-builds.outputs.test_release_tools == 'true'
         run: bun run test:tools
 
       - name: Test module contract
+        if: steps.app-builds.outputs.test_module_contract == 'true'
         run: bun run --filter @webstir-io/module-contract test
 
       - name: Test testing contract
+        if: steps.app-builds.outputs.test_testing_contract == 'true'
         run: bun run --filter @webstir-io/testing-contract test
 
       - name: Test backend tooling
@@ -69,21 +91,6 @@ jobs:
       - name: Test Bun orchestrator
         if: github.event_name != 'pull_request'
         run: bun run --filter @webstir-io/webstir test
-
-      - name: Resolve app build targets
-        id: app-builds
-        shell: bash
-        run: |
-          set -euo pipefail
-          args=(--event "${GITHUB_EVENT_NAME}")
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            while IFS= read -r file; do
-              [ -n "${file}" ] || continue
-              args+=(--changed-file "${file}")
-            done < <(git diff --name-only FETCH_HEAD...${GITHUB_SHA})
-          fi
-          node tools/resolve-ci-app-builds.mjs "${args[@]}" | tee -a "${GITHUB_OUTPUT}"
 
       - name: Build portal
         if: steps.app-builds.outputs.build_portal == 'true'
