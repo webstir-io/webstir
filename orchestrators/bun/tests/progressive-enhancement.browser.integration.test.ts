@@ -121,8 +121,10 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
 
     try {
       await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-      await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click();
-      await fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`);
+      await Promise.all([
+        fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`),
+        fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true })
+      ]);
       await fragmentPage.locator('h1').waitFor({ state: 'visible' });
 
       await assertDocumentNavigationResetsScroll(fragmentPage, origin);
@@ -178,8 +180,10 @@ async function assertDocumentNavigationResetsScroll(page: Page, origin: string):
     }
   });
 
-  await page.locator('a[href="/"]').click();
-  await page.waitForURL(`${origin}/`);
+  await Promise.all([
+    page.waitForURL(`${origin}/`),
+    page.locator('a[href="/"]').click({ noWaitAfter: true })
+  ]);
   await page.locator('h1').waitFor({ state: 'visible' });
   const scrollCalls = await page.evaluate(() => {
     const state = window as typeof window & { __webstirScrollCalls?: unknown[][] };
@@ -196,8 +200,10 @@ async function assertDocumentNavigationResetsScroll(page: Page, origin: string):
     expect(lastCall).toEqual(expect.objectContaining({ top: 0 }));
   }
 
-  await page.locator('a[href="/api/demo/progressive-enhancement"]').click();
-  await page.waitForURL(`${origin}/api/demo/progressive-enhancement`);
+  await Promise.all([
+    page.waitForURL(`${origin}/api/demo/progressive-enhancement`),
+    page.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true })
+  ]);
   await page.locator('#demo-name').waitFor({ state: 'visible' });
 }
 
@@ -259,8 +265,10 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
 
     try {
       await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-      await enhancedPage.locator('a[href="/api/demo/auth-crud"]').click();
-      await enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`);
+      await Promise.all([
+        enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`),
+        enhancedPage.locator('a[href="/api/demo/auth-crud"]').click({ noWaitAfter: true })
+      ]);
       await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
 
       await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
@@ -365,8 +373,10 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
 
     try {
       await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-      await enhancedPage.locator('a[href="/api/demo/dashboard"]').click();
-      await enhancedPage.waitForURL(`${origin}/api/demo/dashboard`);
+      await Promise.all([
+        enhancedPage.waitForURL(`${origin}/api/demo/dashboard`),
+        enhancedPage.locator('a[href="/api/demo/dashboard"]').click({ noWaitAfter: true })
+      ]);
       await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
 
       await enhancedPage.locator('#dashboard-team').selectOption('growth');
