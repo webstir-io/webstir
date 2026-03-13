@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import path from 'node:path';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
-import { copyDemoWorkspace, removeDemoWorkspace } from './demo-workspace.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
