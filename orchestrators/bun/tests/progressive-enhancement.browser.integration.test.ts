@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
 import { cp, mkdtemp, rm } from 'node:fs/promises';
@@ -7,30 +7,6 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { DevServer } from '../src/dev-server.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
-
-const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
-const browsers: Browser[] = [];
-
-afterEach(async () => {
-  while (browsers.length > 0) {
-    const browser = browsers.pop();
-    if (!browser) {
-      continue;
-    }
-
-    await browser.close().catch(() => undefined);
-  }
-
-  while (childProcesses.length > 0) {
-    const child = childProcesses.pop();
-    if (!child) {
-      continue;
-    }
-
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-  }
-});
 
 test('browser progressive enhancement flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-watch-', 'full');
@@ -136,7 +112,6 @@ test('browser dashboard flows work in publish mode', async () => {
 
 async function exerciseBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
-  browsers.push(browser);
   try {
     const fragmentContext = await browser.newContext({
       javaScriptEnabled: true,
@@ -183,7 +158,6 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
     }
   } finally {
     await browser.close().catch(() => undefined);
-    removeBrowser(browser);
   }
 }
 
@@ -276,7 +250,6 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
 
 async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
-  browsers.push(browser);
   try {
     const enhancedContext = await browser.newContext({
       javaScriptEnabled: true,
@@ -378,13 +351,11 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
     }
   } finally {
     await browser.close().catch(() => undefined);
-    removeBrowser(browser);
   }
 }
 
 async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
   const browser = await chromium.launch({ headless: true });
-  browsers.push(browser);
   try {
     const enhancedContext = await browser.newContext({
       javaScriptEnabled: true,
@@ -468,7 +439,6 @@ async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
     }
   } finally {
     await browser.close().catch(() => undefined);
-    removeBrowser(browser);
   }
 }
 
@@ -515,7 +485,6 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
     stdout: 'pipe',
     stderr: 'pipe'
   });
-  childProcesses.push(child);
 
   const stdout = { text: '' };
   const stderr = { text: '' };
@@ -539,7 +508,6 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
       child.kill('SIGTERM');
       await child.exited.catch(() => undefined);
       await Promise.allSettled([stdoutDrain, stderrDrain]);
-      removeChildProcess(child);
     }
   };
 }
@@ -582,7 +550,6 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
     stdout: 'pipe',
     stderr: 'pipe'
   });
-  childProcesses.push(backendChild);
 
   const backendStdout = { text: '' };
   const backendStderr = { text: '' };
@@ -620,23 +587,8 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
       backendChild.kill('SIGTERM');
       await backendChild.exited.catch(() => undefined);
       await Promise.allSettled([backendStdoutDrain, backendStderrDrain]);
-      removeChildProcess(backendChild);
     }
   };
-}
-
-function removeChildProcess(child: ReturnType<typeof Bun.spawn>): void {
-  const index = childProcesses.indexOf(child);
-  if (index >= 0) {
-    childProcesses.splice(index, 1);
-  }
-}
-
-function removeBrowser(browser: Browser): void {
-  const index = browsers.indexOf(browser);
-  if (index >= 0) {
-    browsers.splice(index, 1);
-  }
 }
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
