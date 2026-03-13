@@ -319,13 +319,19 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
       await baselinePage.locator('#project-title').fill('Native blocked project');
       await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
       await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.locator('#auth-email').waitFor({ state: 'visible' });
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Sign in required to manage projects.')
+      );
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Sign in required to manage projects.');
 
       await baselinePage.locator('#auth-email').fill('native@example.com');
       await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.locator('#session-user').waitFor({ state: 'visible' });
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Signed in as native@example.com.')
+      );
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Signed in as native@example.com.');
 
@@ -333,7 +339,10 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
       await baselinePage.locator('#project-status').selectOption('active');
       await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
       await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.locator('text=Created project "Native create project".').waitFor({ state: 'visible' });
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Created project "Native create project".')
+      );
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Created project "Native create project".');
 
