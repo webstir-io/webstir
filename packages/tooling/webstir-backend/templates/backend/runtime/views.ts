@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { access, readFile } from 'node:fs/promises';
+import { access, readFile, stat } from 'node:fs/promises';
 
 export interface EnvAccessorLike {
   get(name: string): string | undefined;
@@ -21,6 +21,18 @@ export interface ViewDefinitionLike {
   name?: string;
   path?: string;
   renderMode?: 'ssg' | 'ssr' | 'spa';
+}
+
+export type RequestTimeDocumentCacheStatus = 'miss' | 'hit' | 'stale';
+
+export interface RequestTimeDocumentCacheMetadata {
+  readonly status: RequestTimeDocumentCacheStatus;
+  readonly documentPath: string;
+}
+
+export interface RenderedRequestTimeView {
+  readonly html: string;
+  readonly documentCache: RequestTimeDocumentCacheMetadata;
 }
 
 export interface SSRContextLike {
@@ -96,11 +108,10 @@ export async function renderRequestTimeView(options: {
   logger: LoggerLike;
   requestId?: string;
   now?: () => Date;
-}): Promise<string> {
+}): Promise<RenderedRequestTimeView> {
   const { workspaceRoot, url, view, params, cookies, headers, auth, session, env, logger, requestId } = options;
   const now = options.now ?? (() => new Date());
-  const documentPath = await resolveFrontendDocumentPath(workspaceRoot, url.pathname);
-  const documentHtml = await readFile(documentPath, 'utf8');
+  const document = await loadFrontendDocument(workspaceRoot, url.pathname);
 
   const viewData = view.load
     ? await view.load({
@@ -117,14 +128,20 @@ export async function renderRequestTimeView(options: {
       })
     : null;
 
-  return injectViewState(documentHtml, {
-    name: view.name,
-    templatePath: view.pathPattern,
-    pathname: normalizePath(url.pathname),
-    params,
-    data: viewData ?? null,
-    requestId
-  });
+  return {
+    html: injectViewState(document.html, {
+      name: view.name,
+      templatePath: view.pathPattern,
+      pathname: normalizePath(url.pathname),
+      params,
+      data: viewData ?? null,
+      requestId
+    }),
+    documentCache: {
+      status: document.cacheStatus,
+      documentPath: document.path
+    }
+  };
 }
 
 export function toHeaderRecord(headers: Record<string, string | string[] | undefined>): Record<string, string> {
@@ -180,6 +197,56 @@ function firstPathSegment(pathname: string): string | undefined {
   }
   const parts = normalized.split('/').filter(Boolean);
   return parts[0];
+}
+
+const documentTemplateCache = new Map<
+  string,
+  {
+    html: string;
+    ctimeMs: number;
+    mtimeMs: number;
+    size: number;
+  }
+>();
+
+async function loadFrontendDocument(
+  workspaceRoot: string,
+  pathname: string
+): Promise<{
+  path: string;
+  html: string;
+  cacheStatus: RequestTimeDocumentCacheStatus;
+}> {
+  const documentPath = await resolveFrontendDocumentPath(workspaceRoot, pathname);
+  const documentStats = await stat(documentPath);
+  const cached = documentTemplateCache.get(documentPath);
+
+  if (
+    cached &&
+    cached.ctimeMs === documentStats.ctimeMs &&
+    cached.mtimeMs === documentStats.mtimeMs &&
+    cached.size === documentStats.size
+  ) {
+    return {
+      path: documentPath,
+      html: cached.html,
+      cacheStatus: 'hit'
+    };
+  }
+
+  const html = await readFile(documentPath, 'utf8');
+  documentTemplateCache.set(documentPath, {
+    html,
+    ctimeMs: documentStats.ctimeMs,
+    mtimeMs: documentStats.mtimeMs,
+    size: documentStats.size
+  });
+
+  return {
+    path: documentPath,
+    html,
+    cacheStatus: cached ? 'stale' : 'miss'
+  };
 }
 
 async function resolveFrontendDocumentPath(workspaceRoot: string, pathname: string): Promise<string> {

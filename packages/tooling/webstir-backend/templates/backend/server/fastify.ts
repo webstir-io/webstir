@@ -367,7 +367,7 @@ function configureViewNotFoundHandler(
     });
 
     try {
-      const html = await renderRequestTimeView({
+      const rendered = await renderRequestTimeView({
         workspaceRoot: process.cwd(),
         url: requestUrl,
         view: matchedView.view,
@@ -390,7 +390,12 @@ function configureViewNotFoundHandler(
         appendSetCookieHeader(reply, commit.setCookie);
       }
 
-      reply.code(200).type('text/html; charset=utf-8').send(method === 'HEAD' ? '' : html);
+      reply
+        .header('cache-control', 'no-store')
+        .header('x-webstir-document-cache', rendered.documentCache.status)
+        .code(200)
+        .type('text/html; charset=utf-8')
+        .send(method === 'HEAD' ? '' : rendered.html);
     } catch (error) {
       requestLogger.error('request handler failed', { err: error });
       if (!reply.sent) {
@@ -558,12 +563,14 @@ function sendRouteResponse(
 
 function resolveResponseHeaders(result: NormalizedRouteHandlerResult | undefined): Record<string, string> {
   const headers: Record<string, string> = { ...(result?.headers ?? {}) };
+  const lowerCaseHeaders = lowerCaseHeaderMap(headers);
 
   if (result?.redirect) {
     headers.location = result.redirect.location;
   }
 
   if (result?.fragment) {
+    headers['x-webstir-fragment-cache'] = 'bypass';
     headers['x-webstir-fragment-target'] = result.fragment.target;
     if (result.fragment.selector) {
       headers['x-webstir-fragment-selector'] = result.fragment.selector;
@@ -571,9 +578,12 @@ function resolveResponseHeaders(result: NormalizedRouteHandlerResult | undefined
     if (result.fragment.mode) {
       headers['x-webstir-fragment-mode'] = result.fragment.mode;
     }
+    if (!('cache-control' in lowerCaseHeaders)) {
+      headers['cache-control'] = 'no-store';
+    }
   }
 
-  if (!('content-type' in lowerCaseHeaderMap(headers))) {
+  if (!('content-type' in lowerCaseHeaders)) {
     const payload = result?.fragment ? result.fragment.body : result?.body;
     if (payload !== undefined && payload !== null) {
       headers['content-type'] = resolveContentType(payload);

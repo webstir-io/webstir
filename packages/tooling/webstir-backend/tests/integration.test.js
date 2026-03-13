@@ -808,7 +808,9 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
       }
     });
     assert.equal(accountResponse.status, 200);
+    assert.equal(accountResponse.headers.get('cache-control'), 'no-store');
     assert.equal(accountResponse.headers.get('content-type'), 'text/html; charset=utf-8');
+    assert.equal(accountResponse.headers.get('x-webstir-document-cache'), 'miss');
     const requestId = accountResponse.headers.get('x-request-id');
     assert.ok(requestId, 'Expected request-time view responses to expose x-request-id.');
 
@@ -835,6 +837,50 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
       },
       requestId
     });
+
+    const cachedAccountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
+      headers: {
+        cookie: cookieHeader,
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(cachedAccountResponse.status, 200);
+    assert.equal(cachedAccountResponse.headers.get('x-webstir-document-cache'), 'hit');
+    const cachedAccountHtml = await cachedAccountResponse.text();
+    assert.match(cachedAccountHtml, /<h1>Account shell<\/h1>/);
+
+    await writeFrontendDocument(
+      workspace,
+      'accounts',
+      [
+        '<!DOCTYPE html>',
+        '<html lang="en">',
+        '<head><title>Account shell refreshed</title></head>',
+        '<body><main><h1>Account shell refreshed</h1><p>Updated shell</p></main></body>',
+        '</html>'
+      ].join('\n')
+    );
+
+    const refreshedAccountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
+      headers: {
+        cookie: cookieHeader,
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(refreshedAccountResponse.status, 200);
+    assert.equal(refreshedAccountResponse.headers.get('x-webstir-document-cache'), 'stale');
+    const refreshedAccountHtml = await refreshedAccountResponse.text();
+    assert.match(refreshedAccountHtml, /<h1>Account shell refreshed<\/h1>/);
+    assert.match(refreshedAccountHtml, /<p>Updated shell<\/p>/);
+
+    const warmAccountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
+      headers: {
+        cookie: cookieHeader,
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(warmAccountResponse.status, 200);
+    assert.equal(warmAccountResponse.headers.get('x-webstir-document-cache'), 'hit');
 
     const missingResponse = await fetch(`http://127.0.0.1:${port}/missing-page`);
     assert.equal(missingResponse.status, 404);
@@ -998,6 +1044,8 @@ async function assertFragmentRuntimeBehavior({ useFastify }) {
       body: 'name=Webstir'
     });
     assert.equal(fragmentResponse.status, 200);
+    assert.equal(fragmentResponse.headers.get('cache-control'), 'no-store');
+    assert.equal(fragmentResponse.headers.get('x-webstir-fragment-cache'), 'bypass');
     assert.equal(fragmentResponse.headers.get('x-webstir-fragment-target'), 'greeting');
     assert.equal(fragmentResponse.headers.get('x-webstir-fragment-mode'), 'replace');
     assert.equal(fragmentResponse.headers.get('content-type'), 'text/html; charset=utf-8');

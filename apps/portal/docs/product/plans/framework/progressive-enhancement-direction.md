@@ -39,7 +39,10 @@
 - Completed: the canonical full-demo application now proves the form-submit -> fragment-update flow end to end.
   - `examples/demos/full` now exposes a backend-served HTML form route that redirects cleanly without JavaScript and returns fragment updates when `client-nav` enhances the submission.
   - The demo now validates the route directly via backend tests and through the `/api` proxy path in the full watch integration test, and the page resolves shared frontend assets in both watch and publish flows.
-- Current focus: extend the default scaffold/runtime ergonomics around validation, flash/session messaging, auth-aware form workflows, and broader fragment-mode hardening.
+- Completed: the backend runtime cache story is now explicit for request-time documents and fragments.
+  - Request-time views cache built frontend document shells in process memory, invalidate stale entries when the built HTML changes on disk, and expose cache outcomes with `x-webstir-document-cache`.
+  - Fragment responses are explicitly uncached at runtime and emit `x-webstir-fragment-cache: bypass` plus `Cache-Control: no-store` so live mutation output stays request-correct.
+- Current focus: add proof applications and broader docs that demonstrate the shipped HTML-first runtime across auth, CRUD, dashboard refresh, navigation, and deployment flows.
 
 ## Repo-Specific Worklist
 
