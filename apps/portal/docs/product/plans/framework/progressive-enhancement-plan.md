@@ -39,7 +39,7 @@
 - Checks run:
 - `bun run webstir -- test --workspace "$PWD/examples/demos/auth-crud"`
 - `bun run webstir -- publish --workspace "$PWD/examples/demos/auth-crud"`
-- `bun test orchestrators/bun/tests/auth-crud.browser.integration.test.ts`
+- `bun test orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`
 - `bun test orchestrators/bun/tests/cli.integration.test.ts -t "auth-crud demo workspace"`
 - Branch: `codex/item-13-auth-crud-proof-app`
 - Commit: none
@@ -218,7 +218,7 @@
 - Progress:
   - 2026-03-13: Added `examples/demos/auth-crud`, a dedicated full-stack proof app that serves a backend-rendered auth and CRUD workspace while using the same forms for fragment-enhanced and no-JavaScript redirect flows.
   - 2026-03-13: Added backend runtime coverage for auth gates, validation recovery, sign-in, redirect-after-post create, and enhanced update/delete flows in `examples/demos/auth-crud/src/backend/tests/progressive-enhancement.test.ts`.
-  - 2026-03-13: Added watch and publish browser validation in `orchestrators/bun/tests/auth-crud.browser.integration.test.ts`, plus CLI publish coverage and demo helper script/docs updates so the proof app is easy to run and reference.
+  - 2026-03-13: Added watch and publish browser validation for the auth-and-CRUD proof app in `orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`, plus CLI publish coverage and demo helper script/docs updates so the proof app is easy to run and reference.
 
 ## 14. Add A Dashboard Proof App And Refresh Docs
 - Status: todo
