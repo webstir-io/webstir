@@ -51,6 +51,21 @@
         "typescript": "^5.4.0",
       },
     },
+    "examples/demos/auth-crud": {
+      "name": "webstir-demo-auth-crud",
+      "version": "1.0.0",
+      "dependencies": {
+        "@webstir-io/webstir-backend": "workspace:*",
+        "@webstir-io/webstir-frontend": "workspace:*",
+        "@webstir-io/webstir-testing": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^20.0.0",
+        "autoprefixer": "^10.4.20",
+        "esbuild": "^0.25.0",
+        "typescript": "^5.4.0",
+      },
+    },
     "examples/demos/full": {
       "name": "webstir-demo-full",
       "version": "1.0.0",
@@ -2580,6 +2595,8 @@
     "websocket-extensions": ["websocket-extensions@0.1.4", "", {}, "sha512-OqedPIGOfsDlo31UNwYbCFMSaO9m9G/0faIHj5/dZFDMFqPTcx6UwqyOy3COEaEOg/9VsGIpdqn62W5KhoKSpg=="],
 
     "webstir-demo-api": ["webstir-demo-api@workspace:examples/demos/api"],
+
+    "webstir-demo-auth-crud": ["webstir-demo-auth-crud@workspace:examples/demos/auth-crud"],
 
     "webstir-demo-full": ["webstir-demo-full@workspace:examples/demos/full"],
 

@@ -42,7 +42,10 @@
 - Completed: the backend runtime cache story is now explicit for request-time documents and fragments.
   - Request-time views cache built frontend document shells in process memory, invalidate stale entries when the built HTML changes on disk, and expose cache outcomes with `x-webstir-document-cache`.
   - Fragment responses are explicitly uncached at runtime and emit `x-webstir-fragment-cache: bypass` plus `Cache-Control: no-store` so live mutation output stays request-correct.
-- Current focus: add proof applications and broader docs that demonstrate the shipped HTML-first runtime across auth, CRUD, dashboard refresh, navigation, and deployment flows.
+- Completed: the auth-and-CRUD proof application now exists as the canonical server-handled forms example.
+  - `examples/demos/auth-crud` now proves sign-in gates, validation recovery, redirect-after-post, and fragment-enhanced create/update/delete workflows on top of the HTML-first runtime.
+  - Watch and publish browser coverage now exercise the demo through real `/api` proxy navigation, enhanced CRUD mutations, and no-JavaScript fallback paths.
+- Current focus: add the dashboard proof application and broaden the docs around the shipped HTML-first runtime across forms, sessions, caching, navigation, and deployment flows.
 
 ## Repo-Specific Worklist
 
@@ -92,7 +95,7 @@
 - Add canonical end-to-end apps that prove the model on real software, not just toy demos.
 - Target examples such as auth, CRUD backoffice, content plus forms, dashboards with partial refreshes, and background jobs.
 - Main touchpoint: `examples/demos/*`.
-- Status: the initial canonical form-flow proof now exists in `examples/demos/full`; follow-up apps should expand the surface area to auth, CRUD, and dashboard-style partial refreshes.
+- Status: `examples/demos/full` proves the baseline form -> fragment path, `examples/demos/auth-crud` now proves the canonical auth-and-CRUD backoffice flow, and the next follow-up app should cover dashboard-style partial refreshes.
 
 ### 10. Opinionated documentation
 - Teach the Webstir way of building applications instead of only documenting APIs and provider seams.
@@ -102,7 +105,7 @@
 ## Working Priorities
 - Extend the default scaffold/runtime ergonomics for validation errors, flash/session messaging, and auth-aware form handling.
 - Broaden production hardening around fragment modes, browser-level integration coverage, and missing-target/error behavior.
-- Add the next proof applications that cover auth, CRUD/backoffice flows, and dashboard-style partial refreshes.
+- Add the next proof application for dashboard-style partial refreshes, then reframe the public docs around the shipped proof apps and runtime model.
 
 ## Decision Filter
 - Does this make HTML-first app development more coherent?

@@ -10,7 +10,7 @@
 
 # Status Summary
 - Overall status: active
-- Last updated: 2026-03-12
+- Last updated: 2026-03-13
 - Notes:
   - Foundation already landed for route metadata, redirect/fragment runtime handling, enhanced form submission in `client-nav`, and the canonical form-flow demo.
   - This plan only tracks the remaining work after that initial slice.
@@ -29,23 +29,25 @@
   - Iteration 18 completed item 10 by adding browser-level watch and publish coverage for the canonical progressive-enhancement demo, fixing proxy redirect rewriting for `/api`-mounted no-JavaScript flows, and extending the demo page so session/auth fragments and focus targets are observable in real browsers.
   - Iteration 19 completed item 11 by adding request-time backend view rendering through the default server and Fastify scaffold, using live SSR context plus built frontend documents instead of only emitting SSG `view-data.json`.
   - Iteration 20 completed item 12 by adding process-local request-time document caching with explicit invalidation on built HTML changes, uncached fragment response headers, and package/docs coverage for miss/hit/stale behavior.
-  - First ready item: 13
+  - Iteration 21 completed item 13 by adding a dedicated auth-and-CRUD proof demo with server-handled sign-in, validation recovery, redirect-after-post, and fragment-enhanced create/update/delete flows plus watch/publish coverage.
+  - First ready item: 14
 
 # Latest Cycle
-- Iteration: 20
-- Selected item: 12. Define Runtime Cache And Invalidation Ergonomics
-- Outcome: added a shared request-time document cache in the backend view runtime, invalidated stale document shells when the built frontend HTML changed on disk, and made document/fragment cache behavior observable through scaffold response headers and docs.
+- Iteration: 21
+- Selected item: 13. Add An Auth And CRUD Proof App
+- Outcome: added a dedicated full-stack auth and CRUD proof demo with server-handled sign-in, validation, redirect-after-post, and fragment-enhanced create/update/delete flows, then covered it through workspace tests plus watch/publish browser validation.
 - Checks run:
-- `bun run test` in `packages/tooling/webstir-backend`
-- `bun run smoke` in `packages/tooling/webstir-backend`
-- Branch: `codex/item-12-runtime-cache`
+- `bun run webstir -- test --workspace "$PWD/examples/demos/auth-crud"`
+- `bun run webstir -- publish --workspace "$PWD/examples/demos/auth-crud"`
+- `bun test orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`
+- `bun test orchestrators/bun/tests/cli.integration.test.ts -t "auth-crud demo workspace"`
+- Branch: `codex/item-13-auth-crud-proof-app`
 - Commit: none
 - PR: none
 - Follow-up notes:
-  - Request-time views now cache only the built document shell in memory; live loader data, auth, cookies, headers, and session context still execute per request.
-  - The first request reports `x-webstir-document-cache: miss`, warm reads report `hit`, and the first request after a built HTML rewrite reports `stale` after reloading the document shell.
-  - Fragment responses are explicitly request-scoped with `x-webstir-fragment-cache: bypass` and `Cache-Control: no-store`.
-  - The first ready slice is now item 13 for the auth and CRUD proof application.
+  - `examples/demos/auth-crud` is now the canonical proof app for HTML-first auth and CRUD flows, with auth gates, validation recovery, fragment updates, and no-JavaScript redirects sharing the same forms.
+  - Watch and publish browser coverage now exercise the demo through real sign-in, create, update, delete, and no-JavaScript fallback paths.
+  - The first ready slice is now item 14 for the dashboard proof application and broader doc refresh.
 
 # Plan Items
 ## 1. Add Request Hook And Session/Flash Contract Metadata
@@ -206,7 +208,7 @@
   - 2026-03-12: Expanded `packages/tooling/webstir-backend/tests/integration.test.js` with miss/hit/stale request-time document assertions and fragment cache-header coverage, then documented the runtime cache model in `packages/tooling/webstir-backend/README.md`.
 
 ## 13. Add An Auth And CRUD Proof App
-- Status: todo
+- Status: done
 - Depends on: 5, 10, 11
 - Scope: add a canonical end-to-end application that proves sessions, auth gates, validation errors, redirect-after-post, and CRUD backoffice flows on top of the progressive-enhancement model.
 - Done when:
@@ -214,7 +216,9 @@
   - Watch and publish validation covers the demo's main flows.
   - The demo is suitable to reference from docs as the canonical example for server-handled forms.
 - Progress:
-  - Not started.
+  - 2026-03-13: Added `examples/demos/auth-crud`, a dedicated full-stack proof app that serves a backend-rendered auth and CRUD workspace while using the same forms for fragment-enhanced and no-JavaScript redirect flows.
+  - 2026-03-13: Added backend runtime coverage for auth gates, validation recovery, sign-in, redirect-after-post create, and enhanced update/delete flows in `examples/demos/auth-crud/src/backend/tests/progressive-enhancement.test.ts`.
+  - 2026-03-13: Added watch and publish browser validation for the auth-and-CRUD proof app in `orchestrators/bun/tests/progressive-enhancement.browser.integration.test.ts`, plus CLI publish coverage and demo helper script/docs updates so the proof app is easy to run and reference.
 
 ## 14. Add A Dashboard Proof App And Refresh Docs
 - Status: todo

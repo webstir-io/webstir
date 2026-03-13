@@ -33,7 +33,7 @@ afterEach(async () => {
 });
 
 test('browser progressive enhancement flows work in watch mode', async () => {
-  const workspace = await copyFullDemoWorkspace('webstir-progressive-watch-');
+  const workspace = await copyDemoWorkspace('webstir-progressive-watch-', 'full');
   let session: RuntimeSession | undefined;
 
   try {
@@ -50,12 +50,46 @@ test('browser progressive enhancement flows work in watch mode', async () => {
 }, 120_000);
 
 test('browser progressive enhancement flows work in publish mode', async () => {
-  const workspace = await copyFullDemoWorkspace('webstir-progressive-publish-');
+  const workspace = await copyDemoWorkspace('webstir-progressive-publish-', 'full');
   let session: RuntimeSession | undefined;
 
   try {
     session = await startPublishSession(workspace);
     await exerciseBrowserScenario(session.origin);
+  } catch (error) {
+    throw appendLogs(error, session?.logs ?? {});
+  } finally {
+    if (session) {
+      await session.stop();
+    }
+    await rm(path.dirname(workspace), { recursive: true, force: true });
+  }
+}, 120_000);
+
+test('browser auth and CRUD flows work in watch mode', async () => {
+  const workspace = await copyDemoWorkspace('webstir-auth-crud-watch-', 'auth-crud');
+  let session: RuntimeSession | undefined;
+
+  try {
+    session = await startWatchSession(workspace);
+    await exerciseAuthCrudBrowserScenario(session.origin);
+  } catch (error) {
+    throw appendLogs(error, session?.logs ?? {});
+  } finally {
+    if (session) {
+      await session.stop();
+    }
+    await rm(path.dirname(workspace), { recursive: true, force: true });
+  }
+}, 120_000);
+
+test('browser auth and CRUD flows work in publish mode', async () => {
+  const workspace = await copyDemoWorkspace('webstir-auth-crud-publish-', 'auth-crud');
+  let session: RuntimeSession | undefined;
+
+  try {
+    session = await startPublishSession(workspace);
+    await exerciseAuthCrudBrowserScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.logs ?? {});
   } finally {
@@ -202,10 +236,111 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
   expect(await page.locator('body').textContent()).toContain('Last submit used the no-JavaScript redirect path.');
 }
 
-async function copyFullDemoWorkspace(prefix: string): Promise<string> {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', 'full');
+async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
+  const browser = await chromium.launch({ headless: true });
+  browsers.push(browser);
+
+  const enhancedContext = await browser.newContext({
+    javaScriptEnabled: true,
+    viewport: { width: 1280, height: 720 }
+  });
+  const enhancedPage = await enhancedContext.newPage();
+
+  try {
+    await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+    await enhancedPage.locator('a[href="/api/demo/auth-crud"]').click();
+    await enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`);
+    await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
+
+    await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
+    await enhancedPage.locator('#auth-sign-in').click();
+    await enhancedPage.waitForFunction(
+      () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
+    );
+
+    await enhancedPage.locator('#project-title').fill('');
+    await enhancedPage.locator('#project-notes').fill('This should fail first.');
+    await enhancedPage.locator('#project-create-submit').click();
+    await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
+
+    await enhancedPage.locator('#project-title').fill('Browser launch checklist');
+    await enhancedPage.locator('#project-status').selectOption('active');
+    await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
+    await enhancedPage.locator('#project-create-submit').click();
+    await enhancedPage.waitForFunction(
+      () => document.body.textContent?.includes('Created project "Browser launch checklist".') ?? false
+    );
+
+    const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
+    const projectId = await projectRow.getAttribute('data-project-id');
+    if (!projectId) {
+      throw new Error('Expected a created project row.');
+    }
+
+    await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
+    await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
+    await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await enhancedPage.waitForFunction(
+      (id) => document.querySelector(`[data-project-id="${id}"] h4`)?.textContent === 'Browser launch checklist updated',
+      projectId
+    );
+
+    await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
+    await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
+    expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
+
+    await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await enhancedPage.waitForFunction(
+      (id) => !document.querySelector(`[data-project-id="${id}"]`),
+      projectId
+    );
+    expect(await enhancedPage.locator('#flash-region').textContent()).toContain('Deleted project "Browser launch checklist updated".');
+  } finally {
+    await enhancedContext.close().catch(() => undefined);
+  }
+
+  const baselineContext = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1280, height: 720 }
+  });
+  const baselinePage = await baselineContext.newPage();
+
+  try {
+    await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
+    await baselinePage.locator('#project-title').fill('Native blocked project');
+    await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
+    await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await baselinePage.waitForFunction(() =>
+      window.location.pathname === '/api/demo/auth-crud'
+      && document.body.textContent?.includes('Sign in required to manage projects.')
+    );
+
+    await baselinePage.locator('#auth-email').fill('native@example.com');
+    await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await baselinePage.waitForFunction(() =>
+      window.location.pathname === '/api/demo/auth-crud'
+      && document.body.textContent?.includes('Signed in as native@example.com.')
+    );
+
+    await baselinePage.locator('#project-title').fill('Native create project');
+    await baselinePage.locator('#project-status').selectOption('active');
+    await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
+    await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+    await baselinePage.waitForFunction(() =>
+      window.location.pathname === '/api/demo/auth-crud'
+      && document.body.textContent?.includes('Created project "Native create project".')
+    );
+
+    expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
+  } finally {
+    await baselineContext.close().catch(() => undefined);
+  }
+}
+
+async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<string> {
+  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', fixtureName);
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), prefix));
-  const workspace = path.join(tempRoot, 'full');
+  const workspace = path.join(tempRoot, fixtureName);
   await cp(fixtureRoot, workspace, { recursive: true });
   await Promise.all([
     rm(path.join(workspace, 'build'), { recursive: true, force: true }),
