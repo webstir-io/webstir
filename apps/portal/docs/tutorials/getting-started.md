@@ -1,33 +1,49 @@
 # Getting Started
 
-Install prerequisites and run the CLI locally.
+Install the prerequisites, inspect the active CLI, and run one of the proof apps that demonstrates the current HTML-first runtime.
 
-> Historical note: older repo snapshots used the `.NET` orchestrator. The active workflow is the Bun orchestrator in `orchestrators/bun`.
+> Historical note: older repo snapshots used the `.NET` orchestrator. The active path is the Bun orchestrator in `orchestrators/bun`.
 
 ## Prerequisites
+
 - Bun 1.3.x
-- Node.js 20.18+ for package/tool compatibility
-- TypeScript compiler on PATH if you are working directly on framework packages
+- Node.js 20.18+
+- TypeScript on `PATH` if you are working directly on framework packages
 
-## Steps
-1) Install dependencies and inspect the Bun CLI
+## First Run
 
-```
-# From repo root
+1. Install dependencies and inspect the CLI
+
+```bash
 bun install
 bun run webstir -- --help
 ```
 
-2) Create a new project and start dev mode
+2. Start a proof app
 
+```bash
+bun run watch:auth-crud
+# or
+bun run watch:dashboard
 ```
+
+3. Open the printed URL and compare:
+
+- `auth-crud` for server-handled sign-in, validation, redirect-after-post, and CRUD flows
+- `dashboard` for shell-level and panel-level fragment refreshes on top of normal HTML forms
+
+## Create A Fresh Workspace
+
+```bash
 bun run webstir -- init my-app
 bun run webstir -- watch --workspace "$PWD/my-app"
 ```
 
-3) Open the printed dev server URL. Edit files under `src/**` to see live reload.
+Edit files under `src/**` and let the watch loop rebuild the frontend and backend surfaces that exist in the workspace.
 
 ## Next
-- Add a page — ../how-to/add-page.md
-- Run tests — ../how-to/test.md
-- Publish — ../how-to/publish.md
+
+- [Your First App](./first-app.md)
+- [Watch](../how-to/watch.md)
+- [Test](../how-to/test.md)
+- [Publish](../how-to/publish.md)

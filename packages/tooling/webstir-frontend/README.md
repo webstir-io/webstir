@@ -1,30 +1,54 @@
 # @webstir-io/webstir-frontend
 
-Frontend build and publish toolkit for Webstir workspaces. The package bundles the HTML/CSS/JS pipeline, scaffolding helpers, and module provider used by the Webstir CLI and installers.
+HTML-first frontend delivery for Webstir workspaces. This package builds page documents, shared app assets, CSS, and browser-side enhancement scripts for applications that start with server-rendered HTML and selectively add JavaScript where it improves the experience.
 
-## Status
+## What It Ships
 
-- Experimental provider for the Webstir ecosystem — pipeline details and configuration surfaces may change between releases.
-- Best suited for exploration and demos today; do not rely on it as a hardened production frontend pipeline yet.
-
-## Quick Start
-
-1. **Install the package**
-   ```bash
-   npm install @webstir-io/webstir-frontend
-   ```
-2. **Run a build**
-   ```bash
-   npx webstir-frontend build --workspace /absolute/path/to/workspace
-   ```
+- Multi-page HTML/CSS/JS builds for `src/frontend/**`
+- Publish output with fingerprinted assets under `dist/frontend/**`
+- Watch-mode rebuilds used by the Bun orchestrator
+- Shared app-shell assets such as navigation, refresh, and client enhancement hooks
+- SSG as a supported mode, without making static-only delivery the center of the product story
 
 Requires Node.js **20.18.x** or newer.
 
+## HTML-First Workflow
+
+The frontend package is designed to pair with the backend runtime rather than replace it:
+
+- Build document shells under `build/frontend/pages/**`
+- Publish optimized assets under `dist/frontend/**`
+- Let backend routes or request-time views deliver HTML first
+- Use enhancement scripts for fragment updates, navigation polish, and form handling when JavaScript is available
+
+Canonical proof apps in this repo:
+
+- [`examples/demos/auth-crud`](../../../examples/demos/auth-crud) for server-handled auth, validation, redirect-after-post, and CRUD flows
+- [`examples/demos/dashboard`](../../../examples/demos/dashboard) for shell-level and panel-level partial refreshes without SPA architecture
+
+## Quick Start
+
+1. Install the package
+
+```bash
+npm install @webstir-io/webstir-frontend
+```
+
+2. Build a workspace
+
+```bash
+npx webstir-frontend build --workspace /absolute/path/to/workspace
+```
+
+3. Publish optimized frontend assets
+
+```bash
+npx webstir-frontend publish --workspace /absolute/path/to/workspace
+```
+
 ## Workspace Layout
 
-The provider assumes the standard Webstir workspace shape:
-
-```
+```text
 workspace/
   src/frontend/
     app/
@@ -32,28 +56,28 @@ workspace/
     images/
     fonts/
     media/
-    frontend.config.json   # optional feature flag overrides
-    webstir.config.mjs     # optional hook definitions
-  build/frontend/...       # generated build artifacts
-  dist/frontend/...        # publish-ready assets
-  .webstir/manifest.json   # pipeline manifest emitted on each run
+    frontend.config.json   # optional feature flags
+    webstir.config.mjs     # optional hooks
+  build/frontend/...       # watch/build output
+  dist/frontend/...        # publish output
+  .webstir/manifest.json   # pipeline manifest
 ```
 
 ## CLI Commands
 
-Binary name: `webstir-frontend`. All commands require `--workspace` pointing to the absolute workspace root.
+Binary name: `webstir-frontend`. All commands require `--workspace`.
 
 | Command | Description | Useful options |
-|---------|-------------|----------------|
-| `build` | Runs the development pipeline (incremental safe). | `--changed-file <path>` to scope rebuilds. |
-| `publish` | Produces optimized assets under `dist/frontend`. | `--mode <bundle\|ssg>` (SSG preview). |
-| `rebuild` | Incremental rebuild triggered by a file change. | `--changed-file <path>` to pass the changed file. |
-| `add-page <name>` | Scaffolds a page (HTML/CSS/TS) inside `src/frontend/pages`. | — |
-| `watch-daemon` | Persistent watcher + HMR coordinator. | `--no-auto-start`, `--verbose`, `--hmr-verbose`. |
+| --- | --- | --- |
+| `build` | Runs the development-oriented pipeline. | `--changed-file <path>` to scope rebuilds. |
+| `publish` | Produces optimized frontend assets. | `--mode <bundle\|ssg>` |
+| `rebuild` | Incremental rebuild after a file change. | `--changed-file <path>` |
+| `add-page <name>` | Scaffolds `index.html`, `index.css`, and `index.ts`. | None |
+| `watch-daemon` | Persistent watcher + HMR coordinator. | `--no-auto-start`, `--verbose`, `--hmr-verbose` |
 
-### Feature Flags
+## Feature Flags
 
-`frontend.config.json` enables or disables pipeline features:
+`frontend.config.json` controls optional pipeline features:
 
 ```jsonc
 {
@@ -65,9 +89,9 @@ Binary name: `webstir-frontend`. All commands require `--workspace` pointing to 
 }
 ```
 
-### Lifecycle Hooks
+## Lifecycle Hooks
 
-Hooks live in `webstir.config.mjs` (or `.js`/`.cjs`) at the workspace root:
+Hooks live in `webstir.config.mjs` (or `.js` / `.cjs`) at the workspace root:
 
 ```js
 export const hooks = {
@@ -78,7 +102,7 @@ export const hooks = {
   },
   builders: {
     assets: {
-      after({ config }) {
+      after() {
         // custom post-processing
       }
     }
@@ -88,8 +112,6 @@ export const hooks = {
 
 ## API Usage
 
-The package exports a `ModuleProvider` compatible with `@webstir-io/module-contract`:
-
 ```ts
 import { frontendProvider } from '@webstir-io/webstir-frontend';
 
@@ -98,49 +120,52 @@ const result = await frontendProvider.build({
   env: { WEBSTIR_MODULE_MODE: 'publish' }
 });
 
-   console.log(result.manifest.entryPoints);
-   ```
+console.log(result.manifest.entryPoints);
+```
 
-- `frontendProvider.metadata` surfaces id/version compatibility.
-- `frontendProvider.resolveWorkspace` returns canonical source/build/test paths.
-- `frontendProvider.build` executes the pipeline and returns artifacts + manifest.
+- `frontendProvider.metadata` exposes package and compatibility metadata
+- `frontendProvider.resolveWorkspace()` returns canonical source/build roots
+- `frontendProvider.build()` executes the pipeline and returns artifacts plus manifest data
 
-## SSG Preview
+## SSG Mode
 
-When invoked as:
+SSG is a supported frontend output mode, not a separate product:
 
 ```bash
 npx webstir-frontend publish --workspace /absolute/path/to/workspace --mode ssg
 ```
 
-the provider:
+That run:
 
-- Runs the normal publish pipeline to populate `dist/frontend/**`.
-- Creates static-friendly `index.html` aliases (root and per-page).
-- When `package.json` includes `webstir.moduleManifest.views` with `renderMode: 'ssg'` and `staticPaths`, uses those paths to add additional `index.html` aliases under `dist/frontend/**`.
+- Builds normal publish assets under `dist/frontend/**`
+- Generates `index.html` aliases for document routes
+- Uses `webstir.moduleManifest.views` metadata when present to emit extra static paths
 
 ## Maintainer Workflow
 
 ```bash
 bun install
-bun run clean          # remove dist artifacts
-bun run build          # TypeScript → dist/
-bun run test           # Node --test against compiled output
-bun run smoke          # scaffolds a temp workspace and runs build/publish
-# Release helper (bumps version and pushes a package-scoped release tag)
+bun run clean
+bun run build
+bun run test
+bun run smoke
 bun run release -- patch
 ```
 
-GitHub Actions should run `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` before publishing. The release workflow publishes to npm with trusted publishing (`id-token: write` + provenance).
+Recommended package validation before release:
 
-CI notes
-- Package CI runs clean + build + tests + smoke on PRs and main.
+- `bun run build`
+- `bun run test`
+- `bun run smoke`
 
 ## Troubleshooting
 
-- **“404 Not Found” when installing `@webstir-io/module-contract`** — verify the dependency has been published to npm and refresh the repo root `bun.lock` against npmjs.
-- **“No frontend test files found”** — the `test` script expects files under `tests/**/*.test.js` after build.
-- **Missing entry points in manifest** — confirm `build/frontend` contains at least one `.js`/`.mjs` bundle; the provider falls back to `build/app/index.js` and emits a warning if empty.
+- `No frontend test files found`
+  The package test script expects compiled tests under `tests/**/*.test.js`.
+- `Missing entry points in manifest`
+  Confirm `build/frontend` contains at least one generated JS entry.
+- `SSG output missing a route`
+  Check `webstir.moduleManifest.views` for `renderMode: "ssg"` and the expected `staticPaths`.
 
 ## Community & Support
 
@@ -151,7 +176,7 @@ CI notes
 
 ## Third-Party Notices
 
-Webstir Frontend depends on third-party libraries and data sets (including `sharp`/libvips and `caniuse-lite`) under their respective licenses. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for a summary of notable licenses and attribution.
+Webstir Frontend depends on third-party libraries and data sets (including `sharp` / libvips and `caniuse-lite`) under their respective licenses. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) for the attribution summary.
 
 ## License
 

@@ -1,36 +1,57 @@
 # Your First App
 
-Build a simple multi-page app and see live reload and API proxying.
+Build a small HTML-first full-stack app, then validate it through the same watch, test, and publish flow used by the proof apps.
 
-## Create the app
-```
-webstir init my-first-app
+## Create The App
+
+```bash
+bun run webstir -- init my-first-app
 cd my-first-app
 ```
 
-## Run in dev mode
-```
-webstir watch
+## Run In Dev Mode
+
+```bash
+bun run webstir -- watch --workspace "$PWD"
 ```
 
-## Add a page
-```
-webstir add-page about
-```
+This starts the frontend dev server plus the backend runtime when `src/backend` exists. The watch loop keeps document assets and `/api/*` responses in sync.
 
-Open `/about` in the browser; edit files in `src/frontend/pages/about/` and observe live reload.
+## Add A Page
 
-## Call the API
-Use the template API under `/api/health`. Requests are proxied by the dev server to the Node API.
-
-## Test and publish
-```
-webstir test
-webstir publish
+```bash
+bun run webstir -- add-page about --workspace "$PWD"
 ```
 
-View `dist/frontend/pages/<page>/` for production outputs and manifests.
+Open `/about`, edit files under `src/frontend/pages/about/`, and watch the document rebuild.
+
+## Add A Backend Form Flow
+
+Use `src/backend/index.ts` or `src/backend/module.ts` to add:
+
+- a GET document route
+- a POST form handler that redirects back to the document
+- an enhanced fragment response when `x-webstir-client-nav: 1` is present
+
+The repo proof apps show the target shape:
+
+- [`examples/demos/auth-crud`](../../../../examples/demos/auth-crud)
+- [`examples/demos/dashboard`](../../../../examples/demos/dashboard)
+
+## Test And Publish
+
+```bash
+bun run webstir -- test --workspace "$PWD"
+bun run webstir -- publish --workspace "$PWD"
+```
+
+Inspect:
+
+- `build/frontend/**` and `build/backend/**` for watch/build output
+- `dist/frontend/**` for publish-ready assets
 
 ## Next
-- Explore the pipelines — ../explanations/pipelines.md
-- Sandbox with Docker — ../how-to/sandbox.md
+
+- [Solution Overview](../explanations/solution.md)
+- [Watch](../how-to/watch.md)
+- [Publish](../how-to/publish.md)

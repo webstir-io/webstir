@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
 import { cp, mkdtemp, rm } from 'node:fs/promises';
@@ -7,30 +7,6 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 
 import { DevServer } from '../src/dev-server.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
-
-const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
-const browsers: Browser[] = [];
-
-afterEach(async () => {
-  while (browsers.length > 0) {
-    const browser = browsers.pop();
-    if (!browser) {
-      continue;
-    }
-
-    await browser.close().catch(() => undefined);
-  }
-
-  while (childProcesses.length > 0) {
-    const child = childProcesses.pop();
-    if (!child) {
-      continue;
-    }
-
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-  }
-});
 
 test('browser progressive enhancement flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-watch-', 'full');
@@ -89,7 +65,41 @@ test('browser auth and CRUD flows work in publish mode', async () => {
 
   try {
     session = await startPublishSession(workspace);
-    await exerciseAuthCrudBrowserScenario(session.origin);
+    await exerciseAuthCrudPublishScenario(session.origin);
+  } catch (error) {
+    throw appendLogs(error, session?.logs ?? {});
+  } finally {
+    if (session) {
+      await session.stop();
+    }
+    await rm(path.dirname(workspace), { recursive: true, force: true });
+  }
+}, 120_000);
+
+test('browser dashboard flows work in watch mode', async () => {
+  const workspace = await copyDemoWorkspace('webstir-dashboard-watch-', 'dashboard');
+  let session: RuntimeSession | undefined;
+
+  try {
+    session = await startWatchSession(workspace);
+    await exerciseDashboardBrowserScenario(session.origin);
+  } catch (error) {
+    throw appendLogs(error, session?.logs ?? {});
+  } finally {
+    if (session) {
+      await session.stop();
+    }
+    await rm(path.dirname(workspace), { recursive: true, force: true });
+  }
+}, 120_000);
+
+test('browser dashboard flows work in publish mode', async () => {
+  const workspace = await copyDemoWorkspace('webstir-dashboard-publish-', 'dashboard');
+  let session: RuntimeSession | undefined;
+
+  try {
+    session = await startPublishSession(workspace);
+    await exerciseDashboardPublishScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.logs ?? {});
   } finally {
@@ -101,51 +111,53 @@ test('browser auth and CRUD flows work in publish mode', async () => {
 }, 120_000);
 
 async function exerciseBrowserScenario(origin: string): Promise<void> {
-  const browser = await chromium.launch({ headless: true });
-  browsers.push(browser);
-
-  const fragmentContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const fragmentPage = await fragmentContext.newPage();
-
+  const browser = await launchBrowser();
   try {
-    await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click();
-    await fragmentPage.waitForURL(`${origin}/api/demo/progressive-enhancement`);
-    await fragmentPage.locator('h1').waitFor({ state: 'visible' });
+    const fragmentContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const fragmentPage = await fragmentContext.newPage();
 
-    await assertDocumentNavigationResetsScroll(fragmentPage, origin);
-    await assertFragmentUpdateAndFocus(fragmentPage);
+    try {
+      await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+      await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
+      await waitForPathname(fragmentPage, '/api/demo/progressive-enhancement');
+      await fragmentPage.locator('h1').waitFor({ state: 'visible' });
+
+      await assertDocumentNavigationResetsScroll(fragmentPage, origin);
+      await assertFragmentUpdateAndFocus(fragmentPage);
+    } finally {
+      await fragmentContext.close().catch(() => undefined);
+    }
+
+    const sessionContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const sessionPage = await sessionContext.newPage();
+
+    try {
+      await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
+      await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
+      await assertSessionFlow(sessionPage);
+    } finally {
+      await sessionContext.close().catch(() => undefined);
+    }
+
+    const baselineContext = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 1280, height: 720 }
+    });
+    const baselinePage = await baselineContext.newPage();
+
+    try {
+      await assertNativeRedirectFlow(baselinePage, origin);
+    } finally {
+      await baselineContext.close().catch(() => undefined);
+    }
   } finally {
-    await fragmentContext.close().catch(() => undefined);
-  }
-
-  const sessionContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const sessionPage = await sessionContext.newPage();
-
-  try {
-    await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
-    await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
-    await assertSessionFlow(sessionPage);
-  } finally {
-    await sessionContext.close().catch(() => undefined);
-  }
-
-  const baselineContext = await browser.newContext({
-    javaScriptEnabled: false,
-    viewport: { width: 1280, height: 720 }
-  });
-  const baselinePage = await baselineContext.newPage();
-
-  try {
-    await assertNativeRedirectFlow(baselinePage, origin);
-  } finally {
-    await baselineContext.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
   }
 }
 
@@ -166,8 +178,8 @@ async function assertDocumentNavigationResetsScroll(page: Page, origin: string):
     }
   });
 
-  await page.locator('a[href="/"]').click();
-  await page.waitForURL(`${origin}/`);
+  await page.locator('a[href="/"]').click({ noWaitAfter: true });
+  await waitForPathname(page, '/');
   await page.locator('h1').waitFor({ state: 'visible' });
   const scrollCalls = await page.evaluate(() => {
     const state = window as typeof window & { __webstirScrollCalls?: unknown[][] };
@@ -184,8 +196,8 @@ async function assertDocumentNavigationResetsScroll(page: Page, origin: string):
     expect(lastCall).toEqual(expect.objectContaining({ top: 0 }));
   }
 
-  await page.locator('a[href="/api/demo/progressive-enhancement"]').click();
-  await page.waitForURL(`${origin}/api/demo/progressive-enhancement`);
+  await page.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
+  await waitForPathname(page, '/api/demo/progressive-enhancement');
   await page.locator('#demo-name').waitFor({ state: 'visible' });
 }
 
@@ -237,104 +249,393 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
 }
 
 async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
-  const browser = await chromium.launch({ headless: true });
-  browsers.push(browser);
-
-  const enhancedContext = await browser.newContext({
-    javaScriptEnabled: true,
-    viewport: { width: 1280, height: 720 }
-  });
-  const enhancedPage = await enhancedContext.newPage();
-
+  const browser = await launchBrowser();
   try {
-    await enhancedPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator('a[href="/api/demo/auth-crud"]').click();
-    await enhancedPage.waitForURL(`${origin}/api/demo/auth-crud`);
-    await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
+    const enhancedContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const enhancedPage = await enhancedContext.newPage();
 
-    await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
-    await enhancedPage.locator('#auth-sign-in').click();
-    await enhancedPage.waitForFunction(
-      () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
-    );
+    try {
+      await enhancedPage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
 
-    await enhancedPage.locator('#project-title').fill('');
-    await enhancedPage.locator('#project-notes').fill('This should fail first.');
-    await enhancedPage.locator('#project-create-submit').click();
-    await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
+      await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
+      await enhancedPage.locator('#auth-sign-in').click();
+      await enhancedPage.waitForFunction(
+        () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
+      );
 
-    await enhancedPage.locator('#project-title').fill('Browser launch checklist');
-    await enhancedPage.locator('#project-status').selectOption('active');
-    await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
-    await enhancedPage.locator('#project-create-submit').click();
-    await enhancedPage.waitForFunction(
-      () => document.body.textContent?.includes('Created project "Browser launch checklist".') ?? false
-    );
+      await enhancedPage.locator('#project-title').fill('');
+      await enhancedPage.locator('#project-notes').fill('This should fail first.');
+      await enhancedPage.locator('#project-create-submit').click();
+      await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
 
-    const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
-    const projectId = await projectRow.getAttribute('data-project-id');
-    if (!projectId) {
-      throw new Error('Expected a created project row.');
+      await enhancedPage.locator('#project-title').fill('Browser launch checklist');
+      await enhancedPage.locator('#project-status').selectOption('active');
+      await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
+      await enhancedPage.locator('#project-create-submit').click();
+      await enhancedPage.waitForFunction(
+        () => document.body.textContent?.includes('Created project "Browser launch checklist".') ?? false
+      );
+
+      const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
+      const projectId = await projectRow.getAttribute('data-project-id');
+      if (!projectId) {
+        throw new Error('Expected a created project row.');
+      }
+
+      await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
+      await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
+      await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await enhancedPage.waitForFunction(
+        (id) => document.querySelector(`[data-project-id="${id}"] h4`)?.textContent === 'Browser launch checklist updated',
+        projectId
+      );
+
+      await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
+      expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
+
+      await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await enhancedPage.waitForFunction(
+        (id) => !document.querySelector(`[data-project-id="${id}"]`),
+        projectId
+      );
+      expect(await enhancedPage.locator('#flash-region').textContent()).toContain('Deleted project "Browser launch checklist updated".');
+    } finally {
+      await enhancedContext.close().catch(() => undefined);
     }
 
-    await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
-    await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
-    await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await enhancedPage.waitForFunction(
-      (id) => document.querySelector(`[data-project-id="${id}"] h4`)?.textContent === 'Browser launch checklist updated',
-      projectId
-    );
+    const baselineContext = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 1280, height: 720 }
+    });
+    const baselinePage = await baselineContext.newPage();
 
-    await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
-    await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
-    expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
+    try {
+      await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
+      await baselinePage.locator('#project-title').fill('Native blocked project');
+      await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
+      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Sign in required to manage projects.')
+      );
+      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
+      expect(await baselinePage.locator('body').textContent()).toContain('Sign in required to manage projects.');
 
-    await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await enhancedPage.waitForFunction(
-      (id) => !document.querySelector(`[data-project-id="${id}"]`),
-      projectId
-    );
-    expect(await enhancedPage.locator('#flash-region').textContent()).toContain('Deleted project "Browser launch checklist updated".');
+      await baselinePage.locator('#auth-email').fill('native@example.com');
+      await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Signed in as native@example.com.')
+      );
+      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
+      expect(await baselinePage.locator('body').textContent()).toContain('Signed in as native@example.com.');
+
+      await baselinePage.locator('#project-title').fill('Native create project');
+      await baselinePage.locator('#project-status').selectOption('active');
+      await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
+      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/auth-crud'
+        && document.body.textContent?.includes('Created project "Native create project".')
+      );
+      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
+      expect(await baselinePage.locator('body').textContent()).toContain('Created project "Native create project".');
+
+      expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
+    } finally {
+      await baselineContext.close().catch(() => undefined);
+    }
   } finally {
-    await enhancedContext.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
   }
+}
 
-  const baselineContext = await browser.newContext({
-    javaScriptEnabled: false,
-    viewport: { width: 1280, height: 720 }
+async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
+  const initial = await requestHtmlDocument(origin, '/api/demo/auth-crud');
+  const signInCsrf = extractFormInputValue(initial.html, 'auth-sign-in-form', '_csrf');
+  const signInResponse = await requestWithCookie(origin, '/api/demo/auth-crud/session/sign-in', initial.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: `_csrf=${encodeURIComponent(signInCsrf)}&email=${encodeURIComponent('casey.browser@example.com')}`,
+    redirect: 'manual'
   });
-  const baselinePage = await baselineContext.newPage();
 
+  expect(signInResponse.status).toBe(303);
+  expect(signInResponse.headers.get('location')).toBe('/api/demo/auth-crud');
+
+  const signedInCookie = coalesceCookie(signInResponse.headers.get('set-cookie'), initial.cookie);
+  const signedIn = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedInCookie);
+  expect(signedIn.html).toContain('Signed in as <strong>casey.browser@example.com</strong>.');
+
+  const invalidCreateCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
+  const invalidCreateResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/create', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(invalidCreateCsrf)}&title=&status=active&notes=${encodeURIComponent('This should fail first.')}`
+  });
+  const invalidCreateHtml = await invalidCreateResponse.text();
+
+  expect(invalidCreateResponse.status).toBe(422);
+  expect(invalidCreateResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
+  expect(invalidCreateHtml).toContain('Project title is required.');
+
+  const createCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
+  const createResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/create', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: [
+      `_csrf=${encodeURIComponent(createCsrf)}`,
+      `title=${encodeURIComponent('Browser launch checklist')}`,
+      'status=active',
+      `notes=${encodeURIComponent('Created through the publish redirect path.')}`
+    ].join('&'),
+    redirect: 'manual'
+  });
+
+  expect(createResponse.status).toBe(303);
+  expect(createResponse.headers.get('location')).toBe('/api/demo/auth-crud');
+
+  const afterCreate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  expect(afterCreate.html).toContain('Created project &quot;Browser launch checklist&quot;.');
+  expect(afterCreate.html).toContain('Browser launch checklist');
+
+  const projectId = extractFirstEntityId(afterCreate.html, 'project');
+  const updateCsrf = extractFormInputValue(afterCreate.html, `project-edit-form-${projectId}`, '_csrf');
+  const updateResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/update', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: [
+      `_csrf=${encodeURIComponent(updateCsrf)}`,
+      `projectId=${encodeURIComponent(projectId)}`,
+      `title=${encodeURIComponent('Operations cleanup updated')}`,
+      'status=archived',
+      `notes=${encodeURIComponent('Persist this edit across the next document request.')}`
+    ].join('&')
+  });
+  const updateHtml = await updateResponse.text();
+
+  expect(updateResponse.status).toBe(200);
+  expect(updateResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
+  expect(updateHtml).toContain('Operations cleanup updated');
+
+  const afterUpdate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  expect(afterUpdate.html).toContain('Operations cleanup updated');
+
+  const deleteCsrf = extractFormInputValue(afterUpdate.html, `project-delete-form-${projectId}`, '_csrf');
+  const deleteResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/delete', signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(deleteCsrf)}&projectId=${encodeURIComponent(projectId)}`
+  });
+  const deleteHtml = await deleteResponse.text();
+
+  expect(deleteResponse.status).toBe(200);
+  expect(deleteResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
+  expect(deleteHtml.includes(`project-edit-form-${projectId}`)).toBe(false);
+
+  const afterDelete = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  expect(afterDelete.html.includes(`project-edit-form-${projectId}`)).toBe(false);
+}
+
+async function exerciseDashboardBrowserScenario(origin: string): Promise<void> {
+  const browser = await launchBrowser();
   try {
-    await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
-    await baselinePage.locator('#project-title').fill('Native blocked project');
-    await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
-    await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/auth-crud'
-      && document.body.textContent?.includes('Sign in required to manage projects.')
-    );
+    const enhancedContext = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 }
+    });
+    const enhancedPage = await enhancedContext.newPage();
 
-    await baselinePage.locator('#auth-email').fill('native@example.com');
-    await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/auth-crud'
-      && document.body.textContent?.includes('Signed in as native@example.com.')
-    );
+    try {
+      await enhancedPage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator('#dashboard-team').waitFor({ state: 'visible' });
 
-    await baselinePage.locator('#project-title').fill('Native create project');
-    await baselinePage.locator('#project-status').selectOption('active');
-    await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
-    await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-    await baselinePage.waitForFunction(() =>
-      window.location.pathname === '/api/demo/auth-crud'
-      && document.body.textContent?.includes('Created project "Native create project".')
-    );
+      await enhancedPage.locator('#dashboard-team').selectOption('growth');
+      await enhancedPage.locator('#dashboard-range').selectOption('month');
+      await enhancedPage.locator('#dashboard-apply-filters').click();
+      await enhancedPage.waitForFunction(
+        () => document.querySelector('#dashboard-heading')?.textContent === 'Dashboard focus: Growth · last 30 days'
+      );
 
-    expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
+      const enhancedRefreshCount = await readRefreshCount(enhancedPage);
+      await enhancedPage.locator('#metrics-refresh').click();
+      await enhancedPage.waitForFunction(
+        (previousCount) => {
+          const text = document.querySelector('#metrics-refresh-count')?.textContent ?? '';
+          const match = text.match(/Refresh count: (\d+)/);
+          return match ? Number(match[1]) > previousCount : false;
+        },
+        enhancedRefreshCount
+      );
+
+      const alertRow = enhancedPage.locator('[data-alert-row="true"]').first();
+      const alertId = await alertRow.getAttribute('data-alert-id');
+      if (!alertId) {
+        throw new Error('Expected an alert row in the dashboard proof app.');
+      }
+
+      await enhancedPage.locator(`#acknowledge-alert-${alertId}`).click();
+      await enhancedPage.waitForFunction(
+        (id) => !document.querySelector(`[data-alert-id="${id}"]`),
+        alertId
+      );
+      expect(await enhancedPage.locator('#alerts-status').textContent()).toContain('Acknowledged');
+
+      await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
+      await enhancedPage.locator('#dashboard-heading').waitFor({ state: 'visible' });
+      expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: Growth · last 30 days');
+      expect(await readRefreshCount(enhancedPage)).toBeGreaterThan(enhancedRefreshCount);
+      expect(await enhancedPage.locator(`[data-alert-id="${alertId}"]`).count()).toBe(0);
+    } finally {
+      await enhancedContext.close().catch(() => undefined);
+    }
+
+    const baselineContext = await browser.newContext({
+      javaScriptEnabled: false,
+      viewport: { width: 1280, height: 720 }
+    });
+    const baselinePage = await baselineContext.newPage();
+
+    try {
+      await baselinePage.goto(`${origin}/api/demo/dashboard`, { waitUntil: 'domcontentloaded' });
+      await baselinePage.locator('#dashboard-team').selectOption('north');
+      await baselinePage.locator('#dashboard-range').selectOption('today');
+      await baselinePage.locator('#dashboard-filter-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/dashboard'
+        && document.body.textContent?.includes('Filtered to North region for today.')
+      );
+
+      const baselineRefreshCount = await readRefreshCount(baselinePage);
+      await baselinePage.locator('#metrics-refresh-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(() =>
+        window.location.pathname === '/api/demo/dashboard'
+        && document.body.textContent?.includes('Snapshot refreshed 1 time for North region.')
+      );
+
+      expect(await baselinePage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: North region · today');
+      expect(await readRefreshCount(baselinePage)).toBeGreaterThan(baselineRefreshCount);
+    } finally {
+      await baselineContext.close().catch(() => undefined);
+    }
   } finally {
-    await baselineContext.close().catch(() => undefined);
+    await browser.close().catch(() => undefined);
   }
+}
+
+async function exerciseDashboardPublishScenario(origin: string): Promise<void> {
+  const initial = await requestHtmlDocument(origin, '/api/demo/dashboard');
+
+  const nativeFilterCsrf = extractFormInputValue(initial.html, 'dashboard-filter-form', '_csrf');
+  const nativeFilterResponse = await requestWithCookie(origin, '/api/demo/dashboard/context', initial.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body: `_csrf=${encodeURIComponent(nativeFilterCsrf)}&team=growth&range=month`,
+    redirect: 'manual'
+  });
+
+  expect(nativeFilterResponse.status).toBe(303);
+  expect(nativeFilterResponse.headers.get('location')).toBe('/api/demo/dashboard');
+
+  const filtered = await requestHtmlDocument(origin, '/api/demo/dashboard', initial.cookie);
+  expect(filtered.html).toContain('Dashboard focus: Growth · last 30 days');
+  expect(filtered.html).toContain('Filtered to Growth for last 30 days.');
+
+  const enhancedFilterCsrf = extractFormInputValue(filtered.html, 'dashboard-filter-form', '_csrf');
+  const enhancedFilterResponse = await requestWithCookie(origin, '/api/demo/dashboard/context', filtered.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(enhancedFilterCsrf)}&team=north&range=today`
+  });
+  const enhancedFilterHtml = await enhancedFilterResponse.text();
+
+  expect(enhancedFilterResponse.status).toBe(200);
+  expect(enhancedFilterResponse.headers.get('x-webstir-fragment-target')).toBe('dashboard-shell');
+  expect(enhancedFilterHtml).toContain('Dashboard focus: North region · today');
+
+  const refreshCsrf = extractFormInputValue(filtered.html, 'metrics-refresh-form', '_csrf');
+  const refreshResponse = await requestWithCookie(origin, '/api/demo/dashboard/metrics/refresh', filtered.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(refreshCsrf)}`
+  });
+  const refreshHtml = await refreshResponse.text();
+
+  expect(refreshResponse.status).toBe(200);
+  expect(refreshResponse.headers.get('x-webstir-fragment-target')).toBe('metrics-panel');
+  expect(refreshHtml).toContain('Refresh count: 1');
+
+  const refreshed = await requestHtmlDocument(origin, '/api/demo/dashboard', filtered.cookie);
+  expect(refreshed.html).toContain('Refresh count: 1');
+
+  const alertId = extractFirstEntityId(refreshed.html, 'alert');
+  const acknowledgeCsrf = extractFormInputValue(refreshed.html, `acknowledge-alert-form-${alertId}`, '_csrf');
+  const acknowledgeResponse = await requestWithCookie(origin, '/api/demo/dashboard/alerts/acknowledge', filtered.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: `_csrf=${encodeURIComponent(acknowledgeCsrf)}&alertId=${encodeURIComponent(alertId)}`
+  });
+  const acknowledgeHtml = await acknowledgeResponse.text();
+
+  expect(acknowledgeResponse.status).toBe(200);
+  expect(acknowledgeResponse.headers.get('x-webstir-fragment-target')).toBe('alerts-panel');
+  expect(acknowledgeHtml.includes(`data-alert-id="${alertId}"`)).toBe(false);
+
+  const afterAcknowledge = await requestHtmlDocument(origin, '/api/demo/dashboard', filtered.cookie);
+  expect(afterAcknowledge.html.includes(`data-alert-id="${alertId}"`)).toBe(false);
+}
+
+async function readRefreshCount(page: Page): Promise<number> {
+  const text = await page.locator('#metrics-refresh-count').textContent();
+  const match = text?.match(/Refresh count: (\d+)/);
+  if (!match) {
+    throw new Error(`Expected a refresh count chip, received: ${text ?? '(empty)'}`);
+  }
+
+  return Number(match[1]);
+}
+
+async function waitForPathname(page: Page, pathname: string): Promise<void> {
+  await page.waitForFunction(
+    (expectedPathname) => window.location.pathname === expectedPathname,
+    pathname
+  );
+}
+
+async function launchBrowser(): Promise<Browser> {
+  return await chromium.launch({
+    headless: true,
+    args: ['--disable-dev-shm-usage']
+  });
 }
 
 async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<string> {
@@ -370,7 +671,6 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
     stdout: 'pipe',
     stderr: 'pipe'
   });
-  childProcesses.push(child);
 
   const stdout = { text: '' };
   const stderr = { text: '' };
@@ -394,7 +694,6 @@ async function startWatchSession(workspace: string): Promise<RuntimeSession> {
       child.kill('SIGTERM');
       await child.exited.catch(() => undefined);
       await Promise.allSettled([stdoutDrain, stderrDrain]);
-      removeChildProcess(child);
     }
   };
 }
@@ -437,7 +736,6 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
     stdout: 'pipe',
     stderr: 'pipe'
   });
-  childProcesses.push(backendChild);
 
   const backendStdout = { text: '' };
   const backendStderr = { text: '' };
@@ -475,16 +773,8 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
       backendChild.kill('SIGTERM');
       await backendChild.exited.catch(() => undefined);
       await Promise.allSettled([backendStdoutDrain, backendStderrDrain]);
-      removeChildProcess(backendChild);
     }
   };
-}
-
-function removeChildProcess(child: ReturnType<typeof Bun.spawn>): void {
-  const index = childProcesses.indexOf(child);
-  if (index >= 0) {
-    childProcesses.splice(index, 1);
-  }
 }
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
@@ -498,6 +788,83 @@ async function fetchText(port: number, requestPath: string): Promise<string> {
   }
 
   return await response.text();
+}
+
+async function requestHtmlDocument(origin: string, requestPath: string, cookie?: string): Promise<{
+  response: Response;
+  html: string;
+  cookie: string;
+}> {
+  const response = await requestWithCookie(origin, requestPath, cookie);
+  const html = await response.text();
+
+  return {
+    response,
+    html,
+    cookie: coalesceCookie(response.headers.get('set-cookie'), cookie)
+  };
+}
+
+async function requestWithCookie(
+  origin: string,
+  requestPath: string,
+  cookie?: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  if (cookie) {
+    headers.set('cookie', cookie);
+  }
+
+  return await fetch(new URL(requestPath, origin), {
+    ...init,
+    headers
+  });
+}
+
+function extractFormInputValue(html: string, formId: string, name: string): string {
+  const formPattern = new RegExp(
+    `<form[^>]*id="${escapeRegExp(formId)}"[\\s\\S]*?<input[^>]*name="${escapeRegExp(name)}"[^>]*value="([^"]*)"`,
+    'i'
+  );
+  const match = html.match(formPattern);
+  if (!match?.[1]) {
+    throw new Error(`Expected input ${name} in form ${formId}.`);
+  }
+
+  return decodeHtml(match[1]);
+}
+
+function extractFirstEntityId(html: string, entity: 'project' | 'alert'): string {
+  const attributeName = entity === 'project' ? 'data-project-id' : 'data-alert-id';
+  const match = html.match(new RegExp(`${attributeName}="([^"]+)"`));
+  if (!match?.[1]) {
+    throw new Error(`Expected at least one ${entity} row.`);
+  }
+
+  return decodeHtml(match[1]);
+}
+
+function coalesceCookie(setCookie: string | null, existing: string | undefined): string {
+  const cookie = setCookie?.split(';', 1)[0] ?? existing;
+  if (!cookie) {
+    throw new Error('Expected a session cookie.');
+  }
+
+  return cookie;
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replaceAll('&quot;', '"')
+    .replaceAll('&#39;', "'")
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function getFreePort(): Promise<number> {

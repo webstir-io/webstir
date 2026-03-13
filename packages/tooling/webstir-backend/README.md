@@ -1,11 +1,6 @@
 # @webstir-io/webstir-backend
 
-Backend build orchestration for Webstir workspaces. The package exposes a `ModuleProvider` that type‑checks with TypeScript, builds with esbuild, collects build artifacts, and returns diagnostics for the Webstir CLI and installers.
-
-## Status
-
-- Experimental provider for the Webstir ecosystem — APIs, defaults, and behavior may change between releases while things stabilize.
-- Not yet recommended for production workloads; treat it as a learning and exploration tool.
+Backend delivery for Webstir's HTML-first application model. The package type-checks backend workspaces, builds runnable Node-compatible output, and ships the default request runtime for server-handled forms, fragment responses, sessions, request-time views, and request-time document caching.
 
 ## Quick Start
 
@@ -27,6 +22,32 @@ Backend build orchestration for Webstir workspaces. The package exposes a `Modul
    ```
 
 Requires Node.js **20.18.x** or newer.
+
+## What This Runtime Is Good At
+
+- Server-rendered HTML routes and request-time views
+- HTML form workflows that still work without client JavaScript
+- Redirect-after-post and fragment responses from the same backend handlers
+- Session, flash, CSRF, auth, and request hooks in the default scaffold
+- Request-time document caching for view shells plus explicit fragment no-store behavior
+
+Canonical proof apps in this repo:
+
+- [`examples/demos/auth-crud`](../../../examples/demos/auth-crud) for server-handled sign-in and CRUD forms
+- [`examples/demos/dashboard`](../../../examples/demos/dashboard) for dashboard-style shell and panel refreshes without SPA architecture
+
+## Shipped HTML-First Runtime
+
+The default `src/backend/index.ts` entry (and the optional Fastify scaffold) share the same runtime guarantees:
+
+- Route auto-mounting from compiled `module.ts`
+- Health probes at `/api/health`, `/healthz`, and `/readyz`
+- Structured request logging with `x-request-id`
+- Form parsing for `application/x-www-form-urlencoded`
+- Redirect and fragment responses via `Location` and `x-webstir-fragment-*`
+- Session, flash, and request-hook execution in the scaffold runtime
+- Request-time views with `x-webstir-document-cache: miss|hit|stale`
+- Explicit fragment cache bypass with `Cache-Control: no-store` and `x-webstir-fragment-cache: bypass`
 
 ## Community & Support
 

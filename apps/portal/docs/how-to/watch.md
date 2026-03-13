@@ -1,71 +1,41 @@
 # Watch
 
-Run an initial build and tests, start dev servers, and react to changes with targeted rebuilds and live reload.
+Use `watch` as the default development loop for HTML-first apps.
 
-## Purpose
-- Fast feedback loop during development.
-- Keep dev server and API in sync with file changes.
+## Command
 
-## When To Use
-- Default local workflow while editing.
+```bash
+webstir watch --workspace /absolute/path/to/workspace
+```
 
-## CLI
-- `webstir watch [--runtime <frontend|backend|all>]` (also the default command when none is provided)
+Optional scope filter:
 
-## Runtime Scope
-- The CLI inspects `src/frontend` / `src/backend` and runs the workers it finds.
-- Override the automatic scope with `--runtime frontend`, `--runtime backend`, or `--runtime all` (alias `-r`).
-- The watch logs now print a one-line summary (`[watch] Runtime scope — workspace: frontend+backend, filter: backend, running: backend-only`) so you can confirm the active mode.
-- Environment toggle: `WEBSTIR_TEST_RUNTIME=<scope>` has the same effect and forwards to the test runner.
+```bash
+webstir watch --workspace /absolute/path/to/workspace --runtime backend
+```
 
-Examples:
-- `webstir watch --runtime backend` — skip frontend rebuilds/reloads when you’re iterating on APIs or jobs.
-- `WEBSTIR_TEST_RUNTIME=frontend webstir watch` — force frontend-only loops even if `src/backend` exists.
+## What It Does
 
-## Steps
-1. Run `build`.
-2. Run `test`.
-3. Start the dev web server (serves `build/frontend/**`, SSE reload, clean URLs).
-4. Start the Node API server from `build/backend/index.js` and configure the proxy at `/api/*`.
-5. Start watching `src/**`; ignore `build/**` and `dist/**`.
-6. Route changes:
-   - Frontend change → frontend pipelines → write to `build/frontend/**` → broadcast SSE reload.
-   - Backend change → backend compile → restart Node process.
-   - Shared change → rebuild affected frontend and backend targets.
+1. Builds the active frontend and backend surfaces.
+2. Runs tests for the selected runtime scope.
+3. Starts the frontend dev server.
+4. Starts the backend runtime when the workspace has `src/backend`.
+5. Proxies `/api/*` through the frontend dev server in full-stack mode.
+6. Rebuilds changed surfaces as files move under `src/**`.
 
-## Readiness & Health
-- The Node API server prints `API server running` on successful bind. The orchestrator waits for this readiness line and then probes `/api/health` (alias `/healthz`) before declaring the backend ready. A dedicated `/readyz` endpoint is also available if you need an external readiness check that echoes the manifest summary.
+## What To Validate
 
-Toggles (environment variables):
-- `WEBSTIR_BACKEND_WAIT_FOR_READY=skip` — skip waiting for the log‑based ready signal.
-- `WEBSTIR_BACKEND_READY_TIMEOUT_SECONDS` — readiness wait timeout (default 30).
-- `WEBSTIR_BACKEND_HEALTHCHECK=skip` — skip the health probe.
-- `WEBSTIR_BACKEND_HEALTH_TIMEOUT_SECONDS` — per‑attempt probe timeout (default 5).
-- `WEBSTIR_BACKEND_HEALTH_ATTEMPTS` — number of retries before failing (default 5).
-- `WEBSTIR_BACKEND_HEALTH_DELAY_MILLISECONDS` — delay between retries (default 250).
-- `WEBSTIR_BACKEND_HEALTH_PATH` — override the probe path (default `/api/health`).
-- `WEBSTIR_BACKEND_TERMINATION` — Node shutdown method during watch (`ctrlc` or `kill`; default `kill`).
+Use the proof apps as the baseline:
 
-Examples:
-- Skip both waits in a pinch:
-  - `WEBSTIR_BACKEND_WAIT_FOR_READY=skip WEBSTIR_BACKEND_HEALTHCHECK=skip webstir watch`
-- Increase readiness timeout and health attempts:
-  - `WEBSTIR_BACKEND_READY_TIMEOUT_SECONDS=60 WEBSTIR_BACKEND_HEALTH_ATTEMPTS=10 webstir watch`
+- `bun run watch:auth-crud` to validate sign-in, validation recovery, redirect-after-post, and CRUD flows
+- `bun run watch:dashboard` to validate shell and panel fragment refreshes
 
-## Outputs
-- Live dev server URL printed on startup.
-- Incremental updates to `build/**` as files change.
+## Readiness
 
-## Stop & Recovery
-- Stop with Ctrl+C; services shut down gracefully.
-- Persistent backend errors are throttled to avoid restart loops; errors are logged.
-
-## Errors & Exit Codes
-- Startup failures return non-zero (build/test/backend bind errors). Runtime errors are logged.
+The backend runtime reports readiness with `API server running`. The orchestrator waits for that line, then probes `/api/health` before declaring the backend ready.
 
 ## Related Docs
-- Workflows — [workflows](../reference/workflows.md)
-- Services — [services](../explanations/services.md)
-- Servers — [servers](../explanations/servers.md)
-- Engine — [engine](../explanations/engine.md)
-- Workspace — [workspace](../explanations/workspace.md)
+
+- [Workflows](../reference/workflows.md)
+- [Test](./test.md)
+- [Publish](./publish.md)
