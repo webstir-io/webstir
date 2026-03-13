@@ -141,9 +141,10 @@ Stick with the built-in server while exploring the manifest helpers, then drop i
 The backend template now ships a lightweight auth adapter so you can secure routes without wiring a full identity provider on day one:
 
 - **Environment-driven secrets** — populate `.env.local`/`.env` with `AUTH_JWT_SECRET` (required for bearer tokens), optional `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE`, and comma/space-delimited `AUTH_SERVICE_TOKENS`. An example lives in `templates/backend/.env.example`.
-- **Bearer verification (HS256)** — when `AUTH_JWT_SECRET` is set, incoming `Authorization: Bearer <token>` headers are validated using HMAC-SHA256. Matching issuer/audience claims are enforced if you provide them. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
+- **Bearer verification (HS256)** — when `AUTH_JWT_SECRET` is set, incoming `Authorization: Bearer <token>` headers are validated using HMAC-SHA256. Matching issuer/audience plus `nbf` and `exp` claims are enforced when present. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
 - **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users.
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
+- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies; when omitted, the scaffold falls back to a per-process random secret instead of a fixed shared default. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in both the built-in and Fastify server templates.
 - Install `pino` in your workspace (`npm install pino`) before running the scaffold; the template server imports it directly.
 
 This adapter is intentionally simple (HS256 only) but gives you a hook to plug in third-party IdPs: generate/sign tokens there, supply the shared secret via env, and the scaffold will populate `ctx.auth` for every route.

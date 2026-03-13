@@ -314,7 +314,24 @@ async function rewriteForPublish(
 
     if (context.config.features.htmlSecurity) {
         await inlineCriticalCss(document, pageName, context.config.paths.dist.pages, pagesUrlPrefix, manifest.css);
-        const sriResult = await addSubresourceIntegrity(document);
+        const sriResult = await addSubresourceIntegrity(document, {
+            allowExternalFetch: context.config.features.externalResourceIntegrity
+        });
+        if (sriResult.skippedExternalResources.length > 0) {
+            const resources = Array.from(new Set(sriResult.skippedExternalResources));
+            const message = resources.length === 1
+                ? `Skipped automatic SRI for ${resources[0]} because external resource fetching is disabled.`
+                : `Skipped automatic SRI for ${resources.length} external resources because external resource fetching is disabled.`;
+            emitDiagnostic({
+                code: 'frontend.sri.external_fetch_disabled',
+                kind: 'sri',
+                stage: 'html.publish',
+                severity: 'warning',
+                message,
+                data: { resources },
+                suggestion: 'Add integrity attributes manually or set features.externalResourceIntegrity to true to opt in.'
+            });
+        }
         if (sriResult.failures.length > 0) {
             const resources = sriResult.failures;
             const message = resources.length === 1

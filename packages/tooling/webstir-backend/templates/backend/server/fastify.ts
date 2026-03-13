@@ -153,7 +153,10 @@ export async function start(): Promise<void> {
   const readiness = createReadinessTracker();
   readiness.booting();
 
-  const app = Fastify({ logger: false });
+  const app = Fastify({
+    logger: false,
+    bodyLimit: env.http.bodyLimitBytes
+  });
   app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
     try {
       done(null, parseFormEncodedBody(body));
@@ -163,6 +166,19 @@ export async function start(): Promise<void> {
   });
   app.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => {
     done(null, body);
+  });
+  app.setErrorHandler((error, _req, reply) => {
+    if (reply.sent) {
+      return;
+    }
+    if (isRequestBodyTooLargeError(error)) {
+      reply.code(413).type('application/json').send({
+        error: 'payload_too_large',
+        message: `Request body exceeded ${env.http.bodyLimitBytes} bytes.`
+      });
+      return;
+    }
+    reply.send(error);
   });
 
   app.get('/api/health', async () => ({ ok: true, uptime: process.uptime() }));
@@ -728,6 +744,14 @@ function extractRequestId(req: { id?: string; headers?: Record<string, unknown> 
   } catch {
     return `${Date.now()}`;
   }
+}
+
+function isRequestBodyTooLargeError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const candidate = error as { statusCode?: unknown; code?: unknown };
+  return candidate.statusCode === 413 || candidate.code === 'FST_ERR_CTP_BODY_TOO_LARGE';
 }
 
 function createReadinessTracker() {

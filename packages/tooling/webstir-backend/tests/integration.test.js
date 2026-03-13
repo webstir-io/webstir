@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import net from 'node:net';
@@ -278,6 +279,82 @@ export const module = {
 `;
 }
 
+function createAuthRuntimeModuleSource() {
+  return `const routes = [
+  {
+    definition: {
+      name: 'authWhoAmI',
+      method: 'GET',
+      path: '/auth/whoami'
+    },
+    handler: async (ctx) => {
+      if (!ctx.auth) {
+        return {
+          status: 401,
+          body: { error: 'unauthorized' }
+        };
+      }
+
+      return {
+        status: 200,
+        body: {
+          source: ctx.auth.source,
+          userId: ctx.auth.userId ?? null,
+          email: ctx.auth.email ?? null,
+          scopes: ctx.auth.scopes,
+          roles: ctx.auth.roles
+        }
+      };
+    }
+  }
+];
+
+export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/runtime-auth',
+    version: '0.1.0',
+    kind: 'backend',
+    capabilities: ['http', 'auth'],
+    routes: routes.map((route) => route.definition)
+  },
+  routes
+};
+`;
+}
+
+function createBodyLimitRuntimeModuleSource() {
+  return `const routes = [
+  {
+    definition: {
+      name: 'echoPayload',
+      method: 'POST',
+      path: '/echo',
+      interaction: 'mutation'
+    },
+    handler: async (ctx) => ({
+      status: 200,
+      body: {
+        echoed: ctx.body
+      }
+    })
+  }
+];
+
+export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/runtime-body-limit',
+    version: '0.1.0',
+    kind: 'backend',
+    capabilities: ['http'],
+    routes: routes.map((route) => route.definition)
+  },
+  routes
+};
+`;
+}
+
 function createSessionRuntimeModuleSource() {
   return `const routes = [
   {
@@ -514,6 +591,135 @@ async function assertRequestHookRuntimeBehavior({ useFastify }) {
     assert.deepEqual(await failureResponse.json(), {
       error: 'internal_error',
       message: 'request hook failed'
+    });
+  } finally {
+    await server.stop();
+  }
+}
+
+function signJwtToken(payload, secret) {
+  const encodedHeader = encodeJwtSegment({ alg: 'HS256', typ: 'JWT' });
+  const encodedPayload = encodeJwtSegment(payload);
+  const signedContent = `${encodedHeader}.${encodedPayload}`;
+  const signature = crypto.createHmac('sha256', secret).update(signedContent).digest('base64url');
+  return `${signedContent}.${signature}`;
+}
+
+function encodeJwtSegment(value) {
+  return Buffer.from(JSON.stringify(value)).toString('base64url');
+}
+
+async function assertJwtTimeClaimBehavior({ useFastify }) {
+  const workspace = await createTempWorkspace(useFastify ? 'webstir-backend-fastify-auth-' : 'webstir-backend-auth-');
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createAuthRuntimeModuleSource(),
+    useFastify
+  });
+
+  const port = await getOpenPort();
+  const secret = 'jwt-test-secret';
+  const issuer = 'https://issuer.example.com/';
+  const audience = 'webstir-tests';
+  const server = await startBuiltServer(workspace, port, {
+    AUTH_JWT_SECRET: secret,
+    AUTH_JWT_ISSUER: issuer,
+    AUTH_JWT_AUDIENCE: audience
+  });
+
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const validToken = signJwtToken({
+      sub: 'user-123',
+      email: 'ada@example.com',
+      scope: 'profile:read',
+      roles: ['admin'],
+      iss: issuer,
+      aud: audience,
+      nbf: now - 60,
+      exp: now + 60
+    }, secret);
+    const expiredToken = signJwtToken({
+      sub: 'user-123',
+      iss: issuer,
+      aud: audience,
+      exp: now - 30
+    }, secret);
+    const notYetValidToken = signJwtToken({
+      sub: 'user-123',
+      iss: issuer,
+      aud: audience,
+      nbf: now + 60,
+      exp: now + 120
+    }, secret);
+
+    const successResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
+      headers: {
+        authorization: `Bearer ${validToken}`
+      }
+    });
+    assert.equal(successResponse.status, 200);
+    assert.deepEqual(await successResponse.json(), {
+      source: 'jwt',
+      userId: 'user-123',
+      email: 'ada@example.com',
+      scopes: ['profile:read'],
+      roles: ['admin']
+    });
+
+    for (const token of [expiredToken, notYetValidToken]) {
+      const invalidResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
+        headers: {
+          authorization: `Bearer ${token}`
+        }
+      });
+      assert.equal(invalidResponse.status, 401);
+      assert.deepEqual(await invalidResponse.json(), {
+        error: 'unauthorized'
+      });
+    }
+  } finally {
+    await server.stop();
+  }
+}
+
+async function assertRequestBodyLimitBehavior({ useFastify }) {
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-body-limit-' : 'webstir-backend-body-limit-'
+  );
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createBodyLimitRuntimeModuleSource(),
+    useFastify
+  });
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port, {
+    REQUEST_BODY_MAX_BYTES: '16'
+  });
+
+  try {
+    const acceptedResponse = await fetch(`http://127.0.0.1:${port}/echo`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'text/plain'
+      },
+      body: 'small'
+    });
+    assert.equal(acceptedResponse.status, 200);
+    assert.deepEqual(await acceptedResponse.json(), {
+      echoed: 'small'
+    });
+
+    const oversizedResponse = await fetch(`http://127.0.0.1:${port}/echo`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'text/plain'
+      },
+      body: 'payload-that-is-too-large'
+    });
+    assert.equal(oversizedResponse.status, 413);
+    assert.deepEqual(await oversizedResponse.json(), {
+      error: 'payload_too_large',
+      message: 'Request body exceeded 16 bytes.'
     });
   } finally {
     await server.stop();
@@ -1688,6 +1894,24 @@ test('fastify backend scaffold executes request hooks with ordered context hando
   await assertRequestHookRuntimeBehavior({ useFastify: true });
 });
 
+test('built backend server enforces jwt exp and nbf claims', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertJwtTimeClaimBehavior({ useFastify: false });
+});
+
+test('fastify backend scaffold enforces jwt exp and nbf claims', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertJwtTimeClaimBehavior({ useFastify: true });
+});
+
 test('built backend server resolves session state and flash transport', async (t) => {
   if (!(await canListenOnTcp())) {
     t.skip('TCP listen is not permitted in this environment.');
@@ -1704,6 +1928,24 @@ test('fastify backend scaffold resolves session state and flash transport', asyn
   }
 
   await assertSessionRuntimeBehavior({ useFastify: true });
+});
+
+test('built backend server rejects oversized request bodies with 413', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestBodyLimitBehavior({ useFastify: false });
+});
+
+test('fastify backend scaffold rejects oversized request bodies with 413', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestBodyLimitBehavior({ useFastify: true });
 });
 
 test('built backend server handles auth-aware form workflows with csrf and validation', async (t) => {

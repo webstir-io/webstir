@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +27,10 @@ export interface DatabaseConfig {
   migrationsTable: string;
 }
 
+export interface HttpConfig {
+  bodyLimitBytes: number;
+}
+
 export interface SessionConfig {
   secret: string;
   cookieName: string;
@@ -41,11 +46,14 @@ export interface AppEnv {
   logging: LoggingConfig;
   metrics: MetricsConfig;
   database: DatabaseConfig;
+  http: HttpConfig;
   sessions: SessionConfig;
 }
 
 const ENV_FILES = ['.env.local', '.env'];
 const WORKSPACE_ROOT = resolveWorkspaceRoot();
+const DEFAULT_REQUEST_BODY_MAX_BYTES = 1024 * 1024;
+const GENERATED_SESSION_SECRET = crypto.randomBytes(32).toString('hex');
 let envLoaded = false;
 
 export function loadEnv(): AppEnv {
@@ -75,8 +83,11 @@ export function loadEnv(): AppEnv {
     url: process.env.DATABASE_URL ?? 'file:./data/dev.sqlite',
     migrationsTable: process.env.DATABASE_MIGRATIONS_TABLE ?? '_webstir_migrations'
   };
+  const http: HttpConfig = {
+    bodyLimitBytes: parsePositiveInt(process.env.REQUEST_BODY_MAX_BYTES, DEFAULT_REQUEST_BODY_MAX_BYTES)
+  };
   const sessions: SessionConfig = {
-    secret: process.env.SESSION_SECRET ?? process.env.AUTH_JWT_SECRET ?? 'webstir-dev-session-secret',
+    secret: resolveSessionSecret(),
     cookieName: process.env.SESSION_COOKIE_NAME ?? 'webstir_session',
     secure: parseBoolean(process.env.SESSION_COOKIE_SECURE, NODE_ENV === 'production'),
     maxAgeSeconds: parsePositiveInt(process.env.SESSION_MAX_AGE, 60 * 60 * 24)
@@ -90,8 +101,13 @@ export function loadEnv(): AppEnv {
     logging,
     metrics,
     database,
+    http,
     sessions
   };
+}
+
+function resolveSessionSecret(): string {
+  return process.env.SESSION_SECRET ?? process.env.AUTH_JWT_SECRET ?? GENERATED_SESSION_SECRET;
 }
 
 function loadEnvFiles(): void {

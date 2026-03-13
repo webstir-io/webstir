@@ -29,6 +29,7 @@ test('buildConfig returns defaults when frontend.config.json is absent', async (
 
     const config = buildConfig(workspace.workspaceRoot);
     assert.equal(config.features.htmlSecurity, true);
+    assert.equal(config.features.externalResourceIntegrity, false);
     assert.equal(config.features.imageOptimization, true);
     assert.equal(config.features.precompression, true);
 });
@@ -37,6 +38,7 @@ test('buildConfig applies overrides from nested features key', async (t) => {
     const workspace = await createWorkspace({
         features: {
             htmlSecurity: false,
+            externalResourceIntegrity: true,
             precompression: false
         }
     });
@@ -44,6 +46,7 @@ test('buildConfig applies overrides from nested features key', async (t) => {
 
     const config = buildConfig(workspace.workspaceRoot);
     assert.equal(config.features.htmlSecurity, false);
+    assert.equal(config.features.externalResourceIntegrity, true);
     assert.equal(config.features.precompression, false);
     assert.equal(config.features.imageOptimization, true);
 });
@@ -51,6 +54,7 @@ test('buildConfig applies overrides from nested features key', async (t) => {
 test('buildConfig accepts top-level feature flags', async (t) => {
     const workspace = await createWorkspace({
         htmlSecurity: false,
+        externalResourceIntegrity: true,
         imageOptimization: false,
         precompression: true
     });
@@ -58,6 +62,7 @@ test('buildConfig accepts top-level feature flags', async (t) => {
 
     const config = buildConfig(workspace.workspaceRoot);
     assert.equal(config.features.htmlSecurity, false);
+    assert.equal(config.features.externalResourceIntegrity, true);
     assert.equal(config.features.imageOptimization, false);
     assert.equal(config.features.precompression, true);
 });

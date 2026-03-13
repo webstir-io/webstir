@@ -83,6 +83,11 @@ function verifyJwtToken(token: string, secrets: AuthSecrets): AuthContext | unde
     return undefined;
   }
 
+  const now = Date.now() / 1000;
+  if (!isValidTimeClaims(payload, now)) {
+    return undefined;
+  }
+
   const scopes = normalizeScopes(payload.scope);
   const roles = normalizeRoles(payload.roles ?? payload.role ?? payload['https://schemas.webstir.dev/roles']);
 
@@ -124,6 +129,33 @@ function audienceMatches(value: unknown, expected: string): boolean {
     return value === expected;
   }
   return false;
+}
+
+function isValidTimeClaims(payload: Record<string, unknown>, now: number): boolean {
+  const notBefore = parseNumericDateClaim(payload.nbf);
+  if (payload.nbf !== undefined && notBefore === undefined) {
+    return false;
+  }
+  if (notBefore !== undefined && now < notBefore) {
+    return false;
+  }
+
+  const expiresAt = parseNumericDateClaim(payload.exp);
+  if (payload.exp !== undefined && expiresAt === undefined) {
+    return false;
+  }
+  if (expiresAt !== undefined && now >= expiresAt) {
+    return false;
+  }
+
+  return true;
+}
+
+function parseNumericDateClaim(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return value;
 }
 
 function normalizeScopes(value: unknown): string[] {
