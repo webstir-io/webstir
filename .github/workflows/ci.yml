@@ -70,10 +70,27 @@ jobs:
         if: github.event_name != 'pull_request'
         run: bun run --filter @webstir-io/webstir test
 
+      - name: Resolve app build targets
+        id: app-builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--event "${GITHUB_EVENT_NAME}")
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
+            while IFS= read -r file; do
+              [ -n "${file}" ] || continue
+              args+=(--changed-file "${file}")
+            done < <(git diff --name-only FETCH_HEAD...${GITHUB_SHA})
+          fi
+          node tools/resolve-ci-app-builds.mjs "${args[@]}" | tee -a "${GITHUB_OUTPUT}"
+
       - name: Build portal
+        if: steps.app-builds.outputs.build_portal == 'true'
         run: bun run --filter webstir-portal build
 
       - name: Build hub frontend
+        if: steps.app-builds.outputs.build_hub == 'true'
         run: |
           bun run --filter @webstir-io/webstir-frontend build
           node packages/tooling/webstir-frontend/dist/cli.js build --workspace "$GITHUB_WORKSPACE/apps/hub"
