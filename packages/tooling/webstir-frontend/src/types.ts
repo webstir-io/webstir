@@ -57,6 +57,7 @@ export interface FrontendPathConfig {
 
 export interface FrontendFeatureFlags {
     readonly htmlSecurity: boolean;
+    readonly externalResourceIntegrity: boolean;
     readonly imageOptimization: boolean;
     readonly precompression: boolean;
 }

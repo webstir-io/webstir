@@ -83,11 +83,14 @@ Binary name: `webstir-frontend`. All commands require `--workspace`.
 {
   "features": {
     "htmlSecurity": true,
+    "externalResourceIntegrity": false,
     "imageOptimization": true,
     "precompression": false
   }
 }
 ```
+
+`externalResourceIntegrity` stays `false` by default so publish does not fetch third-party script or stylesheet URLs just to compute SRI. Enable it only when you explicitly want remote fetches during publish; otherwise, add `integrity` and `crossorigin` attributes yourself for external CDN assets.
 
 ## Lifecycle Hooks
 

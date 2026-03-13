@@ -169,6 +169,15 @@ interface ManifestSummary {
   capabilities?: string[];
 }
 
+class RequestBodyTooLargeError extends Error {
+  readonly statusCode = 413;
+  readonly code = 'payload_too_large';
+
+  constructor(maxBytes: number) {
+    super(`Request body exceeded ${maxBytes} bytes.`);
+  }
+}
+
 export async function start(): Promise<void> {
   const env = loadEnv();
   const logger = createBaseLogger(env);
@@ -335,7 +344,7 @@ async function handleRequest(options: {
         return;
       }
 
-      const body = await readRequestBody(req);
+      const body = await readRequestBody(req, env.http.bodyLimitBytes);
       const db: Record<string, unknown> = Object.create(null);
       const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
         cookies: parseCookieHeader(req.headers.cookie),
@@ -422,6 +431,10 @@ async function handleRequest(options: {
   } catch (error) {
     logger.error({ err: error }, '[webstir-backend] request failed');
     if (!res.headersSent) {
+      if (error instanceof RequestBodyTooLargeError) {
+        respondJson(res, error.statusCode, { error: error.code, message: error.message });
+        return;
+      }
       respondJson(res, 500, { error: 'internal_error', message: (error as Error).message });
     } else {
       res.end();
@@ -881,14 +894,26 @@ function extractModuleDefinition(exports: Record<string, unknown>): ModuleDefini
   return undefined;
 }
 
-async function readRequestBody(req: http.IncomingMessage): Promise<unknown> {
+async function readRequestBody(req: http.IncomingMessage, maxBodyBytes: number): Promise<unknown> {
   const method = (req.method ?? 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD') {
     return undefined;
   }
+
+  const declaredContentLength = parseContentLength(req.headers['content-length']);
+  if (declaredContentLength !== undefined && declaredContentLength > maxBodyBytes) {
+    throw new RequestBodyTooLargeError(maxBodyBytes);
+  }
+
   const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBodyBytes) {
+      throw new RequestBodyTooLargeError(maxBodyBytes);
+    }
+    chunks.push(buffer);
   }
   if (chunks.length === 0) {
     return undefined;
@@ -909,6 +934,20 @@ async function readRequestBody(req: http.IncomingMessage): Promise<unknown> {
     return buffer.toString('utf8');
   }
   return buffer.toString('utf8');
+}
+
+function parseContentLength(value: string | string[] | undefined): number | undefined {
+  if (Array.isArray(value)) {
+    return parseContentLength(value[0]);
+  }
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
 }
 
 function parseFormEncodedBody(input: string): Record<string, string | string[]> {

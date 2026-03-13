@@ -36,6 +36,7 @@ export const frontendPathSchema = z.object({
 
 export const frontendFeatureFlagsSchema = z.object({
     htmlSecurity: z.boolean().default(true),
+    externalResourceIntegrity: z.boolean().default(false),
     imageOptimization: z.boolean().default(true),
     precompression: z.boolean().default(true)
 });

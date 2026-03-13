@@ -83,6 +83,7 @@ test('ssg workspace defaults views to renderMode=ssg when omitted', async () => 
             },
             features: {
                 htmlSecurity: true,
+                externalResourceIntegrity: false,
                 imageOptimization: true,
                 precompression: true
             }
@@ -181,6 +182,7 @@ test('ssg workspace defaults staticPaths to [path] for view data', async () => {
         },
         features: {
             htmlSecurity: true,
+            externalResourceIntegrity: false,
             imageOptimization: true,
             precompression: true
         }

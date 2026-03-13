@@ -6,6 +6,7 @@ import { frontendFeatureFlagsSchema } from './schema.js';
 
 const DEFAULT_FEATURE_FLAGS: FrontendFeatureFlags = {
     htmlSecurity: true,
+    externalResourceIntegrity: false,
     imageOptimization: true,
     precompression: true
 };
@@ -129,6 +130,7 @@ function loadFeatureFlags(frontendRoot: string): FrontendFeatureFlags {
         const overrides = frontendFeatureFlagsSchema.parse(overridesSource);
         return {
             htmlSecurity: overrides.htmlSecurity,
+            externalResourceIntegrity: overrides.externalResourceIntegrity,
             imageOptimization: overrides.imageOptimization,
             precompression: overrides.precompression
         };
