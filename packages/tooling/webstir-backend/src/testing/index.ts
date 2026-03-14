@@ -29,12 +29,20 @@ export async function createBackendTestHarness(options: BackendTestHarnessOption
         workspaceRoot: options.workspaceRoot,
         env: resolvedEnv
     });
-    const buildRoot = options.buildRoot ?? resolvedEnv.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
-    const entry = options.entry ?? resolvedEnv.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js');
-    const manifestPath =
+    const buildRoot = resolveWorkspacePath(
+        workspaceRoot,
+        options.buildRoot ?? resolvedEnv.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend')
+    );
+    const entry = resolveWorkspacePath(
+        workspaceRoot,
+        options.entry ?? resolvedEnv.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js')
+    );
+    const manifestPath = resolveWorkspacePath(
+        workspaceRoot,
         options.manifestPath ??
-        resolvedEnv.WEBSTIR_BACKEND_TEST_MANIFEST ??
-        path.join(workspaceRoot, '.webstir', 'backend-manifest.json');
+            resolvedEnv.WEBSTIR_BACKEND_TEST_MANIFEST ??
+            path.join(workspaceRoot, '.webstir', 'backend-manifest.json')
+    );
     const readyText = options.readyText ?? resolvedEnv.WEBSTIR_BACKEND_TEST_READY ?? DEFAULT_READY_TEXT;
     const readyTimeoutMs =
         options.readyTimeoutMs ?? readInt(resolvedEnv.WEBSTIR_BACKEND_TEST_READY_TIMEOUT, DEFAULT_READY_TIMEOUT_MS);
@@ -174,6 +182,10 @@ function createRuntimeEnv(options: RuntimeEnvOptions): Record<string, string> {
         WORKSPACE_ROOT: options.workspaceRoot,
         WEBSTIR_BACKEND_TEST_RUN: '1'
     };
+}
+
+function resolveWorkspacePath(workspaceRoot: string, value: string): string {
+    return path.isAbsolute(value) ? path.resolve(value) : path.resolve(workspaceRoot, value);
 }
 
 async function loadManifest(manifestPath: string): Promise<ModuleManifest | null> {
