@@ -15,11 +15,11 @@ export async function createBackendTestHarness(options = {}) {
         workspaceRoot: options.workspaceRoot,
         env: resolvedEnv
     });
-    const buildRoot = options.buildRoot ?? resolvedEnv.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
-    const entry = options.entry ?? resolvedEnv.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js');
-    const manifestPath = options.manifestPath ??
+    const buildRoot = resolveWorkspacePath(workspaceRoot, options.buildRoot ?? resolvedEnv.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend'));
+    const entry = resolveWorkspacePath(workspaceRoot, options.entry ?? resolvedEnv.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js'));
+    const manifestPath = resolveWorkspacePath(workspaceRoot, options.manifestPath ??
         resolvedEnv.WEBSTIR_BACKEND_TEST_MANIFEST ??
-        path.join(workspaceRoot, '.webstir', 'backend-manifest.json');
+        path.join(workspaceRoot, '.webstir', 'backend-manifest.json'));
     const readyText = options.readyText ?? resolvedEnv.WEBSTIR_BACKEND_TEST_READY ?? DEFAULT_READY_TEXT;
     const readyTimeoutMs = options.readyTimeoutMs ?? readInt(resolvedEnv.WEBSTIR_BACKEND_TEST_READY_TIMEOUT, DEFAULT_READY_TIMEOUT_MS);
     if (!existsSync(entry)) {
@@ -134,6 +134,9 @@ function createRuntimeEnv(options) {
         WORKSPACE_ROOT: options.workspaceRoot,
         WEBSTIR_BACKEND_TEST_RUN: '1'
     };
+}
+function resolveWorkspacePath(workspaceRoot, value) {
+    return path.isAbsolute(value) ? path.resolve(value) : path.resolve(workspaceRoot, value);
 }
 function resolveWorkspaceRoot(options = {}) {
     const explicitRoot = options.workspaceRoot?.trim();
