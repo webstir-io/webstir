@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { access, readFile, stat } from 'node:fs/promises';
 
+import { resolveWorkspaceRoot } from '../workspace.js';
+
 export interface EnvAccessorLike {
   get(name: string): string | undefined;
   require(name: string): string;
@@ -96,7 +98,7 @@ export function matchView(
 }
 
 export async function renderRequestTimeView(options: {
-  workspaceRoot: string;
+  workspaceRoot?: string;
   url: URL;
   view: CompiledView;
   params: Record<string, string>;
@@ -111,7 +113,7 @@ export async function renderRequestTimeView(options: {
 }): Promise<RenderedRequestTimeView> {
   const { workspaceRoot, url, view, params, cookies, headers, auth, session, env, logger, requestId } = options;
   const now = options.now ?? (() => new Date());
-  const document = await loadFrontendDocument(workspaceRoot, url.pathname);
+  const document = await loadFrontendDocument(resolveWorkspaceRoot(workspaceRoot), url.pathname);
 
   const viewData = view.load
     ? await view.load({
@@ -250,14 +252,7 @@ async function loadFrontendDocument(
 }
 
 async function resolveFrontendDocumentPath(workspaceRoot: string, pathname: string): Promise<string> {
-  const pageName = firstPathSegment(pathname) ?? 'home';
-  const candidates = [
-    path.join(workspaceRoot, 'build', 'frontend', 'pages', pageName, 'index.html'),
-    pageName === 'home'
-      ? path.join(workspaceRoot, 'dist', 'frontend', 'index.html')
-      : path.join(workspaceRoot, 'dist', 'frontend', pageName, 'index.html'),
-    path.join(workspaceRoot, 'dist', 'frontend', 'pages', pageName, 'index.html')
-  ];
+  const candidates = getFrontendDocumentCandidates(workspaceRoot, pathname);
 
   for (const candidate of candidates) {
     if (await fileExists(candidate)) {
@@ -268,6 +263,29 @@ async function resolveFrontendDocumentPath(workspaceRoot: string, pathname: stri
   throw new Error(
     `Frontend document for ${normalizePath(pathname)} was not found. Checked ${candidates.join(', ')}.`
   );
+}
+
+function getFrontendDocumentCandidates(workspaceRoot: string, pathname: string): string[] {
+  const pageName = firstPathSegment(pathname) ?? 'home';
+  const relativeCandidates = pageName === 'home'
+    ? [
+        path.join('pages', 'home', 'index.html'),
+        path.join('home', 'index.html'),
+        'home.html',
+        'index.html'
+      ]
+    : [
+        path.join('pages', pageName, 'index.html'),
+        path.join(pageName, 'index.html'),
+        `${pageName}.html`
+      ];
+
+  const candidates = [
+    ...relativeCandidates.map((relativePath) => path.join(workspaceRoot, 'build', 'frontend', relativePath)),
+    ...relativeCandidates.map((relativePath) => path.join(workspaceRoot, 'dist', 'frontend', relativePath))
+  ];
+
+  return Array.from(new Set(candidates));
 }
 
 async function fileExists(targetPath: string): Promise<boolean> {

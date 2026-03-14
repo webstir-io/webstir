@@ -136,9 +136,10 @@ async function canListenOnTcp() {
   });
 }
 
-async function startBuiltServer(workspace, port, extraEnv = {}) {
-  const child = spawn('node', ['--input-type=module', '--eval', "import('./build/backend/index.js').then((mod) => mod.start())"], {
-    cwd: workspace,
+async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
+  const entryUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'index.js')).href;
+  const child = spawn('node', ['--input-type=module', '--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`], {
+    cwd: options.cwd ?? workspace,
     env: {
       ...process.env,
       PORT: String(port),
@@ -212,6 +213,15 @@ async function buildRuntimeWorkspace(workspace, { moduleSource, useFastify = fal
 
 async function writeFrontendDocument(workspace, pageName, html) {
   const targetPath = path.join(workspace, 'build', 'frontend', 'pages', pageName, 'index.html');
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.writeFile(targetPath, html, 'utf8');
+}
+
+async function writePublishedFrontendAliasDocument(workspace, pageName, html) {
+  const targetPath =
+    pageName === 'home'
+      ? path.join(workspace, 'dist', 'frontend', 'index.html')
+      : path.join(workspace, 'dist', 'frontend', pageName, 'index.html');
   await fs.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.writeFile(targetPath, html, 'utf8');
 }
@@ -1132,6 +1142,57 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
       error: 'not_found',
       path: '/missing-page'
     });
+  } finally {
+    await server.stop();
+  }
+}
+
+async function assertRequestTimeViewWorkspaceRootBehavior({ useFastify }) {
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-view-root-' : 'webstir-backend-view-root-'
+  );
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createViewRuntimeModuleSource(),
+    useFastify
+  });
+  await writePublishedFrontendAliasDocument(
+    workspace,
+    'accounts',
+    [
+      '<!DOCTYPE html>',
+      '<html lang="en">',
+      '<head><title>Published account shell</title></head>',
+      '<body><main><h1>Published account shell</h1></main></body>',
+      '</html>'
+    ].join('\n')
+  );
+
+  const port = await getOpenPort();
+  const alternateCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-backend-alt-cwd-'));
+  const server = await startBuiltServer(
+    workspace,
+    port,
+    {
+      AUTH_SERVICE_TOKENS: 'service-secret',
+      WORKSPACE_ROOT: workspace
+    },
+    {
+      cwd: alternateCwd
+    }
+  );
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
+      headers: {
+        'x-service-token': 'service-secret'
+      }
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('x-webstir-document-cache'), 'miss');
+    const html = await response.text();
+    assert.match(html, /<h1>Published account shell<\/h1>/);
+    assert.match(html, /data-webstir-view-pathname="\/accounts\/demo"/);
   } finally {
     await server.stop();
   }
@@ -2096,4 +2157,22 @@ test('fastify backend scaffold renders request-time views with live SSR context'
   }
 
   await assertRequestTimeViewRuntimeBehavior({ useFastify: true });
+});
+
+test('built backend server resolves request-time view documents from WORKSPACE_ROOT outside the workspace cwd', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestTimeViewWorkspaceRootBehavior({ useFastify: false });
+});
+
+test('fastify backend scaffold resolves request-time view documents from WORKSPACE_ROOT outside the workspace cwd', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestTimeViewWorkspaceRootBehavior({ useFastify: true });
 });

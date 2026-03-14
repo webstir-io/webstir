@@ -2,7 +2,7 @@ import http from 'node:http';
 
 import type { Logger } from 'pino';
 
-import { loadEnv, type AppEnv } from './env.js';
+import { loadEnv, resolveWorkspaceRoot, type AppEnv } from './env.js';
 import { resolveRequestAuth, type AuthContext } from './auth/adapter.js';
 import { createBaseLogger, createRequestLogger } from './observability/logger.js';
 import { createMetricsTracker, type MetricsTracker } from './observability/metrics.js';
@@ -200,7 +200,7 @@ async function handleRequest(options: {
           now
         });
         const rendered = await renderRequestTimeView({
-          workspaceRoot: process.cwd(),
+          workspaceRoot: resolveWorkspaceRoot(),
           url,
           view: matchedView.view,
           params: matchedView.params,

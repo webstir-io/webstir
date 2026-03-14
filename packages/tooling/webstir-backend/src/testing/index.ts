@@ -23,7 +23,8 @@ export type { BackendTestCallback, BackendTestContext, BackendTestHarness, Backe
 export { getBackendTestContext, setBackendTestContext };
 
 export async function createBackendTestHarness(options: BackendTestHarnessOptions = {}): Promise<BackendTestHarness> {
-    const workspaceRoot = options.workspaceRoot ?? process.env.WEBSTIR_WORKSPACE_ROOT ?? process.cwd();
+    const workspaceRoot =
+        options.workspaceRoot ?? process.env.WORKSPACE_ROOT ?? process.env.WEBSTIR_WORKSPACE_ROOT ?? process.cwd();
     const buildRoot = options.buildRoot ?? process.env.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
     const entry = options.entry ?? process.env.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js');
     const manifestPath =
