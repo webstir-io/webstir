@@ -15,7 +15,7 @@ import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
 import { pushEntryBucketSummary, normalizeLogLevel, filterDiagnostics } from './diagnostics/summary.js';
 import { getBackendScaffoldAssets } from './scaffold/assets.js';
-import { normalizeMode, resolveWorkspacePaths } from './workspace.js';
+import { normalizeMode, resolveWorkspacePaths, resolveWorkspaceRoot } from './workspace.js';
 
 import packageJson from '../package.json' with { type: 'json' };
 
@@ -40,16 +40,23 @@ export const backendProvider: ModuleProvider = {
         }
     },
     resolveWorkspace(options) {
-        return resolveWorkspacePaths(options.workspaceRoot);
+        const workspaceRoot = resolveWorkspaceRoot({
+            workspaceRoot: options.workspaceRoot
+        });
+        return resolveWorkspacePaths(workspaceRoot);
     },
     async build(options) {
-        const paths = resolveWorkspacePaths(options.workspaceRoot);
+        const env = options.env ?? {};
+        const workspaceRoot = resolveWorkspaceRoot({
+            workspaceRoot: options.workspaceRoot,
+            env
+        });
+        const paths = resolveWorkspacePaths(workspaceRoot);
         const tsconfigPath = path.join(paths.sourceRoot, 'tsconfig.json');
 
         const diagnostics: ModuleDiagnostic[] = [];
 
         const incremental = options.incremental === true;
-        const env = options.env ?? {};
         const mode = normalizeMode(env.WEBSTIR_MODULE_MODE);
         console.info(`[webstir-backend] ${mode}:start`);
 
@@ -81,7 +88,7 @@ export const backendProvider: ModuleProvider = {
             }
         }
         const moduleManifest = await loadBackendModuleManifest({
-            workspaceRoot: options.workspaceRoot,
+            workspaceRoot,
             buildRoot: paths.buildRoot,
             entryPoints,
             diagnostics
@@ -91,7 +98,7 @@ export const backendProvider: ModuleProvider = {
         console.info(`[webstir-backend] ${mode}:complete (entries=${manifest.entryPoints.length})`);
         diagnostics.push({ severity: 'info', message: `[webstir-backend] ${mode}:built entries=${manifest.entryPoints.length}` });
         const cacheReporter = createCacheReporter({
-            workspaceRoot: options.workspaceRoot,
+            workspaceRoot,
             buildRoot: paths.buildRoot,
             env,
             diagnostics
