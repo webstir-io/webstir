@@ -133,3 +133,37 @@ test('startBackendWatch emits build outcome events for successful and failed reb
     await handle.stop();
   }
 });
+
+test('startBackendWatch resolves WEBSTIR_WORKSPACE_ROOT outside the workspace cwd when workspaceRoot is omitted', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-watch-root-');
+  const alternateCwd = await createTempWorkspace('webstir-backend-watch-cwd-');
+  const previousCwd = process.cwd();
+  await seedBackendEntry(workspace);
+
+  try {
+    process.chdir(alternateCwd);
+
+    const handle = await startBackendWatch({
+      env: {
+        WEBSTIR_MODULE_MODE: 'build',
+        WEBSTIR_BACKEND_TYPECHECK: 'skip',
+        WEBSTIR_WORKSPACE_ROOT: workspace
+      }
+    });
+
+    try {
+      await waitFor(async () => {
+        try {
+          await fs.access(path.join(workspace, '.webstir', 'backend-outputs.json'));
+          return true;
+        } catch {
+          return false;
+        }
+      });
+    } finally {
+      await handle.stop();
+    }
+  } finally {
+    process.chdir(previousCwd);
+  }
+});

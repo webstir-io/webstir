@@ -10,7 +10,7 @@ import { collectOutputSizes, formatEsbuildMessage, shouldTypeCheck } from './bui
 import { discoverEntryPoints } from './build/entries.js';
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
-import { normalizeMode, resolveWorkspacePaths } from './workspace.js';
+import { normalizeMode, resolveWorkspacePaths, resolveWorkspaceRoot } from './workspace.js';
 
 export interface WatchHandle {
   stop(): Promise<void>;
@@ -25,14 +25,17 @@ export interface BackendWatchEvent {
 }
 
 export interface StartWatchOptions {
-  readonly workspaceRoot: string;
+  readonly workspaceRoot?: string;
   readonly env?: Record<string, string | undefined>;
   readonly onEvent?: (event: BackendWatchEvent) => void | Promise<void>;
 }
 
 export async function startBackendWatch(options: StartWatchOptions): Promise<WatchHandle> {
-  const { workspaceRoot } = options;
-  const env = options.env ?? {};
+  const env = { ...process.env, ...(options.env ?? {}) };
+  const workspaceRoot = resolveWorkspaceRoot({
+    workspaceRoot: options.workspaceRoot,
+    env,
+  });
   const paths = resolveWorkspacePaths(workspaceRoot);
   const tsconfigPath = path.join(paths.sourceRoot, 'tsconfig.json');
   const mode = normalizeMode(env.WEBSTIR_MODULE_MODE);
@@ -59,7 +62,7 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
     const tscArgs = ['-p', tsconfigPath, '--noEmit', '--watch'];
     tscProc = spawn('tsc', tscArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, ...env, NODE_ENV: nodeEnv },
+      env: { ...env, NODE_ENV: nodeEnv },
       cwd: workspaceRoot,
     });
 

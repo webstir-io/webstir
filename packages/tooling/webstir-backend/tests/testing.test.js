@@ -92,3 +92,37 @@ test('createBackendTestHarness resolves WORKSPACE_ROOT when WEBSTIR_WORKSPACE_RO
     }
   }
 });
+
+test('createBackendTestHarness resolves WEBSTIR_WORKSPACE_ROOT from env overrides outside the workspace cwd', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  const workspace = await createTempDir('webstir-backend-harness-env-workspace-');
+  const alternateCwd = await createTempDir('webstir-backend-harness-env-cwd-');
+  const port = await getOpenPort();
+  const entryPath = path.join(workspace, 'build', 'backend', 'index.js');
+  await fs.mkdir(path.dirname(entryPath), { recursive: true });
+  await fs.writeFile(entryPath, "console.log('API server running');\nsetInterval(() => {}, 1000);\n", 'utf8');
+
+  const previousCwd = process.cwd();
+  let harness;
+
+  try {
+    process.chdir(alternateCwd);
+
+    harness = await createBackendTestHarness({
+      port,
+      env: {
+        WEBSTIR_WORKSPACE_ROOT: workspace
+      }
+    });
+
+    assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
+    assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
+  } finally {
+    await harness?.stop();
+    process.chdir(previousCwd);
+  }
+});

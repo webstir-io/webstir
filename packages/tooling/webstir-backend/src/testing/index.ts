@@ -8,6 +8,7 @@ import path from 'node:path';
 import type { ModuleManifest } from '@webstir-io/module-contract';
 
 import { getBackendTestContext, setBackendTestContext } from './context.js';
+import { resolveWorkspaceRoot } from '../workspace.js';
 import type {
     BackendTestCallback,
     BackendTestContext,
@@ -23,17 +24,20 @@ export type { BackendTestCallback, BackendTestContext, BackendTestHarness, Backe
 export { getBackendTestContext, setBackendTestContext };
 
 export async function createBackendTestHarness(options: BackendTestHarnessOptions = {}): Promise<BackendTestHarness> {
-    const workspaceRoot =
-        options.workspaceRoot ?? process.env.WORKSPACE_ROOT ?? process.env.WEBSTIR_WORKSPACE_ROOT ?? process.cwd();
-    const buildRoot = options.buildRoot ?? process.env.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
-    const entry = options.entry ?? process.env.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js');
+    const resolvedEnv = { ...process.env, ...(options.env ?? {}) };
+    const workspaceRoot = resolveWorkspaceRoot({
+        workspaceRoot: options.workspaceRoot,
+        env: resolvedEnv
+    });
+    const buildRoot = options.buildRoot ?? resolvedEnv.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
+    const entry = options.entry ?? resolvedEnv.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js');
     const manifestPath =
         options.manifestPath ??
-        process.env.WEBSTIR_BACKEND_TEST_MANIFEST ??
+        resolvedEnv.WEBSTIR_BACKEND_TEST_MANIFEST ??
         path.join(workspaceRoot, '.webstir', 'backend-manifest.json');
-    const readyText = options.readyText ?? process.env.WEBSTIR_BACKEND_TEST_READY ?? DEFAULT_READY_TEXT;
+    const readyText = options.readyText ?? resolvedEnv.WEBSTIR_BACKEND_TEST_READY ?? DEFAULT_READY_TEXT;
     const readyTimeoutMs =
-        options.readyTimeoutMs ?? readInt(process.env.WEBSTIR_BACKEND_TEST_READY_TIMEOUT, DEFAULT_READY_TIMEOUT_MS);
+        options.readyTimeoutMs ?? readInt(resolvedEnv.WEBSTIR_BACKEND_TEST_READY_TIMEOUT, DEFAULT_READY_TIMEOUT_MS);
 
     if (!existsSync(entry)) {
         throw new Error(
@@ -41,11 +45,12 @@ export async function createBackendTestHarness(options: BackendTestHarnessOption
         );
     }
 
-    const requestedPort = options.port ?? readInt(process.env.WEBSTIR_BACKEND_TEST_PORT, DEFAULT_PORT);
+    const requestedPort = options.port ?? readInt(resolvedEnv.WEBSTIR_BACKEND_TEST_PORT, DEFAULT_PORT);
     const port = await findOpenPort(requestedPort);
     const env = createRuntimeEnv({
         workspaceRoot,
         port,
+        baseEnv: resolvedEnv,
         overrides: options.env
     });
     const manifest = await loadManifest(manifestPath);
@@ -147,6 +152,7 @@ function isPortAvailable(port: number): Promise<boolean> {
 interface RuntimeEnvOptions {
     workspaceRoot: string;
     port: number;
+    baseEnv: Record<string, string | undefined>;
     overrides?: Record<string, string | undefined>;
 }
 
@@ -158,13 +164,13 @@ function createRuntimeEnv(options: RuntimeEnvOptions): Record<string, string> {
         }
     }
 
-    const baseUrl = overrides.API_BASE_URL ?? process.env.API_BASE_URL ?? `http://127.0.0.1:${options.port}`;
+    const baseUrl = overrides.API_BASE_URL ?? options.baseEnv.API_BASE_URL ?? `http://127.0.0.1:${options.port}`;
     return {
-        ...process.env,
+        ...options.baseEnv,
         ...overrides,
         PORT: String(options.port),
         API_BASE_URL: baseUrl,
-        NODE_ENV: overrides.NODE_ENV ?? process.env.NODE_ENV ?? 'test',
+        NODE_ENV: overrides.NODE_ENV ?? options.baseEnv.NODE_ENV ?? 'test',
         WORKSPACE_ROOT: options.workspaceRoot,
         WEBSTIR_BACKEND_TEST_RUN: '1'
     };
