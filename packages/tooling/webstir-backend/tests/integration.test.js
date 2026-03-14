@@ -1990,6 +1990,42 @@ test('build mode produces transpiled output and manifest', async () => {
   assert.ok(result.manifest.entryPoints.some((e) => e.endsWith('index.js')));
 });
 
+test('build mode resolves WORKSPACE_ROOT from env overrides outside the workspace cwd', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-build-root-');
+  const alternateCwd = await createTempWorkspace('webstir-backend-build-cwd-');
+  const previousCwd = process.cwd();
+  await hydrateBackendScaffold(workspace);
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify({ name: '@demo/env-root-build', version: '7.8.9', type: 'module' }, null, 2),
+    'utf8'
+  );
+
+  const bin = getLocalBinPath();
+
+  try {
+    process.chdir(alternateCwd);
+
+    const result = await backendProvider.build({
+      env: {
+        WEBSTIR_MODULE_MODE: 'build',
+        WEBSTIR_BACKEND_TYPECHECK: 'skip',
+        WORKSPACE_ROOT: workspace,
+        PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`,
+      },
+      incremental: false
+    });
+
+    assert.equal(result.manifest.module?.name, '@demo/env-root-build');
+    assert.equal(result.manifest.module?.version, '7.8.9');
+    assert.equal(fssync.existsSync(path.join(workspace, 'build', 'backend', 'index.js')), true);
+    assert.equal(fssync.existsSync(path.join(workspace, '.webstir', 'backend-outputs.json')), true);
+    assert.equal(fssync.existsSync(path.join(workspace, '.webstir', 'backend-manifest-digest.json')), true);
+  } finally {
+    process.chdir(previousCwd);
+  }
+});
+
 test('publish mode bundles output and manifest has entry', async () => {
   const workspace = await createTempWorkspace();
   await hydrateBackendScaffold(workspace);
