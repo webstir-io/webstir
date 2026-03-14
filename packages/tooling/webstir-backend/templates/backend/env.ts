@@ -186,20 +186,19 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 }
 
 export function resolveWorkspaceRoot(): string {
-  if (process.env.WORKSPACE_ROOT) {
-    return process.env.WORKSPACE_ROOT;
+  const envWorkspaceRoot = process.env.WORKSPACE_ROOT ?? process.env.WEBSTIR_WORKSPACE_ROOT;
+  if (envWorkspaceRoot) {
+    return path.resolve(envWorkspaceRoot);
   }
   try {
     const filePath = fileURLToPath(import.meta.url);
-    const dir = path.dirname(filePath);
-    if (dir.endsWith(`${path.sep}src${path.sep}backend`)) {
-      return path.resolve(dir, '..', '..');
-    }
-    if (dir.endsWith(`${path.sep}build${path.sep}backend`)) {
-      return path.resolve(dir, '..', '..');
+    const normalized = path.resolve(path.dirname(filePath));
+    const match = normalized.match(/^(.*)[/\\](?:src|build)[/\\]backend(?:[/\\].*)?$/);
+    if (match) {
+      return match[1] || path.parse(normalized).root;
     }
   } catch {
     // ignore
   }
-  return process.cwd();
+  return path.resolve(process.cwd());
 }

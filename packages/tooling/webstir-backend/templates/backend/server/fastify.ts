@@ -2,7 +2,7 @@
 // Rename or import into your backend index to use.
 import Fastify from 'fastify';
 
-import { loadEnv } from '../env.js';
+import { loadEnv, resolveWorkspaceRoot } from '../env.js';
 import { resolveRequestAuth } from '../auth/adapter.js';
 import {
   executeRequestHookPhase
@@ -298,7 +298,7 @@ function configureViewNotFoundHandler(
 
     try {
       const rendered = await renderRequestTimeView({
-        workspaceRoot: process.cwd(),
+        workspaceRoot: resolveWorkspaceRoot(),
         url: requestUrl,
         view: matchedView.view,
         params: matchedView.params,
