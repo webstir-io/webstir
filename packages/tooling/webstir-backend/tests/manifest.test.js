@@ -143,6 +143,7 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'observability', 'logger.ts'),
     path.join('src', 'backend', 'observability', 'metrics.ts'),
     path.join('src', 'backend', 'session', 'store.ts'),
+    path.join('src', 'backend', 'session', 'sqlite.ts'),
     path.join('src', 'backend', 'runtime', 'node-http.ts'),
     path.join('src', 'backend', 'runtime', 'fastify.ts'),
     path.join('src', 'backend', 'runtime', 'views.ts'),
@@ -183,5 +184,12 @@ test('scaffold assets expose core backend templates', async () => {
   assert.ok(sessionStoreAsset, 'expected scaffold assets to include the session store helper');
 
   const sessionStoreSource = await fs.readFile(sessionStoreAsset.sourcePath, 'utf8');
-  assert.match(sessionStoreSource, /createInMemorySessionStore/);
+  assert.match(sessionStoreSource, /createSessionStoreFromEnv/);
+  assert.match(sessionStoreSource, /SESSION_STORE_DRIVER/);
+
+  const sqliteSessionStoreAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'session', 'sqlite.ts'));
+  assert.ok(sqliteSessionStoreAsset, 'expected scaffold assets to include the durable sqlite session store helper');
+
+  const sqliteSessionStoreSource = await fs.readFile(sqliteSessionStoreAsset.sourcePath, 'utf8');
+  assert.match(sqliteSessionStoreSource, /createSqliteSessionStore/);
 });

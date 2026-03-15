@@ -145,6 +145,7 @@ The backend template now ships a lightweight auth adapter so you can secure rout
 - **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users.
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
 - **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies; when omitted, the scaffold falls back to a per-process random secret instead of a fixed shared default. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in both the built-in and Fastify server templates.
+- **Durable session storage (optional)** — the scaffold defaults to the explicit in-memory `SessionStore`, but you can switch to the bundled SQLite adapter with `SESSION_STORE_DRIVER=sqlite`. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
 - Install `pino` in your workspace (`npm install pino`) before running the scaffold; the template server imports it directly.
 
 This adapter is intentionally simple (HS256 only) but gives you a hook to plug in third-party IdPs: generate/sign tokens there, supply the shared secret via env, and the scaffold will populate `ctx.auth` for every route.
@@ -176,6 +177,7 @@ node build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekl
 
 - `DATABASE_URL` defaults to `file:./data/dev.sqlite`. Point it at Postgres (`postgres://...`) or another SQLite file as needed. Override the tracking table via `DATABASE_MIGRATIONS_TABLE` (defaults to `_webstir_migrations`).
 - `src/backend/db/connection.ts` exposes a tiny helper that connects to SQLite (via `better-sqlite3`) or Postgres (`pg`). Install whichever driver you need in your workspace: `npm install better-sqlite3` for the default flow or `npm install pg` for Postgres.
+- `src/backend/session/store.ts` now owns the runtime session-store choice. Keep the default in-memory store for stateless/local flows, or set `SESSION_STORE_DRIVER=sqlite` to persist sessions in a SQLite file via `src/backend/session/sqlite.ts`. The SQLite adapter creates its table lazily and needs `better-sqlite3` installed in the workspace.
 - Drop SQL/TypeScript migrations under `src/backend/db/migrations/*.ts`, exporting `id`, `up`, and optional `down`.
 - Run migrations with:
 
