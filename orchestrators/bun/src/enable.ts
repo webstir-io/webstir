@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, copyFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
@@ -151,7 +151,7 @@ async function copyStaticAssets(
       continue;
     }
 
-    await copyFile(asset.sourcePath, targetPath);
+    await Bun.write(targetPath, Bun.file(asset.sourcePath));
     if (asset.executable) {
       await chmod(targetPath, 0o755);
     }
@@ -166,7 +166,7 @@ async function enableBackend(workspaceRoot: string, changes: string[]): Promise<
     for (const asset of assets) {
       const targetPath = path.join(workspaceRoot, asset.targetPath);
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await copyFile(asset.sourcePath, targetPath);
+      await Bun.write(targetPath, Bun.file(asset.sourcePath));
       changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
     }
   }
@@ -209,13 +209,13 @@ async function ensureAppScriptImport(
     return;
   }
 
-  const source = await readFile(appTsPath, 'utf8');
+  const source = await readTextFile(appTsPath);
   const updated = ensureSideEffectImport(source, importPath);
   if (updated === source) {
     return;
   }
 
-  await writeFile(appTsPath, updated, 'utf8');
+  await Bun.write(appTsPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, appTsPath));
 }
 
@@ -229,7 +229,7 @@ async function ensureAppCssImport(
     return;
   }
 
-  const source = await readFile(appCssPath, 'utf8');
+  const source = await readTextFile(appCssPath);
   let updated = source;
   updated = ensureLayerIncludes(updated, 'features');
   updated = ensureImportIncludes(updated, importPath, './styles/components/buttons.css');
@@ -237,7 +237,7 @@ async function ensureAppCssImport(
     return;
   }
 
-  await writeFile(appCssPath, updated, 'utf8');
+  await Bun.write(appCssPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
 }
 
@@ -247,7 +247,7 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[]): P
     return;
   }
 
-  const source = await readFile(appHtmlPath, 'utf8');
+  const source = await readTextFile(appHtmlPath);
   if (source.includes('data-webstir-search-styles=')) {
     return;
   }
@@ -260,7 +260,7 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[]): P
     return;
   }
 
-  await writeFile(appHtmlPath, updated, 'utf8');
+  await Bun.write(appHtmlPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, appHtmlPath));
 }
 
@@ -279,7 +279,7 @@ async function updatePackageJson(
   changes: string[]
 ): Promise<void> {
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
-  const source = await readFile(packageJsonPath, 'utf8');
+  const source = await readTextFile(packageJsonPath);
   const root = JSON.parse(source) as Record<string, unknown>;
   const webstir = asRecord(root.webstir);
   const enable = asRecord(webstir.enable);
@@ -322,7 +322,7 @@ async function updatePackageJson(
     return;
   }
 
-  await writeFile(packageJsonPath, updated, 'utf8');
+  await Bun.write(packageJsonPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, packageJsonPath));
 }
 
@@ -332,7 +332,7 @@ async function updateFrontendConfig(workspaceRoot: string, basePath: string, cha
 
   if (existsSync(configPath)) {
     try {
-      root = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
+      root = JSON.parse(await readTextFile(configPath)) as Record<string, unknown>;
     } catch {
       root = {};
     }
@@ -343,7 +343,7 @@ async function updateFrontendConfig(workspaceRoot: string, basePath: string, cha
   root.publish = publish;
 
   const updated = `${JSON.stringify(root, null, 2)}\n`;
-  const current = existsSync(configPath) ? await readFile(configPath, 'utf8') : null;
+  const current = existsSync(configPath) ? await readTextFile(configPath) : null;
   if (current === updated) {
     return;
   }
@@ -358,7 +358,7 @@ async function ensureTsReference(workspaceRoot: string, referencePath: string, c
     return;
   }
 
-  const source = await readFile(tsconfigPath, 'utf8');
+  const source = await readTextFile(tsconfigPath);
   const root = JSON.parse(source) as Record<string, unknown>;
   const references = Array.isArray(root.references) ? [...root.references] : [];
   const exists = references.some((entry) =>
@@ -376,7 +376,7 @@ async function ensureTsReference(workspaceRoot: string, referencePath: string, c
     return;
   }
 
-  await writeFile(tsconfigPath, updated, 'utf8');
+  await Bun.write(tsconfigPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, tsconfigPath));
 }
 
@@ -456,10 +456,14 @@ function ensureImportIncludes(css: string, importPath: string, insertAfterImport
 
 async function writeTextFile(filePath: string, contents: string, mode?: number): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, contents, 'utf8');
+  await Bun.write(filePath, contents);
   if (mode !== undefined) {
     await chmod(filePath, mode);
   }
+}
+
+async function readTextFile(filePath: string): Promise<string> {
+  return await Bun.file(filePath).text();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
