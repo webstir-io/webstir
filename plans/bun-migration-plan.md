@@ -88,7 +88,7 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 ### Remaining justified Bun-only work
 
 - The Bun-only script/orchestrator track is complete.
-- The next active work is the package/tooling track, starting with the backend `Bun.build()` path.
+- The next active work is the package/tooling track, continuing with the frontend `Bun.build()` path.
 
 ### Deferred or gated
 
@@ -584,6 +584,9 @@ Deliverables:
 - unchanged `npm publish` boundary
 
 ### PR 3
+
+Status: completed
+Tracking: PR #91
 
 Scope:
 

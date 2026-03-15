@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { mkdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 
@@ -20,6 +21,7 @@ export interface BackendBuildPipelineOptions {
     readonly env: Record<string, string | undefined>;
     readonly incremental: boolean;
     readonly diagnostics: ModuleDiagnostic[];
+    readonly bundler?: BackendBundler;
 }
 
 export interface BackendBuildPipelineResult {
@@ -27,6 +29,8 @@ export interface BackendBuildPipelineResult {
     readonly outputs?: Record<string, number>;
     readonly includePublishSourcemaps: boolean;
 }
+
+export type BackendBundler = 'esbuild' | 'bun';
 
 interface IncrementalBuildEntry {
     entrySignature: string;
@@ -44,6 +48,11 @@ if (typeof process !== 'undefined' && typeof process.once === 'function') {
 export async function runBackendBuildPipeline(options: BackendBuildPipelineOptions): Promise<BackendBuildPipelineResult> {
     const { sourceRoot, buildRoot, tsconfigPath, diagnostics, incremental, mode } = options;
     const env = options.env ?? {};
+    const bundler = options.bundler ?? resolveBackendBundler({
+        env,
+        incremental,
+        diagnostics
+    });
     console.info(`[webstir-backend] ${mode}:tsc start`);
     if (shouldTypeCheck(mode, env)) {
         await runTypeCheck(tsconfigPath, env, diagnostics);
@@ -60,18 +69,33 @@ export async function runBackendBuildPipeline(options: BackendBuildPipelineOptio
         });
     }
 
-    console.info(`[webstir-backend] ${mode}:esbuild start`);
-    const outputs = await runEsbuild({
-        sourceRoot,
-        buildRoot,
-        tsconfigPath,
-        mode,
-        env,
-        incremental,
-        diagnostics,
-        entryPoints
-    });
-    console.info(`[webstir-backend] ${mode}:esbuild done`);
+    if (bundler === 'bun') {
+        await resetBuildRoot(buildRoot);
+    }
+
+    console.info(`[webstir-backend] ${mode}:${bundler} start`);
+    const outputs = bundler === 'bun'
+        ? await runBunBuild({
+            sourceRoot,
+            buildRoot,
+            tsconfigPath,
+            mode,
+            env,
+            incremental,
+            diagnostics,
+            entryPoints
+        })
+        : await runEsbuild({
+            sourceRoot,
+            buildRoot,
+            tsconfigPath,
+            mode,
+            env,
+            incremental,
+            diagnostics,
+            entryPoints
+        });
+    console.info(`[webstir-backend] ${mode}:${bundler} done`);
 
     const moduleSource = await discoverModuleDefinitionSource(sourceRoot);
     if (moduleSource) {
@@ -82,7 +106,8 @@ export async function runBackendBuildPipeline(options: BackendBuildPipelineOptio
             tsconfigPath,
             mode,
             env,
-            diagnostics
+            diagnostics,
+            bundler
         });
     }
 
@@ -165,6 +190,41 @@ export function shouldTypeCheck(mode: BackendBuildMode, env: Record<string, stri
     return true;
 }
 
+interface ResolveBackendBundlerOptions {
+    readonly env: Record<string, string | undefined>;
+    readonly incremental: boolean;
+    readonly diagnostics?: ModuleDiagnostic[];
+}
+
+export function resolveBackendBundler(options: ResolveBackendBundlerOptions): BackendBundler {
+    const requestedBundler = normalizeBackendBundler(options.env?.WEBSTIR_BACKEND_BUNDLER);
+    if (requestedBundler !== 'bun') {
+        return 'esbuild';
+    }
+
+    if (options.incremental) {
+        options.diagnostics?.push({
+            severity: 'info',
+            message: '[webstir-backend] WEBSTIR_BACKEND_BUNDLER=bun requested for an incremental build; falling back to esbuild.'
+        });
+        return 'esbuild';
+    }
+
+    if (!getBunBuild()) {
+        options.diagnostics?.push({
+            severity: 'warn',
+            message: '[webstir-backend] WEBSTIR_BACKEND_BUNDLER=bun requested outside a Bun runtime; falling back to esbuild.'
+        });
+        return 'esbuild';
+    }
+
+    return 'bun';
+}
+
+function normalizeBackendBundler(rawBundler: unknown): BackendBundler {
+    return typeof rawBundler === 'string' && rawBundler.trim().toLowerCase() === 'bun' ? 'bun' : 'esbuild';
+}
+
 function shouldEmitPublishSourcemaps(env: Record<string, string | undefined>): boolean {
     const flag = env?.WEBSTIR_BACKEND_SOURCEMAPS;
     if (typeof flag !== 'string') {
@@ -201,6 +261,7 @@ interface ModuleDefinitionBuildOptions {
     readonly mode: BackendBuildMode;
     readonly env: Record<string, string | undefined>;
     readonly diagnostics: ModuleDiagnostic[];
+    readonly bundler?: BackendBundler;
 }
 
 async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Promise<void> {
@@ -212,23 +273,42 @@ async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Pro
     const define: Record<string, string> = {
         'process.env.NODE_ENV': JSON.stringify(nodeEnv)
     };
+    const bundler = options.bundler ?? resolveBackendBundler({
+        env,
+        incremental: false,
+        diagnostics
+    });
+    const diagMax = readDiagMax(env, 50);
 
     try {
-        await esbuild({
-            entryPoints: [sourceFile],
-            bundle: true,
-            packages: 'external',
-            platform: 'node',
-            target: 'node20',
-            format: 'esm',
-            sourcemap: isProduction ? emitPublishSourcemaps : true,
-            outdir: buildRoot,
-            outbase: sourceRoot,
-            entryNames: '[dir]/[name]',
-            tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
-            define,
-            logLevel: 'silent'
-        });
+        if (bundler === 'bun') {
+            const result = await runBunCompile({
+                entryPoints: [sourceFile],
+                sourceRoot,
+                buildRoot,
+                tsconfigPath,
+                define,
+                minify: false,
+                includeSourceMaps: isProduction ? emitPublishSourcemaps : true
+            });
+            ensureBunCompileSucceeded(result, diagnostics, `${mode}:bun:module`, diagMax);
+        } else {
+            await esbuild({
+                entryPoints: [sourceFile],
+                bundle: true,
+                packages: 'external',
+                platform: 'node',
+                target: 'node20',
+                format: 'esm',
+                sourcemap: isProduction ? emitPublishSourcemaps : true,
+                outdir: buildRoot,
+                outbase: sourceRoot,
+                entryNames: '[dir]/[name]',
+                tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
+                define,
+                logLevel: 'silent'
+            });
+        }
     } catch (error) {
         if (isEsbuildFailure(error)) {
             for (const e of error.errors ?? []) {
@@ -253,6 +333,7 @@ interface SupportFileBuildOptions {
     readonly mode: BackendBuildMode;
     readonly env: Record<string, string | undefined>;
     readonly diagnostics: ModuleDiagnostic[];
+    readonly bundler?: BackendBundler;
 }
 
 export async function buildSupportFile(options: SupportFileBuildOptions): Promise<void> {
@@ -263,21 +344,40 @@ export async function buildSupportFile(options: SupportFileBuildOptions): Promis
     const define: Record<string, string> = {
         'process.env.NODE_ENV': JSON.stringify(nodeEnv)
     };
+    const bundler = options.bundler ?? resolveBackendBundler({
+        env,
+        incremental: false,
+        diagnostics
+    });
+    const diagMax = readDiagMax(env, 50);
 
     try {
-        await esbuild({
-            entryPoints: [sourceFile],
-            bundle: false,
-            platform: 'node',
-            target: 'node20',
-            format: 'esm',
-            sourcemap: isProduction ? emitPublishSourcemaps : true,
-            outdir: buildRoot,
-            outbase: sourceRoot,
-            tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
-            define,
-            logLevel: 'silent'
-        });
+        if (bundler === 'bun') {
+            const result = await runBunCompile({
+                entryPoints: [sourceFile],
+                sourceRoot,
+                buildRoot,
+                tsconfigPath,
+                define,
+                minify: false,
+                includeSourceMaps: isProduction ? emitPublishSourcemaps : true
+            });
+            ensureBunCompileSucceeded(result, diagnostics, `${mode}:bun:support`, diagMax);
+        } else {
+            await esbuild({
+                entryPoints: [sourceFile],
+                bundle: false,
+                platform: 'node',
+                target: 'node20',
+                format: 'esm',
+                sourcemap: isProduction ? emitPublishSourcemaps : true,
+                outdir: buildRoot,
+                outbase: sourceRoot,
+                tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
+                define,
+                logLevel: 'silent'
+            });
+        }
     } catch (error) {
         if (error instanceof Error) {
             diagnostics.push({ severity: 'error', message: error.message });
@@ -314,11 +414,7 @@ async function runEsbuild(options: BuildOptions): Promise<Record<string, number>
 
     const entrySignature = useIncremental ? createEntrySignature(entryPoints) : undefined;
     const nodeEnv = env?.NODE_ENV ?? (isProduction ? 'production' : 'development');
-    const diagMax = (() => {
-        const raw = env?.WEBSTIR_BACKEND_DIAG_MAX;
-        const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
-        return Number.isFinite(n) && n > 0 ? n : 50;
-    })();
+    const diagMax = readDiagMax(env, 50);
 
     const define: Record<string, string> = {
         'process.env.NODE_ENV': JSON.stringify(nodeEnv)
@@ -449,6 +545,188 @@ async function runEsbuild(options: BuildOptions): Promise<Record<string, number>
     }
 }
 
+interface BunBuildOutputFile {
+    readonly path: string;
+    readonly kind?: string;
+    readonly size?: number;
+}
+
+interface BunBuildLog {
+    readonly level?: string;
+    readonly message?: string;
+    readonly text?: string;
+    readonly position?: {
+        readonly file?: string;
+        readonly line?: number;
+        readonly column?: number;
+    } | null;
+}
+
+interface BunBuildOutput {
+    readonly success: boolean;
+    readonly outputs?: readonly BunBuildOutputFile[];
+    readonly logs?: readonly BunBuildLog[];
+}
+
+type BunBuildFunction = (config: Record<string, unknown>) => Promise<BunBuildOutput>;
+
+interface BunCompileOptions {
+    readonly entryPoints: readonly string[];
+    readonly sourceRoot: string;
+    readonly buildRoot: string;
+    readonly tsconfigPath: string;
+    readonly define: Record<string, string>;
+    readonly minify: boolean;
+    readonly includeSourceMaps: boolean;
+}
+
+async function runBunBuild(options: BuildOptions): Promise<Record<string, number> | undefined> {
+    const { sourceRoot, buildRoot, tsconfigPath, mode, env, diagnostics, entryPoints } = options;
+    const isProduction = mode === 'publish';
+
+    if (!entryPoints || entryPoints.length === 0) {
+        return undefined;
+    }
+
+    const nodeEnv = env?.NODE_ENV ?? (isProduction ? 'production' : 'development');
+    const diagMax = readDiagMax(env, 50);
+    const define: Record<string, string> = {
+        'process.env.NODE_ENV': JSON.stringify(nodeEnv)
+    };
+    const emitPublishSourcemaps = isProduction && shouldEmitPublishSourcemaps(env);
+    const start = performance.now();
+
+    try {
+        const result = await runBunCompile({
+            entryPoints,
+            sourceRoot,
+            buildRoot,
+            tsconfigPath,
+            define,
+            minify: isProduction,
+            includeSourceMaps: isProduction ? emitPublishSourcemaps : true
+        });
+        const { errorCount, warningCount } = pushBunLogs(diagnostics, result.logs, `${mode}:bun`, diagMax);
+
+        const end = performance.now();
+        diagnostics.push({
+            severity: 'info',
+            message: `[webstir-backend] ${mode}:bun ${errorCount} error(s), ${warningCount} warning(s) in ${(end - start).toFixed(1)}ms`
+        });
+
+        if (!result.success || errorCount > 0) {
+            throw new Error('bun build failed.');
+        }
+
+        return collectBunOutputSizes(result.outputs, buildRoot);
+    } catch (error) {
+        const end = performance.now();
+        if (error instanceof Error) {
+            diagnostics.push({ severity: 'error', message: error.message });
+        } else {
+            diagnostics.push({ severity: 'error', message: String(error) });
+        }
+        diagnostics.push({
+            severity: 'info',
+            message: `[webstir-backend] ${mode}:bun failed in ${(end - start).toFixed(1)}ms`
+        });
+        throw new Error('bun build failed.');
+    }
+}
+
+async function runBunCompile(options: BunCompileOptions): Promise<BunBuildOutput> {
+    const build = getBunBuild();
+    if (!build) {
+        throw new Error('Bun.build() is not available in the current runtime.');
+    }
+
+    return await build({
+        entrypoints: [...options.entryPoints],
+        root: options.sourceRoot,
+        outdir: options.buildRoot,
+        target: 'node',
+        format: 'esm',
+        splitting: false,
+        packages: 'external',
+        minify: options.minify,
+        sourcemap: options.includeSourceMaps ? 'linked' : 'none',
+        tsconfig: existsSync(options.tsconfigPath) ? options.tsconfigPath : undefined,
+        define: options.define,
+        throw: false
+    });
+}
+
+function ensureBunCompileSucceeded(
+    result: BunBuildOutput,
+    diagnostics: ModuleDiagnostic[],
+    label: string,
+    diagMax: number
+): void {
+    const { errorCount } = pushBunLogs(diagnostics, result.logs, label, diagMax);
+    if (!result.success || errorCount > 0) {
+        throw new Error('bun build failed.');
+    }
+}
+
+function pushBunLogs(
+    diagnostics: ModuleDiagnostic[],
+    logs: readonly BunBuildLog[] | undefined,
+    label: string,
+    diagMax: number
+): { errorCount: number; warningCount: number } {
+    const entries = Array.isArray(logs) ? logs : [];
+    const errorLogs = entries.filter((log) => log.level === 'error');
+    const warningLogs = entries.filter((log) => log.level === 'warning');
+
+    for (const entry of errorLogs.slice(0, diagMax)) {
+        diagnostics.push({ severity: 'error', message: formatEsbuildMessage(entry) });
+    }
+    for (const entry of warningLogs.slice(0, diagMax)) {
+        diagnostics.push({ severity: 'warn', message: formatEsbuildMessage(entry) });
+    }
+    if (errorLogs.length > diagMax) {
+        diagnostics.push({ severity: 'info', message: `[webstir-backend] ${label} ... ${errorLogs.length - diagMax} more error(s) omitted` });
+    }
+    if (warningLogs.length > diagMax) {
+        diagnostics.push({ severity: 'info', message: `[webstir-backend] ${label} ... ${warningLogs.length - diagMax} more warning(s) omitted` });
+    }
+
+    return {
+        errorCount: errorLogs.length,
+        warningCount: warningLogs.length
+    };
+}
+
+function getBunBuild(): BunBuildFunction | undefined {
+    const runtime = globalThis as typeof globalThis & {
+        Bun?: {
+            build?: BunBuildFunction;
+        };
+    };
+    const build = runtime.Bun?.build;
+    return typeof build === 'function' ? build.bind(runtime.Bun) : undefined;
+}
+
+function collectBunOutputSizes(outputs: readonly BunBuildOutputFile[] | undefined, buildRoot: string): Record<string, number> {
+    const collected: Record<string, number> = {};
+    for (const output of outputs ?? []) {
+        const rel = path.relative(buildRoot, output.path);
+        collected[rel] = typeof output.size === 'number' ? output.size : 0;
+    }
+    return collected;
+}
+
+async function resetBuildRoot(buildRoot: string): Promise<void> {
+    await rm(buildRoot, { recursive: true, force: true });
+    await mkdir(buildRoot, { recursive: true });
+}
+
+function readDiagMax(env: Record<string, string | undefined>, fallback: number): number {
+    const raw = env?.WEBSTIR_BACKEND_DIAG_MAX;
+    const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 function createIncrementalKey(mode: BackendBuildMode, buildRoot: string): string {
     return `${mode}:${path.resolve(buildRoot)}`;
 }
@@ -498,8 +776,13 @@ function isEsbuildFailure(error: unknown): error is { errors?: readonly any[]; w
 }
 
 export function formatEsbuildMessage(msg: any): string {
-    const text = typeof msg?.text === 'string' ? msg.text : String(msg);
-    const loc = msg?.location;
+    const text =
+        typeof msg?.message === 'string'
+            ? msg.message
+            : typeof msg?.text === 'string'
+              ? msg.text
+              : String(msg);
+    const loc = msg?.location ?? msg?.position;
     if (loc && typeof loc.file === 'string') {
         const position = typeof loc.line === 'number' ? `${loc.line}:${loc.column ?? 1}` : '1:1';
         return `${loc.file}:${position} ${text}`;
