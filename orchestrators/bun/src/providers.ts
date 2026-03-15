@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { access } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 
 import type { BuildProvider, BuildTargetKind } from './types.ts';
 import { monorepoRoot } from './paths.ts';
@@ -68,21 +67,22 @@ async function runRuntimeCommand(args: readonly string[]): Promise<void> {
     return;
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const child = spawn(resolveRuntimeCommand(), args, {
-      cwd,
-      env: process.env,
-      stdio: 'inherit',
-    });
+  try {
+    await Bun.$.cwd(cwd)`${resolveRuntimeCommand()} ${args}`;
+  } catch (error) {
+    const exitCode =
+      typeof error === 'object' &&
+      error !== null &&
+      'exitCode' in error &&
+      typeof error.exitCode === 'number'
+        ? error.exitCode
+        : null;
+    if (exitCode === null) {
+      throw error;
+    }
 
-    child.once('error', reject);
-    child.once('close', (code: number | null) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-
-      reject(new Error(`Command failed with exit code ${code}: ${args.join(' ')}`));
+    throw new Error(`Command failed with exit code ${exitCode}: ${args.join(' ')}`, {
+      cause: error,
     });
-  });
+  }
 }

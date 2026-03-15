@@ -1,4 +1,10 @@
+interface BunShell {
+  (strings: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
+  cwd(cwd: string): BunShell;
+}
+
 declare const Bun: {
+  $: BunShell;
   file(path: string | URL): Blob & {
     text(): Promise<string>;
   };
