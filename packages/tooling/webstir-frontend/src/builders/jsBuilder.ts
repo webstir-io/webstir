@@ -12,6 +12,31 @@ import { findPageFromChangedFile } from '../utils/pathMatch.js';
 
 const ENTRY_EXTENSIONS = ['.ts', '.tsx', '.js'];
 const APP_ENTRY_BASENAME = 'app';
+type JavaScriptBundler = 'esbuild' | 'bun';
+
+interface BunBuildOutputFile {
+    readonly path: string;
+    readonly kind?: string;
+}
+
+interface BunBuildLog {
+    readonly level?: string;
+    readonly message?: string;
+    readonly text?: string;
+    readonly position?: {
+        readonly file?: string;
+        readonly line?: number;
+        readonly column?: number;
+    } | null;
+}
+
+interface BunBuildOutput {
+    readonly success: boolean;
+    readonly outputs?: readonly BunBuildOutputFile[];
+    readonly logs?: readonly BunBuildLog[];
+}
+
+type BunBuildFunction = (config: Record<string, unknown>) => Promise<BunBuildOutput>;
 
 export function createJavaScriptBuilder(context: BuilderContext): Builder {
     return {
@@ -27,6 +52,7 @@ export function createJavaScriptBuilder(context: BuilderContext): Builder {
 
 async function bundleJavaScript(context: BuilderContext, isProduction: boolean): Promise<void> {
     const { config } = context;
+    const bundler = resolveJavaScriptBundler(context.env);
     if (!shouldProcess(context, [
         {
             directory: config.paths.src.frontend,
@@ -40,7 +66,7 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
     let builtAny = false;
 
     await assertFeatureModulesPresent(config, context.enable);
-    await compileAppTypeScript(config, isProduction);
+    await compileAppTypeScript(context, isProduction, bundler);
 
     for (const page of pages) {
         if (targetPage && page.name !== targetPage) {
@@ -54,9 +80,9 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
         builtAny = true;
 
         if (isProduction) {
-            await buildForProduction(config, page.name, entryPoint);
+            await buildForProduction(config, page.name, entryPoint, bundler);
         } else {
-            await buildForDevelopment(config, page.name, entryPoint);
+            await buildForDevelopment(config, page.name, entryPoint, bundler);
         }
     }
 
@@ -66,7 +92,8 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
     }
 }
 
-async function compileAppTypeScript(config: BuilderContext['config'], isProduction: boolean): Promise<void> {
+async function compileAppTypeScript(context: BuilderContext, isProduction: boolean, bundler: JavaScriptBundler): Promise<void> {
+    const { config } = context;
     const appRoot = config.paths.src.app;
     if (!(await pathExists(appRoot))) {
         return;
@@ -81,25 +108,9 @@ async function compileAppTypeScript(config: BuilderContext['config'], isProducti
         const outputDir = path.join(config.paths.dist.frontend, FOLDERS.app);
         await ensureDir(outputDir);
 
-        const result = await esbuild({
-            entryPoints: [entryPoint],
-            outdir: outputDir,
-            format: 'esm',
-            target: 'es2020',
-            platform: 'browser',
-            minify: true,
-            sourcemap: false,
-            bundle: true,
-            entryNames: 'app-[hash]',
-            assetNames: 'assets/[name]-[hash]',
-            metafile: true,
-            logLevel: 'silent'
-        });
-
-        const fileName = await resolveAppBundleName(outputDir, entryPoint, result.metafile);
-        if (!fileName) {
-            throw new Error(`esbuild did not produce an app bundle for ${entryPoint}.`);
-        }
+        const fileName = bundler === 'bun'
+            ? await buildAppForProductionWithBun(outputDir, entryPoint)
+            : await buildAppForProductionWithEsbuild(outputDir, entryPoint);
         const absolutePath = path.join(outputDir, fileName);
 
         if (config.features.precompression) {
@@ -153,9 +164,19 @@ async function compileAppTypeScript(config: BuilderContext['config'], isProducti
     });
 }
 
-async function buildForDevelopment(config: BuilderContext['config'], pageName: string, entryPoint: string): Promise<void> {
+async function buildForDevelopment(
+    config: BuilderContext['config'],
+    pageName: string,
+    entryPoint: string,
+    bundler: JavaScriptBundler
+): Promise<void> {
     const outputDir = path.join(config.paths.build.pages, pageName);
     await ensureDir(outputDir);
+    if (bundler === 'bun') {
+        await buildForDevelopmentWithBun(outputDir, entryPoint);
+        return;
+    }
+
     const outfile = path.join(outputDir, `${FILES.index}${EXTENSIONS.js}`);
 
     await esbuild({
@@ -170,10 +191,92 @@ async function buildForDevelopment(config: BuilderContext['config'], pageName: s
     });
 }
 
-async function buildForProduction(config: BuilderContext['config'], pageName: string, entryPoint: string): Promise<void> {
+async function buildForProduction(
+    config: BuilderContext['config'],
+    pageName: string,
+    entryPoint: string,
+    bundler: JavaScriptBundler
+): Promise<void> {
     const outputDir = path.join(config.paths.dist.pages, pageName);
     await ensureDir(outputDir);
 
+    const fileName = bundler === 'bun'
+        ? await buildPageForProductionWithBun(outputDir, pageName, entryPoint)
+        : await buildPageForProductionWithEsbuild(outputDir, pageName, entryPoint);
+    const absolutePath = path.join(outputDir, fileName);
+    if (config.features.precompression) {
+        await createCompressedVariants(absolutePath);
+    } else {
+        await Promise.all([
+            remove(`${absolutePath}${EXTENSIONS.br}`).catch(() => undefined),
+            remove(`${absolutePath}${EXTENSIONS.gz}`).catch(() => undefined)
+        ]);
+    }
+    await updatePageManifest(outputDir, pageName, (manifest) => {
+        manifest.js = fileName;
+    });
+}
+
+async function buildAppForProductionWithEsbuild(outputDir: string, entryPoint: string): Promise<string> {
+    const result = await esbuild({
+        entryPoints: [entryPoint],
+        outdir: outputDir,
+        format: 'esm',
+        target: 'es2020',
+        platform: 'browser',
+        minify: true,
+        sourcemap: false,
+        bundle: true,
+        entryNames: 'app-[hash]',
+        assetNames: 'assets/[name]-[hash]',
+        metafile: true,
+        logLevel: 'silent'
+    });
+
+    const fileName = await resolveAppBundleName(outputDir, entryPoint, result.metafile);
+    if (!fileName) {
+        throw new Error(`esbuild did not produce an app bundle for ${entryPoint}.`);
+    }
+
+    return fileName;
+}
+
+async function buildAppForProductionWithBun(outputDir: string, entryPoint: string): Promise<string> {
+    const result = await runBunBrowserBuild({
+        entryPoint,
+        root: path.dirname(entryPoint),
+        outputDir,
+        minify: true,
+        sourcemap: 'none',
+        naming: {
+            entry: 'app-[hash].js',
+            asset: 'assets/[name]-[hash].[ext]'
+        }
+    });
+    ensureBunBuildSucceeded(result, `app bundle ${entryPoint}`);
+
+    const fileName = resolveBunEntryOutputName(result.outputs, outputDir, (name) => {
+        return name.startsWith('app-') && name.endsWith(EXTENSIONS.js);
+    });
+    if (!fileName) {
+        throw new Error(`Bun.build() did not produce an app bundle for ${entryPoint}.`);
+    }
+
+    return fileName;
+}
+
+async function buildForDevelopmentWithBun(outputDir: string, entryPoint: string): Promise<void> {
+    const result = await runBunBrowserBuild({
+        entryPoint,
+        root: path.dirname(entryPoint),
+        outputDir,
+        minify: false,
+        sourcemap: 'linked'
+    });
+    ensureBunBuildSucceeded(result, `development bundle ${entryPoint}`);
+}
+
+async function buildPageForProductionWithEsbuild(outputDir: string, pageName: string, entryPoint: string): Promise<string> {
     const result = await esbuild({
         entryPoints: [entryPoint],
         bundle: true,
@@ -195,19 +298,31 @@ async function buildForProduction(config: BuilderContext['config'], pageName: st
         throw new Error(`esbuild did not produce a JavaScript bundle for page '${pageName}'.`);
     }
 
-    const fileName = path.basename(scriptPath);
-    const absolutePath = path.join(outputDir, fileName);
-    if (config.features.precompression) {
-        await createCompressedVariants(absolutePath);
-    } else {
-        await Promise.all([
-            remove(`${absolutePath}${EXTENSIONS.br}`).catch(() => undefined),
-            remove(`${absolutePath}${EXTENSIONS.gz}`).catch(() => undefined)
-        ]);
-    }
-    await updatePageManifest(outputDir, pageName, (manifest) => {
-        manifest.js = fileName;
+    return path.basename(scriptPath);
+}
+
+async function buildPageForProductionWithBun(outputDir: string, pageName: string, entryPoint: string): Promise<string> {
+    const result = await runBunBrowserBuild({
+        entryPoint,
+        root: path.dirname(entryPoint),
+        outputDir,
+        minify: true,
+        sourcemap: 'none',
+        naming: {
+            entry: `${FILES.index}-[hash].js`,
+            asset: 'assets/[name]-[hash].[ext]'
+        }
     });
+    ensureBunBuildSucceeded(result, `page bundle '${pageName}'`);
+
+    const fileName = resolveBunEntryOutputName(result.outputs, outputDir, (name) => {
+        return name.startsWith(`${FILES.index}-`) && name.endsWith(EXTENSIONS.js);
+    });
+    if (!fileName) {
+        throw new Error(`Bun.build() did not produce a JavaScript bundle for page '${pageName}'.`);
+    }
+
+    return fileName;
 }
 
 async function copyRuntimeScripts(
@@ -337,6 +452,111 @@ async function resolveAppBundleName(
     }
 
     return latest?.name ?? matches[0] ?? null;
+}
+
+async function runBunBrowserBuild(options: {
+    readonly entryPoint: string;
+    readonly root: string;
+    readonly outputDir: string;
+    readonly minify: boolean;
+    readonly sourcemap: 'linked' | 'none';
+    readonly naming?: {
+        readonly entry: string;
+        readonly asset: string;
+    };
+}): Promise<BunBuildOutput> {
+    const build = getBunBuild();
+    if (!build) {
+        throw new Error('Bun.build() is not available in the current runtime.');
+    }
+
+    return await build({
+        entrypoints: [options.entryPoint],
+        root: options.root,
+        outdir: options.outputDir,
+        target: 'browser',
+        format: 'esm',
+        minify: options.minify,
+        sourcemap: options.sourcemap,
+        splitting: false,
+        naming: options.naming,
+        throw: false
+    });
+}
+
+function resolveJavaScriptBundler(env: Record<string, string | undefined> | undefined): JavaScriptBundler {
+    const requestedBundler = normalizeJavaScriptBundler(env?.WEBSTIR_FRONTEND_BUNDLER);
+    if (requestedBundler !== 'bun') {
+        return 'esbuild';
+    }
+
+    if (!getBunBuild()) {
+        console.warn('[webstir-frontend] WEBSTIR_FRONTEND_BUNDLER=bun requested outside a Bun runtime; falling back to esbuild.');
+        return 'esbuild';
+    }
+
+    return 'bun';
+}
+
+function normalizeJavaScriptBundler(rawBundler: unknown): JavaScriptBundler {
+    return typeof rawBundler === 'string' && rawBundler.trim().toLowerCase() === 'bun' ? 'bun' : 'esbuild';
+}
+
+function resolveBunEntryOutputName(
+    outputs: readonly BunBuildOutputFile[] | undefined,
+    outputDir: string,
+    matcher: (fileName: string) => boolean
+): string | null {
+    const normalizedOutputDir = path.resolve(outputDir);
+    for (const output of outputs ?? []) {
+        if (output.kind !== 'entry-point') {
+            continue;
+        }
+        if (path.resolve(path.dirname(output.path)) !== normalizedOutputDir) {
+            continue;
+        }
+        const fileName = path.basename(output.path);
+        if (matcher(fileName)) {
+            return fileName;
+        }
+    }
+
+    return null;
+}
+
+function ensureBunBuildSucceeded(result: BunBuildOutput, label: string): void {
+    const errors = (result.logs ?? [])
+        .filter((entry) => entry.level === 'error')
+        .map((entry) => formatBunBuildMessage(entry));
+    if (!result.success || errors.length > 0) {
+        throw new Error(errors[0] ?? `Bun.build() failed for ${label}.`);
+    }
+}
+
+function formatBunBuildMessage(entry: BunBuildLog): string {
+    const text =
+        typeof entry.message === 'string'
+            ? entry.message
+            : typeof entry.text === 'string'
+              ? entry.text
+              : 'Bun.build() failed.';
+    const position = entry.position;
+    if (position?.file) {
+        const line = typeof position.line === 'number' ? position.line : 1;
+        const column = typeof position.column === 'number' ? position.column : 1;
+        return `${position.file}:${line}:${column} ${text}`;
+    }
+    return text;
+}
+
+function getBunBuild(): BunBuildFunction | undefined {
+    const runtime = globalThis as typeof globalThis & {
+        Bun?: {
+            build?: BunBuildFunction;
+        };
+    };
+    const build = runtime.Bun?.build;
+    return typeof build === 'function' ? build.bind(runtime.Bun) : undefined;
 }
 
 async function resolveAppEntry(appRoot: string): Promise<string | null> {

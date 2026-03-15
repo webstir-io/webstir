@@ -18,7 +18,7 @@ export async function runBuild(options: FrontendCommandOptions): Promise<void> {
     const enable = await readWorkspaceEnableFlags(options.workspaceRoot);
 
     console.info('[webstir-frontend] Running build pipeline...');
-    await runPipeline(config, 'build', { changedFile: options.changedFile, enable });
+    await runPipeline(config, 'build', { changedFile: options.changedFile, enable, env: process.env });
     console.info('[webstir-frontend] Build pipeline completed.');
 }
 
@@ -34,7 +34,7 @@ export async function runPublish(options: FrontendCommandOptions): Promise<void>
         await assertNoSsgRoutes(config.paths.workspace);
     }
 
-    await runPipeline(publishConfig, 'publish', { enable });
+    await runPipeline(publishConfig, 'publish', { enable, env: process.env });
     if (options.publishMode === 'ssg') {
         await generateSsgViewData(publishConfig);
         await applySsgRouting(publishConfig);
@@ -48,7 +48,7 @@ export async function runRebuild(options: FrontendCommandOptions): Promise<void>
     const enable = await readWorkspaceEnableFlags(options.workspaceRoot);
 
     console.info('[webstir-frontend] Running rebuild pipeline...');
-    await runPipeline(config, 'build', { changedFile: options.changedFile, enable });
+    await runPipeline(config, 'build', { changedFile: options.changedFile, enable, env: process.env });
     console.info('[webstir-frontend] Rebuild pipeline completed.');
 }
 
