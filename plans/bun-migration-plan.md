@@ -599,9 +599,12 @@ Deliverables:
 
 ### PR 4
 
+Status: completed
+
 Scope:
 
 - [packages/tooling/webstir-frontend/src/builders/jsBuilder.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/builders/jsBuilder.ts)
+- [packages/tooling/webstir-frontend/tests/bundlerParity.test.js](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/tests/bundlerParity.test.js)
 
 Deliverables:
 

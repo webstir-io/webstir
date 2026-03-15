@@ -53,7 +53,14 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
     if (shouldRunSsgPublish) {
         await assertNoSsgRoutes(config.paths.workspace);
     }
-    await runPipeline(publishConfig, mode, { changedFile: undefined, enable: workspaceMode.enable });
+    await runPipeline(publishConfig, mode, {
+        changedFile: undefined,
+        enable: workspaceMode.enable,
+        env: {
+            ...process.env,
+            ...options.env
+        }
+    });
 
     if (shouldRunSsgPublish) {
         await generateSsgViewData(publishConfig);

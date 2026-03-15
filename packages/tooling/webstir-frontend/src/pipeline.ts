@@ -7,12 +7,18 @@ import { createHookContext, executeHooks, loadHooks } from './hooks.js';
 export interface PipelineOptions {
     readonly changedFile?: string;
     readonly enable?: EnableFlags;
+    readonly env?: Record<string, string | undefined>;
 }
 
 export type PipelineMode = 'build' | 'publish';
 
 export async function runPipeline(config: FrontendConfig, mode: PipelineMode, options: PipelineOptions = {}): Promise<void> {
-    const context: BuilderContext = { config, changedFile: options.changedFile, enable: options.enable };
+    const context: BuilderContext = {
+        config,
+        changedFile: options.changedFile,
+        enable: options.enable,
+        env: options.env
+    };
     const builders: Builder[] = createBuilders(context);
     const hooks = await loadHooks(config.paths.workspace, mode === 'build');
     const pipelineContext = createHookContext(config, mode, options.changedFile);

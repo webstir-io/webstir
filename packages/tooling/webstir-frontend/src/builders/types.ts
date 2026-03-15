@@ -4,6 +4,7 @@ export interface BuilderContext {
     readonly config: FrontendConfig;
     readonly changedFile?: string;
     readonly enable?: EnableFlags;
+    readonly env?: Record<string, string | undefined>;
 }
 
 export interface Builder {
