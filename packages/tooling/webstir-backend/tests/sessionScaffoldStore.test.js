@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,99 +67,6 @@ async function linkWorkspacePackage(workspace) {
   await fs.symlink(packageRoot, path.join(scopeRoot, 'webstir-backend'), 'dir');
 }
 
-async function writeBetterSqliteStub(workspace) {
-  const moduleRoot = path.join(workspace, 'node_modules', 'better-sqlite3');
-  await fs.mkdir(moduleRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(moduleRoot, 'package.json'),
-    JSON.stringify({ name: 'better-sqlite3', main: 'index.cjs' }, null, 2),
-    'utf8'
-  );
-  await fs.writeFile(
-    path.join(moduleRoot, 'index.cjs'),
-    `const stores = globalThis.__webstirSqliteStores ??= new Map();
-
-class Statement {
-  constructor(filename, sql) {
-    this.filename = filename;
-    this.sql = sql.replace(/\\s+/g, ' ').trim().toLowerCase();
-  }
-
-  run(params = []) {
-    const values = Array.isArray(params) ? params : [params];
-    const rows = stores.get(this.filename);
-    if (this.sql.startsWith('create table') || this.sql.startsWith('create index')) {
-      return;
-    }
-    if (this.sql.startsWith('delete from webstir_sessions where expires_at <= ?')) {
-      const cutoff = String(values[0] ?? '');
-      for (const [id, row] of rows.entries()) {
-        if (String(row.expires_at) <= cutoff) {
-          rows.delete(id);
-        }
-      }
-      return;
-    }
-    if (this.sql.startsWith('insert into webstir_sessions')) {
-      rows.set(String(values[0]), {
-        id: String(values[0]),
-        value: String(values[1]),
-        flash: String(values[2]),
-        created_at: String(values[3]),
-        expires_at: String(values[4])
-      });
-      return;
-    }
-    if (this.sql.startsWith('delete from webstir_sessions where id = ?')) {
-      rows.delete(String(values[0]));
-      return;
-    }
-    throw new Error('Unsupported SQL in stub: ' + this.sql);
-  }
-
-  get(params = []) {
-    const values = Array.isArray(params) ? params : [params];
-    const rows = stores.get(this.filename);
-    if (this.sql.startsWith('select id, value, flash, created_at as createdat, expires_at as expiresat from webstir_sessions where id = ?')) {
-      const row = rows.get(String(values[0]));
-      if (!row) {
-        return undefined;
-      }
-      return {
-        id: row.id,
-        value: row.value,
-        flash: row.flash,
-        createdAt: row.created_at,
-        expiresAt: row.expires_at
-      };
-    }
-    throw new Error('Unsupported SQL in stub: ' + this.sql);
-  }
-}
-
-class Database {
-  constructor(filename) {
-    globalThis.__webstirSqliteTarget = filename;
-    this.filename = filename;
-    if (!stores.has(filename)) {
-      stores.set(filename, new Map());
-    }
-  }
-
-  prepare(sql) {
-    return new Statement(this.filename, sql);
-  }
-
-  close() {}
-}
-
-module.exports = Database;
-module.exports.default = Database;
-`,
-    'utf8'
-  );
-}
-
 async function compileTemplateSessionFiles(workspace) {
   await esbuild({
     entryPoints: [
@@ -200,12 +108,97 @@ async function importCompiledModule(filePath) {
   return await import(`${pathToFileURL(filePath).href}?t=${Date.now()}-${Math.random()}`);
 }
 
-async function assertSameResolvedPath(actual, expected) {
-  const [resolvedActual, resolvedExpected] = await Promise.all([
-    fs.realpath(path.dirname(actual)),
-    fs.realpath(path.dirname(expected))
-  ]);
-  assert.equal(path.join(resolvedActual, path.basename(actual)), path.join(resolvedExpected, path.basename(expected)));
+async function runSqliteSessionProbe(workspace, { cwd = workspace, env = {} } = {}) {
+  const sessionStoreUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'session', 'store.js')).href;
+  const runtimeSessionUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'runtime', 'session.js')).href;
+  const script = `
+    const [{ sessionStore }, { prepareSessionState }] = await Promise.all([
+      import(${JSON.stringify(sessionStoreUrl)}),
+      import(${JSON.stringify(runtimeSessionUrl)})
+    ]);
+
+    const config = {
+      secret: 'test-session-secret',
+      cookieName: 'webstir_session',
+      secure: false,
+      maxAgeSeconds: 60
+    };
+    const loginRoute = {
+      form: {
+        session: { write: true },
+        flash: {
+          publish: [{ key: 'signed-in', level: 'success', when: 'success' }]
+        }
+      }
+    };
+    const accountRoute = {
+      session: { mode: 'optional' },
+      flash: { consume: ['signed-in'] }
+    };
+    const created = prepareSessionState({
+      cookies: '',
+      route: loginRoute,
+      config,
+      store: sessionStore
+    });
+    const createdCommit = created.commit({
+      session: {
+        userId: 'ada@example.com',
+        data: { email: 'ada@example.com' }
+      },
+      route: loginRoute,
+      result: {
+        status: 303,
+        redirect: { location: '/session/account' }
+      }
+    });
+    const cookie = String(createdCommit.setCookie).split(';')[0];
+    const read = prepareSessionState({
+      cookies: cookie,
+      route: accountRoute,
+      config,
+      store: sessionStore
+    });
+    console.log(JSON.stringify({
+      userId: read.session?.userId ?? null,
+      flash: read.flash.map((message) => ({ key: message.key, level: message.level }))
+    }));
+  `;
+  const child = spawn('bun', ['--eval', script], {
+    cwd,
+    env: {
+      ...process.env,
+      ...env
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (chunk) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+  });
+
+  const exitCode = await new Promise((resolve) => {
+    child.once('close', resolve);
+  });
+
+  if (exitCode !== 0) {
+    throw new Error(`Session probe failed (exit ${exitCode}).\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+  }
+
+  const line = stdout
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .find((value) => value.startsWith('{'));
+  if (!line) {
+    throw new Error(`Session probe did not emit JSON.\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+  }
+
+  return JSON.parse(line);
 }
 
 test('scaffold session store defaults to in-memory storage', async () => {
@@ -273,71 +266,32 @@ test('scaffold session store resolves sqlite paths from the workspace root outsi
   const alternateCwd = await createTempWorkspace('webstir-backend-session-sqlite-cwd-');
   await seedBackendWorkspace(workspace, '@demo/session-sqlite');
   await linkWorkspacePackage(workspace);
-  await writeBetterSqliteStub(workspace);
   await compileTemplateSessionFiles(workspace);
 
-  const previousEnv = snapshotEnv([
-    'WORKSPACE_ROOT',
-    'WEBSTIR_WORKSPACE_ROOT',
-    'SESSION_STORE_DRIVER',
-    'SESSION_STORE_URL'
-  ]);
-  const previousCwd = process.cwd();
-  const previousSqliteTarget = globalThis.__webstirSqliteTarget;
-
-  try {
-    process.chdir(alternateCwd);
-    process.env.WORKSPACE_ROOT = '   ';
-    process.env.WEBSTIR_WORKSPACE_ROOT = workspace;
-    process.env.SESSION_STORE_DRIVER = 'sqlite';
-    process.env.SESSION_STORE_URL = 'file:./data/session-store.sqlite';
-    delete globalThis.__webstirSqliteTarget;
-
-    const { sessionStore } = await importCompiledModule(path.join(workspace, 'build', 'backend', 'session', 'store.js'));
-    const { prepareSessionState } = await importCompiledModule(path.join(workspace, 'build', 'backend', 'runtime', 'session.js'));
-
-    const created = prepareSessionState({
-      cookies: '',
-      route: loginRoute,
-      config,
-      store: sessionStore
-    });
-    const createdCommit = created.commit({
-      session: {
-        userId: 'ada@example.com',
-        data: { email: 'ada@example.com' }
-      },
-      route: loginRoute,
-      result: {
-        status: 303,
-        redirect: { location: '/session/account' }
-      }
-    });
-
-    await assertSameResolvedPath(
-      globalThis.__webstirSqliteTarget,
-      path.join(workspace, 'data', 'session-store.sqlite')
-    );
-
-    const read = prepareSessionState({
-      cookies: extractCookieHeader(createdCommit.setCookie),
-      route: accountRoute,
-      config,
-      store: sessionStore
-    });
-
-    assert.equal(read.session?.userId, 'ada@example.com');
-    assert.deepEqual(
-      read.flash.map((message) => ({ key: message.key, level: message.level })),
-      [{ key: 'signed-in', level: 'success' }]
-    );
-  } finally {
-    process.chdir(previousCwd);
-    restoreEnv(previousEnv);
-    if (previousSqliteTarget === undefined) {
-      delete globalThis.__webstirSqliteTarget;
-    } else {
-      globalThis.__webstirSqliteTarget = previousSqliteTarget;
+  const result = await runSqliteSessionProbe(workspace, {
+    cwd: alternateCwd,
+    env: {
+      WORKSPACE_ROOT: '   ',
+      WEBSTIR_WORKSPACE_ROOT: workspace,
+      SESSION_STORE_DRIVER: 'sqlite',
+      SESSION_STORE_URL: 'file:./data/session-store.sqlite'
     }
-  }
+  });
+
+  assert.equal(result.userId, 'ada@example.com');
+  assert.deepEqual(result.flash, [{ key: 'signed-in', level: 'success' }]);
+  assert.equal(
+    await fs
+      .access(path.join(workspace, 'data', 'session-store.sqlite'))
+      .then(() => true)
+      .catch(() => false),
+    true
+  );
+  assert.equal(
+    await fs
+      .access(path.join(alternateCwd, 'data', 'session-store.sqlite'))
+      .then(() => true)
+      .catch(() => false),
+    false
+  );
 });

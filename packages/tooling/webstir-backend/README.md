@@ -176,8 +176,8 @@ node build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekl
 ### Database & migrations
 
 - `DATABASE_URL` defaults to `file:./data/dev.sqlite`. Point it at Postgres (`postgres://...`) or another SQLite file as needed. Override the tracking table via `DATABASE_MIGRATIONS_TABLE` (defaults to `_webstir_migrations`).
-- `src/backend/db/connection.ts` exposes a tiny helper that connects to SQLite (via `better-sqlite3`) or Postgres (`pg`). Install whichever driver you need in your workspace: `npm install better-sqlite3` for the default flow or `npm install pg` for Postgres.
-- `src/backend/session/store.ts` now owns the runtime session-store choice. Keep the default in-memory store for stateless/local flows, or set `SESSION_STORE_DRIVER=sqlite` to persist sessions in a SQLite file via `src/backend/session/sqlite.ts`. The SQLite adapter creates its table lazily and needs `better-sqlite3` installed in the workspace.
+- `src/backend/db/connection.ts` exposes a tiny helper that connects to SQLite via Bun's built-in `bun:sqlite` runtime or to Postgres via `pg`. The default SQLite flow needs Bun; install `pg` only when you use Postgres.
+- `src/backend/session/store.ts` now owns the runtime session-store choice. Keep the default in-memory store for stateless/local flows, or set `SESSION_STORE_DRIVER=sqlite` to persist sessions in a SQLite file via `src/backend/session/sqlite.ts`. The SQLite adapter creates its table lazily and runs on Bun without any extra SQLite package install.
 - Drop SQL/TypeScript migrations under `src/backend/db/migrations/*.ts`, exporting `id`, `up`, and optional `down`.
 - Run migrations with:
 

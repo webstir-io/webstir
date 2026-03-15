@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { backendProvider } from '../dist/index.js';
 import { CONTRACT_VERSION } from '@webstir-io/module-contract';
@@ -36,6 +36,53 @@ async function installPackages(workspace, packages, options = { dev: false }) {
     const child = spawn('npm', args, { cwd: workspace, stdio: 'ignore' });
     child.on('error', reject);
     child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`npm install failed (${code})`))));
+  });
+}
+
+async function pathExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function runBunProbe(script, { cwd, env }) {
+  return await new Promise((resolve, reject) => {
+    const child = spawn('bun', ['--eval', script], {
+      cwd,
+      env: {
+        ...process.env,
+        ...env
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`bun probe failed (${code}).\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+        return;
+      }
+      const line = stdout
+        .split(/\r?\n/)
+        .map((value) => value.trim())
+        .find((value) => value.startsWith('{'));
+      if (!line) {
+        reject(new Error(`bun probe did not emit JSON.\nstdout:\n${stdout}\nstderr:\n${stderr}`));
+        return;
+      }
+      resolve(JSON.parse(line));
+    });
   });
 }
 
@@ -83,6 +130,118 @@ async function createSymlinkIfMissing(source, target, type) {
   }
 }
 
+async function runTemplateSqliteProbes(workspace) {
+  const alternateCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-backend-smoke-sqlite-cwd-'));
+  const sessionStoreUrl = JSON.stringify(pathToFileURL(path.join(workspace, 'src', 'backend', 'session', 'store.ts')).href);
+  const runtimeSessionUrl = JSON.stringify(pathToFileURL(path.join(workspace, 'src', 'backend', 'runtime', 'session.ts')).href);
+  const dbConnectionUrl = JSON.stringify(pathToFileURL(path.join(workspace, 'src', 'backend', 'db', 'connection.ts')).href);
+
+  const sessionProbe = `
+    const [{ sessionStore }, { prepareSessionState }] = await Promise.all([
+      import(${sessionStoreUrl}),
+      import(${runtimeSessionUrl})
+    ]);
+
+    const config = {
+      secret: 'smoke-session-secret',
+      cookieName: 'webstir_session',
+      secure: false,
+      maxAgeSeconds: 60
+    };
+    const loginRoute = {
+      form: {
+        session: { write: true },
+        flash: {
+          publish: [{ key: 'signed-in', level: 'success', when: 'success' }]
+        }
+      }
+    };
+    const accountRoute = {
+      session: { mode: 'optional' },
+      flash: { consume: ['signed-in'] }
+    };
+    const created = prepareSessionState({
+      cookies: '',
+      route: loginRoute,
+      config,
+      store: sessionStore
+    });
+    const createdCommit = created.commit({
+      session: {
+        userId: 'ada@example.com'
+      },
+      route: loginRoute,
+      result: {
+        status: 303,
+        redirect: { location: '/session/account' }
+      }
+    });
+    const cookie = String(createdCommit.setCookie).split(';')[0];
+    const read = prepareSessionState({
+      cookies: cookie,
+      route: accountRoute,
+      config,
+      store: sessionStore
+    });
+    console.log(JSON.stringify({
+      userId: read.session?.userId ?? null,
+      flash: read.flash.map((message) => ({ key: message.key, level: message.level }))
+    }));
+  `;
+
+  const dbProbe = `
+    const { createDatabaseClient } = await import(${dbConnectionUrl});
+    const db = await createDatabaseClient();
+    await db.execute('CREATE TABLE IF NOT EXISTS smoke_items (id TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    await db.execute('DELETE FROM smoke_items');
+    await db.execute('INSERT INTO smoke_items (id, value) VALUES (?, ?)', ['row-1', 'Ada']);
+    const rows = await db.query('SELECT value FROM smoke_items WHERE id = ?', ['row-1']);
+    const databases = await db.query('PRAGMA database_list');
+    const main = databases.find((row) => row.name === 'main');
+    console.log(JSON.stringify({ target: main?.file ?? null, value: rows[0]?.value ?? null }));
+    await db.close();
+  `;
+
+  const sessionResult = await runBunProbe(sessionProbe, {
+    cwd: alternateCwd,
+    env: {
+      WORKSPACE_ROOT: '   ',
+      WEBSTIR_WORKSPACE_ROOT: workspace,
+      SESSION_STORE_DRIVER: 'sqlite',
+      SESSION_STORE_URL: 'file:./data/smoke-session.sqlite'
+    }
+  });
+  console.info('[smoke] sqlite session probe:', sessionResult);
+  if (sessionResult.userId !== 'ada@example.com') {
+    throw new Error(`[smoke] sqlite session probe returned unexpected userId ${sessionResult.userId}`);
+  }
+  if (!await pathExists(path.join(workspace, 'data', 'smoke-session.sqlite'))) {
+    throw new Error('[smoke] sqlite session probe did not create the workspace-root session database');
+  }
+  if (await pathExists(path.join(alternateCwd, 'data', 'smoke-session.sqlite'))) {
+    throw new Error('[smoke] sqlite session probe wrote to the probe cwd instead of the workspace root');
+  }
+
+  const dbResult = await runBunProbe(dbProbe, {
+    cwd: alternateCwd,
+    env: {
+      WORKSPACE_ROOT: '   ',
+      WEBSTIR_WORKSPACE_ROOT: workspace,
+      DATABASE_URL: 'file:./data/smoke-db.sqlite'
+    }
+  });
+  console.info('[smoke] sqlite db probe:', dbResult);
+  if (dbResult.value !== 'Ada') {
+    throw new Error(`[smoke] sqlite db probe returned unexpected value ${dbResult.value}`);
+  }
+  if (!await pathExists(path.join(workspace, 'data', 'smoke-db.sqlite'))) {
+    throw new Error('[smoke] sqlite db probe did not create the workspace-root database');
+  }
+  if (await pathExists(path.join(alternateCwd, 'data', 'smoke-db.sqlite'))) {
+    throw new Error('[smoke] sqlite db probe wrote to the probe cwd instead of the workspace root');
+  }
+}
+
 async function main() {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-backend-smoke-'));
   const assets = await backendProvider.getScaffoldAssets();
@@ -125,7 +284,7 @@ async function main() {
   };
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
-  await installPackages(workspace, ['pino', 'better-sqlite3']);
+  await installPackages(workspace, ['pino']);
 
   if (process.env.WEBSTIR_BACKEND_SMOKE_FASTIFY !== 'skip') {
     // Add optional Fastify dependency so the scaffold type-checks if present
@@ -183,6 +342,8 @@ async function main() {
     views: Array.isArray(buildModule.views) ? buildModule.views.length : 0
   });
   console.info('[smoke] build diagnostics (>=warn):', buildResult.manifest.diagnostics.map((d) => d.message));
+  console.info('[smoke] sqlite template probes');
+  await runTemplateSqliteProbes(workspace);
 
   console.info('[smoke] publish mode');
   const publishResult = await backendProvider.build({

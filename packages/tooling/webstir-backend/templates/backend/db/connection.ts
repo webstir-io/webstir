@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 import { resolveWorkspaceRoot } from '../env.js';
 
@@ -8,6 +9,18 @@ export interface DatabaseClient {
   execute(sql: string, params?: unknown[]): Promise<void>;
   close(): Promise<void>;
 }
+
+type SqliteStatement = {
+  all<T = unknown>(...params: unknown[]): T[];
+  run(...params: unknown[]): unknown;
+};
+
+type SqliteDatabase = {
+  prepare(sql: string): SqliteStatement;
+  close(): void;
+};
+
+const require = createRequire(import.meta.url);
 
 export async function createDatabaseClient(url = process.env.DATABASE_URL ?? 'file:./data/dev.sqlite'): Promise<DatabaseClient> {
   if (isSqlite(url)) {
@@ -30,16 +43,7 @@ function isPostgres(url: string): boolean {
 }
 
 async function createSqliteClient(url: string): Promise<DatabaseClient> {
-  let Database: typeof import('better-sqlite3');
-  try {
-    const sqliteModule = await import('better-sqlite3');
-    Database = sqliteModule.default ?? (sqliteModule as unknown as typeof import('better-sqlite3'));
-  } catch (error) {
-    throw new Error(
-      `[db] Failed to load better-sqlite3. Install it in your workspace with "npm install better-sqlite3". (${(error as Error).message})`
-    );
-  }
-
+  const Database = loadBunSqlite();
   const target = normalizeSqlitePath(url);
   mkdirSync(path.dirname(target), { recursive: true });
   const db = new Database(target);
@@ -47,16 +51,27 @@ async function createSqliteClient(url: string): Promise<DatabaseClient> {
   return {
     async query(sql, params) {
       const statement = db.prepare(sql);
-      return statement.all(params ?? []);
+      return statement.all(...(params ?? []));
     },
     async execute(sql, params) {
       const statement = db.prepare(sql);
-      statement.run(params ?? []);
+      statement.run(...(params ?? []));
     },
     async close() {
       db.close();
     }
   };
+}
+
+function loadBunSqlite(): new (filename: string) => SqliteDatabase {
+  try {
+    const sqliteModule = require('bun:sqlite');
+    return sqliteModule.Database ?? sqliteModule.default ?? sqliteModule;
+  } catch (error) {
+    throw new Error(
+      `[db] Failed to load bun:sqlite. Run the SQLite client with Bun or switch DATABASE_URL to postgres://... (${(error as Error).message})`
+    );
+  }
 }
 
 async function createPostgresClient(url: string): Promise<DatabaseClient> {

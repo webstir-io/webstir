@@ -1,2 +1,2 @@
-declare module 'better-sqlite3';
+declare module 'bun:sqlite';
 declare module 'pg';
