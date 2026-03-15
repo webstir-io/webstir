@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
@@ -47,7 +47,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   const dryRun = options.rawArgs.includes('--dry-run');
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   const packageJsonPath = path.join(workspace.root, 'package.json');
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as RepairPackageJson;
+  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as RepairPackageJson;
   const enable = packageJson.webstir?.enable ?? {};
   const changes: string[] = [];
 
@@ -112,7 +112,7 @@ async function restoreScaffoldAssets(
 
     if (!dryRun) {
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await copyFile(asset.sourcePath, targetPath);
+      await Bun.write(targetPath, Bun.file(asset.sourcePath));
     }
 
     changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
@@ -133,7 +133,7 @@ async function restoreFeatureAssets(
 
     if (!dryRun) {
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await copyFile(asset.sourcePath, targetPath);
+      await Bun.write(targetPath, Bun.file(asset.sourcePath));
       if (asset.executable) {
         await chmod(targetPath, 0o755);
       }
@@ -153,7 +153,7 @@ async function restoreBackendAssets(workspaceRoot: string, changes: string[], dr
 
     if (!dryRun) {
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await copyFile(asset.sourcePath, targetPath);
+      await Bun.write(targetPath, Bun.file(asset.sourcePath));
     }
 
     changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
@@ -171,14 +171,14 @@ async function ensureAppImport(
     return;
   }
 
-  const source = await readFile(appTsPath, 'utf8');
+  const source = await readTextFile(appTsPath);
   const updated = ensureSideEffectImport(source, importPath);
   if (updated === source) {
     return;
   }
 
   if (!dryRun) {
-    await writeFile(appTsPath, updated, 'utf8');
+    await Bun.write(appTsPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, appTsPath));
 }
@@ -194,14 +194,14 @@ async function ensureCssLayerIncludes(
     return;
   }
 
-  const source = await readFile(appCssPath, 'utf8');
+  const source = await readTextFile(appCssPath);
   const updated = ensureLayerIncludes(source, layerName);
   if (updated === source) {
     return;
   }
 
   if (!dryRun) {
-    await writeFile(appCssPath, updated, 'utf8');
+    await Bun.write(appCssPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
 }
@@ -218,14 +218,14 @@ async function ensureAppCssImport(
     return;
   }
 
-  const source = await readFile(appCssPath, 'utf8');
+  const source = await readTextFile(appCssPath);
   const updated = ensureImportIncludes(source, importPath, insertAfterImportPath);
   if (updated === source) {
     return;
   }
 
   if (!dryRun) {
-    await writeFile(appCssPath, updated, 'utf8');
+    await Bun.write(appCssPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
 }
@@ -236,7 +236,7 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[], dr
     return;
   }
 
-  const source = await readFile(appHtmlPath, 'utf8');
+  const source = await readTextFile(appHtmlPath);
   if (source.includes('data-webstir-search-styles=')) {
     return;
   }
@@ -250,7 +250,7 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[], dr
   }
 
   if (!dryRun) {
-    await writeFile(appHtmlPath, updated, 'utf8');
+    await Bun.write(appHtmlPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, appHtmlPath));
 }
@@ -261,7 +261,7 @@ async function ensureBackendTsReference(workspaceRoot: string, changes: string[]
     return;
   }
 
-  const source = await readFile(tsconfigPath, 'utf8');
+  const source = await readTextFile(tsconfigPath);
   const root = JSON.parse(source) as Record<string, unknown>;
   const references = Array.isArray(root.references) ? [...root.references] : [];
   const exists = references.some((entry) =>
@@ -278,7 +278,7 @@ async function ensureBackendTsReference(workspaceRoot: string, changes: string[]
   const updated = `${JSON.stringify(root, null, 2)}\n`;
 
   if (!dryRun) {
-    await writeFile(tsconfigPath, updated, 'utf8');
+    await Bun.write(tsconfigPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, tsconfigPath));
 }
@@ -291,14 +291,14 @@ async function ensureGithubPagesDeployScript(workspaceRoot: string, changes: str
 
   if (!dryRun) {
     await mkdir(path.dirname(deployScriptPath), { recursive: true });
-    await writeFile(deployScriptPath, renderGithubPagesDeployScript(), 'utf8');
+    await Bun.write(deployScriptPath, renderGithubPagesDeployScript());
     await chmod(deployScriptPath, 0o755);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, deployScriptPath));
 }
 
 async function ensureDeployScriptEntry(packageJsonPath: string, changes: string[], dryRun: boolean): Promise<void> {
-  const source = await readFile(packageJsonPath, 'utf8');
+  const source = await readTextFile(packageJsonPath);
   const root = JSON.parse(source) as RepairPackageJson & Record<string, unknown>;
   const scripts = root.scripts && typeof root.scripts === 'object' ? { ...root.scripts } : {};
   if (typeof scripts.deploy === 'string') {
@@ -310,7 +310,7 @@ async function ensureDeployScriptEntry(packageJsonPath: string, changes: string[
   const updated = `${JSON.stringify(root, null, 2)}\n`;
 
   if (!dryRun) {
-    await writeFile(packageJsonPath, updated, 'utf8');
+    await Bun.write(packageJsonPath, updated);
   }
   changes.push(path.basename(packageJsonPath));
 }
@@ -321,7 +321,7 @@ async function ensureFrontendConfigBasePath(workspaceRoot: string, changes: stri
 
   if (existsSync(configPath)) {
     try {
-      root = JSON.parse(await readFile(configPath, 'utf8')) as Record<string, unknown>;
+      root = JSON.parse(await readTextFile(configPath)) as Record<string, unknown>;
     } catch {
       root = {};
     }
@@ -338,9 +338,13 @@ async function ensureFrontendConfigBasePath(workspaceRoot: string, changes: stri
 
   if (!dryRun) {
     await mkdir(path.dirname(configPath), { recursive: true });
-    await writeFile(configPath, updated, 'utf8');
+    await Bun.write(configPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, configPath));
+}
+
+async function readTextFile(filePath: string): Promise<string> {
+  return await Bun.file(filePath).text();
 }
 
 function ensureSideEffectImport(source: string, importPath: string): string {

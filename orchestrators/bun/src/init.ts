@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { cp, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -58,28 +58,25 @@ export async function scaffoldWorkspace(
 
   for (const asset of getRootScaffoldAssets()) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await cp(asset.sourcePath, targetPath, { force: true });
+    await copyAsset(asset.sourcePath, targetPath);
     changes.push(toWorkspaceRelative(workspaceRoot, targetPath));
   }
 
   for (const asset of await getModeScaffoldAssets(mode)) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await cp(asset.sourcePath, targetPath, { force: true });
+    await copyAsset(asset.sourcePath, targetPath);
     changes.push(toWorkspaceRelative(workspaceRoot, targetPath));
   }
 
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
-  await writeFile(
+  await Bun.write(
     packageJsonPath,
-    `${JSON.stringify(createPackageJson(mode, packageName, dependencySpecs, options.metadata), null, 2)}\n`,
-    'utf8'
+    `${JSON.stringify(createPackageJson(mode, packageName, dependencySpecs, options.metadata), null, 2)}\n`
   );
   changes.push('package.json');
 
   const baseTsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
-  await writeFile(baseTsconfigPath, `${JSON.stringify(createBaseTsconfig(mode), null, 2)}\n`, 'utf8');
+  await Bun.write(baseTsconfigPath, `${JSON.stringify(createBaseTsconfig(mode), null, 2)}\n`);
   changes.push('base.tsconfig.json');
 
   return {
@@ -169,7 +166,7 @@ async function resolveDependencySpecs(workspaceRoot: string): Promise<Record<str
 }
 
 async function readPackageVersion(packageJsonPath: string): Promise<string> {
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as { readonly version?: string };
+  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as { readonly version?: string };
   if (!packageJson.version) {
     throw new Error(`Missing version in ${packageJsonPath}`);
   }
@@ -321,9 +318,18 @@ async function loadRepoWorkspacePatterns(): Promise<readonly string[]> {
   }
 
   const packageJsonPath = path.join(monorepoRoot, 'package.json');
-  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as {
     readonly workspaces?: readonly string[];
   };
 
   return packageJson.workspaces ?? [];
+}
+
+async function copyAsset(sourcePath: string, targetPath: string): Promise<void> {
+  await mkdir(path.dirname(targetPath), { recursive: true });
+  await Bun.write(targetPath, Bun.file(sourcePath));
+}
+
+async function readTextFile(filePath: string): Promise<string> {
+  return await Bun.file(filePath).text();
 }
