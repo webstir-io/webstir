@@ -1,8 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 
 const scriptRoot = path.dirname(new URL(import.meta.url).pathname);
@@ -19,8 +18,8 @@ const internalPackages = [
 ];
 
 async function main() {
-  run('bun', ['run', 'build:deps'], packageRoot);
-  run('node', ['scripts/sync-assets.mjs'], packageRoot);
+  await run(['bun', 'run', 'build:deps'], packageRoot);
+  await run(['node', 'scripts/sync-assets.mjs'], packageRoot);
 
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-standalone-pack-'));
   const tarballRoot = path.join(tempRoot, 'tarballs');
@@ -59,10 +58,10 @@ async function main() {
 
     await writeFile(path.join(stageRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
-    run('bun', ['install'], stageRoot);
+    await run(['bun', 'install'], stageRoot);
     packageJson.dependencies = originalDependencies;
     await writeFile(path.join(stageRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-    const tarballName = run('bun', ['pm', 'pack'], stageRoot)
+    const tarballName = (await run(['bun', 'pm', 'pack'], stageRoot))
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter((line) => line.endsWith('.tgz'))
@@ -83,7 +82,7 @@ async function main() {
 }
 
 async function packPackage(cwd, outputDir) {
-  const tarballName = run('bun', ['pm', 'pack'], cwd)
+  const tarballName = (await run(['bun', 'pm', 'pack'], cwd))
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.endsWith('.tgz'))
@@ -99,26 +98,27 @@ async function packPackage(cwd, outputDir) {
   return destination;
 }
 
-function run(command, args, cwd) {
-  const result = spawnSync(command, args, {
-    cwd,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    encoding: 'utf8',
-    env: process.env,
-  });
+async function run(command, cwd) {
+  const [program, ...args] = command;
 
-  if (result.stdout) {
-    process.stdout.write(result.stdout);
-  }
-  if (result.stderr) {
-    process.stderr.write(result.stderr);
-  }
+  try {
+    return await Bun.$.cwd(cwd)`${program} ${args}`.text();
+  } catch (error) {
+    const exitCode =
+      typeof error === 'object' &&
+      error !== null &&
+      'exitCode' in error &&
+      typeof error.exitCode === 'number'
+        ? error.exitCode
+        : null;
+    if (exitCode === null) {
+      throw error;
+    }
 
-  if (result.status !== 0) {
-    throw new Error(`Command failed (${result.status ?? 'unknown'}): ${command} ${args.join(' ')}`);
+    throw new Error(`Command failed (${exitCode}): ${program} ${args.join(' ')}`, {
+      cause: error,
+    });
   }
-
-  return result.stdout ?? '';
 }
 
 main().catch((error) => {

@@ -40,13 +40,31 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 - Treat `bun:sqlite` as a runtime contract change, not a simple dependency swap.
 - Keep migrations behind flags where output shape or behavioral equivalence is still being validated.
 
-## Easy Wins First
+## Progress Snapshot
+
+### Landed
+
+- `orchestrators/bun/src/init.ts`, `orchestrators/bun/src/enable.ts`, and `orchestrators/bun/src/repair.ts` now use `Bun.file()` / `Bun.write()` for scaffold copy and patch paths.
+- `orchestrators/bun/src/dev-server.ts` now uses `Bun.serve()` and `Bun.file()` for the Bun-only dev server path.
+- `orchestrators/bun/src/providers.ts` now uses `Bun.$` for the one-shot local package build wrapper while preserving runtime-command selection and inherited output behavior.
+- `orchestrators/bun/scripts/pack-standalone.mjs` now uses Bun-native command execution for its one-shot packaging flow, and `orchestrators/bun/package.json` runs that script with `bun`.
+
+### Remaining justified Bun-only work
+
+- None in the current Bun-only script/orchestrator track without reopening a deferred or gated item.
+
+### Deferred or gated
+
+- `tools/release-package.mjs` is still invoked via `node` from repo scripts and GitHub workflows, so it should not be treated as a simple Bun-only follow-up without an explicit release-runtime decision.
+- `packages/tooling/*` Bun-native work remains gated by the Node-compatibility decision above.
+
+## Completed Bun-Only Wins
 
 ### 1. Replace Bun orchestrator file-copy and patch IO with `Bun.file()` / `Bun.write()`
 
 Impact: medium  
 Difficulty: low  
-Recommended timing: first PR
+Status: completed
 
 Files:
 
@@ -78,17 +96,22 @@ Risks / differences:
 
 Impact: medium  
 Difficulty: low  
-Recommended timing: first PR
+Status: partially complete
 
 Files:
 
 - [orchestrators/bun/src/providers.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/providers.ts)
-- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs)
 - [orchestrators/bun/scripts/pack-standalone.mjs](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/scripts/pack-standalone.mjs)
+- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs)
 
-Current approach:
+Completed:
 
-- `spawn` / `spawnSync` wrappers for short-lived commands.
+- [orchestrators/bun/src/providers.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/providers.ts) now uses `Bun.$` for the short-lived local package build wrapper.
+- [orchestrators/bun/scripts/pack-standalone.mjs](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/scripts/pack-standalone.mjs) now uses Bun-native command execution for the standalone packaging flow.
+
+Remaining:
+
+- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs) still uses `spawnSync`, but it is currently a Node-invoked release helper and should stay deferred until the release-runtime contract is explicit.
 
 Proposed Bun API:
 
@@ -105,24 +128,27 @@ Risks / differences:
 - Keep `spawn` or `Bun.spawn` for long-lived supervised processes.
 - Do not use `Bun.$` for watchers, background daemons, or interactive pipelines.
 
-## High-Impact Bun-Only Changes
+### Next justified chunk
+
+No further justified Bun-only implementation chunk is preselected until the release-runtime decision or the `packages/tooling/*` Node-compatibility decision changes.
+
+## Completed High-Impact Bun-Only Changes
 
 ### 3. Offer `Bun.serve()` in the Bun orchestrator dev server
 
 Impact: high  
 Difficulty: medium  
-Recommended timing: first PR
+Status: completed
 
 File:
 
 - [orchestrators/bun/src/dev-server.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/dev-server.ts)
 
-Current approach:
+Landed behavior:
 
-- `node:http`
-- `createReadStream()` for static assets
-- manual SSE handling
-- manual proxy forwarding
+- `Bun.serve()` owns the Bun dev server lifecycle.
+- `Bun.file()` serves static assets.
+- `fetch()`-based proxying replaces the previous Node HTTP forwarding path.
 
 Proposed Bun API:
 
@@ -207,7 +233,7 @@ Risks / differences:
 
 Impact: high  
 Difficulty: medium  
-Recommended timing: fourth PR
+Recommended timing: after the Node-compatibility decision, if Bun-only generated backends are allowed
 
 File:
 
@@ -235,7 +261,7 @@ Risks / differences:
 
 Impact: medium  
 Difficulty: medium  
-Recommended timing: fourth PR, same phase as the session store
+Recommended timing: after the Node-compatibility decision, same phase as the session store
 
 File:
 
