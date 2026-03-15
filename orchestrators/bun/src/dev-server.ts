@@ -1,6 +1,4 @@
 import path from 'node:path';
-import http, { type IncomingMessage, type ServerResponse } from 'node:http';
-import { createReadStream } from 'node:fs';
 import { access } from 'node:fs/promises';
 
 import type { HotUpdatePayload, WatchStatus } from './watch-events.ts';
@@ -48,7 +46,8 @@ const STATIC_EXTENSIONS = new Set([
 const CONTENT_HASH_PATTERN = /\.[a-f0-9]{8,64}\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|mp3|m4a|wav|ogg|mp4|webm|mov)$/i;
 
 interface SseClient {
-  readonly response: ServerResponse<IncomingMessage>;
+  send(message: string): void;
+  close(): void;
 }
 
 export class DevServer {
@@ -57,7 +56,7 @@ export class DevServer {
   private readonly port: number;
   private readonly apiProxyOrigin?: string;
   private readonly clients = new Set<SseClient>();
-  private server?: http.Server;
+  private server?: ReturnType<typeof Bun.serve>;
 
   public constructor(options: DevServerOptions) {
     this.buildRoot = path.resolve(options.buildRoot);
@@ -71,16 +70,13 @@ export class DevServer {
       return this.getAddress();
     }
 
-    this.server = http.createServer((request, response) => {
-      void this.handleRequest(request, response);
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once('error', reject);
-      this.server!.listen(this.port, this.host, () => {
-        this.server!.off('error', reject);
-        resolve();
-      });
+    this.server = Bun.serve({
+      hostname: this.host,
+      idleTimeout: 0,
+      port: this.port,
+      fetch: (request) => {
+        return this.handleRequest(request);
+      },
     });
 
     return this.getAddress();
@@ -90,7 +86,7 @@ export class DevServer {
     await this.broadcastRaw('data: shutdown\n\n');
 
     for (const client of this.clients) {
-      client.response.end();
+      client.close();
     }
     this.clients.clear();
 
@@ -100,16 +96,7 @@ export class DevServer {
 
     const server = this.server;
     this.server = undefined;
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
+    server.stop();
   }
 
   public async publishStatus(status: WatchStatus): Promise<void> {
@@ -129,140 +116,127 @@ export class DevServer {
       throw new Error('Dev server has not started.');
     }
 
-    const address = this.server.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('Dev server did not expose a TCP address.');
-    }
-
     const originHost = this.host === '0.0.0.0' ? '127.0.0.1' : this.host;
     return {
       host: originHost,
-      port: address.port,
-      origin: `http://${originHost}:${address.port}`,
+      port: this.server.port,
+      origin: `http://${originHost}:${this.server.port}`,
     };
   }
 
-  private async handleRequest(
-    request: IncomingMessage,
-    response: ServerResponse<IncomingMessage>
-  ): Promise<void> {
-    if (!request.url) {
-      this.writeText(response, 400, 'Bad request.');
-      return;
-    }
-
-    const method = request.method ?? 'GET';
-
-    const requestUrl = new URL(request.url, 'http://localhost');
+  private async handleRequest(request: Request): Promise<Response> {
+    const method = request.method || 'GET';
+    const requestUrl = new URL(request.url);
     const { pathname } = requestUrl;
+
     if (pathname === '/sse') {
-      this.handleSse(response);
-      return;
+      return this.handleSse(request);
     }
 
     const apiProxyPath = getApiProxyPath(pathname);
     if (apiProxyPath !== null && this.apiProxyOrigin) {
-      await this.handleApiProxy(request, response, requestUrl, apiProxyPath);
-      return;
+      return await this.handleApiProxy(request, requestUrl, apiProxyPath);
     }
 
     if (method !== 'GET' && method !== 'HEAD') {
-      this.writeText(response, 405, 'Method not allowed.');
-      return;
+      return textResponse(405, 'Method not allowed.');
     }
 
     const candidates = getStaticCandidatePaths(pathname);
     const resolved = await resolveStaticFile(this.buildRoot, candidates);
     if (!resolved) {
-      this.writeText(response, 404, 'Not found.');
-      return;
+      return textResponse(404, 'Not found.');
     }
 
     const lowerRelativePath = resolved.relativePath.toLowerCase();
     const extension = path.extname(lowerRelativePath).toLowerCase();
-    response.setHeader('Content-Type', MIME_TYPES[extension] ?? 'application/octet-stream');
-    setCacheHeaders(response, lowerRelativePath);
+    const headers = new Headers({
+      'Content-Type': MIME_TYPES[extension] ?? 'application/octet-stream',
+    });
+    setCacheHeaders(headers, lowerRelativePath);
 
     if (method === 'HEAD') {
-      response.statusCode = 200;
-      response.end();
-      return;
+      return new Response(null, {
+        status: 200,
+        headers,
+      });
     }
 
-    const stream = createReadStream(resolved.absolutePath);
-    stream.once('error', () => {
-      if (!response.headersSent) {
-        this.writeText(response, 500, 'Failed to read file.');
-      } else {
-        response.destroy();
-      }
+    return new Response(Bun.file(resolved.absolutePath), {
+      status: 200,
+      headers,
     });
-    stream.pipe(response);
   }
 
   private async handleApiProxy(
-    request: IncomingMessage,
-    response: ServerResponse<IncomingMessage>,
+    request: Request,
     requestUrl: URL,
     apiProxyPath: string
-  ): Promise<void> {
+  ): Promise<Response> {
     const targetUrl = new URL(apiProxyPath + requestUrl.search, this.apiProxyOrigin);
 
-    await new Promise<void>((resolve) => {
-      const proxyRequest = http.request(targetUrl, {
-        agent: false,
-        method: request.method,
-        headers: {
-          ...request.headers,
-          host: targetUrl.host,
-          connection: 'close',
-        },
-      }, (proxyResponse) => {
-        const headers = rewriteProxyResponseHeaders(proxyResponse.headers, targetUrl);
-        response.writeHead(proxyResponse.statusCode ?? 502, headers);
-        proxyResponse.pipe(response);
-        proxyResponse.once('end', resolve);
-        proxyResponse.once('error', () => {
-          if (!response.headersSent) {
-            this.writeText(response, 502, 'Backend proxy read failed.');
-          } else {
-            response.destroy();
-          }
-          resolve();
-        });
+    try {
+      const requestInit = createProxyRequestInit(request, targetUrl);
+      const proxyResponse = await fetch(targetUrl, requestInit);
+      const headers = rewriteProxyResponseHeaders(proxyResponse.headers, targetUrl);
+
+      return new Response(request.method !== 'HEAD' ? proxyResponse.body : null, {
+        status: proxyResponse.status || 502,
+        headers,
       });
-
-      proxyRequest.once('error', () => {
-        if (!response.headersSent) {
-          this.writeText(response, 502, 'Backend proxy failed.');
-        } else {
-          response.destroy();
-        }
-        resolve();
-      });
-
-      if (request.method === 'GET' || request.method === 'HEAD') {
-        proxyRequest.end();
-        return;
-      }
-
-      request.pipe(proxyRequest);
-    });
+    } catch {
+      return textResponse(502, 'Backend proxy failed.');
+    }
   }
 
-  private handleSse(response: ServerResponse<IncomingMessage>): void {
-    response.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
+  private handleSse(request: Request): Response {
+    const encoder = new TextEncoder();
+    let client: SseClient | undefined;
+
+    const stream = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        const cleanup = () => {
+          if (!client) {
+            return;
+          }
+
+          this.clients.delete(client);
+          try {
+            controller.close();
+          } catch {
+            // The stream is already closed.
+          }
+          request.signal.removeEventListener('abort', cleanup);
+          client = undefined;
+        };
+
+        client = {
+          send: (message) => {
+            try {
+              controller.enqueue(encoder.encode(message));
+            } catch {
+              cleanup();
+            }
+          },
+          close: cleanup,
+        };
+
+        this.clients.add(client);
+        controller.enqueue(encoder.encode('\n'));
+        request.signal.addEventListener('abort', cleanup, { once: true });
+      },
+      cancel: () => {
+        client?.close();
+      },
     });
 
-    const client = { response };
-    this.clients.add(client);
-    response.write('\n');
-
-    response.once('close', () => {
-      this.clients.delete(client);
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
     });
   }
 
@@ -273,21 +247,12 @@ export class DevServer {
   private async broadcastRaw(message: string): Promise<void> {
     for (const client of Array.from(this.clients)) {
       try {
-        client.response.write(message);
+        client.send(message);
       } catch {
+        client.close();
         this.clients.delete(client);
       }
     }
-  }
-
-  private writeText(
-    response: ServerResponse<IncomingMessage>,
-    statusCode: number,
-    body: string
-  ): void {
-    response.statusCode = statusCode;
-    response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    response.end(body);
   }
 }
 
@@ -327,17 +292,38 @@ export function getApiProxyPath(pathname: string): string | null {
 }
 
 function rewriteProxyResponseHeaders(
-  headers: http.IncomingHttpHeaders,
+  headers: Headers,
   targetUrl: URL
-): http.OutgoingHttpHeaders {
-  const nextHeaders: http.OutgoingHttpHeaders = { ...headers };
-  const rewrite = (value: string) => rewriteProxyLocation(value, targetUrl);
-
-  if (typeof headers.location === 'string') {
-    nextHeaders.location = rewrite(headers.location);
+): Headers {
+  const nextHeaders = new Headers(headers);
+  const location = headers.get('location');
+  if (location) {
+    nextHeaders.set('location', rewriteProxyLocation(location, targetUrl));
   }
 
   return nextHeaders;
+}
+
+function createProxyRequestInit(request: Request, targetUrl: URL): RequestInit & { duplex?: 'half' } {
+  const headers = new Headers(request.headers);
+  headers.set('host', targetUrl.host);
+  headers.set('connection', 'close');
+
+  const requestInit: RequestInit & { duplex?: 'half' } = {
+    method: request.method,
+    headers,
+    redirect: 'manual',
+    signal: request.signal,
+  };
+
+  if (methodAllowsBody(request.method)) {
+    requestInit.body = request.body;
+    if (request.body) {
+      requestInit.duplex = 'half';
+    }
+  }
+
+  return requestInit;
 }
 
 function rewriteProxyLocation(value: string, targetUrl: URL): string {
@@ -412,28 +398,43 @@ function hasReservedPrefix(relativePath: string): boolean {
   return RESERVED_PREFIXES.some((prefix) => relativePath === prefix || relativePath.startsWith(`${prefix}/`));
 }
 
-function setCacheHeaders(response: ServerResponse<IncomingMessage>, relativePath: string): void {
+function setCacheHeaders(headers: Headers, relativePath: string): void {
   if (CONTENT_HASH_PATTERN.test(relativePath)) {
-    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    headers.set('Cache-Control', 'public, max-age=31536000, immutable');
     return;
   }
 
   if (relativePath.endsWith('refresh.js') || relativePath.endsWith('hmr.js')) {
-    response.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    response.setHeader('Pragma', 'no-cache');
-    response.setHeader('Expires', '0');
+    setNoCacheHeaders(headers);
     return;
   }
 
   const extension = path.extname(relativePath).toLowerCase();
   if (extension === '.html' || extension === '') {
-    response.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    response.setHeader('Pragma', 'no-cache');
-    response.setHeader('Expires', '0');
+    setNoCacheHeaders(headers);
     return;
   }
 
   if (STATIC_EXTENSIONS.has(extension)) {
-    response.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    headers.set('Cache-Control', 'no-cache, must-revalidate');
   }
+}
+
+function setNoCacheHeaders(headers: Headers): void {
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  headers.set('Pragma', 'no-cache');
+  headers.set('Expires', '0');
+}
+
+function textResponse(statusCode: number, body: string): Response {
+  return new Response(body, {
+    status: statusCode,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+    },
+  });
+}
+
+function methodAllowsBody(method: string): boolean {
+  return method !== 'GET' && method !== 'HEAD';
 }
