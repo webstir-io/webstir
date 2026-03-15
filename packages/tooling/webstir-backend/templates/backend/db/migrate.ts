@@ -222,7 +222,7 @@ Options:
 Notes:
   - Defaults to reading migration files from src/backend/db/migrations.
   - DATABASE_URL controls the target database (file:./dev.sqlite by default).
-  - Install 'better-sqlite3' for SQLite or 'pg' for Postgres before running.`);
+  - SQLite uses Bun's built-in bun:sqlite runtime; install 'pg' only for Postgres.`);
 }
 
 main().catch((error) => {

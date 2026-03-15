@@ -39,33 +39,6 @@ async function seedBackendWorkspace(workspace, name) {
   );
 }
 
-async function writeBetterSqliteStub(workspace) {
-  const moduleRoot = path.join(workspace, 'node_modules', 'better-sqlite3');
-  await fs.mkdir(moduleRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(moduleRoot, 'package.json'),
-    JSON.stringify({ name: 'better-sqlite3', type: 'module', exports: './index.js' }, null, 2),
-    'utf8'
-  );
-  await fs.writeFile(
-    path.join(moduleRoot, 'index.js'),
-    `export default class Database {
-  constructor(filename) {
-    globalThis.__webstirSqliteTarget = filename;
-  }
-  prepare() {
-    return {
-      all() { return []; },
-      run() { return {}; }
-    };
-  }
-  close() {}
-}
-`,
-    'utf8'
-  );
-}
-
 async function compileTemplateDbFiles(workspace) {
   await esbuild({
     entryPoints: [
@@ -114,11 +87,17 @@ async function runConnectionProbe(workspace, { cwd = workspace, env = {} } = {})
   const script = `
     import(${JSON.stringify(entryUrl)}).then(async ({ createDatabaseClient }) => {
       const db = await createDatabaseClient();
-      console.log(JSON.stringify({ target: globalThis.__webstirSqliteTarget ?? null }));
+      await db.execute('CREATE TABLE IF NOT EXISTS probe_items (id TEXT PRIMARY KEY, value TEXT NOT NULL)');
+      await db.execute('DELETE FROM probe_items');
+      await db.execute('INSERT INTO probe_items (id, value) VALUES (?, ?)', ['item-1', 'Ada']);
+      const rows = await db.query('SELECT value FROM probe_items WHERE id = ?', ['item-1']);
+      const databases = await db.query('PRAGMA database_list');
+      const main = databases.find((row) => row.name === 'main');
+      console.log(JSON.stringify({ target: main?.file ?? null, value: rows[0]?.value ?? null }));
       await db.close();
     });
   `;
-  const child = spawn('node', ['--input-type=module', '--eval', script], {
+  const child = spawn('bun', ['--eval', script], {
     cwd,
     env: {
       ...process.env,
@@ -159,7 +138,6 @@ test('createDatabaseClient resolves file: DATABASE_URL from WEBSTIR_WORKSPACE_RO
   const workspace = await createTempWorkspace('webstir-backend-db-env-root-');
   const alternateCwd = await createTempWorkspace('webstir-backend-db-env-root-cwd-');
   await seedBackendWorkspace(workspace, '@demo/db-env-root');
-  await writeBetterSqliteStub(workspace);
   await compileTemplateDbFiles(workspace);
 
   const previousEnv = snapshotEnv(['WORKSPACE_ROOT', 'WEBSTIR_WORKSPACE_ROOT', 'DATABASE_URL']);
@@ -175,6 +153,7 @@ test('createDatabaseClient resolves file: DATABASE_URL from WEBSTIR_WORKSPACE_RO
     });
 
     await assertSameResolvedPath(result.target, path.join(workspace, 'data', 'env-root.sqlite'));
+    assert.equal(result.value, 'Ada');
   } finally {
     restoreEnv(previousEnv);
   }
@@ -184,7 +163,6 @@ test('createDatabaseClient resolves plain relative sqlite DATABASE_URL from modu
   const workspace = await createTempWorkspace('webstir-backend-db-infer-');
   const alternateCwd = await createTempWorkspace('webstir-backend-db-infer-cwd-');
   await seedBackendWorkspace(workspace, '@demo/db-infer');
-  await writeBetterSqliteStub(workspace);
   await compileTemplateDbFiles(workspace);
 
   const previousEnv = snapshotEnv(['WORKSPACE_ROOT', 'WEBSTIR_WORKSPACE_ROOT', 'DATABASE_URL']);
@@ -198,6 +176,7 @@ test('createDatabaseClient resolves plain relative sqlite DATABASE_URL from modu
     });
 
     await assertSameResolvedPath(result.target, path.join(workspace, 'data', 'infer.sqlite'));
+    assert.equal(result.value, 'Ada');
   } finally {
     restoreEnv(previousEnv);
   }
@@ -208,7 +187,6 @@ test('createDatabaseClient preserves absolute sqlite paths outside the workspace
   const alternateCwd = await createTempWorkspace('webstir-backend-db-absolute-cwd-');
   const absoluteTarget = path.join(workspace, 'data', 'absolute.sqlite');
   await seedBackendWorkspace(workspace, '@demo/db-absolute');
-  await writeBetterSqliteStub(workspace);
   await compileTemplateDbFiles(workspace);
 
   const previousEnv = snapshotEnv(['WORKSPACE_ROOT', 'WEBSTIR_WORKSPACE_ROOT', 'DATABASE_URL']);
@@ -222,6 +200,7 @@ test('createDatabaseClient preserves absolute sqlite paths outside the workspace
     });
 
     await assertSameResolvedPath(result.target, absoluteTarget);
+    assert.equal(result.value, 'Ada');
   } finally {
     restoreEnv(previousEnv);
   }

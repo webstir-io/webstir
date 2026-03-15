@@ -23,8 +23,8 @@ interface SqliteSessionRow {
 
 type SqliteDatabase = {
   prepare(sql: string): {
-    run(params?: unknown[]): void;
-    get(params?: unknown[]): SqliteSessionRow | undefined;
+    run(...params: unknown[]): void;
+    get(...params: unknown[]): SqliteSessionRow | undefined;
   };
 };
 
@@ -35,7 +35,7 @@ const require = createRequire(import.meta.url);
 export function createSqliteSessionStore<TSession extends Record<string, unknown> = Record<string, unknown>>(
   options: SqliteSessionStoreOptions = {}
 ): SessionStore<TSession> {
-  const Database = loadBetterSqlite3();
+  const Database = loadBunSqlite();
   const target = normalizeSqlitePath(options.url ?? DEFAULT_SQLITE_SESSION_STORE_URL);
   mkdirSync(path.dirname(target), { recursive: true });
 
@@ -75,32 +75,32 @@ export function createSqliteSessionStore<TSession extends Record<string, unknown
 
   return {
     get(sessionId) {
-      deleteExpiredStatement.run([new Date().toISOString()]);
-      const row = getStatement.get([sessionId]);
+      deleteExpiredStatement.run(new Date().toISOString());
+      const row = getStatement.get(sessionId);
       return row ? deserializeSessionRecord<TSession>(row) : undefined;
     },
     set(record) {
-      setStatement.run([
+      setStatement.run(
         record.id,
         JSON.stringify(record.value),
         JSON.stringify(record.flash),
         record.createdAt,
         record.expiresAt
-      ]);
+      );
     },
     delete(sessionId) {
-      deleteStatement.run([sessionId]);
+      deleteStatement.run(sessionId);
     }
   };
 }
 
-function loadBetterSqlite3(): new (filename: string) => SqliteDatabase {
+function loadBunSqlite(): new (filename: string) => SqliteDatabase {
   try {
-    const sqliteModule = require('better-sqlite3');
-    return sqliteModule.default ?? sqliteModule;
+    const sqliteModule = require('bun:sqlite');
+    return sqliteModule.Database ?? sqliteModule.default ?? sqliteModule;
   } catch (error) {
     throw new Error(
-      `[session] Failed to load better-sqlite3. Install it in your workspace with "npm install better-sqlite3". (${(error as Error).message})`
+      `[session] Failed to load bun:sqlite. Run the SQLite session store with Bun or switch SESSION_STORE_DRIVER to "memory". (${(error as Error).message})`
     );
   }
 }
