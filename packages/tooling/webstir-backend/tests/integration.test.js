@@ -137,17 +137,31 @@ async function canListenOnTcp() {
 }
 
 async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
-  const entryUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'index.js')).href;
-  const child = spawn('node', ['--input-type=module', '--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`], {
-    cwd: options.cwd ?? workspace,
-    env: {
-      ...process.env,
-      PORT: String(port),
-      NODE_ENV: 'test',
-      ...extraEnv
-    },
-    stdio: ['ignore', 'pipe', 'pipe']
-  });
+  const entryPath = path.join(workspace, 'build', 'backend', 'index.js');
+  const entryUrl = pathToFileURL(entryPath).href;
+  const runtime = options.runtime ?? 'node';
+  const child =
+    runtime === 'bun'
+      ? spawn('bun', [entryPath], {
+          cwd: options.cwd ?? workspace,
+          env: {
+            ...process.env,
+            PORT: String(port),
+            NODE_ENV: 'test',
+            ...extraEnv
+          },
+          stdio: ['ignore', 'pipe', 'pipe']
+        })
+      : spawn('node', ['--input-type=module', '--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`], {
+          cwd: options.cwd ?? workspace,
+          env: {
+            ...process.env,
+            PORT: String(port),
+            NODE_ENV: 'test',
+            ...extraEnv
+          },
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
 
   let stdout = '';
   let stderr = '';
@@ -602,6 +616,67 @@ async function assertRequestHookRuntimeBehavior({ useFastify }) {
   const server = await startBuiltServer(workspace, port, {
     AUTH_SERVICE_TOKENS: 'service-secret'
   });
+
+  try {
+    const normalResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo`, {
+      headers: {
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(normalResponse.status, 200);
+    assert.equal(normalResponse.headers.get('x-hook-after'), '1');
+    assert.deepEqual(await normalResponse.json(), {
+      trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check', 'handler', 'afterHandler'],
+      authSource: 'service-token',
+      sessionId: 'session-from-hook'
+    });
+
+    const shortCircuitResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo?short=1`, {
+      headers: {
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(shortCircuitResponse.status, 202);
+    assert.deepEqual(await shortCircuitResponse.json(), {
+      trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check'],
+      authSource: 'service-token',
+      sessionId: 'session-from-hook',
+      shortCircuited: true
+    });
+
+    const failureResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo?fail=1`, {
+      headers: {
+        'x-service-token': 'service-secret'
+      }
+    });
+    assert.equal(failureResponse.status, 500);
+    assert.deepEqual(await failureResponse.json(), {
+      error: 'internal_error',
+      message: 'request hook failed'
+    });
+  } finally {
+    await server.stop();
+  }
+}
+
+async function assertBunRequestHookRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-bun-hooks-');
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createRequestHookRuntimeModuleSource()
+  });
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(
+    workspace,
+    port,
+    {
+      AUTH_SERVICE_TOKENS: 'service-secret',
+      WEBSTIR_BACKEND_SERVER_RUNTIME: 'bun'
+    },
+    {
+      runtime: 'bun'
+    }
+  );
 
   try {
     const normalResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo`, {
@@ -1903,6 +1978,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'views.ts')), true);
+  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'server', 'bun.ts')), true);
   assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'build', 'backend', 'index.js')), true);
 
   const fastifyWorkspace = await createTempWorkspace('webstir-backend-fastify-hooks-build-');
@@ -1917,6 +1993,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'views.ts')), true);
+  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'server', 'bun.ts')), true);
   assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'build', 'backend', 'index.js')), true);
 });
 
@@ -2094,6 +2171,15 @@ test('built backend server executes request hooks with ordered context handoff',
   }
 
   await assertRequestHookRuntimeBehavior({ useFastify: false });
+});
+
+test('bun backend scaffold executes request hooks with ordered context handoff', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertBunRequestHookRuntimeBehavior();
 });
 
 test('fastify backend scaffold executes request hooks with ordered context handoff', async (t) => {

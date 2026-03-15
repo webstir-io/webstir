@@ -3,6 +3,7 @@ import http from 'node:http';
 import type { Logger } from 'pino';
 
 import { loadEnv, resolveWorkspaceRoot, type AppEnv } from './env.js';
+import { start as startBunServer } from './server/bun.js';
 import { resolveRequestAuth, type AuthContext } from './auth/adapter.js';
 import { createBaseLogger, createRequestLogger } from './observability/logger.js';
 import { createMetricsTracker, type MetricsTracker } from './observability/metrics.js';
@@ -67,8 +68,20 @@ type BackendRouteHandler = RouteHandler<RouteContext, RouteHandlerResult>;
 type BackendModuleRuntime = ModuleRuntime<RouteContext, RouteHandlerResult, ModuleRouteDefinition>;
 
 export async function start(): Promise<void> {
+  const requestedServerRuntime = resolveRequestedServerRuntime(process.env.WEBSTIR_BACKEND_SERVER_RUNTIME);
+  if (requestedServerRuntime === 'bun') {
+    await startBunServer();
+    return;
+  }
+
   const env = loadEnv();
   const logger = createBaseLogger(env);
+  if (requestedServerRuntime === 'invalid') {
+    logger.warn(
+      { requestedRuntime: process.env.WEBSTIR_BACKEND_SERVER_RUNTIME },
+      '[webstir-backend] unsupported WEBSTIR_BACKEND_SERVER_RUNTIME; falling back to the node:http scaffold'
+    );
+  }
   const metrics = createMetricsTracker(env.metrics);
   const readiness = createReadinessTracker();
   readiness.booting();
@@ -344,6 +357,17 @@ function isReadyPath(pathname: string): boolean {
 
 function isMetricsPath(pathname: string): boolean {
   return pathname === '/metrics';
+}
+
+function resolveRequestedServerRuntime(value: string | undefined): 'node' | 'bun' | 'invalid' {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized || normalized === 'node') {
+    return 'node';
+  }
+  if (normalized === 'bun') {
+    return 'bun';
+  }
+  return 'invalid';
 }
 
 const isMain = (() => {
