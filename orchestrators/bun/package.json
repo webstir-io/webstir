@@ -14,7 +14,7 @@
     "clean": "rm -rf dist",
     "prepack": "node scripts/sync-assets.mjs",
     "pack:local": "bun pm pack",
-    "pack:standalone": "node scripts/pack-standalone.mjs",
+    "pack:standalone": "bun scripts/pack-standalone.mjs",
     "release": "bash scripts/publish.sh"
   },
   "files": [
