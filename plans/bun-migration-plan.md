@@ -6,12 +6,11 @@ Adopt Bun-native APIs where they materially simplify Webstir or improve performa
 
 ## Decision Gate
 
-Before migrating code under `packages/tooling/*`, decide whether those published packages must remain Node-compatible.
+**Decision (2026-03-15): packages/tooling/* will become Bun-only.**
 
-- If `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend` stay Node-compatible, Bun-native work should be limited to `orchestrators/bun/**` and Bun-only repo scripts.
-- If those packages can become Bun-only, the migration surface expands substantially: `Bun.file()`, `Bun.write()`, `Bun.build()`, and `bun:sqlite` all become viable in the canonical package code.
+The sole consumer of these packages is the Bun orchestrator, which already requires Bun. No external dependents exist. The Node engine fields were aspirational, not load-bearing.
 
-This decision controls most of the plan below.
+This unblocks all remaining migration work: `Bun.file()`, `Bun.write()`, `Bun.build()`, `bun:sqlite`, and Bun-native server scaffolds in the canonical package code. PRs 2-6 are now active.
 
 ## Current Findings
 
