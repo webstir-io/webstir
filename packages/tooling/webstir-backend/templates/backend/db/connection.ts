@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
 
+import { resolveWorkspaceRoot } from '../env.js';
+
 export interface DatabaseClient {
   query<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;
   execute(sql: string, params?: unknown[]): Promise<void>;
@@ -92,8 +94,7 @@ async function createPostgresClient(url: string): Promise<DatabaseClient> {
 }
 
 function normalizeSqlitePath(url: string): string {
-  if (url.startsWith('file:')) {
-    return path.resolve(url.slice('file:'.length));
-  }
-  return path.resolve(url);
+  const workspaceRoot = resolveWorkspaceRoot();
+  const target = url.startsWith('file:') ? url.slice('file:'.length) : url;
+  return path.isAbsolute(target) ? path.resolve(target) : path.resolve(workspaceRoot, target);
 }
