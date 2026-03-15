@@ -6,6 +6,7 @@ import { loadEnv, resolveWorkspaceRoot, type AppEnv } from './env.js';
 import { resolveRequestAuth, type AuthContext } from './auth/adapter.js';
 import { createBaseLogger, createRequestLogger } from './observability/logger.js';
 import { createMetricsTracker, type MetricsTracker } from './observability/metrics.js';
+import { sessionStore } from './session/store.js';
 import {
   executeRequestHookPhase,
   type RequestHookReferenceLike
@@ -197,6 +198,7 @@ async function handleRequest(options: {
         const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
           cookies,
           config: env.sessions,
+          store: sessionStore,
           now
         });
         const rendered = await renderRequestTimeView({
@@ -239,6 +241,7 @@ async function handleRequest(options: {
         cookies: parseCookieHeader(req.headers.cookie),
         route: matchedRoute.route.definition,
         config: env.sessions,
+        store: sessionStore,
         now
       });
       const ctx: RouteContext = {

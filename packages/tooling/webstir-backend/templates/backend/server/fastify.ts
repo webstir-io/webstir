@@ -4,6 +4,7 @@ import Fastify from 'fastify';
 
 import { loadEnv, resolveWorkspaceRoot } from '../env.js';
 import { resolveRequestAuth } from '../auth/adapter.js';
+import { sessionStore } from '../session/store.js';
 import {
   executeRequestHookPhase
 } from '../runtime/request-hooks.js';
@@ -175,6 +176,7 @@ function mountRoutes(
             cookies: parseCookieHeader(req.headers.cookie as string | string[] | undefined),
             route: route.definition,
             config: sessionConfig,
+            store: sessionStore,
             now
           });
           const ctx: RouteContext = {
@@ -293,6 +295,7 @@ function configureViewNotFoundHandler(
     const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
       cookies,
       config: sessionConfig,
+      store: sessionStore,
       now
     });
 

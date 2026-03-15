@@ -142,6 +142,7 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'auth', 'adapter.ts'),
     path.join('src', 'backend', 'observability', 'logger.ts'),
     path.join('src', 'backend', 'observability', 'metrics.ts'),
+    path.join('src', 'backend', 'session', 'store.ts'),
     path.join('src', 'backend', 'runtime', 'node-http.ts'),
     path.join('src', 'backend', 'runtime', 'fastify.ts'),
     path.join('src', 'backend', 'runtime', 'views.ts'),
@@ -177,4 +178,10 @@ test('scaffold assets expose core backend templates', async () => {
 
   const runtimeFastifySource = await fs.readFile(runtimeFastifyAsset.sourcePath, 'utf8');
   assert.match(runtimeFastifySource, /export \* from '@webstir-io\/webstir-backend\/runtime\/fastify';/);
+
+  const sessionStoreAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'session', 'store.ts'));
+  assert.ok(sessionStoreAsset, 'expected scaffold assets to include the session store helper');
+
+  const sessionStoreSource = await fs.readFile(sessionStoreAsset.sourcePath, 'utf8');
+  assert.match(sessionStoreSource, /createInMemorySessionStore/);
 });

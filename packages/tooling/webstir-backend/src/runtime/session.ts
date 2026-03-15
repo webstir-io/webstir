@@ -60,12 +60,23 @@ export interface PreparedSessionState<TSession, TResult> {
   }): SessionCommitResult<TSession>;
 }
 
-interface StoredSessionRecord {
+export interface SessionStoreRecord<TSession extends Record<string, unknown> = Record<string, unknown>> {
   id: string;
-  value: Record<string, unknown>;
+  value: TSession;
   flash: SessionFlashMessage[];
   createdAt: string;
   expiresAt: string;
+}
+
+export interface SessionStore<TSession extends Record<string, unknown> = Record<string, unknown>> {
+  get(sessionId: string): SessionStoreRecord<TSession> | undefined;
+  set(record: SessionStoreRecord<TSession>): void;
+  delete(sessionId: string): void;
+}
+
+export interface InMemorySessionStore<TSession extends Record<string, unknown> = Record<string, unknown>>
+  extends SessionStore<TSession> {
+  clear(): void;
 }
 
 const SESSION_STORE_KEY = Symbol.for('webstir.webstir-backend.session-store');
@@ -75,12 +86,13 @@ export function prepareSessionState<TSession extends Record<string, unknown>, TR
     cookies?: Record<string, string> | string | string[];
     route?: SessionAwareRouteDefinitionLike;
     config: SessionCookieConfig;
+    store?: SessionStore<TSession>;
     now?: () => Date;
   }
 ): PreparedSessionState<TSession, TResult> {
   const now = options.now ?? (() => new Date());
   const cookies = normalizeCookies(options.cookies);
-  const store = getSessionStore();
+  const store = options.store ?? getDefaultSessionStore<TSession>();
   const sessionCookie = cookies[options.config.cookieName];
   const initialId = verifySignedSessionCookie(sessionCookie, options.config.secret);
   const invalidCookie = Boolean(sessionCookie) && !initialId;
@@ -123,7 +135,7 @@ export function prepareSessionState<TSession extends Record<string, unknown>, TR
         now
       });
 
-      store.set(record.id, record);
+      store.set(record);
 
       return {
         session: cloneValue(record.value) as TSession,
@@ -140,17 +152,40 @@ export function parseCookieHeader(header: string | string[] | undefined): Record
   return normalizeCookies(header);
 }
 
-export function resetInMemorySessionStore(): void {
-  getSessionStore().clear();
+export function createInMemorySessionStore<TSession extends Record<string, unknown> = Record<string, unknown>>(): InMemorySessionStore<TSession> {
+  const records = new Map<string, SessionStoreRecord<TSession>>();
+  return {
+    get(sessionId) {
+      const record = records.get(sessionId);
+      return record ? cloneStoredSessionRecord(record) : undefined;
+    },
+    set(record) {
+      records.set(record.id, cloneStoredSessionRecord(record));
+    },
+    delete(sessionId) {
+      records.delete(sessionId);
+    },
+    clear() {
+      records.clear();
+    }
+  };
 }
 
-function getSessionStore(): Map<string, StoredSessionRecord> {
+export function resetInMemorySessionStore(store: InMemorySessionStore<any> = getDefaultInMemorySessionStore()): void {
+  store.clear();
+}
+
+function getDefaultSessionStore<TSession extends Record<string, unknown>>(): SessionStore<TSession> {
+  return getDefaultInMemorySessionStore() as SessionStore<TSession>;
+}
+
+function getDefaultInMemorySessionStore(): InMemorySessionStore<Record<string, unknown>> {
   const globalStore = globalThis as Record<PropertyKey, unknown>;
   const existing = globalStore[SESSION_STORE_KEY];
-  if (existing instanceof Map) {
-    return existing as Map<string, StoredSessionRecord>;
+  if (isInMemorySessionStore(existing)) {
+    return existing;
   }
-  const store = new Map<string, StoredSessionRecord>();
+  const store = createInMemorySessionStore<Record<string, unknown>>();
   globalStore[SESSION_STORE_KEY] = store;
   return store;
 }
@@ -214,11 +249,11 @@ function signSessionId(sessionId: string, secret: string): string {
   return createHmac('sha256', secret).update(sessionId).digest('base64url');
 }
 
-function loadSessionRecord(
-  store: Map<string, StoredSessionRecord>,
+function loadSessionRecord<TSession extends Record<string, unknown>>(
+  store: SessionStore<TSession>,
   sessionId: string,
   now: () => Date
-): StoredSessionRecord | undefined {
+): SessionStoreRecord<TSession> | undefined {
   const record = store.get(sessionId);
   if (!record) {
     return undefined;
@@ -306,11 +341,11 @@ function normalizeSessionValue<TSession extends Record<string, unknown>>(session
 function createStoredSessionRecord<TSession extends Record<string, unknown>>(options: {
   session: TSession | null;
   fallbackId?: string;
-  initialRecord?: StoredSessionRecord;
+  initialRecord?: SessionStoreRecord<TSession>;
   flash: SessionFlashMessage[];
   config: SessionCookieConfig;
   now: () => Date;
-}): StoredSessionRecord {
+}): SessionStoreRecord<TSession> {
   const sessionValue = (options.session ?? {}) as Record<string, unknown>;
   const sessionId = normalizeText(sessionValue.id) ?? options.fallbackId ?? randomUUID();
   const createdAt =
@@ -329,7 +364,7 @@ function createStoredSessionRecord<TSession extends Record<string, unknown>>(opt
       id: sessionId,
       createdAt,
       expiresAt
-    },
+    } as unknown as TSession,
     flash: options.flash.map((message) => ({ ...message })),
     createdAt,
     expiresAt
@@ -379,4 +414,25 @@ function cloneValue<T>(value: T): T {
     return structuredClone(value);
   }
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function cloneStoredSessionRecord<TSession extends Record<string, unknown>>(record: SessionStoreRecord<TSession>): SessionStoreRecord<TSession> {
+  return {
+    id: record.id,
+    value: cloneValue(record.value),
+    flash: record.flash.map((message) => ({ ...message })),
+    createdAt: record.createdAt,
+    expiresAt: record.expiresAt
+  };
+}
+
+function isInMemorySessionStore(value: unknown): value is InMemorySessionStore<Record<string, unknown>> {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      typeof (value as InMemorySessionStore<Record<string, unknown>>).get === 'function' &&
+      typeof (value as InMemorySessionStore<Record<string, unknown>>).set === 'function' &&
+      typeof (value as InMemorySessionStore<Record<string, unknown>>).delete === 'function' &&
+      typeof (value as InMemorySessionStore<Record<string, unknown>>).clear === 'function'
+  );
 }
