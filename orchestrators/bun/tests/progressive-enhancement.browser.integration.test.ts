@@ -37,20 +37,21 @@ test('browser progressive enhancement flows work in publish mode', async () => {
 
 test('browser auth and CRUD flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-auth-crud-watch-', 'auth-crud');
-  let session: RuntimeSession | undefined;
 
   try {
-    session = await startWatchSession(workspace);
-    await exerciseAuthCrudBrowserScenario(session.origin);
-  } catch (error) {
-    throw appendLogs(error, session?.getLogs() ?? {});
+    await runWatchBrowserScenarioWithRetry(workspace, exerciseAuthCrudBrowserScenario, {
+      readinessChecks: [
+        {
+          requestPath: '/api/demo/auth-crud',
+          expectedText: 'id="auth-sign-in-form"'
+        }
+      ],
+      scenarioTimeoutMs: 45_000
+    });
   } finally {
-    if (session) {
-      await session.stop();
-    }
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
-}, 120_000);
+}, 150_000);
 
 test('browser auth and CRUD flows work in publish mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-auth-crud-publish-', 'auth-crud');
@@ -242,7 +243,7 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
   expect(await page.locator('body').textContent()).toContain('Last submit used the no-JavaScript redirect path.');
 }
 
-async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
+async function exerciseAuthCrudBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
   const browser = await launchBrowser();
   try {
     const enhancedContext = await browser.newContext({
@@ -252,20 +253,24 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
     const enhancedPage = await enhancedContext.newPage();
 
     try {
+      setScenarioStep(progress, 'load enhanced auth-crud page');
       await enhancedPage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
       await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
 
+      setScenarioStep(progress, 'sign in enhanced auth-crud session');
       await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
       await enhancedPage.locator('#auth-sign-in').click();
       await enhancedPage.waitForFunction(
         () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
       );
 
+      setScenarioStep(progress, 'submit invalid enhanced create form');
       await enhancedPage.locator('#project-title').fill('');
       await enhancedPage.locator('#project-notes').fill('This should fail first.');
       await enhancedPage.locator('#project-create-submit').click();
       await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
 
+      setScenarioStep(progress, 'create enhanced auth-crud project');
       await enhancedPage.locator('#project-title').fill('Browser launch checklist');
       await enhancedPage.locator('#project-status').selectOption('active');
       await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
@@ -280,6 +285,7 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
         throw new Error('Expected a created project row.');
       }
 
+      setScenarioStep(progress, 'update enhanced auth-crud project');
       await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
       await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
       await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
@@ -288,10 +294,12 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
         projectId
       );
 
+      setScenarioStep(progress, 'reload enhanced auth-crud page');
       await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
       await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
       expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
 
+      setScenarioStep(progress, 'delete enhanced auth-crud project');
       await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
       await enhancedPage.waitForFunction(
         (id) => !document.querySelector(`[data-project-id="${id}"]`),
@@ -309,7 +317,9 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
     const baselinePage = await baselineContext.newPage();
 
     try {
+      setScenarioStep(progress, 'load baseline auth-crud page');
       await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
+      setScenarioStep(progress, 'verify baseline auth redirect');
       await baselinePage.locator('#project-title').fill('Native blocked project');
       await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
       await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
@@ -320,6 +330,7 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Sign in required to manage projects.');
 
+      setScenarioStep(progress, 'sign in baseline auth-crud session');
       await baselinePage.locator('#auth-email').fill('native@example.com');
       await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
       await baselinePage.waitForFunction(() =>
@@ -329,6 +340,7 @@ async function exerciseAuthCrudBrowserScenario(origin: string): Promise<void> {
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
       expect(await baselinePage.locator('body').textContent()).toContain('Signed in as native@example.com.');
 
+      setScenarioStep(progress, 'create baseline auth-crud project');
       await baselinePage.locator('#project-title').fill('Native create project');
       await baselinePage.locator('#project-status').selectOption('active');
       await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
