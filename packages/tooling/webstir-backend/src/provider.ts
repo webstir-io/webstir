@@ -10,7 +10,7 @@ import type {
 } from '@webstir-io/module-contract';
 
 import { collectArtifacts, createBuildManifest } from './build/artifacts.js';
-import { buildSupportFile, runBackendBuildPipeline } from './build/pipeline.js';
+import { buildSupportFile, resolveBackendBundler, runBackendBuildPipeline } from './build/pipeline.js';
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
 import { pushEntryBucketSummary, normalizeLogLevel, filterDiagnostics } from './diagnostics/summary.js';
@@ -58,6 +58,11 @@ export const backendProvider: ModuleProvider = {
 
         const incremental = options.incremental === true;
         const mode = normalizeMode(env.WEBSTIR_MODULE_MODE);
+        const bundler = resolveBackendBundler({
+            env,
+            incremental,
+            diagnostics
+        });
         console.info(`[webstir-backend] ${mode}:start`);
 
         const { entryPoints, outputs, includePublishSourcemaps } = await runBackendBuildPipeline({
@@ -67,7 +72,8 @@ export const backendProvider: ModuleProvider = {
             mode,
             env,
             incremental,
-            diagnostics
+            diagnostics,
+            bundler
         });
 
         const artifacts = await collectArtifacts(paths.buildRoot, includePublishSourcemaps);
@@ -81,7 +87,8 @@ export const backendProvider: ModuleProvider = {
                     tsconfigPath,
                     mode,
                     env,
-                    diagnostics
+                    diagnostics,
+                    bundler
                 });
             } catch {
                 // env compilation errors are already captured in diagnostics
