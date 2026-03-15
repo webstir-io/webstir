@@ -4,13 +4,49 @@
 
 Adopt Bun-native APIs where they materially simplify Webstir or improve performance, while preserving current behavior and avoiding accidental runtime contract changes.
 
-## Decision Gate
+## Runtime Policy
 
 **Decision (2026-03-15): packages/tooling/* will become Bun-only.**
 
 The sole consumer of these packages is the Bun orchestrator, which already requires Bun. No external dependents exist. The Node engine fields were aspirational, not load-bearing.
 
-This unblocks all remaining migration work: `Bun.file()`, `Bun.write()`, `Bun.build()`, `bun:sqlite`, and Bun-native server scaffolds in the canonical package code. PRs 2-6 are now active.
+Operational policy from this point:
+
+- `orchestrators/bun/**` is Bun-only code.
+- `packages/tooling/**` is a Bun-only product surface, even where package metadata and docs still say otherwise.
+- Repo-local scripts, tests, and CI paths that Webstir controls should converge on Bun instead of remaining half-Node and half-Bun.
+- Release/publish tooling changes are boundary changes. They should land as explicit runtime-policy PRs, not as incidental `spawnSync` to `Bun.$` cleanup.
+- External protocols still remain where required. `npm publish` stays `npm publish`; GitHub Actions can still install Node when a third-party action or protocol requires it.
+
+## Migration Shape
+
+This migration should be tracked as runtime-boundary work, not just API substitution work.
+
+### Workstream A: repo-internal Bunification
+
+Scope:
+
+- release helpers under `tools/**`
+- publish shell wrappers
+- release-tool tests
+- CI steps that still invoke local scripts with `node`
+
+Goal:
+
+- remove mixed local/runtime ownership where Webstir controls the entrypoint
+
+### Workstream B: published and generated Bun runtime contract
+
+Scope:
+
+- `packages/tooling/**` implementation
+- published package metadata and docs
+- CLI entrypoints and shebangs
+- generated backend templates and scaffolds
+
+Goal:
+
+- make the published/runtime contract match the Bun-only decision instead of leaving Bun-only behavior hidden behind Node-shaped metadata
 
 ## Current Findings
 
@@ -47,15 +83,16 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 - `orchestrators/bun/src/dev-server.ts` now uses `Bun.serve()` and `Bun.file()` for the Bun-only dev server path.
 - `orchestrators/bun/src/providers.ts` now uses `Bun.$` for the one-shot local package build wrapper while preserving runtime-command selection and inherited output behavior.
 - `orchestrators/bun/scripts/pack-standalone.mjs` now uses Bun-native command execution for its one-shot packaging flow, and `orchestrators/bun/package.json` runs that script with `bun`.
+- `tools/release-package.mjs` and `tools/resolve-release-package.mjs` now use Bun entrypoints, publish wrappers invoke them with `bun`, release-tool tests run with `bun test`, and the release workflow resolves packages with `bun`.
 
 ### Remaining justified Bun-only work
 
-- None in the current Bun-only script/orchestrator track without reopening a deferred or gated item.
+- The Bun-only script/orchestrator track is complete.
+- The next active work is the package/tooling track, starting with the backend `Bun.build()` path.
 
 ### Deferred or gated
 
-- `tools/release-package.mjs` is still invoked via `node` from repo scripts and GitHub workflows, so it should not be treated as a simple Bun-only follow-up without an explicit release-runtime decision.
-- `packages/tooling/*` Bun-native work remains gated by the Node-compatibility decision above.
+- `npm publish` and npm registry checks remain external protocol boundaries even after the repo-local tooling around them moves to Bun.
 
 ## Completed Bun-Only Wins
 
@@ -110,7 +147,7 @@ Completed:
 
 Remaining:
 
-- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs) still uses `spawnSync`, but it is currently a Node-invoked release helper and should stay deferred until the release-runtime contract is explicit.
+- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs) still uses `spawnSync`, but that remaining work belongs to the repo-internal release-tooling migration, not the completed orchestrator track.
 
 Proposed Bun API:
 
@@ -129,7 +166,7 @@ Risks / differences:
 
 ### Next justified chunk
 
-No further justified Bun-only implementation chunk is preselected until the release-runtime decision or the `packages/tooling/*` Node-compatibility decision changes.
+PR 3: add the flag-gated backend `Bun.build()` path in [packages/tooling/webstir-backend/src/build/pipeline.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/src/build/pipeline.ts).
 
 ## Completed High-Impact Bun-Only Changes
 
@@ -167,11 +204,61 @@ Risks / differences:
 - Revalidate header forwarding and proxy error behavior.
 - Revalidate cache headers and MIME behavior for static assets.
 
-### 4. Add `Bun.build()` as a flag-gated backend one-shot bundler
+## Repo-Internal Runtime Boundary
+
+### 4. Move release helpers, publish wrappers, and release-tool tests to Bun
 
 Impact: high  
 Difficulty: medium  
+Status: completed  
 Recommended timing: second PR
+
+Files:
+
+- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs)
+- [tools/resolve-release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/resolve-release-package.mjs)
+- [tools/tests/release-tools.test.mjs](/Users/iamce/dev/webstir-io/webstir/tools/tests/release-tools.test.mjs)
+- [packages/contracts/module-contract/scripts/publish.sh](/Users/iamce/dev/webstir-io/webstir/packages/contracts/module-contract/scripts/publish.sh)
+- [packages/contracts/testing-contract/scripts/publish.sh](/Users/iamce/dev/webstir-io/webstir/packages/contracts/testing-contract/scripts/publish.sh)
+- [packages/tooling/webstir-backend/scripts/publish.sh](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/scripts/publish.sh)
+- [packages/tooling/webstir-frontend/scripts/publish.sh](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/scripts/publish.sh)
+- [packages/tooling/webstir-testing/scripts/publish.sh](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-testing/scripts/publish.sh)
+- [orchestrators/bun/scripts/publish.sh](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/scripts/publish.sh)
+- [.github/workflows/release-package.yml](/Users/iamce/dev/webstir-io/webstir/.github/workflows/release-package.yml)
+- [package.json](/Users/iamce/dev/webstir-io/webstir/package.json)
+
+Current approach:
+
+- local release helpers use Node entrypoints
+- publish wrappers shell out to `node .../tools/release-package.mjs`
+- release-tool tests run under `node --test`
+- the release workflow is mixed: Bun for package work, Node for local helper scripts
+
+Proposed Bun API:
+
+- `#!/usr/bin/env bun`
+- `bun tools/release-package.mjs`
+- `bun tools/resolve-release-package.mjs`
+- `bun test` for release-tool tests
+- optional `Bun.$` for short-lived local subprocess wrappers
+
+Expected benefit:
+
+- Removes the runtime split for repo-local release tooling.
+- Makes local publishing and release-tool testing match the repo's Bun-first execution model.
+- Turns the release-tool migration into an explicit boundary change instead of leaving it as an awkward exception.
+
+Risks / differences:
+
+- Every publish wrapper has to move together so the entrypoint contract does not drift by package.
+- Keep `npm publish` and npm registry inspection unchanged.
+- Revalidate the fake-tool test harness and stderr/stdout expectations after changing runtimes.
+
+### 5. Add `Bun.build()` as a flag-gated backend one-shot bundler
+
+Impact: high  
+Difficulty: medium  
+Recommended timing: third PR
 
 Files:
 
@@ -197,11 +284,11 @@ Risks / differences:
 - Current code depends on `metafile`-driven output accounting.
 - Do not migrate watch mode in the same phase.
 
-### 5. Add `Bun.build()` as a flag-gated frontend one-shot bundler
+### 6. Add `Bun.build()` as a flag-gated frontend one-shot bundler
 
 Impact: high  
 Difficulty: medium  
-Recommended timing: third PR
+Recommended timing: fourth PR
 
 Files:
 
@@ -228,11 +315,11 @@ Risks / differences:
 
 ## Runtime Contract Changes
 
-### 6. Replace `better-sqlite3` with `bun:sqlite` in the session store
+### 7. Replace `better-sqlite3` with `bun:sqlite` in the session store
 
 Impact: high  
 Difficulty: medium  
-Recommended timing: after the Node-compatibility decision, if Bun-only generated backends are allowed
+Recommended timing: fifth PR, after the backend/frontend `Bun.build()` experiments land
 
 File:
 
@@ -256,11 +343,11 @@ Risks / differences:
 - This makes the generated SQLite session store Bun-only.
 - SQL behavior and error surface need smoke coverage before release.
 
-### 7. Replace `better-sqlite3` with `bun:sqlite` in the DB connection template
+### 8. Replace `better-sqlite3` with `bun:sqlite` in the DB connection template
 
 Impact: medium  
 Difficulty: medium  
-Recommended timing: after the Node-compatibility decision, same phase as the session store
+Recommended timing: fifth PR, same phase as the session store
 
 File:
 
@@ -285,11 +372,11 @@ Risks / differences:
 - Same Bun-only runtime tradeoff as the session store.
 - `pg` remains unchanged.
 
-### 8. Offer a Bun-native backend server scaffold
+### 9. Offer a Bun-native backend server scaffold
 
 Impact: medium  
 Difficulty: medium  
-Recommended timing: fifth PR
+Recommended timing: sixth PR
 
 Files:
 
@@ -315,15 +402,15 @@ Risks / differences:
 - Should be additive, not a replacement for Fastify or the Node server.
 - Request/response semantics and middleware shape differ from both current server options.
 
-## Package-Level Cleanup If Tooling Becomes Bun-Only
+## Package-Level Cleanup In The Bun-Only Tooling Phase
 
-These are worthwhile only if `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend` are allowed to drop Node-only compatibility constraints.
+These follow from the 2026-03-15 decision to make `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend` Bun-only. The remaining work here is sequencing, package metadata cleanup, and validation.
 
-### 9. Replace frontend file helpers with Bun-native IO
+### 10. Replace frontend file helpers with Bun-native IO
 
 Impact: medium  
 Difficulty: low  
-Recommended timing: sixth PR, Bun-only package phase
+Recommended timing: seventh PR, Bun-only package phase
 
 Files:
 
@@ -351,11 +438,11 @@ Risks / differences:
 - Current package metadata still advertises Node support.
 - Keep directory creation and removal on `node:fs/promises`.
 
-### 10. Replace backend and frontend hot-path `fs` reads/writes where they are not stream-bound
+### 11. Replace backend and frontend hot-path `fs` reads/writes where they are not stream-bound
 
 Impact: medium  
 Difficulty: low to medium  
-Recommended timing: sixth PR, Bun-only package phase
+Recommended timing: seventh PR, Bun-only package phase
 
 Files:
 
@@ -380,12 +467,55 @@ Expected benefit:
 
 Risks / differences:
 
-- Same Bun-only package contract concern.
+- Package metadata and docs still need to catch up with the Bun-only runtime contract.
 - Leave stream-based compression paths alone unless they are separately redesigned.
+
+## Runtime Contract Follow-Through
+
+### 12. Update published package metadata, CLI entrypoints, and docs to match Bun-only tooling
+
+Impact: high  
+Difficulty: medium  
+Recommended timing: begin alongside the first package/tooling PR that introduces a Bun-only runtime dependency, and complete no later than the final cleanup PR
+
+Files:
+
+- [packages/tooling/webstir-backend/package.json](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/package.json)
+- [packages/tooling/webstir-frontend/package.json](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/package.json)
+- [packages/tooling/webstir-testing/package.json](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-testing/package.json)
+- [packages/tooling/webstir-frontend/src/cli.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/cli.ts)
+- [packages/tooling/webstir-testing/src/cli.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-testing/src/cli.ts)
+- [packages/tooling/webstir-testing/src/add-cli.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-testing/src/add-cli.ts)
+- [packages/tooling/webstir-backend/templates/backend/db/migrate.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/templates/backend/db/migrate.ts)
+- [packages/tooling/webstir-backend/templates/backend/jobs/scheduler.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/templates/backend/jobs/scheduler.ts)
+- package READMEs and release notes for the affected packages
+
+Current approach:
+
+- package manifests still advertise Node support
+- several CLIs and generated files still use `#!/usr/bin/env node`
+- docs do not consistently describe Bun as the actual runtime contract
+
+Proposed changes:
+
+- update package `engines` and install/runtime docs to Bun
+- update CLI/template shebangs where they are intended to execute directly under Bun
+- document the consumer-facing runtime change at release time
+
+Expected benefit:
+
+- Makes the published/runtime contract honest.
+- Avoids shipping Bun-only behavior behind Node-shaped metadata.
+- Reduces future confusion in docs, smoke tests, and support paths.
+
+Risks / differences:
+
+- This is a consumer-facing contract change even if external dependents are currently low or zero.
+- Shebang changes need to line up with published artifacts and pack/smoke coverage.
 
 ## Not Recommended Yet
 
-### 11. Do not replace current watch/HMR plumbing with Bun hot reload
+### 13. Do not replace current watch/HMR plumbing with Bun hot reload
 
 Files:
 
@@ -401,7 +531,7 @@ Reason:
 - Bun hot reload does not replace the repo's cross-process rebuild, HMR diffing, or orchestrated reload decisions.
 - The only reasonable near-term experiment is `bun --hot` for a spawned backend runtime, not for the full watch stack.
 
-### 12. No current `Bun.password` replacement
+### 14. No current `Bun.password` replacement
 
 Files checked:
 
@@ -416,6 +546,8 @@ Reason:
 
 ### PR 1
 
+Status: completed
+
 Scope:
 
 - `orchestrators/bun/src/dev-server.ts`
@@ -423,7 +555,6 @@ Scope:
 - `orchestrators/bun/src/enable.ts`
 - `orchestrators/bun/src/repair.ts`
 - `orchestrators/bun/src/providers.ts`
-- `tools/release-package.mjs`
 - `orchestrators/bun/scripts/pack-standalone.mjs`
 
 Deliverables:
@@ -434,6 +565,26 @@ Deliverables:
 
 ### PR 2
 
+Status: completed
+
+Scope:
+
+- [tools/release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/release-package.mjs)
+- [tools/resolve-release-package.mjs](/Users/iamce/dev/webstir-io/webstir/tools/resolve-release-package.mjs)
+- [tools/tests/release-tools.test.mjs](/Users/iamce/dev/webstir-io/webstir/tools/tests/release-tools.test.mjs)
+- publish shell wrappers
+- [.github/workflows/release-package.yml](/Users/iamce/dev/webstir-io/webstir/.github/workflows/release-package.yml)
+- [package.json](/Users/iamce/dev/webstir-io/webstir/package.json)
+
+Deliverables:
+
+- Bun entrypoints for repo-local release helpers
+- Bun-based release-tool test execution
+- Bun-based publish wrapper contract
+- unchanged `npm publish` boundary
+
+### PR 3
+
 Scope:
 
 - [packages/tooling/webstir-backend/src/build/pipeline.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/src/build/pipeline.ts)
@@ -443,7 +594,7 @@ Deliverables:
 - Flag-gated `Bun.build()` path for backend build and publish
 - Build-equivalence verification for emitted artifacts
 
-### PR 3
+### PR 4
 
 Scope:
 
@@ -454,7 +605,7 @@ Deliverables:
 - Flag-gated `Bun.build()` path for one-shot frontend bundle generation
 - Production filename/hash resolution parity checks
 
-### PR 4
+### PR 5
 
 Scope:
 
@@ -467,7 +618,7 @@ Deliverables:
 - `bun:sqlite` SQLite DB connection path
 - smoke coverage for generated templates
 
-### PR 5
+### PR 6
 
 Scope:
 
@@ -478,20 +629,22 @@ Deliverables:
 
 - optional Bun-native backend server scaffold
 
-### PR 6
+### PR 7
 
 Scope:
 
 - package-level IO cleanup across `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend`
+- package metadata, CLI entrypoints, and docs that still advertise Node semantics
 
 Deliverables:
 
 - Bun-native file IO in hot paths
 - dependency cleanup such as removing `fs-extra` where possible
+- runtime-contract cleanup in manifests, shebangs, and docs
 
 Condition:
 
-- Only after explicitly deciding those packages may become Bun-only.
+- After at least one package/tooling PR has established the consumer-facing Bun-only direction in code and validation.
 
 ## Validation Checklist
 
@@ -500,3 +653,5 @@ Condition:
 - Run package-local build and smoke coverage for any scaffold changes.
 - Revalidate dev server SSE, proxying, static assets, and cache headers after the `Bun.serve()` migration.
 - Verify template-generated SQLite projects on Bun before replacing `better-sqlite3`.
+- Verify direct CLI execution and packaged artifacts after any shebang or `engines` change.
+- Keep release-package workflow validation focused on the local helper/runtime change, while preserving npm publish behavior.
