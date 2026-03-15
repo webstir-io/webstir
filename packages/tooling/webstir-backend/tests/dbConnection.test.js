@@ -118,12 +118,11 @@ async function runConnectionProbe(workspace, { cwd = workspace, env = {} } = {})
       await db.close();
     });
   `;
-  const child = spawn('node', ['--input-type=module', '--eval', script], {
+  const child = spawn('node', ['--experimental-transform-types', '--input-type=module', '--eval', script], {
     cwd,
     env: {
       ...process.env,
-      ...env,
-      NODE_OPTIONS: '--experimental-transform-types'
+      ...env
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
