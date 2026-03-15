@@ -51,6 +51,7 @@ export interface AppEnv {
 }
 
 const ENV_FILES = ['.env.local', '.env'];
+const WORKSPACE_ROOT_PATTERN = /^(.*)[/\\](?:src|build)[/\\]backend(?:[/\\].*)?$/;
 const WORKSPACE_ROOT = resolveWorkspaceRoot();
 const DEFAULT_REQUEST_BODY_MAX_BYTES = 1024 * 1024;
 const GENERATED_SESSION_SECRET = crypto.randomBytes(32).toString('hex');
@@ -186,19 +187,41 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 }
 
 export function resolveWorkspaceRoot(): string {
-  const envWorkspaceRoot = process.env.WORKSPACE_ROOT ?? process.env.WEBSTIR_WORKSPACE_ROOT;
+  const envWorkspaceRoot = resolveEnvWorkspaceRoot(process.env);
   if (envWorkspaceRoot) {
     return path.resolve(envWorkspaceRoot);
   }
-  try {
-    const filePath = fileURLToPath(import.meta.url);
-    const normalized = path.resolve(path.dirname(filePath));
-    const match = normalized.match(/^(.*)[/\\](?:src|build)[/\\]backend(?:[/\\].*)?$/);
-    if (match) {
-      return match[1] || path.parse(normalized).root;
-    }
-  } catch {
-    // ignore
+  const inferredRoot = inferWorkspaceRootFromImportMetaUrl(import.meta.url);
+  if (inferredRoot) {
+    return inferredRoot;
   }
   return path.resolve(process.cwd());
+}
+
+function resolveEnvWorkspaceRoot(env: NodeJS.ProcessEnv): string | undefined {
+  const workspaceRoot = env.WORKSPACE_ROOT?.trim();
+  if (workspaceRoot) {
+    return workspaceRoot;
+  }
+
+  const webstirWorkspaceRoot = env.WEBSTIR_WORKSPACE_ROOT?.trim();
+  return webstirWorkspaceRoot || undefined;
+}
+
+function inferWorkspaceRootFromImportMetaUrl(importMetaUrl: string): string | undefined {
+  try {
+    return inferWorkspaceRootFromFilePath(fileURLToPath(importMetaUrl));
+  } catch {
+    return undefined;
+  }
+}
+
+function inferWorkspaceRootFromFilePath(filePath: string): string | undefined {
+  const normalizedFilePath = path.resolve(path.dirname(filePath));
+  const match = normalizedFilePath.match(WORKSPACE_ROOT_PATTERN);
+  if (!match) {
+    return undefined;
+  }
+
+  return match[1] || path.parse(normalizedFilePath).root;
 }
