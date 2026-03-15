@@ -23,14 +23,14 @@ function copyTree(relativePath, tempRoot) {
   cpSync(source, target, { recursive: true });
 }
 
-function runNode(relativeScript, args, cwd) {
+function runRuntime(relativeScript, args, cwd) {
   return spawnSync(process.execPath, [relativeScript, ...args], {
     cwd,
     encoding: 'utf8',
   });
 }
 
-function runNodeWithEnv(relativeScript, args, cwd, env) {
+function runRuntimeWithEnv(relativeScript, args, cwd, env) {
   return spawnSync(process.execPath, [relativeScript, ...args], {
     cwd,
     encoding: 'utf8',
@@ -66,7 +66,7 @@ test('resolve-release-package rejects mismatched tag versions', () => {
     copyTree('tools', tempRoot);
     copyTree('packages/contracts/module-contract', tempRoot);
 
-    const result = runNode('tools/resolve-release-package.mjs', ['--tag', 'release/module-contract/v9.9.9'], tempRoot);
+    const result = runRuntime('tools/resolve-release-package.mjs', ['--tag', 'release/module-contract/v9.9.9'], tempRoot);
 
     assert.equal(result.status, 1);
     assert.match(result.stderr, /tag version 9\.9\.9 does not match/i);
@@ -74,7 +74,7 @@ test('resolve-release-package rejects mismatched tag versions', () => {
 });
 
 test('resolve-release-package resolves canonical package metadata', () => {
-  const result = runNode('tools/resolve-release-package.mjs', ['--package-dir', 'packages/tooling/webstir-backend'], repoRoot);
+  const result = runRuntime('tools/resolve-release-package.mjs', ['--package-dir', 'packages/tooling/webstir-backend'], repoRoot);
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
@@ -83,7 +83,7 @@ test('resolve-release-package resolves canonical package metadata', () => {
 });
 
 test('resolve-release-package resolves package metadata by package name', () => {
-  const result = runNode('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir-backend'], repoRoot);
+  const result = runRuntime('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir-backend'], repoRoot);
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
@@ -92,7 +92,7 @@ test('resolve-release-package resolves package metadata by package name', () => 
 });
 
 test('resolve-release-package resolves orchestrator package metadata', () => {
-  const result = runNode('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir'], repoRoot);
+  const result = runRuntime('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir'], repoRoot);
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=orchestrators\/bun/);
@@ -134,13 +134,13 @@ exit 0
 set -euo pipefail
 printf 'npm %s\\n' "$*" >> "$FAKE_TOOL_LOG"
 if [[ "$1" == "version" ]]; then
-  node -e 'const fs = require("node:fs"); const file = process.argv[1]; const version = process.argv[2]; const pkg = JSON.parse(fs.readFileSync(file, "utf8")); pkg.version = version; fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\\n");' package.json "$2"
+  bun -e 'const fs = require("node:fs"); const file = process.argv[1]; const version = process.argv[2]; const pkg = JSON.parse(fs.readFileSync(file, "utf8")); pkg.version = version; fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\\n");' package.json "$2"
 fi
 exit 0
 `
     );
 
-    const result = runNodeWithEnv(
+    const result = runRuntimeWithEnv(
       'tools/release-package.mjs',
       ['1.2.3', '--no-push', '--package-dir', 'packages/tooling/webstir-backend'],
       tempRoot,

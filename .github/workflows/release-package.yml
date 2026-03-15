@@ -44,9 +44,9 @@ jobs:
         id: package
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            node tools/resolve-release-package.mjs --tag "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            bun tools/resolve-release-package.mjs --tag "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           else
-            node tools/resolve-release-package.mjs --package-name "${{ inputs.package }}" >> "$GITHUB_OUTPUT"
+            bun tools/resolve-release-package.mjs --package-name "${{ inputs.package }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up npm
