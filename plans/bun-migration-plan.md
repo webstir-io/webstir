@@ -88,8 +88,8 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 ### Remaining justified Bun-only work
 
 - The Bun-only script/orchestrator track is complete.
-- PRs 3 through 5 are complete in the package/tooling track.
-- The next active work is PR 6: the Bun-native backend server scaffold.
+- PRs 3 through 6 are complete in the package/tooling track.
+- The next active work is PR 7: package-level IO cleanup across `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend`.
 
 ### Deferred or gated
 
@@ -167,7 +167,7 @@ Risks / differences:
 
 ### Next justified chunk
 
-PR 6: offer the Bun-native backend server scaffold in [packages/tooling/webstir-backend/templates/backend/index.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/templates/backend/index.ts) and related scaffold selection surfaces.
+PR 7: replace package-level file helpers and residual Node-shaped runtime metadata across [packages/tooling/webstir-backend](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend) and [packages/tooling/webstir-frontend](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend).
 
 ## Completed High-Impact Bun-Only Changes
 
@@ -630,6 +630,8 @@ Deliverables:
 - smoke coverage for generated templates
 
 ### PR 6
+
+Status: completed
 
 Scope:
 

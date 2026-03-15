@@ -38,7 +38,7 @@ Canonical proof apps in this repo:
 
 ## Shipped HTML-First Runtime
 
-The default `src/backend/index.ts` entry (and the optional Fastify scaffold) share the same runtime guarantees:
+The default `src/backend/index.ts` entry, the opt-in Bun scaffold, and the optional Fastify scaffold share the same runtime guarantees:
 
 - Route auto-mounting from compiled `module.ts`
 - Health probes at `/api/health`, `/healthz`, and `/readyz`
@@ -88,7 +88,24 @@ The provider expects a standard workspace layout and performs two steps:
   - `src/backend/tsconfig.json` (NodeNext, outDir `build/backend`)
 - `src/backend/index.ts` (built-in HTTP server with `/api/health`, `/healthz`, `/readyz`, manifest summaries, `x-request-id` propagation, and automatic module route mounting)
 - `src/backend/module.ts` (optional manifest + handler example the server loads automatically)
+- `src/backend/server/bun.ts` (optional Bun-native server scaffold)
 - `src/backend/server/fastify.ts` (optional Fastify server scaffold)
+
+### Bun Scaffold (optional)
+
+The default HTTP server stays on `node:http`, but the scaffold now ships an opt-in `Bun.serve()` path through the same `src/backend/index.ts` entry:
+
+- Set `WEBSTIR_BACKEND_SERVER_RUNTIME=bun` before starting the built backend:
+  ```bash
+  WEBSTIR_BACKEND_SERVER_RUNTIME=bun bun build/backend/index.js
+  ```
+- Or pin the entry directly to the Bun scaffold:
+  ```ts
+  // src/backend/index.ts
+  export { start } from './server/bun.js';
+  ```
+
+This keeps the default Node server intact while giving Bun-native deployments a first-party scaffold without pulling in Fastify.
 
 ### Fastify Scaffold (optional)
 
@@ -115,7 +132,7 @@ When present, the Fastify scaffold will also attempt to auto‑mount any compile
 
 ### Server runtime baseline
 
-The default `src/backend/index.ts` entry (and the optional Fastify scaffold) share the same runtime guarantees:
+The default `src/backend/index.ts` entry, the opt-in Bun scaffold, and the optional Fastify scaffold share the same runtime guarantees:
 
 - Route auto-mounting: any `module.ts` routes are compiled, logged, and attached on startup with manifest summaries (name, version, route count, capabilities).
 - Health probes: `/api/health` (for the orchestrator), `/healthz` (generic health), and `/readyz` (status + manifest summary). The CLI still waits for `API server running` before proxying requests.
@@ -126,7 +143,7 @@ The default `src/backend/index.ts` entry (and the optional Fastify scaffold) sha
 - Progressive enhancement responses: handlers can return redirects (`303` by default) or targeted fragment payloads; the scaffold emits `Location` and `x-webstir-fragment-*` headers accordingly.
 - Form handling: JSON bodies still work as before, and the scaffold now parses `application/x-www-form-urlencoded` requests into plain objects for HTML form workflows.
 
-Stick with the built-in server while exploring the manifest helpers, then drop in the Fastify scaffold when you need its plugin ecosystem—the readiness + manifest wiring stays the same.
+Stick with the built-in server while exploring the manifest helpers, opt into the Bun scaffold when you want `Bun.serve()` without extra framework surface, or drop in the Fastify scaffold when you need its plugin ecosystem. The readiness + manifest wiring stays the same.
 
 ### Runtime cache ergonomics
 
@@ -144,7 +161,7 @@ The backend template now ships a lightweight auth adapter so you can secure rout
 - **Bearer verification (HS256)** — when `AUTH_JWT_SECRET` is set, incoming `Authorization: Bearer <token>` headers are validated using HMAC-SHA256. Matching issuer/audience plus `nbf` and `exp` claims are enforced when present. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
 - **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users.
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
-- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies; when omitted, the scaffold falls back to a per-process random secret instead of a fixed shared default. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in both the built-in and Fastify server templates.
+- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies; when omitted, the scaffold falls back to a per-process random secret instead of a fixed shared default. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the built-in, Bun, and Fastify server templates.
 - **Durable session storage (optional)** — the scaffold defaults to the explicit in-memory `SessionStore`, but you can switch to the bundled SQLite adapter with `SESSION_STORE_DRIVER=sqlite`. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
 - Install `pino` in your workspace (`npm install pino`) before running the scaffold; the template server imports it directly.
 
@@ -330,7 +347,7 @@ This keeps your manifest co-located with runtime code while the provider handles
 
 - `src/backend/env.ts` loads `.env.local` (if present) followed by `.env`, merges values into `process.env`, and exposes a typed `loadEnv()` helper.
 - A `.env.example` file is scaffolded at the workspace root—copy it to `.env`/`.env.local`, fill in secrets (e.g., `API_BASE_URL`, `DATABASE_URL`, `JWT_SECRET`), and adjust `loadEnv()` to require the variables your backend needs.
-- The default HTTP server (and Fastify scaffold) calls `loadEnv()` before binding, so the same config is available inside route handlers. Use `ctx.env.require('JWT_SECRET')` to fetch validated values.
+- The default HTTP server, Bun scaffold, and Fastify scaffold call `loadEnv()` before binding, so the same config is available inside route handlers. Use `ctx.env.require('JWT_SECRET')` to fetch validated values.
 
 ### Multiple Entry Points
 The provider discovers these entries automatically (all optional):
