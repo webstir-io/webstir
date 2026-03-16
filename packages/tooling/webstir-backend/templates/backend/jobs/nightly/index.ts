@@ -7,7 +7,7 @@ export async function run(): Promise<void> {
   console.info('[job:nightly] ran at', new Date().toISOString());
 }
 
-// Execute when launched directly: `node build/backend/jobs/nightly/index.js`
+// Execute when launched directly: `bun build/backend/jobs/nightly/index.js`
 const isMain = (() => {
   try {
     const argv1 = process.argv?.[1];

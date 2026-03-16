@@ -1,12 +1,11 @@
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import type { BuildResult, Metafile } from 'esbuild';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
 import type { FrontendConfig } from '../types.js';
 import type { BuilderContext } from '../builders/types.js';
-import { pathExists } from '../utils/fs.js';
+import { pathExists, readBinaryFile } from '../utils/fs.js';
 import { isPathInside } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 
@@ -220,7 +219,7 @@ export class HotUpdateTracker {
         }
 
         try {
-            const contents = await readFile(absolutePath);
+            const contents = await readBinaryFile(absolutePath);
             const hash = createHash('sha1').update(contents).digest('hex');
             const previous = this.assetFingerprints.get(absolutePath);
             const changed = previous !== hash;

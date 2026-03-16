@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 
 import type { ModuleManifest, ModuleDiagnostic } from '@webstir-io/module-contract';
 
 import type { BackendBuildMode } from '../workspace.js';
+import { readTextFile, writeTextFile } from '../utils/bun.js';
 
 export async function persistAndDiffOutputs(
     workspaceRoot: string,
@@ -22,7 +23,7 @@ export async function persistAndDiffOutputs(
 
         let previous: Record<string, number> = {};
         try {
-            const raw = await readFile(cachePath, 'utf8');
+            const raw = await readTextFile(cachePath);
             previous = JSON.parse(raw) as Record<string, number>;
         } catch {
             // first run or unreadable cache
@@ -46,7 +47,7 @@ export async function persistAndDiffOutputs(
             });
         }
 
-        await writeFile(cachePath, JSON.stringify(outputs, null, 2), 'utf8');
+        await writeTextFile(cachePath, JSON.stringify(outputs, null, 2));
     } catch {
         // ignore cache errors
     }
@@ -75,7 +76,7 @@ export async function persistAndDiffManifest(
         type Digest = { routes: string[]; views: string[]; capabilities: string[] };
         let previous: Digest | undefined;
         try {
-            const raw = await readFile(cachePath, 'utf8');
+            const raw = await readTextFile(cachePath);
             previous = JSON.parse(raw) as Digest;
         } catch {
             // first run; no diff
@@ -115,7 +116,7 @@ export async function persistAndDiffManifest(
         }
 
         const digest: Digest = { routes: routeKeys, views: viewPaths, capabilities: caps };
-        await writeFile(cachePath, JSON.stringify(digest, null, 2), 'utf8');
+        await writeTextFile(cachePath, JSON.stringify(digest, null, 2));
     } catch {
         // ignore cache errors
     }

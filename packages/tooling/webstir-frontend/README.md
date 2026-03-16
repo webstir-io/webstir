@@ -10,7 +10,7 @@ HTML-first frontend delivery for Webstir workspaces. This package builds page do
 - Shared app-shell assets such as navigation, refresh, and client enhancement hooks
 - SSG as a supported mode, without making static-only delivery the center of the product story
 
-Requires Node.js **20.18.x** or newer.
+Requires Bun **1.3.5** or newer.
 
 ## HTML-First Workflow
 
@@ -31,19 +31,19 @@ Canonical proof apps in this repo:
 1. Install the package
 
 ```bash
-npm install @webstir-io/webstir-frontend
+bun add @webstir-io/webstir-frontend
 ```
 
 2. Build a workspace
 
 ```bash
-npx webstir-frontend build --workspace /absolute/path/to/workspace
+bunx webstir-frontend build --workspace /absolute/path/to/workspace
 ```
 
 3. Publish optimized frontend assets
 
 ```bash
-npx webstir-frontend publish --workspace /absolute/path/to/workspace
+bunx webstir-frontend publish --workspace /absolute/path/to/workspace
 ```
 
 ## Workspace Layout
@@ -126,7 +126,7 @@ const result = await frontendProvider.build({
 console.log(result.manifest.entryPoints);
 ```
 
-- `frontendProvider.metadata` exposes package and compatibility metadata
+- `frontendProvider.metadata` exposes package and runtime-compatibility metadata
 - `frontendProvider.resolveWorkspace()` returns canonical source/build roots
 - `frontendProvider.build()` executes the pipeline and returns artifacts plus manifest data
 
@@ -135,7 +135,7 @@ console.log(result.manifest.entryPoints);
 SSG is a supported frontend output mode, not a separate product:
 
 ```bash
-npx webstir-frontend publish --workspace /absolute/path/to/workspace --mode ssg
+bunx webstir-frontend publish --workspace /absolute/path/to/workspace --mode ssg
 ```
 
 That run:

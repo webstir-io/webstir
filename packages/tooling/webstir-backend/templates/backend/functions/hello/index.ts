@@ -7,7 +7,7 @@ export async function run(): Promise<void> {
   console.info('[function:hello] ran at', new Date().toISOString());
 }
 
-// Execute when launched directly: `node build/backend/functions/hello/index.js`
+// Execute when launched directly: `bun build/backend/functions/hello/index.js`
 const isMain = (() => {
   try {
     const argv1 = process.argv?.[1];
@@ -26,4 +26,3 @@ if (isMain) {
     process.exitCode = 1;
   });
 }
-

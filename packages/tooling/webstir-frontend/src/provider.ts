@@ -27,6 +27,7 @@ interface PackageJson {
     readonly version: string;
     readonly engines?: {
         readonly node?: string;
+        readonly bun?: string;
     };
 }
 
@@ -241,7 +242,8 @@ export const frontendProvider: ModuleProvider = {
         version: pkg.version ?? '0.0.0',
         compatibility: {
             minCliVersion: '0.1.0',
-            nodeRange: pkg.engines?.node ?? '>=20.18.1'
+            nodeRange: pkg.engines?.node ?? '>=20.18.1',
+            ...(pkg.engines?.bun ? { notes: `Requires Bun ${pkg.engines.bun} at runtime.` } : {})
         }
     },
     resolveWorkspace(options) {

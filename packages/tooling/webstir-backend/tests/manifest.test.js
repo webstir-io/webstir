@@ -193,4 +193,18 @@ test('scaffold assets expose core backend templates', async () => {
 
   const sqliteSessionStoreSource = await fs.readFile(sqliteSessionStoreAsset.sourcePath, 'utf8');
   assert.match(sqliteSessionStoreSource, /createSqliteSessionStore/);
+
+  const schedulerAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'jobs', 'scheduler.ts'));
+  assert.ok(schedulerAsset, 'expected scaffold assets to include the job scheduler');
+
+  const schedulerSource = await fs.readFile(schedulerAsset.sourcePath, 'utf8');
+  assert.match(schedulerSource, /^#!\/usr\/bin\/env bun/m);
+  assert.match(schedulerSource, /bun build\/backend\/jobs\/scheduler\.js --job <name>/);
+
+  const migrateAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'db', 'migrate.ts'));
+  assert.ok(migrateAsset, 'expected scaffold assets to include the database migration runner');
+
+  const migrateSource = await fs.readFile(migrateAsset.sourcePath, 'utf8');
+  assert.match(migrateSource, /^#!\/usr\/bin\/env bun/m);
+  assert.match(migrateSource, /bun src\/backend\/db\/migrate\.ts \[--list\]/);
 });

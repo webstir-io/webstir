@@ -139,7 +139,7 @@ async function canListenOnTcp() {
 async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
   const entryPath = path.join(workspace, 'build', 'backend', 'index.js');
   const entryUrl = pathToFileURL(entryPath).href;
-  const runtime = options.runtime ?? 'node';
+  const runtime = options.runtime ?? 'bun';
   const child =
     runtime === 'bun'
       ? spawn('bun', [entryPath], {

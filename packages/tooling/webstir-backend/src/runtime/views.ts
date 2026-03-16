@@ -1,7 +1,8 @@
 import path from 'node:path';
-import { access, readFile, stat } from 'node:fs/promises';
+import { access, stat } from 'node:fs/promises';
 
 import { resolveWorkspaceRoot } from '../workspace.js';
+import { readTextFile } from '../utils/bun.js';
 
 export interface EnvAccessorLike {
   get(name: string): string | undefined;
@@ -236,7 +237,7 @@ async function loadFrontendDocument(
     };
   }
 
-  const html = await readFile(documentPath, 'utf8');
+  const html = await readTextFile(documentPath);
   documentTemplateCache.set(documentPath, {
     html,
     ctimeMs: documentStats.ctimeMs,

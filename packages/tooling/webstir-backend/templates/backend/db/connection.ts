@@ -87,7 +87,7 @@ async function createPostgresClient(url: string): Promise<DatabaseClient> {
     ClientCtor = (pgModule as unknown as { Client: PgClientCtor }).Client;
   } catch (error) {
     throw new Error(
-      `[db] Failed to load pg. Install it in your workspace with "npm install pg". (${(error as Error).message})`
+      `[db] Failed to load pg. Install it in your workspace with "bun add pg". (${(error as Error).message})`
     );
   }
 

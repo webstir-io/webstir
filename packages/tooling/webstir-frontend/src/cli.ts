@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { Command } from 'commander';
 import { runAddPage, runBuild, runPublish, runRebuild } from './operations.js';
 import { WatchDaemon } from './watch/watchDaemon.js';

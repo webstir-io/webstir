@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { setInterval } from 'node:timers';
 
 import { loadJobs } from './runtime.js';
@@ -160,9 +160,9 @@ function toInterval(schedule: string | undefined): number | null {
 
 function printHelp() {
   console.info(`Usage:
-  node build/backend/jobs/scheduler.js [--list]
-  node build/backend/jobs/scheduler.js --job <name>
-  node build/backend/jobs/scheduler.js --watch [--job <name>]
+  bun src/backend/jobs/scheduler.ts [--list]
+  bun build/backend/jobs/scheduler.js --job <name>
+  bun build/backend/jobs/scheduler.js --watch [--job <name>]
 
 Options:
   --list            Show registered jobs and exit

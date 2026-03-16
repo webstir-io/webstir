@@ -1,8 +1,10 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 
 import type { HttpMethod, JobDefinition, RouteDefinition, SchemaReference } from '@webstir-io/module-contract';
+
+import { readTextFile, writeTextFile } from './utils/bun.js';
 
 const ALLOWED_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 const ALLOWED_SCHEMA_KINDS = ['zod', 'json-schema', 'ts-rest'] as const;
@@ -152,7 +154,7 @@ export async function runAddJob(options: AddJobOptions): Promise<BackendAddResul
   }
 
   await mkdir(jobDirectory, { recursive: true });
-  await writeFile(jobFilePath, buildJobTemplate(name), 'utf8');
+  await writeTextFile(jobFilePath, buildJobTemplate(name));
 
   const pkg = await readWorkspacePackageJson(packageJsonPath);
   const webstir = asObject(pkg.webstir);
@@ -230,7 +232,7 @@ async function scaffoldFastifyRoute(
 
   const routeFilePath = path.join(routeDirectory, `${name}.ts`);
   if (!existsSync(routeFilePath)) {
-    await writeFile(routeFilePath, buildFastifyRouteTemplate(name, method, routePath), 'utf8');
+    await writeTextFile(routeFilePath, buildFastifyRouteTemplate(name, method, routePath));
   }
 
   const fastifyPath = path.join(workspaceRoot, 'src', 'backend', 'server', 'fastify.ts');
@@ -240,7 +242,7 @@ async function scaffoldFastifyRoute(
 }
 
 async function patchFastifyRegistration(fastifyPath: string, name: string): Promise<void> {
-  let content = await readFile(fastifyPath, 'utf8');
+  let content = await readTextFile(fastifyPath);
   const importLine = `import { register as register${toPascal(name)} } from './routes/${name}';`;
   const callLine = `  register${toPascal(name)}(app);`;
 
@@ -275,7 +277,7 @@ async function patchFastifyRegistration(fastifyPath: string, name: string): Prom
     }
   }
 
-  await writeFile(fastifyPath, content, 'utf8');
+  await writeTextFile(fastifyPath, content);
 }
 
 function buildFastifyRouteTemplate(name: string, method: HttpMethod, routePath: string): string {
@@ -298,6 +300,7 @@ export async function run(): Promise<void> {
   console.info('[job:${name}] ran at', new Date().toISOString());
 }
 
+// Execute when launched directly: \`bun build/backend/jobs/${name}/index.js\`
 const isMain = (() => {
   try {
     const argv1 = process.argv?.[1];
@@ -488,11 +491,11 @@ async function readWorkspacePackageJson(packageJsonPath: string): Promise<Mutabl
     throw new Error(`package.json not found in workspace root.`);
   }
 
-  return JSON.parse(await readFile(packageJsonPath, 'utf8')) as MutableWorkspacePackageJson;
+  return JSON.parse(await readTextFile(packageJsonPath)) as MutableWorkspacePackageJson;
 }
 
 async function writeWorkspacePackageJson(packageJsonPath: string, pkg: Record<string, unknown>): Promise<void> {
-  await writeFile(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8');
+  await writeTextFile(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
 function asObject(value: unknown): Record<string, any> {
@@ -527,7 +530,7 @@ async function readFileIfExists(absolutePath: string): Promise<string | null> {
     return null;
   }
 
-  return await readFile(absolutePath, 'utf8');
+  return await readTextFile(absolutePath);
 }
 
 function toPascal(value: string): string {
