@@ -88,8 +88,8 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 ### Remaining justified Bun-only work
 
 - The Bun-only script/orchestrator track is complete.
-- PRs 3 through 6 are complete in the package/tooling track.
-- The next active work is PR 7: package-level IO cleanup across `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend`.
+- The package/tooling PR track is complete through PR 7.
+- No additional active PR is justified under this migration plan.
 
 ### Deferred or gated
 
@@ -167,7 +167,7 @@ Risks / differences:
 
 ### Next justified chunk
 
-PR 7: replace package-level file helpers and residual Node-shaped runtime metadata across [packages/tooling/webstir-backend](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend) and [packages/tooling/webstir-frontend](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend).
+None. The ordered PR breakdown is complete through PR 7; anything further belongs in a new follow-on plan or one of the deferred/gated tracks below.
 
 ## Completed High-Impact Bun-Only Changes
 
