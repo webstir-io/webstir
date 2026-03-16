@@ -1,10 +1,11 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 import { moduleManifestSchema, CONTRACT_VERSION } from '@webstir-io/module-contract';
 import type { ModuleDefinition, ModuleDiagnostic, ModuleManifest } from '@webstir-io/module-contract';
+
+import { readTextFile } from '../utils/bun.js';
 
 interface WorkspacePackageJson {
     readonly name?: string;
@@ -32,7 +33,7 @@ export async function loadBackendModuleManifest(options: LoadManifestOptions): P
     let workspacePackage: WorkspacePackageJson | undefined;
 
     try {
-        const raw = await readFile(pkgPath, 'utf8');
+        const raw = await readTextFile(pkgPath);
         workspacePackage = JSON.parse(raw) as WorkspacePackageJson;
     } catch (error) {
         const err = error as NodeJS.ErrnoException;

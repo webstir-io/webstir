@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -210,8 +210,8 @@ function printMigrations(migrations: MigrationModule[]) {
 
 function printHelp() {
   console.info(`Usage:
-  npx tsx src/backend/db/migrate.ts [--list]
-  npx tsx src/backend/db/migrate.ts --down [--steps 1]
+  bun src/backend/db/migrate.ts [--list]
+  bun src/backend/db/migrate.ts --down [--steps 1]
 
 Options:
   --list        Show migrations and exit

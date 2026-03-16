@@ -1,12 +1,12 @@
 # @webstir-io/webstir-backend
 
-Backend delivery for Webstir's HTML-first application model. The package type-checks backend workspaces, builds runnable Node-compatible output, and ships the default request runtime for server-handled forms, fragment responses, sessions, request-time views, and request-time document caching.
+Backend delivery for Webstir's HTML-first application model. The package type-checks backend workspaces, builds runnable Bun-targeted output, and ships the default request runtime for server-handled forms, fragment responses, sessions, request-time views, and request-time document caching.
 
 ## Quick Start
 
 1. **Install**
    ```bash
-   npm install @webstir-io/webstir-backend
+   bun add @webstir-io/webstir-backend
    ```
 2. **Run a build**
    ```ts
@@ -21,7 +21,7 @@ Backend delivery for Webstir's HTML-first application model. The package type-ch
    console.log(manifest.entryPoints);
    ```
 
-Requires Node.js **20.18.x** or newer.
+Requires Bun **1.3.5** or newer.
 
 ## What This Runtime Is Good At
 
@@ -81,7 +81,7 @@ The provider expects a standard workspace layout and performs two steps:
 
 `backendProvider` implements `ModuleProvider` from `@webstir-io/module-contract`:
 
-- `metadata` — package id, version, kind (`backend`), CLI compatibility, Node range.
+- `metadata` — package id, version, kind (`backend`), CLI compatibility, and runtime notes.
 - `resolveWorkspace({ workspaceRoot })` — returns canonical source/build/test roots.
 - `build(options)` — type‑checks with `tsc --noEmit`, then runs esbuild. In `build`/`test` mode it transpiles without bundling; in `publish` it bundles workspace code, externalizes `node_modules`, minifies, strips comments, and defines `NODE_ENV=production`. Artifacts are gathered and a manifest describing entry points, diagnostics, and the module contract manifest is returned.
 - `getScaffoldAssets()` — returns starter files to bootstrap a backend workspace:
@@ -113,7 +113,7 @@ The default HTTP server handles `/api/health`, readiness logging, and auto-mount
 
 - Install Fastify in your workspace:
   ```bash
-  npm i fastify
+  bun add fastify
   ```
 - Import and start it from your `src/backend/index.ts`:
   ```ts
@@ -123,7 +123,7 @@ The default HTTP server handles `/api/health`, readiness logging, and auto-mount
   ```
 - Or run it directly after a build:
   ```bash
-  node build/backend/server/fastify.js
+  bun build/backend/server/fastify.js
   ```
 
 Note: The package’s smoke test temporarily installs Fastify only to type‑check the optional scaffold. Normal users do not need Fastify unless they choose to use this server. In CI or offline environments, set `WEBSTIR_BACKEND_SMOKE_FASTIFY=skip` to bypass the Fastify install and type‑check.
@@ -163,7 +163,7 @@ The backend template now ships a lightweight auth adapter so you can secure rout
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
 - **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies; when omitted, the scaffold falls back to a per-process random secret instead of a fixed shared default. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the built-in, Bun, and Fastify server templates.
 - **Durable session storage (optional)** — the scaffold defaults to the explicit in-memory `SessionStore`, but you can switch to the bundled SQLite adapter with `SESSION_STORE_DRIVER=sqlite`. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
-- Install `pino` in your workspace (`npm install pino`) before running the scaffold; the template server imports it directly.
+- Install `pino` in your workspace (`bun add pino`) before running the scaffold; the template server imports it directly.
 
 This adapter is intentionally simple (HS256 only) but gives you a hook to plug in third-party IdPs: generate/sign tokens there, supply the shared secret via env, and the scaffold will populate `ctx.auth` for every route.
 
@@ -181,13 +181,13 @@ Install `pino` (and optionally `pino-pretty` for local formatting) in any worksp
 - The template provides a zero-config job loader (`src/backend/jobs/runtime.ts`) and a lightweight scheduler/runner (`build/backend/jobs/scheduler.js`). Use it to explore your jobs without wiring a full queue:
 
 ```bash
-npm install pino                # already needed for the server
-npx tsx src/backend/jobs/scheduler.ts --list
-node build/backend/jobs/scheduler.js --job nightly
-node build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekly/@reboot or rate(...) jobs
+bun add pino                    # already needed for the server
+bun src/backend/jobs/scheduler.ts --list
+bun build/backend/jobs/scheduler.js --job nightly
+bun build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekly/@reboot or rate(...) jobs
 ```
 
-- `/readyz` surfaces manifest job counts, and `node build/backend/jobs/<name>/index.js` remains the quickest way to execute a single job in isolation.
+- `/readyz` surfaces manifest job counts, and `bun build/backend/jobs/<name>/index.js` remains the quickest way to execute a single job in isolation.
 - Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). The built-in watcher supports the `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n units)` patterns for basic local loops; fall back to external tooling for full cron semantics.
 
 ### Database & migrations
@@ -199,12 +199,12 @@ node build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekl
 - Run migrations with:
 
 ```bash
-npx tsx src/backend/db/migrate.ts --list
-npx tsx src/backend/db/migrate.ts               # apply pending migrations
-npx tsx src/backend/db/migrate.ts --down --steps 1
+bun src/backend/db/migrate.ts --list
+bun src/backend/db/migrate.ts               # apply pending migrations
+bun src/backend/db/migrate.ts --down --steps 1
 ```
 
-- The runner logs each migration, records history in `DATABASE_MIGRATIONS_TABLE`, and works the same way once compiled (`node build/backend/db/migrate.js ...`).
+- The runner logs each migration, records history in `DATABASE_MIGRATIONS_TABLE`, and works the same way once compiled (`bun build/backend/db/migrate.js ...`).
 
 ### Module Manifest Integration
 

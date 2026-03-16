@@ -645,6 +645,8 @@ Deliverables:
 
 ### PR 7
 
+Status: completed
+
 Scope:
 
 - package-level IO cleanup across `packages/tooling/webstir-backend` and `packages/tooling/webstir-frontend`
