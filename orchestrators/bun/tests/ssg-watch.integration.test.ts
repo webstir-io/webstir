@@ -39,8 +39,8 @@ test('CLI watch serves the SSG demo and rebuilds generated content after a markd
     ],
     cwd: repoRoot,
     env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    stdout: 'ignore',
+    stderr: 'ignore',
   });
   childProcesses.push(child);
 

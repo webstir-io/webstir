@@ -1,5 +1,5 @@
 import path from 'node:path';
-import fs from 'fs-extra';
+import { access, constants, mkdir, writeFile } from 'node:fs/promises';
 
 export interface AddTestOptions {
   readonly workspaceRoot: string;
@@ -30,11 +30,11 @@ export async function runAddTest(options: AddTestOptions): Promise<AddTestResult
     fileName = `${normalizedName}.test.ts`;
   }
 
-  await fs.ensureDir(targetDirectory);
+  await mkdir(targetDirectory, { recursive: true });
   const targetFile = path.join(targetDirectory, fileName);
   const relativePath = path.relative(options.workspaceRoot, targetFile);
 
-  if (await fs.pathExists(targetFile)) {
+  if (await pathExists(targetFile)) {
     return {
       normalizedName,
       created: false,
@@ -42,7 +42,7 @@ export async function runAddTest(options: AddTestOptions): Promise<AddTestResult
     };
   }
 
-  await fs.writeFile(targetFile, SAMPLE_TEST_TEMPLATE, 'utf8');
+  await writeFile(targetFile, SAMPLE_TEST_TEMPLATE, 'utf8');
 
   return {
     normalizedName,
@@ -54,6 +54,15 @@ export async function runAddTest(options: AddTestOptions): Promise<AddTestResult
 function normalizeName(raw: string): string {
   const trimmed = raw.trim().replace(/\\/g, '/');
   return trimmed.replace(/(\.test\.ts)$/i, '');
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await access(targetPath, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const SAMPLE_TEST_TEMPLATE = `import { test, assert } from '@webstir-io/webstir-testing';

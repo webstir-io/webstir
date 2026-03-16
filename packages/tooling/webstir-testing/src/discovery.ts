@@ -1,5 +1,5 @@
 import path from 'node:path';
-import fs from 'fs-extra';
+import { access, constants, readdir } from 'node:fs/promises';
 
 import { TestManifest, TestModule, TestRuntime } from './types.js';
 
@@ -14,7 +14,7 @@ export async function discoverTestManifest(workspaceRoot: string): Promise<TestM
   const absoluteRoot = path.resolve(workspaceRoot);
   const srcRoot = path.join(absoluteRoot, SRC_FOLDER);
 
-  const exists = await fs.pathExists(srcRoot);
+  const exists = await pathExists(srcRoot);
   if (!exists) {
     return {
       workspaceRoot: absoluteRoot,
@@ -59,7 +59,7 @@ export async function discoverTestManifest(workspaceRoot: string): Promise<TestM
 }
 
 async function walkDirectory(root: string, onFile: (filePath: string) => Promise<void>): Promise<void> {
-  const entries = await fs.readdir(root, { withFileTypes: true });
+  const entries = await readdir(root, { withFileTypes: true });
 
   await Promise.all(entries.map(async (entry) => {
     const entryPath = path.join(root, entry.name);
@@ -77,6 +77,15 @@ async function walkDirectory(root: string, onFile: (filePath: string) => Promise
       await onFile(entryPath);
     }
   }));
+}
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await access(targetPath, constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isTestFile(filePath: string): boolean {

@@ -31,6 +31,15 @@ async function seedBackendEntry(workspace) {
   }
 }
 
+async function seedBackendScaffold(workspace) {
+  const assets = await backendProvider.getScaffoldAssets();
+  for (const asset of assets) {
+    if (!asset.targetPath.startsWith(path.join('src', 'backend'))) continue;
+    const target = path.join(workspace, asset.targetPath);
+    await copyFile(asset.sourcePath, target);
+  }
+}
+
 function getLocalBinPath() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const pkgRoot = path.resolve(here, '..');
@@ -129,6 +138,52 @@ test('startBackendWatch emits build outcome events for successful and failed reb
     assert.ok(events.some((event) => event.type === 'build-start'));
     assert.ok(events.some((event) => event.type === 'build-complete' && event.succeeded === true));
     assert.ok(events.some((event) => event.type === 'build-complete' && event.succeeded === false));
+  } finally {
+    await handle.stop();
+  }
+});
+
+test('startBackendWatch reports Bun benchmark timings when enabled', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-watch-benchmark-');
+  await seedBackendScaffold(workspace);
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK: '1',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+  };
+
+  const events = [];
+  const handle = await startBackendWatch({
+    workspaceRoot: workspace,
+    env,
+    onEvent(event) {
+      events.push(event);
+    }
+  });
+
+  try {
+    await waitFor(async () =>
+      events.some(
+        (event) =>
+          event.type === 'build-complete' &&
+          event.succeeded === true &&
+          typeof event.bunBenchmarkDurationMs === 'number' &&
+          event.bunBenchmarkDurationMs > 0
+      )
+    );
+
+    const completedEvent = events.find(
+      (event) =>
+        event.type === 'build-complete' &&
+        event.succeeded === true &&
+        typeof event.bunBenchmarkDurationMs === 'number'
+    );
+
+    assert.equal(completedEvent?.bunBenchmarkSucceeded, true);
+    assert.equal(completedEvent?.bunBenchmarkErrorCount, 0);
+    assert.ok((completedEvent?.bunBenchmarkDurationMs ?? 0) > 0);
   } finally {
     await handle.stop();
   }
