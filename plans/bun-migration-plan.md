@@ -102,8 +102,23 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 - Backend watch now has an opt-in `WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK=1` path that runs a full `Bun.build()` alongside the existing esbuild watch rebuild without replacing it.
 - Rebuild benchmark samples on Bun `1.3.10`:
   - `examples/demos/full`: esbuild incremental `8.9ms`, `8.8ms`, `9.6ms` vs Bun full build `1.5ms`, `1.4ms`, `1.2ms` (averages: `9.1ms` vs `1.4ms`)
-  - `examples/demos/auth-crud`: esbuild incremental `9.8ms`, `11.1ms`, `11.6ms` vs Bun full build `2.1ms`, `2.4ms`, `2.3ms` (averages: `10.8ms` vs `2.3ms`)
+- `examples/demos/auth-crud`: esbuild incremental `9.8ms`, `11.1ms`, `11.6ms` vs Bun full build `2.1ms`, `2.4ms`, `2.3ms` (averages: `10.8ms` vs `2.3ms`)
 - Conclusion remains unchanged: the temporary benchmark is informative, but the watch path still stays on esbuild until the missing watch/metafile contract issues are addressed.
+
+### 2026-03-16 full-demo `Bun.serve()` POC
+
+- Added a standalone proof file at [examples/demos/full/bun-serve-poc.ts](/Users/iamce/dev/webstir-io/webstir/examples/demos/full/bun-serve-poc.ts) plus a Bun-owned HTML entrypoint at [examples/demos/full/bun-serve-poc.home.html](/Users/iamce/dev/webstir-io/webstir/examples/demos/full/bun-serve-poc.home.html). This bypasses Webstir's watch/build pipeline and wires the demo directly to `Bun.serve({ development: true, routes })`.
+- Verified with `bun --hot run examples/demos/full/bun-serve-poc.ts` on March 16, 2026:
+  - Bun HTML routing served the frontend successfully once the demo had a full HTML document that Bun could own directly.
+  - Backend GET/POST/document/fragment routes worked in the same Bun process.
+  - Cookie-backed session behavior worked with an in-process `bun:sqlite` session table.
+  - CSS edits hot-applied in the browser.
+  - JavaScript edits fell back to a full page reload. Bun logged that the changed modules do not call `import.meta.hot.accept`.
+- Implications:
+  - `Bun.serve()` is viable as a direct host for a full demo workspace when the frontend entry is a Bun-ready HTML document and backend routing is hand-wired.
+  - The current Webstir frontend HMR model does not map 1:1 onto Bun's native HMR acceptance. The repo's custom HMR hooks are not enough for Bun to preserve state across JS edits.
+  - The current split `app.html` plus page-fragment model is not directly consumable by Bun HTML routes without either generating a full document first or adding Bun-specific entry files.
+  - This POC supports the existing plan conclusion: Bun can host a demo directly, but it does not replace the current watch/HMR pipeline as-is.
 
 ## Completed Bun-Only Wins
 
