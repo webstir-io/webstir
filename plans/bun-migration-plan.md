@@ -95,6 +95,16 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 
 - `npm publish` and npm registry checks remain external protocol boundaries even after the repo-local tooling around them moves to Bun.
 
+### 2026-03-16 follow-up
+
+- Root `packageManager` now pins `bun@1.3.10`, and the package-level `engines.bun` floor is `>=1.3.10` for the Bun-only tooling packages and orchestrator. `bun install` was re-run under Bun `1.3.10`; the lockfile did not need content changes.
+- `@webstir-io/webstir-testing` now declares `engines.bun`, ships Bun shebangs for its direct CLIs, and no longer depends on `fs-extra`.
+- Backend watch now has an opt-in `WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK=1` path that runs a full `Bun.build()` alongside the existing esbuild watch rebuild without replacing it.
+- Rebuild benchmark samples on Bun `1.3.10`:
+  - `examples/demos/full`: esbuild incremental `8.9ms`, `8.8ms`, `9.6ms` vs Bun full build `1.5ms`, `1.4ms`, `1.2ms` (averages: `9.1ms` vs `1.4ms`)
+  - `examples/demos/auth-crud`: esbuild incremental `9.8ms`, `11.1ms`, `11.6ms` vs Bun full build `2.1ms`, `2.4ms`, `2.3ms` (averages: `10.8ms` vs `2.3ms`)
+- Conclusion remains unchanged: the temporary benchmark is informative, but the watch path still stays on esbuild until the missing watch/metafile contract issues are addressed.
+
 ## Completed Bun-Only Wins
 
 ### 1. Replace Bun orchestrator file-copy and patch IO with `Bun.file()` / `Bun.write()`
