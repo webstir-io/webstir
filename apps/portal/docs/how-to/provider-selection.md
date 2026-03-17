@@ -12,8 +12,8 @@ Today, `webstir` loads the canonical packages directly:
 
 - Develop the canonical providers in this monorepo with `bun run --filter <package> build|test|smoke`.
 - Use the package CLIs directly when you need package-level behavior:
-  - `npx webstir-frontend ...`
-  - `npx webstir-testing ...`
+  - `bunx webstir-frontend ...`
+  - `bunx webstir-testing ...`
 - Pack or link the Bun orchestrator from [`orchestrators/bun`](https://github.com/webstir-io/webstir/tree/main/orchestrators/bun) for external-workspace checks.
 
 ## What Is Not Active

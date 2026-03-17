@@ -11,14 +11,14 @@ Unified test runner, runtime helpers, and CLI for Webstir TypeScript workspaces.
 
 1. **Install**
    ```bash
-   npm install --save-dev @webstir-io/webstir-testing
+   bun add -d @webstir-io/webstir-testing
    ```
 2. **Run tests**
    ```bash
-   npx webstir-testing --workspace /absolute/path/to/workspace
+   bunx webstir-testing --workspace /absolute/path/to/workspace
    ```
 
-Requires Node.js **20.18.x** or newer and assumes TypeScript has already produced compiled output in `build/**/tests/`.
+Requires Bun **1.3.10** or newer and assumes TypeScript has already produced compiled output in `build/**/tests/`.
 
 ## Workspace Layout
 

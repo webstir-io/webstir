@@ -30,10 +30,8 @@ build_local_provider() {
   echo "Building ${label} provider at ${spec}..."
   if command -v bun >/dev/null 2>&1; then
     bun run --cwd "${spec}" build
-  elif command -v npm >/dev/null 2>&1; then
-    (cd "${spec}" && npm run build)
   else
-    echo "Missing bun or npm; unable to build ${label} provider at ${spec}." >&2
+    echo "Missing bun; unable to build ${label} provider at ${spec}." >&2
     return 1
   fi
 }

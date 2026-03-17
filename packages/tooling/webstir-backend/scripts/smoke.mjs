@@ -28,14 +28,14 @@ async function copyFile(src, dest) {
 
 async function installPackages(workspace, packages, options = { dev: false }) {
   if (!packages || packages.length === 0) return;
-  const args = ['install', '--silent', ...packages];
+  const args = ['add', '--silent', ...packages];
   if (options.dev) {
     args.push('-D');
   }
   await new Promise((resolve, reject) => {
-    const child = spawn('npm', args, { cwd: workspace, stdio: 'ignore' });
+    const child = spawn('bun', args, { cwd: workspace, stdio: 'ignore' });
     child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`npm install failed (${code})`))));
+    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`bun add failed (${code})`))));
   });
 }
 

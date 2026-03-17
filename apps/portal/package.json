@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Documentation portal for the Webstir ecosystem (Docusaurus).",
-  "packageManager": "bun@1.3.5",
+  "packageManager": "bun@1.3.10",
   "engines": {
     "node": ">=20.18"
   },
