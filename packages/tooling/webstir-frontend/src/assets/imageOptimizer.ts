@@ -1,8 +1,8 @@
 import path from 'node:path';
 import sharp from 'sharp';
-import { glob } from 'glob';
 import { copy, ensureDir, emptyDir, pathExists, remove } from '../utils/fs.js';
 import { EXTENSIONS } from '../core/constants.js';
+import { scanGlob } from '../utils/glob.js';
 
 const TRANSCODABLE_EXTENSIONS = new Set<string>([
     EXTENSIONS.png,
@@ -24,7 +24,7 @@ export async function optimizeImages(sourceDir: string, destinationDir: string, 
 
     if (!files || files.length === 0) {
         await emptyDir(destinationDir);
-        const allFiles = await glob('**/*', { cwd: sourceDir, nodir: true });
+        const allFiles = await scanGlob('**/*', { cwd: sourceDir });
         await Promise.all(allFiles.map(async (relative) => processImage(sourceDir, destinationDir, relative)));
         return;
     }

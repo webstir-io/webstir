@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { glob } from 'glob';
 import { marked } from 'marked';
 import { load } from 'cheerio';
 import type { Cheerio } from 'cheerio';
@@ -7,6 +6,7 @@ import type { AnyNode } from 'domhandler';
 import hljs from 'highlight.js/lib/common';
 import { FOLDERS, FILES, FILE_NAMES, EXTENSIONS } from '../core/constants.js';
 import { ensureDir, pathExists, readFile, readJson, remove, writeFile } from '../utils/fs.js';
+import { scanGlob } from '../utils/glob.js';
 import type { Builder, BuilderContext } from './types.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { getPageDirectories } from '../core/pages.js';
@@ -84,10 +84,7 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
         return;
     }
 
-    const files = await glob('**/*.md', {
-        cwd: contentRoot,
-        nodir: true
-    });
+    const files = await scanGlob('**/*.md', { cwd: contentRoot });
 
     if (files.length === 0) {
         return;
@@ -147,10 +144,7 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
         return;
     }
 
-    const files = await glob('**/*.md', {
-        cwd: contentRoot,
-        nodir: true
-    });
+    const files = await scanGlob('**/*.md', { cwd: contentRoot });
 
     if (files.length === 0) {
         return;
@@ -257,10 +251,7 @@ async function removeStaleContentOutputsForRoot(
         expected.add(path.join(...segments.slice(1)));
     }
 
-    const candidateIndexes = await glob('**/index.html', {
-        cwd: docsRoot,
-        nodir: true
-    });
+    const candidateIndexes = await scanGlob('**/index.html', { cwd: docsRoot });
 
     const docsPrefix = resolvePageAssetUrl(pagesUrlPrefix, 'docs', '');
     const docsAssetToken = docsPrefix.endsWith('/') ? docsPrefix : `${docsPrefix}/`;
@@ -361,10 +352,7 @@ async function collectContentManifests(context: BuilderContext): Promise<DocsNav
     const contentRoot = config.paths.src.content;
     const overrides = await loadSidebarOverrides(contentRoot);
 
-    const files = await glob('**/*.md', {
-        cwd: contentRoot,
-        nodir: true
-    });
+    const files = await scanGlob('**/*.md', { cwd: contentRoot });
 
     if (files.length === 0) {
         return [];
@@ -437,10 +425,7 @@ async function collectContentSearchEntries(context: BuilderContext): Promise<Sea
     const contentRoot = config.paths.src.content;
     const overrides = await loadSidebarOverrides(contentRoot);
 
-    const files = await glob('**/*.md', {
-        cwd: contentRoot,
-        nodir: true
-    });
+    const files = await scanGlob('**/*.md', { cwd: contentRoot });
 
     if (files.length === 0) {
         return [];

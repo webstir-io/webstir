@@ -13,6 +13,7 @@
     "declarationMap": false,
     "sourceMap": false,
     "types": [
+      "bun",
       "node"
     ],
     "resolveJsonModule": true

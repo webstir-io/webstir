@@ -3,10 +3,10 @@ import path from 'node:path';
 import { load } from 'cheerio';
 import type { Cheerio, CheerioAPI } from 'cheerio';
 import type { AnyNode } from 'domhandler';
-import { glob } from 'glob';
 import { minify } from 'html-minifier-terser';
 import { FOLDERS, FILES, FILE_NAMES, EXTENSIONS } from '../core/constants.js';
 import { ensureDir, readFile, writeFile, pathExists, remove } from '../utils/fs.js';
+import { scanGlob } from '../utils/glob.js';
 import type { Builder, BuilderContext } from './types.js';
 import { getPageDirectories } from '../core/pages.js';
 import { readPageManifest, readSharedAssets } from '../assets/assetManifest.js';
@@ -65,10 +65,7 @@ async function buildHtml(context: BuilderContext): Promise<void> {
         if (targetPage && page.name !== targetPage) {
             continue;
         }
-        const pageHtmlFiles = await glob('**/*.html', {
-            cwd: page.directory,
-            nodir: true
-        });
+        const pageHtmlFiles = await scanGlob('**/*.html', { cwd: page.directory });
 
         if (pageHtmlFiles.length === 0) {
             warn(`No HTML fragments found for page '${page.name}'.`);
@@ -124,10 +121,7 @@ async function publishHtml(context: BuilderContext): Promise<void> {
         const assetDir = path.join(config.paths.dist.pages, page.name);
         const distDir = resolvePageHtmlDir(config.paths.dist.pages, page.name, useRootIndex);
 
-        const htmlFiles = await glob('**/*.html', {
-            cwd: page.directory,
-            nodir: true
-        });
+        const htmlFiles = await scanGlob('**/*.html', { cwd: page.directory });
 
         const manifest = await readPageManifest(assetDir, page.name);
 

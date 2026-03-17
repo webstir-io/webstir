@@ -1,10 +1,10 @@
 import path from 'node:path';
 import { build as esbuild, type Metafile } from 'esbuild';
-import { glob } from 'glob';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import type { Builder, BuilderContext } from './types.js';
 import { getPages } from '../core/pages.js';
 import { ensureDir, pathExists, copy, remove, stat } from '../utils/fs.js';
+import { scanGlob } from '../utils/glob.js';
 import { updatePageManifest, updateSharedAssets, readSharedAssets } from '../assets/assetManifest.js';
 import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
@@ -138,7 +138,12 @@ async function compileAppTypeScript(context: BuilderContext, isProduction: boole
         return;
     }
 
-    const entryPoints = (await glob('**/*.{ts,tsx}', { cwd: appRoot, nodir: true }))
+    const entryPoints = (await Promise.all([
+        scanGlob('**/*.ts', { cwd: appRoot }),
+        scanGlob('**/*.tsx', { cwd: appRoot })
+    ]))
+        .flat()
+        .sort((a, b) => a.localeCompare(b))
         .filter((relativePath) => !relativePath.endsWith('.d.ts'))
         .map((relativePath) => path.join(appRoot, relativePath));
     if (entryPoints.length === 0) {
@@ -433,7 +438,7 @@ async function resolveAppBundleName(
         return path.basename(entryOutput[0]);
     }
 
-    const matches = await glob('app-*.js', { cwd: outputDir, nodir: true });
+    const matches = await scanGlob('app-*.js', { cwd: outputDir });
     if (matches.length === 0) {
         return null;
     }

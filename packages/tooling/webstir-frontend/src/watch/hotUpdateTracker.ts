@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import type { BuildResult, Metafile } from 'esbuild';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
@@ -220,7 +219,7 @@ export class HotUpdateTracker {
 
         try {
             const contents = await readBinaryFile(absolutePath);
-            const hash = createHash('sha1').update(contents).digest('hex');
+            const hash = Bun.hash(contents).toString(16);
             const previous = this.assetFingerprints.get(absolutePath);
             const changed = previous !== hash;
             this.assetFingerprints.set(absolutePath, hash);
