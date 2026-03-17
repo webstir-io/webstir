@@ -120,6 +120,21 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
   - The current split `app.html` plus page-fragment model is not directly consumable by Bun HTML routes without either generating a full document first or adding Bun-specific entry files.
   - This POC supports the existing plan conclusion: Bun can host a demo directly, but it does not replace the current watch/HMR pipeline as-is.
 
+### 2026-03-16 POC follow-up: asset discovery and HMR acceptance
+
+- **Asset discovery refactored**: Replaced the fragile self-fetch + regex approach in `refreshFrontendAssets()` with a `Bun.build()` call that discovers CSS and JS asset paths from the build output's `outputs` array. The old approach fetched the `/` route from the running server and parsed the HTML response with regex to find `<link>` and `<script>` tags. The new approach calls `Bun.build()` with the same HTML entrypoint, reads the output manifest, and maps artifact paths to servable URLs. This eliminates the circular self-fetch dependency and produces deterministic asset discovery.
+- **Bun-native HMR acceptance added**: Added `import.meta.hot.accept()` guards to the frontend page entry points (`pages/home/index.ts` and `app/app.ts`). Bun's dev server requires modules to explicitly call `import.meta.hot.accept()` to enable hot module replacement; without it, JS edits trigger full page reloads. The existing Webstir `registerHotModule()` calls are preserved alongside the Bun-native acceptance for compatibility with both pipelines.
+- **Fragment/document composition gap documented but not solved**: Bun HTML routes expect to own a full HTML document, but Webstir's current pipeline composes `app.html` with page fragments. The POC works around this with a separate `bun-serve-poc.home.html`. Resolving this is a framework-level design question:
+  - Option A: Generate a full Bun-ready HTML document from the app.html + page fragment at build time.
+  - Option B: Use Bun's `fetch` handler for all HTML routes instead of Bun HTML routes, retaining the current composition model.
+  - Option C: Redesign the app.html/fragment split to produce standalone HTML pages that Bun can route directly.
+  - This gap is deferred to a future design phase. The current POC workaround (separate HTML file) is sufficient for validation.
+- **Remaining**:
+  - Validate that Bun.build() output paths align with Bun.serve() dev server URLs for the backend-rendered demo page.
+  - Measure whether the Bun.build() asset discovery adds measurable latency compared to the old self-fetch approach.
+  - Consider whether the `.bun-build-manifest` transient output directory should be cleaned up on shutdown.
+  - The watch/HMR pipeline replacement remains deferred per section 13.
+
 ## Completed Bun-Only Wins
 
 ### 1. Replace Bun orchestrator file-copy and patch IO with `Bun.file()` / `Bun.write()`

@@ -44,6 +44,8 @@ import homePage from './bun-serve-poc.home.html';
 
 const workspaceRoot = import.meta.dir;
 const frontendRoot = path.join(workspaceRoot, 'src', 'frontend');
+const frontendHomeEntrypoint = path.join(workspaceRoot, 'bun-serve-poc.home.html');
+const frontendAssetManifestDir = path.join(workspaceRoot, '.bun-build-manifest'); // Transient Bun.build output for asset discovery only.
 const sessionCookieName = 'webstir_demo_session';
 const demoPath = '/demo/progressive-enhancement';
 const demoApiPath = `/api${demoPath}`;
@@ -592,51 +594,69 @@ async function getFrontendAssets(): Promise<FrontendAssets> {
   return await refreshFrontendAssets('asset-request');
 }
 
-async function refreshFrontendAssets(reason: string): Promise<FrontendAssets> {
-  if (!server) {
-    throw new Error('Server is not ready yet.');
+async function discoverFrontendAssets(): Promise<FrontendAssets> {
+  const buildResult = await Bun.build({
+    entrypoints: [frontendHomeEntrypoint],
+    outdir: frontendAssetManifestDir,
+    minify: false,
+    sourcemap: 'none',
+  });
+
+  if (!buildResult.success) {
+    console.error('[bun-serve-poc] asset discovery build failed:', buildResult.logs);
+    throw new Error('Asset discovery build failed');
   }
 
-  const response = await fetch(new URL('/', server.url), {
-    headers: {
-      'x-webstir-poc-probe': reason,
-    },
-  });
-  const html = await response.text();
-  const cssHrefs = Array.from(
-    html.matchAll(/<link[^>]*rel="stylesheet"[^>]*href="([^"]+)"/g),
-    (match) => match[1]
-  );
-  const scriptSrc = html.match(/<script[^>]*src="([^"]+)"[^>]*data-bun-dev-server-script[^>]*><\/script>/)?.[1];
+  const cssHrefs: string[] = [];
+  let scriptSrc = '';
+
+  for (const output of buildResult.outputs) {
+    if (output.kind === 'sourcemap') {
+      continue;
+    }
+
+    const relativePath = path.relative(frontendAssetManifestDir, output.path);
+    const assetUrlPath = `/${relativePath.split(path.sep).join('/')}`;
+
+    if (output.kind === 'asset' && output.path.endsWith('.css')) {
+      cssHrefs.push(assetUrlPath);
+      continue;
+    }
+
+    if (
+      !scriptSrc
+      && (output.kind === 'entry-point' || output.kind === 'chunk')
+      && output.path.endsWith('.js')
+    ) {
+      scriptSrc = assetUrlPath;
+    }
+  }
 
   if (!scriptSrc) {
-    throw new Error('Could not discover Bun dev script from the home route.');
+    throw new Error('Could not discover JS entry from Bun.build() outputs.');
   }
 
-  cachedAssets = {
+  return {
     cssHrefs,
     scriptSrc,
   };
+}
+
+async function refreshFrontendAssets(reason: string): Promise<FrontendAssets> {
+  cachedAssets = await discoverFrontendAssets();
+  console.info(
+    `[bun-serve-poc] asset discovery (${reason}): css=${cachedAssets.cssHrefs.length} js=${cachedAssets.scriptSrc}`
+  );
 
   return cachedAssets;
 }
 
 async function probeFrontendRebundle(changedFile: string): Promise<void> {
-  if (!server) {
-    return;
-  }
-
   const started = performance.now();
-  const response = await fetch(new URL('/', server.url), {
-    headers: {
-      'x-webstir-poc-probe': `frontend-change:${changedFile}`,
-      'cache-control': 'no-cache',
-    },
-  });
-  await response.text();
+  cachedAssets = null;
+  await refreshFrontendAssets(`frontend-change:${changedFile}`);
   const duration = performance.now() - started;
   console.info(
     `[bun-serve-poc] frontend probe ${duration.toFixed(1)}ms after ${changedFile}`
   );
-  await refreshFrontendAssets(`frontend-change:${changedFile}`);
 }
