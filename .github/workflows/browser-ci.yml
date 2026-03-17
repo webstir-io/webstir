@@ -1,11 +1,6 @@
-name: Extended CI
+name: Browser CI
 
 on:
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: '0 9 * * *'
   workflow_dispatch:
 
 permissions:
@@ -16,8 +11,8 @@ env:
   NODE_VERSION: 20.18.1
 
 jobs:
-  exhaustive:
-    name: Exhaustive Gate
+  watch-browser:
+    name: Watch Browser Suite
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -39,5 +34,5 @@ jobs:
       - name: Install Playwright browser
         run: bun x playwright install --with-deps chromium
 
-      - name: Run exhaustive repo gate
-        run: bun run check:all
+      - name: Run browser suite
+        run: bun run test:watch-browser

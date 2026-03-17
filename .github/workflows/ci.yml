@@ -19,35 +19,6 @@ env:
   NODE_VERSION: 20.18.1
 
 jobs:
-  resolve-app-builds:
-    name: Resolve App Builds
-    runs-on: ubuntu-latest
-    outputs:
-      build_portal: ${{ steps.targets.outputs.build_portal }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Resolve app build targets
-        id: targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          args=(--event "${GITHUB_EVENT_NAME}")
-          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            while IFS= read -r file; do
-              [ -n "${file}" ] || continue
-              args+=(--changed-file "${file}")
-            done < <(git diff --name-only FETCH_HEAD...${GITHUB_SHA})
-          fi
-          node tools/resolve-ci-app-builds.mjs "${args[@]}" | tee -a "${GITHUB_OUTPUT}"
-
   required:
     name: Required Gate
     runs-on: ubuntu-latest
@@ -73,28 +44,6 @@ jobs:
 
       - name: Run required repo gate
         run: bun run check:required
-
-  build-portal:
-    name: Build Portal
-    runs-on: ubuntu-latest
-    needs: resolve-app-builds
-    if: needs.resolve-app-builds.outputs.build_portal == 'true'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
 
       - name: Build portal
         run: bun run --filter webstir-portal build
