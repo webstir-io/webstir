@@ -344,7 +344,7 @@ async function handleRequest(options: {
         respondJson(res, error.statusCode, { error: error.code, message: error.message });
         return;
       }
-      respondJson(res, 500, { error: 'internal_error', message: (error as Error).message });
+      respondJson(res, 500, { error: 'internal_error', message: env.NODE_ENV === 'production' ? 'Internal server error' : (error as Error).message });
     } else {
       res.end();
     }

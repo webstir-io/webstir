@@ -130,7 +130,7 @@ export async function start(): Promise<void> {
       logger.error({ err: error }, '[webstir-backend] Bun server request failed');
       return jsonResponse(500, {
         error: 'internal_error',
-        message: env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        message: env.NODE_ENV === 'production' ? 'Internal server error' : error.message
       });
     }
   });
@@ -332,9 +332,9 @@ async function handleRequest(options: {
         {
           error: 'internal_error',
           message:
-            env.NODE_ENV === 'development'
-              ? (error as Error).message
-              : 'Internal server error'
+            env.NODE_ENV === 'production'
+              ? 'Internal server error'
+              : (error as Error).message
         },
         requestId
       );
