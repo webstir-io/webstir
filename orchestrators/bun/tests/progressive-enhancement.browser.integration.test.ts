@@ -1024,6 +1024,7 @@ function isRetryableWatchBrowserError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('Watch browser scenario timed out during')
     || message.includes('Timed out stopping watch session')
+    || message.includes('Timeout') // Playwright waitForFunction / waitForSelector timeouts
     || isTransientBrowserTeardownError(error);
 }
 
