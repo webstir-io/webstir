@@ -9,7 +9,7 @@ Guidance for running and troubleshooting the incremental frontend watch workflow
 
 ## CLI Commands
 - Default workflow: `webstir watch`
-- Manual daemon: `npx webstir-frontend watch-daemon --workspace <absolute-path>`
+- Manual daemon: `bunx webstir-frontend watch-daemon --workspace <absolute-path>`
 - Defer auto-start for manual control: add `--no-auto-start`
 - Enable verbose diagnostics: add `--verbose`
 - Focus on hot-update diagnostics: add `--hmr-verbose`
@@ -26,7 +26,7 @@ Guidance for running and troubleshooting the incremental frontend watch workflow
 ## Failure Recovery
 1. Restart the daemon: stop `webstir watch` with `Enter`, then run it again.
 2. If dependencies drift, run `bun install` in the workspace, then restart the watch loop.
-3. Bypass the daemon with `npx webstir-frontend build --workspace <absolute-path>` for one-off frontend builds.
+3. Bypass the daemon with `bunx webstir-frontend build --workspace <absolute-path>` for one-off frontend builds.
 4. When the badge stays red, inspect the last `frontend.watch` error and re-run with verbose logging if needed.
 
 ## Fallbacks

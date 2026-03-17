@@ -13,5 +13,5 @@ The active Bun CLI does not support swapping the frontend provider through `webs
 ## Use Instead
 
 - Canonical frontend workflow: [build](./build.md), [watch](./watch.md), and [publish](./publish.md)
-- Package-level frontend CLI: `npx webstir-frontend ...`
+- Package-level frontend CLI: `bunx webstir-frontend ...`
 - Current provider status: [provider selection](./provider-selection.md)

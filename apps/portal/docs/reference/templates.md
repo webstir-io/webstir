@@ -78,7 +78,7 @@ Typical backend scaffold:
 - Reads `PORT` env var; defaults handled by the CLI dev server proxy in dev.
 - Optional auth adapter: set `AUTH_JWT_SECRET` (plus `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` and `AUTH_SERVICE_TOKENS` when needed) to enable bearer-token verification and populate `ctx.auth` in module routes.
 - Observability: install `pino`, set `LOG_LEVEL` / `LOG_SERVICE_NAME`, and enable metrics via `METRICS_ENABLED`. Every request logs structured JSON and `/metrics` exposes rolling latency/error stats.
-- Database & migrations: set `DATABASE_URL` (defaults to SQLite in `./data/dev.sqlite`) and manage schema changes via `src/backend/db/migrate.ts` + `src/backend/db/migrations/*.ts`. Install `better-sqlite3` for the default SQLite flow or `pg` for Postgres, then run `npx tsx src/backend/db/migrate.ts`.
+- Database & migrations: set `DATABASE_URL` (defaults to SQLite in `./data/dev.sqlite`) and manage schema changes via `src/backend/db/migrate.ts` + `src/backend/db/migrations/*.ts`. SQLite uses Bun's built-in `bun:sqlite`; install `pg` only for Postgres, then run `bun src/backend/db/migrate.ts`.
 
 ## Publish Outputs
 - Per page: `dist/frontend/pages/<page>/index.html`

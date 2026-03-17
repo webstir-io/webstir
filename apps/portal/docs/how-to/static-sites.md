@@ -34,7 +34,7 @@ What happens:
 If you are testing the frontend package directly:
 
 ```bash
-npx webstir-frontend publish --workspace "$PWD" --mode ssg
+bunx webstir-frontend publish --workspace "$PWD" --mode ssg
 ```
 
 Use this path when you need package-level control without going through the top-level orchestrator.
