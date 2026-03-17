@@ -216,10 +216,10 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       copyTree(packageDir, tempRoot);
 
       const copiedPackageDir = path.join(tempRoot, packageDir);
-      const packResult = run('npm', ['pack', '--ignore-scripts', '--json'], copiedPackageDir);
+      const packResult = run('bun', ['pm', 'pack', '--ignore-scripts', '--quiet'], copiedPackageDir);
       assert.equal(packResult.status, 0, packResult.stderr);
 
-      const [{ filename }] = JSON.parse(packResult.stdout);
+      const filename = packResult.stdout.trim();
       const tarballPath = path.join(copiedPackageDir, filename);
       const packedManifestResult = run('tar', ['-xOf', path.join(copiedPackageDir, filename), 'package/package.json'], copiedPackageDir);
       assert.equal(packedManifestResult.status, 0, packedManifestResult.stderr);
