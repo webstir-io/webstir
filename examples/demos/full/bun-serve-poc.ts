@@ -44,8 +44,6 @@ import homePage from './bun-serve-poc.home.html';
 
 const workspaceRoot = import.meta.dir;
 const frontendRoot = path.join(workspaceRoot, 'src', 'frontend');
-const frontendHomeEntrypoint = path.join(workspaceRoot, 'bun-serve-poc.home.html');
-const frontendAssetManifestDir = path.join(workspaceRoot, '.bun-build-manifest'); // Transient Bun.build output for asset discovery only.
 const sessionCookieName = 'webstir_demo_session';
 const demoPath = '/demo/progressive-enhancement';
 const demoApiPath = `/api${demoPath}`;
@@ -594,69 +592,97 @@ async function getFrontendAssets(): Promise<FrontendAssets> {
   return await refreshFrontendAssets('asset-request');
 }
 
-async function discoverFrontendAssets(): Promise<FrontendAssets> {
-  const buildResult = await Bun.build({
-    entrypoints: [frontendHomeEntrypoint],
-    outdir: frontendAssetManifestDir,
-    minify: false,
-    sourcemap: 'none',
+async function refreshFrontendAssets(reason: string): Promise<FrontendAssets> {
+  if (!server) {
+    throw new Error(`Bun server is not running while refreshing frontend assets (${reason}).`);
+  }
+
+  const response = await fetch(new URL('/', server.url), {
+    headers: {
+      'cache-control': 'no-cache',
+      'x-webstir-poc-asset-discovery': reason,
+    },
   });
-
-  if (!buildResult.success) {
-    console.error('[bun-serve-poc] asset discovery build failed:', buildResult.logs);
-    throw new Error('Asset discovery build failed');
+  if (!response.ok) {
+    throw new Error(
+      `Asset discovery request failed with ${response.status} ${response.statusText} (${reason}).`
+    );
   }
 
-  const cssHrefs: string[] = [];
-  let scriptSrc = '';
+  const html = await response.text();
+  const cssHrefs = extractStylesheetHrefs(html);
+  const scriptSrc = extractModuleScriptSrc(html);
 
-  for (const output of buildResult.outputs) {
-    if (output.kind === 'sourcemap') {
-      continue;
-    }
-
-    const relativePath = path.relative(frontendAssetManifestDir, output.path);
-    const assetUrlPath = `/${relativePath.split(path.sep).join('/')}`;
-
-    if (output.kind === 'asset' && output.path.endsWith('.css')) {
-      cssHrefs.push(assetUrlPath);
-      continue;
-    }
-
-    if (
-      !scriptSrc
-      && (output.kind === 'entry-point' || output.kind === 'chunk')
-      && output.path.endsWith('.js')
-    ) {
-      scriptSrc = assetUrlPath;
-    }
-  }
-
-  if (!scriptSrc) {
-    throw new Error('Could not discover JS entry from Bun.build() outputs.');
-  }
-
-  return {
+  cachedAssets = {
     cssHrefs,
     scriptSrc,
   };
-}
-
-async function refreshFrontendAssets(reason: string): Promise<FrontendAssets> {
-  cachedAssets = await discoverFrontendAssets();
-  console.info(
-    `[bun-serve-poc] asset discovery (${reason}): css=${cachedAssets.cssHrefs.length} js=${cachedAssets.scriptSrc}`
-  );
 
   return cachedAssets;
 }
 
 async function probeFrontendRebundle(changedFile: string): Promise<void> {
+  if (!server) {
+    return;
+  }
+
   const started = performance.now();
-  cachedAssets = null;
-  await refreshFrontendAssets(`frontend-change:${changedFile}`);
+  const response = await fetch(new URL('/', server.url), {
+    headers: {
+      'x-webstir-poc-probe': `frontend-change:${changedFile}`,
+      'cache-control': 'no-cache',
+    },
+  });
+  await response.text();
   const duration = performance.now() - started;
   console.info(
     `[bun-serve-poc] frontend probe ${duration.toFixed(1)}ms after ${changedFile}`
   );
+  await refreshFrontendAssets(`frontend-change:${changedFile}`);
+}
+
+function extractStylesheetHrefs(html: string): string[] {
+  const hrefs: string[] = [];
+  const linkPattern = /<link\b[^>]*>/gi;
+
+  for (const match of html.matchAll(linkPattern)) {
+    const tag = match[0];
+    const rel = readHtmlAttribute(tag, 'rel');
+    if (rel !== 'stylesheet') {
+      continue;
+    }
+
+    const href = readHtmlAttribute(tag, 'href');
+    if (href) {
+      hrefs.push(href);
+    }
+  }
+
+  return hrefs;
+}
+
+function extractModuleScriptSrc(html: string): string {
+  const scriptPattern = /<script\b[^>]*>/gi;
+  const scriptSrcs = Array.from(html.matchAll(scriptPattern), (match) => {
+    const tag = match[0];
+    if (readHtmlAttribute(tag, 'type') !== 'module') {
+      return '';
+    }
+
+    return readHtmlAttribute(tag, 'src');
+  }).filter(Boolean);
+
+  if (scriptSrcs.length !== 1) {
+    throw new Error(
+      `Expected one module script in the served document, found ${scriptSrcs.length}.`
+    );
+  }
+
+  return scriptSrcs[0];
+}
+
+function readHtmlAttribute(tag: string, name: string): string {
+  const pattern = new RegExp(`\\b${name}=["']([^"']+)["']`, 'i');
+  const match = tag.match(pattern);
+  return match?.[1]?.trim() ?? '';
 }

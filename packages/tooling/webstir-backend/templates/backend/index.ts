@@ -173,8 +173,12 @@ async function handleRequest(options: {
     }
 
     if (method === 'OPTIONS') {
+      const allowOrigin = env.NODE_ENV === 'development' ? req.headers.origin : undefined;
+      // Configure a specific production CORS allow-origin instead of reflecting arbitrary origins.
       res.statusCode = 204;
-      res.setHeader('Access-Control-Allow-Origin', req.headers.origin ?? '*');
+      if (allowOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+      }
       res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] ?? 'content-type');
       res.end('');

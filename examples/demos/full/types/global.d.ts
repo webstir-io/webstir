@@ -3,6 +3,12 @@ declare module '*.module.css' {
   export default classes;
 }
 
+interface ImportMeta {
+  hot?: {
+    accept(): void;
+  };
+}
+
 declare module '*.css' {
   const css: string;
   export default css;
