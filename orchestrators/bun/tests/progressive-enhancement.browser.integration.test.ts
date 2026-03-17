@@ -152,6 +152,14 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
 }
 
 async function assertDocumentNavigationResetsScroll(page: Page, origin: string): Promise<void> {
+  // Ensure the page is tall enough to scroll on small viewports (e.g. 720px in CI).
+  await page.evaluate(() => {
+    const spacer = document.createElement('div');
+    spacer.style.height = '2000px';
+    spacer.id = '__webstir_test_spacer';
+    document.body.appendChild(spacer);
+  });
+
   // Scroll down so we can verify the client-side navigation resets scroll position.
   await page.evaluate(() => window.scrollTo(0, 200));
   await page.waitForFunction(() => window.scrollY > 0);
