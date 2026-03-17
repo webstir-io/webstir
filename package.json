@@ -16,11 +16,11 @@
   "scripts": {
     "build": "bun run --workspaces --if-present build",
     "test": "bun run --workspaces --if-present test",
-    "test:all": "bun run test && bun run test:watch-browser",
+    "test:with-watch-browser": "bun run test && bun run test:watch-browser",
     "test:watch-browser": "bun run --filter @webstir-io/webstir test:browser:watch",
     "test:tools": "bun test tools/tests/*.test.mjs",
     "check:required": "node tools/run-checks.mjs required",
-    "check:all": "node tools/run-checks.mjs all",
+    "check:with-watch-browser": "node tools/run-checks.mjs with-watch-browser",
     "clean": "bun run --workspaces --if-present clean",
     "smoke": "bun run --workspaces --if-present smoke",
     "build:contracts": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build",

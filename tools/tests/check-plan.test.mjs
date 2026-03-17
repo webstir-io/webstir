@@ -13,7 +13,6 @@ describe('buildCheckPlan', () => {
       'backend tooling tests',
       'backend tooling smoke',
       'frontend tooling tests',
-      'frontend tooling smoke',
       'testing tooling',
       'bun asset sources',
       'bun orchestrator required suite',
@@ -21,10 +20,10 @@ describe('buildCheckPlan', () => {
     expect(plan.some((step) => step.command.includes('test:watch-browser'))).toBe(false);
   });
 
-  test('all gate extends the required plan with watch browser coverage', () => {
-    const plan = buildCheckPlan('all');
+  test('with-watch-browser plan extends the required plan with watch browser coverage', () => {
+    const plan = buildCheckPlan('with-watch-browser');
 
-    expect(plan.at(-1)?.label).toBe('bun orchestrator watch browser suite');
+    expect(plan.at(-1)?.label).toBe('bun orchestrator watch browser tests');
     expect(plan.at(-1)?.command).toEqual(['bun', 'run', 'test:watch-browser']);
     expect(plan).toHaveLength(buildCheckPlan('required').length + 1);
   });

@@ -67,10 +67,10 @@ Only `webstir test` supports `--runtime <frontend|backend|all>`.
 
 If you want to see the workflows exercised against real applications, use:
 
-- `examples/demos/auth-crud`
-- `examples/demos/dashboard`
+- `examples/demos/full` as the canonical `webstir test` and full-stack workflow reference
+- `examples/demos/auth-crud` and `examples/demos/dashboard` as browser/publish proof apps, not extra required `webstir test` lanes
 
-Those proof apps cover the current HTML-first runtime across redirect-after-post, fragment updates, sessions, and publish-mode validation.
+Together those demos cover the current HTML-first runtime across redirect-after-post, fragment updates, sessions, and publish-mode validation.
 
 ## Related Docs
 

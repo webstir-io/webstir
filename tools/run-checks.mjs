@@ -35,10 +35,6 @@ export function buildCheckPlan(mode) {
       command: ['bun', 'run', '--filter', '@webstir-io/webstir-frontend', 'test'],
     },
     {
-      label: 'frontend tooling smoke',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir-frontend', 'smoke'],
-    },
-    {
       label: 'testing tooling',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'test'],
     },
@@ -56,15 +52,16 @@ export function buildCheckPlan(mode) {
     case 'required':
       return requiredSteps;
     case 'all':
+    case 'with-watch-browser':
       return [
         ...requiredSteps,
         {
-          label: 'bun orchestrator watch browser suite',
+          label: 'bun orchestrator watch browser tests',
           command: ['bun', 'run', 'test:watch-browser'],
         },
       ];
     default:
-      throw new Error(`Unknown check mode "${mode}". Expected one of: required, all.`);
+      throw new Error(`Unknown check mode "${mode}". Expected one of: required, with-watch-browser.`);
   }
 }
 

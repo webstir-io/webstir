@@ -17,8 +17,8 @@ test('required orchestrator plan excludes watch browser proofs from the default 
   ]);
 });
 
-test('exhaustive orchestrator plan adds the isolated watch browser lane', () => {
-  const plan = buildTestPlan('all');
+test('with-watch-browser orchestrator plan adds watch browser tests to the required plan', () => {
+  const plan = buildTestPlan('with-watch-browser');
 
   expect(plan).toHaveLength(3);
   expect(plan[2]?.args).toEqual([

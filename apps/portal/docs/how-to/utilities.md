@@ -38,7 +38,7 @@ bun run webstir -- --help
 
 ## Package-Local Validation
 
-- Frontend package: `bun run --filter @webstir-io/webstir-frontend build|test|smoke`
+- Frontend package: `bun run --filter @webstir-io/webstir-frontend build|test`
 - Backend package: `bun run --filter @webstir-io/webstir-backend build|test|smoke`
 - Bun orchestrator: `bun run --filter @webstir-io/webstir test`
 
