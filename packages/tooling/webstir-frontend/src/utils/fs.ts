@@ -40,9 +40,11 @@ export async function copy(source: string, destination: string): Promise<void> {
     if (sourceInfo.isDirectory()) {
         await ensureDir(destination);
         const entries = await readdir(source, { withFileTypes: true });
-        for (const entry of entries) {
-            await copy(path.join(source, entry.name), path.join(destination, entry.name));
-        }
+        await Promise.all(
+            entries.map((entry) =>
+                copy(path.join(source, entry.name), path.join(destination, entry.name))
+            )
+        );
         return;
     }
 

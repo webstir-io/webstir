@@ -175,10 +175,13 @@ async function handleRequest(options: {
     }
 
     if (method === 'OPTIONS') {
+      const requestOrigin = request.headers.get('origin');
+      const allowOrigin = env.NODE_ENV === 'development' ? requestOrigin : undefined;
+      // Configure a specific production CORS allow-origin instead of reflecting arbitrary origins.
       return new Response(null, {
         status: 204,
         headers: {
-          'Access-Control-Allow-Origin': request.headers.get('origin') ?? '*',
+          ...(allowOrigin ? { 'Access-Control-Allow-Origin': allowOrigin } : {}),
           'Access-Control-Allow-Methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
           'Access-Control-Allow-Headers': request.headers.get('access-control-request-headers') ?? 'content-type'
         }
@@ -205,7 +208,6 @@ async function handleRequest(options: {
     const envAccessor = createProcessEnvAccessor();
     const now = () => new Date();
 
-    let handlerFailed = false;
     let responseStatus = 200;
     try {
       if (matchedView) {
@@ -316,14 +318,20 @@ async function handleRequest(options: {
       responseStatus = response.status;
       return response;
     } catch (error) {
-      handlerFailed = true;
       requestLogger.error({ err: error }, 'request handler failed');
       if (error instanceof RequestBodyTooLargeError) {
         responseStatus = error.statusCode;
         return jsonResponse(error.statusCode, { error: error.code, message: error.message }, requestId);
       }
       responseStatus = 500;
-      return jsonResponse(500, { error: 'internal_error', message: (error as Error).message }, requestId);
+      return jsonResponse(
+        500,
+        {
+          error: 'internal_error',
+          message: (error as Error).message
+        },
+        requestId
+      );
     } finally {
       const durationMs = performance.now() - startTime;
       metrics.record({
