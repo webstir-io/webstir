@@ -1,8 +1,8 @@
 import path from 'node:path';
-import { glob } from 'glob';
 import { FOLDERS, FILES } from '../../core/constants.js';
 import type { FrontendConfig } from '../../types.js';
 import { copy, ensureDir, pathExists, readJson } from '../../utils/fs.js';
+import { scanGlob } from '../../utils/glob.js';
 import { getPageDirectories } from '../../core/pages.js';
 import { assertNoSsgRoutesInModuleConfig } from './validation.js';
 import type { WorkspaceModuleView, WorkspacePackageJson } from '../../config/workspaceManifest.js';
@@ -67,10 +67,7 @@ async function applyDocsContentAliases(distRoot: string, distPagesRoot: string):
         return;
     }
 
-    const indexes = await glob('docs/**/index.html', {
-        cwd: distPagesRoot,
-        nodir: true
-    });
+    const indexes = await scanGlob('docs/**/index.html', { cwd: distPagesRoot });
 
     for (const relativeIndex of indexes) {
         const sourceIndex = path.join(distPagesRoot, relativeIndex);

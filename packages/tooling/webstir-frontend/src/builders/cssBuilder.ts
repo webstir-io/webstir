@@ -3,9 +3,9 @@ import postcss from 'postcss';
 import autoprefixer from 'autoprefixer';
 import customMedia from 'postcss-custom-media';
 import * as cssoModule from 'csso';
-import { glob } from 'glob';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import { ensureDir, pathExists, readFile, writeFile, remove, copy } from '../utils/fs.js';
+import { scanGlob } from '../utils/glob.js';
 import type { Builder, BuilderContext } from './types.js';
 import { getPages } from '../core/pages.js';
 import { hashContent } from '../utils/hash.js';
@@ -112,7 +112,7 @@ async function syncPageCssAssetsForDevelopment(
     outputDir: string,
     entryPath: string
 ): Promise<void> {
-    const sourceFiles = await glob('**/*.css', { cwd: pageDirectory, nodir: true });
+    const sourceFiles = await scanGlob('**/*.css', { cwd: pageDirectory });
     const entryRelative = normalizeForwardSlashes(path.relative(pageDirectory, entryPath));
 
     const copySet = new Set<string>();
@@ -129,7 +129,7 @@ async function syncPageCssAssetsForDevelopment(
         await copy(sourcePath, destinationPath);
     }
 
-    const existingFiles = await glob('**/*.css', { cwd: outputDir, nodir: true });
+    const existingFiles = await scanGlob('**/*.css', { cwd: outputDir });
     for (const relative of existingFiles) {
         const normalized = normalizeForwardSlashes(relative);
         if (normalized === `${FILES.index}${EXTENSIONS.css}`) {
@@ -262,7 +262,7 @@ async function syncAppStyles(
     const stylesDestination = path.join(destinationAppDir, 'styles');
     await ensureDir(stylesDestination);
 
-    const files = await glob('**/*', { cwd: stylesSource, nodir: true });
+    const files = await scanGlob('**/*', { cwd: stylesSource });
     for (const relative of files) {
         const sourcePath = path.join(stylesSource, relative);
         const destinationPath = path.join(stylesDestination, relative);
@@ -285,7 +285,7 @@ async function computeAppStylesVersion(sourceAppDir: string): Promise<string> {
         return 'no-styles';
     }
 
-    const files = (await glob('**/*.css', { cwd: stylesDir, nodir: true })).sort((a, b) => a.localeCompare(b));
+    const files = await scanGlob('**/*.css', { cwd: stylesDir });
     if (files.length === 0) {
         return 'no-styles';
     }
@@ -454,7 +454,7 @@ async function emitAppStylesProduction(
     const destinationDir = path.join(config.paths.dist.frontend, FOLDERS.app, 'styles');
     await remove(destinationDir).catch(() => undefined);
 
-    const files = await glob('**/*.css', { cwd: sourceDir, nodir: true });
+    const files = await scanGlob('**/*.css', { cwd: sourceDir });
     for (const relative of files) {
         const sourcePath = path.join(sourceDir, relative);
         const source = applyCustomMediaPrelude(await readFile(sourcePath), customMediaPrelude);

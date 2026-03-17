@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { CheerioAPI } from 'cheerio';
 
 const HTTP_TIMEOUT_MS = 5000;
@@ -113,7 +112,7 @@ async function fetchIntegrity(url: string, fetcher: typeof fetch): Promise<strin
                 return null;
             }
             const arrayBuffer = await response.arrayBuffer();
-            const hash = createHash('sha384').update(Buffer.from(arrayBuffer)).digest('base64');
+            const hash = new Bun.CryptoHasher('sha384').update(Buffer.from(arrayBuffer)).digest('base64');
             return `sha384-${hash}`;
         } finally {
             clearTimeout(timeout);

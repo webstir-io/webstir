@@ -1,6 +1,6 @@
 import path from 'node:path';
-import { glob } from 'glob';
 import { pathExists } from '../utils/fs.js';
+import { scanDirectories } from '../utils/glob.js';
 
 export interface PageInfo {
     readonly name: string;
@@ -20,7 +20,7 @@ export async function getPageDirectories(root: string): Promise<PageInfo[]> {
         return [];
     }
 
-    const entries = await glob('*/', { cwd: root, absolute: false, withFileTypes: false });
+    const entries = await scanDirectories('*/', { cwd: root, absolute: false });
     return entries.map((entry) => {
         const name = entry.endsWith('/') ? entry.slice(0, -1) : entry;
         return {

@@ -3,7 +3,6 @@ import { readdir } from 'node:fs/promises';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 
-import { glob } from 'glob';
 import type {
     ModuleAsset,
     ModuleArtifact,
@@ -20,6 +19,7 @@ import { prepareWorkspaceConfig } from './config/setup.js';
 import type { FrontendConfig } from './types.js';
 import { FOLDERS } from './core/constants.js';
 import { pathExists, readJson, remove } from './utils/fs.js';
+import { scanGlob } from './utils/glob.js';
 import { applySsgRouting, assertNoSsgRoutes, generateSsgViewData } from './modes/ssg/index.js';
 
 interface PackageJson {
@@ -128,9 +128,8 @@ async function getScaffoldAssets(): Promise<readonly ModuleAsset[]> {
 
 async function collectArtifacts(config: FrontendConfig): Promise<ModuleArtifact[]> {
     const buildRoot = config.paths.build.frontend;
-    const matches = await glob('**/*', {
+    const matches = await scanGlob('**/*', {
         cwd: buildRoot,
-        nodir: true,
         dot: false
     });
 

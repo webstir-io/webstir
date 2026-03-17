@@ -1,8 +1,8 @@
 import path from 'node:path';
-import { glob } from 'glob';
 import { load } from 'cheerio';
 import { ensureDir, pathExists, readFile, writeFile } from '../../utils/fs.js';
 import { FILES } from '../../core/constants.js';
+import { scanGlob } from '../../utils/glob.js';
 
 interface HtmlPage {
     readonly filePath: string;
@@ -25,7 +25,8 @@ async function discoverHtmlPages(distRoot: string): Promise<HtmlPage[]> {
         return [];
     }
 
-    const files = await glob('**/index.html', { cwd: distRoot, nodir: true, ignore: ['pages/**'] });
+    const files = (await scanGlob('**/index.html', { cwd: distRoot }))
+        .filter((relative) => !relative.split(path.sep).join('/').startsWith('pages/'));
     const pages = files
         .map((relative) => {
             const normalized = relative.split(path.sep).join('/');
