@@ -130,6 +130,51 @@ test('manifest loader merges compiled module definition metadata', async () => {
   assert.deepEqual(moduleManifest?.capabilities, ['search']);
 });
 
+test('manifest loader falls back to module exports from the compiled index entry', async () => {
+  const workspace = await createTempWorkspace();
+  await ensureDir(path.join(workspace, 'src', 'backend'));
+
+  const indexSource = `export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/index-module',
+    version: '3.2.1',
+    kind: 'backend',
+    capabilities: ['http'],
+    routes: [
+      {
+        name: 'indexEntryRoute',
+        method: 'GET',
+        path: '/demo/index-entry',
+        summary: 'Route surfaced from index.ts'
+      }
+    ],
+    views: []
+  }
+};
+`;
+
+  await fs.writeFile(path.join(workspace, 'src', 'backend', 'index.ts'), indexSource, 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify({ name: '@demo/index-fallback-package', version: '0.0.1', type: 'module' }, null, 2),
+    'utf8'
+  );
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+  };
+
+  const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+  const moduleManifest = result.manifest.module;
+
+  assert.equal(moduleManifest?.name, '@demo/index-module');
+  assert.equal(moduleManifest?.version, '3.2.1');
+  assert.deepEqual(moduleManifest?.capabilities, ['http']);
+  assert.deepEqual(moduleManifest?.routes?.map((route) => route.path), ['/demo/index-entry']);
+});
+
 test('scaffold assets expose core backend templates', async () => {
   const assets = await backendProvider.getScaffoldAssets();
   const targetSet = new Set(assets.map((asset) => asset.targetPath));

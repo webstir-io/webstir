@@ -82,4 +82,4 @@ bun run webstir -- init ssg ./my-site
 
 ## CI
 
-Smart CI targeting: resolves changed files and runs only affected package tests. Full integration tests run on push to main; scaffolded flow smoke tests run on PRs. Release publishing triggered by `release/**` tags with npm provenance.
+CI runs a required repo gate plus a separate portal build when portal-specific inputs change. Extended browser/watch coverage runs in its own workflow. Release publishing is triggered by `release/**` tags with npm provenance.

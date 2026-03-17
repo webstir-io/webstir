@@ -5,20 +5,6 @@
     "": {
       "name": "webstir",
     },
-    "apps/hub": {
-      "name": "webstir-project",
-      "version": "1.0.0",
-      "dependencies": {
-        "@webstir-io/webstir-frontend": "workspace:*",
-        "@webstir-io/webstir-testing": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "^20.0.0",
-        "autoprefixer": "^10.4.20",
-        "esbuild": "^0.25.0",
-        "typescript": "^5.4.0",
-      },
-    },
     "apps/portal": {
       "name": "webstir-portal",
       "version": "0.1.0",
@@ -2615,8 +2601,6 @@
     "webstir-demo-ssg-site": ["webstir-demo-ssg-site@workspace:examples/demos/ssg/site"],
 
     "webstir-portal": ["webstir-portal@workspace:apps/portal"],
-
-    "webstir-project": ["webstir-project@workspace:apps/hub"],
 
     "whatwg-encoding": ["whatwg-encoding@3.1.1", "", { "dependencies": { "iconv-lite": "0.6.3" } }, "sha512-6qN4hJdMwfYBtE3YBTTHhoeuUrDBPZmbQaxWAqSALV/MeEnR5z1xd8UKud2RAkFoPkmB+hli1TZSnyi84xz1vQ=="],
 

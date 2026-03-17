@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 type IncomingRequest = http.IncomingMessage;
 type ServerResponse = http.ServerResponse<IncomingRequest>;
@@ -16,7 +17,7 @@ const UPDATE_PROJECT_ACTION = './auth-crud/projects/update';
 const DELETE_PROJECT_ACTION = './auth-crud/projects/delete';
 const DEV_FRONTEND_ASSETS = {
   cssHref: '/app/app.css',
-  scriptSrc: '/pages/home/index.js'
+  scriptSrc: '/app/app.js'
 } as const;
 const SESSION_MAX_AGE_SECONDS = 60 * 60;
 
@@ -428,9 +429,11 @@ const server = http.createServer((request, response) => {
   void handleRequest(request, response);
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`API server running at http://localhost:${PORT}`);
-});
+if (isExecutedAsEntrypoint()) {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`API server running at http://localhost:${PORT}`);
+  });
+}
 
 async function handleRequest(request: IncomingRequest, response: ServerResponse): Promise<void> {
   if (!request.url) {
@@ -462,6 +465,15 @@ async function handleRequest(request: IncomingRequest, response: ServerResponse)
   });
 
   sendRouteResponse(response, result);
+}
+
+function isExecutedAsEntrypoint(): boolean {
+  const entrypoint = process.argv[1];
+  if (!entrypoint) {
+    return false;
+  }
+
+  return import.meta.url === pathToFileURL(entrypoint).href;
 }
 
 function findRoute(pathname: string, method: string): DemoRoute | undefined {

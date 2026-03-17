@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 type IncomingRequest = http.IncomingMessage;
 type ServerResponse = http.ServerResponse<IncomingRequest>;
@@ -13,7 +14,7 @@ const SESSION_SIGN_IN_ACTION = './progressive-enhancement/session/sign-in';
 const SESSION_SIGN_OUT_ACTION = './progressive-enhancement/session/sign-out';
 const DEV_FRONTEND_ASSETS = {
   cssHref: '/app/app.css',
-  scriptSrc: '/pages/home/index.js'
+  scriptSrc: '/app/app.js'
 } as const;
 
 interface RouteMatch {
@@ -403,9 +404,11 @@ const server = http.createServer((request, response) => {
   void handleRequest(request, response);
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`API server running at http://localhost:${PORT}`);
-});
+if (isExecutedAsEntrypoint()) {
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`API server running at http://localhost:${PORT}`);
+  });
+}
 
 async function handleRequest(request: IncomingRequest, response: ServerResponse): Promise<void> {
   if (!request.url) {
@@ -437,6 +440,15 @@ async function handleRequest(request: IncomingRequest, response: ServerResponse)
   });
 
   sendRouteResponse(response, result);
+}
+
+function isExecutedAsEntrypoint(): boolean {
+  const entrypoint = process.argv[1];
+  if (!entrypoint) {
+    return false;
+  }
+
+  return import.meta.url === pathToFileURL(entrypoint).href;
 }
 
 function findRoute(pathname: string, method: string): DemoRoute | undefined {

@@ -68,13 +68,13 @@ Validation:
 - Asset sync/build steps succeed without Bun code reading from the archived tree.
 
 ### 3. Promote Consumer-Path Checks Into PR CI
-- Run `webstir test` for the hub app as part of normal CI, not just a build.
+- Run consumer-path checks against maintained first-party surfaces, not abandoned rewrite workspaces.
 - Run package smoke checks in PR CI when tooling/templates/assets change, with path filtering if needed to keep runtime bounded.
 - Add at least one packed-artifact or external-workspace install check for the Bun CLI publish surface.
 - Keep the release workflow, but make it the final publish gate rather than the first place smoke/install regressions can appear.
 
 Validation:
-- CI catches hub/test/template/install regressions before merge.
+- CI catches maintained app/test/template/install regressions before merge.
 - Release workflow becomes confirmation, not discovery.
 
 ### 4. Add Style And Static-Analysis Gates

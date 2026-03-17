@@ -5,7 +5,7 @@ Monorepo baseline for Webstir.
 ## Layout
 - `packages/contracts/*`: canonical publishable contract packages.
 - `packages/tooling/*`: canonical publishable TypeScript framework/tooling packages.
-- `apps/*`: first-party apps such as the docs portal and hub.
+- `apps/portal`: first-party docs app workspace.
 - `examples/demos/*`: example workspaces used to verify framework behavior.
 - `orchestrators/dotnet`: the .NET orchestrator, CLI, engine, and embedded framework copies.
 

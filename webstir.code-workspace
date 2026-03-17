@@ -33,10 +33,6 @@
 			"path": "examples/demos"
 		},
 		{
-			"name": "webstir-hub",
-			"path": "apps/hub"
-		},
-		{
 			"name": ".github",
 			"path": ".github"
 		}
