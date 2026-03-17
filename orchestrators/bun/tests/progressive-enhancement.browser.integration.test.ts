@@ -152,39 +152,17 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
 }
 
 async function assertDocumentNavigationResetsScroll(page: Page, origin: string): Promise<void> {
-  await page.evaluate(() => {
-    const state = window as typeof window & {
-      __webstirScrollCalls?: unknown[][];
-      __webstirOriginalScrollTo?: typeof window.scrollTo;
-    };
-
-    state.__webstirScrollCalls = [];
-    if (!state.__webstirOriginalScrollTo) {
-      state.__webstirOriginalScrollTo = window.scrollTo.bind(window);
-      window.scrollTo = ((...args: unknown[]) => {
-        state.__webstirScrollCalls?.push(args);
-        return state.__webstirOriginalScrollTo?.(...(args as Parameters<typeof window.scrollTo>));
-      }) as typeof window.scrollTo;
-    }
-  });
+  // Scroll down so we can verify the client-side navigation resets scroll position.
+  await page.evaluate(() => window.scrollTo(0, 200));
+  await page.waitForFunction(() => window.scrollY > 0);
 
   await page.locator('a[href="/"]').click({ noWaitAfter: true });
   await waitForPathname(page, '/');
   await page.locator('h1').waitFor({ state: 'visible' });
-  const scrollCalls = await page.evaluate(() => {
-    const state = window as typeof window & { __webstirScrollCalls?: unknown[][] };
-    return state.__webstirScrollCalls ?? [];
-  });
 
   expect(await page.locator('h1').textContent()).toBe('Home');
-  expect(scrollCalls.length).toBeGreaterThan(0);
-
-  const lastCall = scrollCalls.at(-1)?.[0];
-  if (typeof lastCall === 'number') {
-    expect(lastCall).toBe(0);
-  } else {
-    expect(lastCall).toEqual(expect.objectContaining({ top: 0 }));
-  }
+  // After a client-side document navigation the scroll position should reset to the top.
+  await page.waitForFunction(() => window.scrollY === 0);
 
   await page.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
   await waitForPathname(page, '/api/demo/progressive-enhancement');
