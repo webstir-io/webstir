@@ -10,17 +10,12 @@ import { packageRoot, repoRoot } from '../src/paths.ts';
 
 test('browser progressive enhancement flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-watch-', 'full');
-  let session: RuntimeSession | undefined;
 
   try {
-    session = await startWatchSession(workspace);
-    await exerciseBrowserScenario(session.origin);
-  } catch (error) {
-    throw appendLogs(error, session?.getLogs() ?? {});
+    await runWatchBrowserScenarioWithRetry(workspace, exerciseBrowserScenario, {
+      scenarioTimeoutMs: 60_000
+    });
   } finally {
-    if (session) {
-      await session.stop();
-    }
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
 }, 120_000);
