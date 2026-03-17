@@ -151,7 +151,6 @@ bun install
 bun run clean
 bun run build
 bun run test
-bun run smoke
 bun run release -- patch
 ```
 
@@ -159,7 +158,6 @@ Recommended package validation before release:
 
 - `bun run build`
 - `bun run test`
-- `bun run smoke`
 
 ## Troubleshooting
 

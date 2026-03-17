@@ -1,4 +1,4 @@
-name: Browser CI
+name: Watch Browser Tests
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ env:
 
 jobs:
   watch-browser:
-    name: Watch Browser Suite
+    name: Watch Browser Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -34,5 +34,5 @@ jobs:
       - name: Install Playwright browser
         run: bun x playwright install --with-deps chromium
 
-      - name: Run browser suite
+      - name: Run watch browser tests
         run: bun run test:watch-browser

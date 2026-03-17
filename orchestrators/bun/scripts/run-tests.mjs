@@ -41,10 +41,11 @@ export function buildTestPlan(mode) {
     case 'watch-browser':
       return [watchBrowserTests];
     case 'all':
+    case 'with-watch-browser':
       return [coreTests, publishBrowserTests, watchBrowserTests];
     default:
       throw new Error(
-        `Unknown orchestrator test mode "${mode}". Expected one of: required, publish-browser, watch-browser, all.`
+        `Unknown orchestrator test mode "${mode}". Expected one of: required, publish-browser, watch-browser, with-watch-browser.`
       );
   }
 }

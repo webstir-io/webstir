@@ -34,7 +34,29 @@ async function runCli(
   };
 }
 
-test('CLI test runs the SPA demo frontend suite end to end', async () => {
+test('CLI test runs the full demo workspace end to end', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-');
+
+  try {
+    const result = await runCli(
+      ['test', '--workspace', copiedWorkspace.workspaceRoot],
+      { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('[webstir] test complete');
+    expect(result.stdout).toContain('mode: full');
+    expect(result.stdout).toContain('runtime: all');
+    expect(result.stdout).toContain('build-targets: frontend, backend');
+    expect(result.stdout).toMatch(/tests: \d+/);
+    expect(result.stdout).toMatch(/passed: \d+/);
+    expect(result.stdout).toContain('failed: 0');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI test still supports frontend-only SPA workspaces', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-test-spa-');
 
   try {
@@ -53,8 +75,8 @@ test('CLI test runs the SPA demo frontend suite end to end', async () => {
   }
 });
 
-test('CLI test honors --runtime backend for full workspaces', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-');
+test('CLI test honors --runtime backend for the full demo workspace', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-runtime-');
 
   try {
     const addTestResult = await runCli(['add-test', 'backend/ping', '--workspace', copiedWorkspace.workspaceRoot]);

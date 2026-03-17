@@ -21,7 +21,7 @@ Common patterns:
 - `bun run webstir -- init ssg ./docs`
 - `bun run webstir -- repair --workspace "$PWD/examples/demos/spa"`
 - `bun run webstir -- watch --workspace "$PWD/examples/demos/full"`
-- `bun run webstir -- test --workspace "$PWD/examples/demos/spa"`
+- `bun run webstir -- test --workspace "$PWD/examples/demos/full"`
 - `bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"`
 - `bun run webstir -- add-route accounts --workspace "$PWD/examples/demos/api"`
 - `bun run webstir -- smoke`

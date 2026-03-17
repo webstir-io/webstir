@@ -34,7 +34,6 @@
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "test": "tsc -p tsconfig.json && BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true BROWSERSLIST_IGNORE_OLD_DATA=true bun test tests",
-    "smoke": "tsc -p tsconfig.json && bun scripts/smoke.mjs",
     "release": "bash scripts/publish.sh"
   },
   "files": [
