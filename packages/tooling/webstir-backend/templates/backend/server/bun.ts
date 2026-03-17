@@ -128,10 +128,7 @@ export async function start(): Promise<void> {
     },
     error: (error) => {
       logger.error({ err: error }, '[webstir-backend] Bun server request failed');
-      return jsonResponse(500, {
-        error: 'internal_error',
-        message: env.NODE_ENV === 'production' ? 'Internal server error' : error.message
-      });
+      return jsonResponse(500, { error: 'internal_error', message: error.message });
     }
   });
 
@@ -331,10 +328,7 @@ async function handleRequest(options: {
         500,
         {
           error: 'internal_error',
-          message:
-            env.NODE_ENV === 'production'
-              ? 'Internal server error'
-              : (error as Error).message
+          message: (error as Error).message
         },
         requestId
       );
