@@ -16,3 +16,9 @@ registerHotModule(import.meta.url, {
     console.info('[webstir-hmr] Preparing to update', context.asset?.relativePath ?? 'home page module');
   }
 });
+
+// Bun-native HMR acceptance — enables hot module replacement
+// when running under Bun.serve({ development: true })
+if (import.meta.hot) {
+  import.meta.hot.accept();
+}

@@ -187,3 +187,7 @@ window.addEventListener('unhandledrejection', async () => {
 // Export for use by pages if needed
 export { loadErrorHandler };
 import "./scripts/features/client-nav.js";
+
+if (import.meta.hot) {
+  import.meta.hot.accept();
+}
