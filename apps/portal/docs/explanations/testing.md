@@ -7,6 +7,8 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 - Goal: protect the developer-facing contract, not maximize line coverage.
 - Focus: CLI behavior, generated workspaces, watch/runtime behavior, and publish outputs.
 - Primary surfaces: `orchestrators/bun/tests/**` plus package-local `tests/**`.
+- Default gate: deterministic package checks, orchestrator contract/integration tests, and publish-mode browser proofs.
+- Extended gate: watch-mode browser proofs run as a separate lane because they exercise the noisiest infrastructure path.
 
 ## What We Test
 
@@ -20,13 +22,20 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 
 - Orchestrator integration tests under `orchestrators/bun/tests/**/*.ts`
 - Package tests under `packages/tooling/*/tests/**/*.test.js`
-- Browser integration tests for progressive-enhancement flows in the Bun orchestrator
+- Browser publish proofs in the default Bun orchestrator gate
+- Browser watch proofs in an isolated extended lane
 - Smoke scripts where a package exposes `bun run smoke`
 
 ## Running Tests
 
 - Repo-wide active workspaces: `bun run test`
+- Repo-wide exhaustive suite: `bun run test:all`
+- Isolated watch-browser lane: `bun run test:watch-browser`
+- Repo required CI mirror: `bun run check:required`
+- Repo required CI mirror plus isolated watch proofs: `bun run check:all`
 - Bun orchestrator only: `bun run --filter @webstir-io/webstir test`
+- Bun orchestrator exhaustive suite: `bun run --filter @webstir-io/webstir test:all`
+- Bun orchestrator watch-browser lane: `bun run --filter @webstir-io/webstir test:browser:watch`
 - Frontend package: `bun run --filter @webstir-io/webstir-frontend test`
 - Backend package: `bun run --filter @webstir-io/webstir-backend test`
 - Generated workspace tests: `webstir test --workspace /absolute/path/to/workspace`
@@ -51,6 +60,8 @@ Only `webstir test` supports `--runtime <frontend|backend|all>`.
 - Integration tests use isolated temp workspaces and copied fixtures.
 - Watch tests prefer explicit readiness and port checks over long sleeps.
 - Browser flows focus on shipped proof apps so regressions surface on real consumer paths.
+- PR and `main` should run the same required gate; extended watch-browser proofs are a separate lane, not a hidden substitute.
+- GitHub `CI` runs `bun run check:required`; `Extended CI` owns `bun run check:all` on a separate schedule/workflow.
 
 ## Related Docs
 

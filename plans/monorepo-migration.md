@@ -24,7 +24,6 @@ The current workspace root contains multiple standalone repositories:
 - `webstir-portal`
 - `webstir-dotnet`
 - `webstir-demos`
-- `webstir-hub`
 - `webstir-workspace`
 
 This root now acts as a bootstrap monorepo shell for the JavaScript/TypeScript packages that already have the strongest coupling:
@@ -36,7 +35,7 @@ This root now acts as a bootstrap monorepo shell for the JavaScript/TypeScript p
 - `webstir-testing`
 - `webstir-portal`
 
-The .NET, demo, and hub repositories stay out of the initial workspace because they either contain mirrored framework packages or are better imported after the package/tooling lane is stable.
+The .NET and demo repositories stay out of the initial workspace because they either contain mirrored framework packages or are better imported after the package/tooling lane is stable.
 
 ## Target Layout
 
@@ -53,7 +52,6 @@ packages/
     webstir-testing/
 apps/
   portal/
-  hub/
 examples/
   demos/
 dotnet/
@@ -90,22 +88,17 @@ tools/
 ### Phase 4: Apps and Examples
 
 - Move `webstir-portal` to `apps/portal`.
-- Move `webstir-hub` to `apps/hub`.
 - Move `webstir-demos` to `examples/demos`.
 - Make apps/examples consume workspace packages for pre-publish validation.
-- Status: `webstir-portal` and `webstir-hub` are imported under `apps/`; `webstir-demos` is imported under `examples/demos`.
+- Status: `webstir-portal` is imported under `apps/`; `webstir-demos` is imported under `examples/demos`.
 - Verification:
   - `pnpm --filter webstir-portal build` passes from the root.
-  - `pnpm --dir apps/hub exec webstir-frontend build --workspace /Users/iamce/dev/webstir-io/apps/hub` passes.
-  - `pnpm --dir apps/hub exec webstir-frontend publish --workspace /Users/iamce/dev/webstir-io/apps/hub --mode ssg` passes.
-  - `pnpm --dir apps/hub exec webstir-testing test` passes.
   - `pnpm --dir examples/demos/spa exec webstir-frontend build --workspace /Users/iamce/dev/webstir-io/examples/demos/spa` passes.
   - `pnpm --dir examples/demos/ssg/site exec webstir-frontend build --workspace /Users/iamce/dev/webstir-io/examples/demos/ssg/site` passes.
   - `pnpm --dir examples/demos/ssg/site exec webstir-frontend publish --workspace /Users/iamce/dev/webstir-io/examples/demos/ssg/site --mode ssg` passes.
 - Notes:
   - importing `webstir-portal` exposed a Docusaurus assumption that git metadata is always available for last-update timestamps; the imported app now enables that only when `.git` is present in the app or repository ancestors.
   - importing `webstir-portal` also exposed an undeclared direct dependency on `@docusaurus/theme-common`, which is now declared explicitly.
-  - importing `webstir-hub` required switching its framework package references to `workspace:*` and making `utils/watch.sh` resolve the workspace root without assuming the app sits directly under it.
   - the imported demo projects were normalized to unique private package names and can now live in the root workspace safely.
   - the imported demo utility scripts were updated to resolve the workspace root and local provider paths from `examples/demos`, which is two levels deeper than the legacy repository root.
 
@@ -119,7 +112,7 @@ tools/
   - `dotnet build Webstir.sln -v minimal` passes from `orchestrators/dotnet`.
   - `dotnet run --project orchestrators/dotnet/CLI -- --help` passes from the repository root.
 - Notes:
-  - `apps/hub` and `examples/demos` now target `orchestrators/dotnet/CLI` instead of the legacy `webstir-dotnet/CLI` path.
+  - `examples/demos` now target `orchestrators/dotnet/CLI` instead of the legacy `webstir-dotnet/CLI` path.
   - the imported orchestrator remains outside the root `pnpm` workspace graph; it keeps its own .NET solution and Bun workspace behavior intact.
 
 ### Phase 6: Cleanup
@@ -127,7 +120,8 @@ tools/
 - Replace duplicated per-repo automation with root-level automation where it reduces maintenance cost.
 - Archive old repositories only after the monorepo builds, tests, and publishes cleanly.
 - Sweep remaining legacy path references (`webstir-dotnet`, legacy repo folder names) in docs, maintainer scripts, and agent instructions once the new repository layout is settled.
+- Status: the inactive `apps/hub` workspace has been removed from the monorepo after CI, workspace metadata, and lockfile cleanup detached it from active tooling.
 
 ## Immediate Next Step
 
-The next implementation slice is cleanup: choose the final canonical repository name, remove or archive the legacy nested repositories, and update remaining docs/maintainer references that still assume the old multi-repo layout.
+The next implementation slice is follow-up cleanup: decide whether `apps/portal` should remain in the required CI gate, align remaining Bun version declarations, and keep sweeping docs/maintainer references that still assume the old multi-repo layout.

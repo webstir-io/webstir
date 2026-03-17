@@ -1,13 +1,14 @@
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { context as createEsbuildContext } from 'esbuild';
+import { build as runEsbuild, context as createEsbuildContext } from 'esbuild';
 import type { BuildContext, BuildResult } from 'esbuild';
 import { FOLDERS, FILES, FILE_NAMES, EXTENSIONS } from '../core/constants.js';
 import { getPages, type PageInfo } from '../core/pages.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
 import type { EnableFlags, FrontendConfig } from '../types.js';
 import { prepareWorkspaceConfig } from '../config/setup.js';
-import { ensureDir, readJson } from '../utils/fs.js';
+import { ensureDir, pathExists, readJson } from '../utils/fs.js';
+import { scanGlob } from '../utils/glob.js';
 import { shouldProcess, isPathInside } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import { createCssBuilder } from '../builders/cssBuilder.js';
@@ -481,16 +482,26 @@ export class WatchCoordinator {
 
     private async executeJavaScriptBuild(changedFile?: string): Promise<JavaScriptBuildSummary> {
         const config = this.requireConfig();
+        const appBuild = await this.buildAppScripts(changedFile);
         const targetPages = this.resolveTargetPages(changedFile);
         if (targetPages.length === 0) {
-            return { pagesBuilt: [], warnings: [], modules: [], requiresReload: false, fallbackReasons: [] };
+            if (appBuild.builtAny) {
+                await copyRefreshScript(this.requireConfig(), this.enable);
+            }
+            return {
+                pagesBuilt: [],
+                warnings: [],
+                modules: [],
+                requiresReload: appBuild.requiresReload,
+                fallbackReasons: appBuild.fallbackReasons
+            };
         }
 
         const warnings: SerializedMessage[] = [];
         const builtPages: string[] = [];
         const modules: HotAsset[] = [];
-        let requiresReload = false;
-        const fallbackReasons: string[] = [];
+        let requiresReload = appBuild.requiresReload;
+        const fallbackReasons: string[] = [...appBuild.fallbackReasons];
         for (const pageName of targetPages) {
             const pageContext = this.jsContexts.get(pageName);
             if (!pageContext) {
@@ -516,7 +527,7 @@ export class WatchCoordinator {
             }
         }
 
-        if (builtPages.length > 0) {
+        if (builtPages.length > 0 || appBuild.builtAny) {
             await copyRefreshScript(this.requireConfig(), this.enable);
         }
 
@@ -526,6 +537,54 @@ export class WatchCoordinator {
             modules,
             requiresReload,
             fallbackReasons: this.combineFallbackReasons([], fallbackReasons)
+        };
+    }
+
+    private async buildAppScripts(changedFile?: string): Promise<{
+        builtAny: boolean;
+        requiresReload: boolean;
+        fallbackReasons: string[];
+    }> {
+        const config = this.requireConfig();
+        const appRoot = config.paths.src.app;
+        const outputDir = path.join(config.paths.build.frontend, FOLDERS.app);
+        const resolvedChange = changedFile ? path.resolve(changedFile) : undefined;
+        const shouldBuild = !resolvedChange || isPathInside(resolvedChange, appRoot);
+
+        if (!shouldBuild || !(await pathExists(appRoot))) {
+            return { builtAny: false, requiresReload: false, fallbackReasons: [] };
+        }
+
+        const entryPoints = (await Promise.all([
+            scanGlob('**/*.ts', { cwd: appRoot }),
+            scanGlob('**/*.tsx', { cwd: appRoot })
+        ]))
+            .flat()
+            .sort((a, b) => a.localeCompare(b))
+            .filter((relativePath) => !relativePath.endsWith('.d.ts'))
+            .map((relativePath) => path.join(appRoot, relativePath));
+
+        if (entryPoints.length === 0) {
+            return { builtAny: false, requiresReload: false, fallbackReasons: [] };
+        }
+
+        await ensureDir(outputDir);
+        await runEsbuild({
+            entryPoints,
+            outdir: outputDir,
+            format: 'esm',
+            target: 'es2020',
+            platform: 'browser',
+            sourcemap: true,
+            bundle: false,
+            outbase: appRoot,
+            logLevel: 'silent'
+        });
+
+        return {
+            builtAny: true,
+            requiresReload: Boolean(resolvedChange),
+            fallbackReasons: resolvedChange ? ['builder.app.reload'] : []
         };
     }
 

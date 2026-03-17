@@ -3,14 +3,13 @@ import assert from 'node:assert/strict';
 
 import { resolveCiAppBuilds } from '../resolve-ci-app-builds.mjs';
 
-test('non-PR events always build hub and portal apps', () => {
+test('non-PR events always build the portal app and core repo checks', () => {
   const result = resolveCiAppBuilds({
     eventName: 'push',
     changedFiles: [],
   });
 
   assert.deepEqual(result, {
-    buildHub: true,
     buildPortal: true,
     testModuleContract: true,
     testReleaseTools: true,
@@ -25,7 +24,6 @@ test('PRs touching only portal files build only the portal app', () => {
   });
 
   assert.deepEqual(result, {
-    buildHub: false,
     buildPortal: true,
     testModuleContract: false,
     testReleaseTools: false,
@@ -33,14 +31,13 @@ test('PRs touching only portal files build only the portal app', () => {
   });
 });
 
-test('PRs touching frontend tooling build only the hub app', () => {
+test('PRs touching frontend tooling do not force portal builds', () => {
   const result = resolveCiAppBuilds({
     eventName: 'pull_request',
     changedFiles: ['packages/tooling/webstir-frontend/src/cli.ts'],
   });
 
   assert.deepEqual(result, {
-    buildHub: true,
     buildPortal: false,
     testModuleContract: false,
     testReleaseTools: false,
@@ -48,14 +45,13 @@ test('PRs touching frontend tooling build only the hub app', () => {
   });
 });
 
-test('PRs touching shared dependency manifests build both apps', () => {
+test('PRs touching shared dependency manifests still build the portal app', () => {
   const result = resolveCiAppBuilds({
     eventName: 'pull_request',
     changedFiles: ['bun.lock'],
   });
 
   assert.deepEqual(result, {
-    buildHub: true,
     buildPortal: true,
     testModuleContract: true,
     testReleaseTools: true,
@@ -63,14 +59,13 @@ test('PRs touching shared dependency manifests build both apps', () => {
   });
 });
 
-test('PRs with unrelated changes skip both app builds', () => {
+test('PRs with unrelated changes skip portal builds', () => {
   const result = resolveCiAppBuilds({
     eventName: 'pull_request',
     changedFiles: ['plans/core-hardening-plan.md'],
   });
 
   assert.deepEqual(result, {
-    buildHub: false,
     buildPortal: false,
     testModuleContract: false,
     testReleaseTools: false,
@@ -85,7 +80,6 @@ test('PRs touching release tooling inputs run only release tools', () => {
   });
 
   assert.deepEqual(result, {
-    buildHub: false,
     buildPortal: false,
     testModuleContract: false,
     testReleaseTools: true,
@@ -100,7 +94,6 @@ test('PRs touching the module contract run its contract gate without forcing rel
   });
 
   assert.deepEqual(result, {
-    buildHub: true,
     buildPortal: false,
     testModuleContract: true,
     testReleaseTools: false,
@@ -115,7 +108,6 @@ test('PRs touching the testing contract run only its contract gate', () => {
   });
 
   assert.deepEqual(result, {
-    buildHub: false,
     buildPortal: false,
     testModuleContract: false,
     testReleaseTools: false,

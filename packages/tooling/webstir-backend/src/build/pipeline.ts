@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { mkdir, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
@@ -97,19 +98,14 @@ export async function runBackendBuildPipeline(options: BackendBuildPipelineOptio
         });
     console.info(`[webstir-backend] ${mode}:${bundler} done`);
 
-    const moduleSource = await discoverModuleDefinitionSource(sourceRoot);
-    if (moduleSource) {
-        await buildModuleDefinition({
-            sourceFile: moduleSource,
-            sourceRoot,
-            buildRoot,
-            tsconfigPath,
-            mode,
-            env,
-            diagnostics,
-            bundler
-        });
-    }
+    await ensureModuleDefinitionBuild({
+        sourceRoot,
+        buildRoot,
+        tsconfigPath,
+        mode,
+        env,
+        diagnostics
+    });
 
     const includePublishSourcemaps = mode === 'publish' && shouldEmitPublishSourcemaps(env);
 
@@ -250,7 +246,59 @@ async function discoverModuleDefinitionSource(sourceRoot: string): Promise<strin
         }
     }
 
+    const indexPatterns = ['index.{ts,tsx,js,mjs}'];
+    for (const pattern of indexPatterns) {
+        const matches = await glob(pattern, {
+            cwd: sourceRoot,
+            absolute: true,
+            nodir: true,
+            dot: false
+        });
+
+        for (const candidate of matches) {
+            if (await sourceExportsNamedModuleDefinition(candidate)) {
+                return candidate;
+            }
+        }
+    }
+
     return undefined;
+}
+
+async function sourceExportsNamedModuleDefinition(sourceFile: string): Promise<boolean> {
+    try {
+        const source = await readFile(sourceFile, 'utf8');
+        return /\bexport\s+(const|let|var)\s+module\b/.test(source)
+            || /\bexport\s*\{\s*module\b/.test(source);
+    } catch {
+        return false;
+    }
+}
+
+export interface EnsureModuleDefinitionBuildOptions {
+    readonly sourceRoot: string;
+    readonly buildRoot: string;
+    readonly tsconfigPath: string;
+    readonly mode: BackendBuildMode;
+    readonly env: Record<string, string | undefined>;
+    readonly diagnostics: ModuleDiagnostic[];
+}
+
+export async function ensureModuleDefinitionBuild(options: EnsureModuleDefinitionBuildOptions): Promise<void> {
+    const moduleSource = await discoverModuleDefinitionSource(options.sourceRoot);
+    if (!moduleSource) {
+        return;
+    }
+
+    await buildModuleDefinition({
+        sourceFile: moduleSource,
+        sourceRoot: options.sourceRoot,
+        buildRoot: options.buildRoot,
+        tsconfigPath: options.tsconfigPath,
+        mode: options.mode,
+        env: options.env,
+        diagnostics: options.diagnostics
+    });
 }
 
 interface ModuleDefinitionBuildOptions {
@@ -261,7 +309,6 @@ interface ModuleDefinitionBuildOptions {
     readonly mode: BackendBuildMode;
     readonly env: Record<string, string | undefined>;
     readonly diagnostics: ModuleDiagnostic[];
-    readonly bundler?: BackendBundler;
 }
 
 async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Promise<void> {
@@ -273,42 +320,21 @@ async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Pro
     const define: Record<string, string> = {
         'process.env.NODE_ENV': JSON.stringify(nodeEnv)
     };
-    const bundler = options.bundler ?? resolveBackendBundler({
-        env,
-        incremental: false,
-        diagnostics
-    });
-    const diagMax = readDiagMax(env, 50);
 
     try {
-        if (bundler === 'bun') {
-            const result = await runBunCompile({
-                entryPoints: [sourceFile],
-                sourceRoot,
-                buildRoot,
-                tsconfigPath,
-                define,
-                minify: false,
-                includeSourceMaps: isProduction ? emitPublishSourcemaps : true
-            });
-            ensureBunCompileSucceeded(result, diagnostics, `${mode}:bun:module`, diagMax);
-        } else {
-            await esbuild({
-                entryPoints: [sourceFile],
-                bundle: true,
-                packages: 'external',
-                platform: 'node',
-                target: 'node20',
-                format: 'esm',
-                sourcemap: isProduction ? emitPublishSourcemaps : true,
-                outdir: buildRoot,
-                outbase: sourceRoot,
-                entryNames: '[dir]/[name]',
-                tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
-                define,
-                logLevel: 'silent'
-            });
-        }
+        await esbuild({
+            entryPoints: [sourceFile],
+            bundle: true,
+            packages: 'external',
+            platform: 'node',
+            target: 'node20',
+            format: 'esm',
+            sourcemap: isProduction ? emitPublishSourcemaps : true,
+            outfile: path.join(buildRoot, 'module.js'),
+            tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
+            define,
+            logLevel: 'silent'
+        });
     } catch (error) {
         if (isEsbuildFailure(error)) {
             for (const e of error.errors ?? []) {

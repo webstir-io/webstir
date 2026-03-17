@@ -100,7 +100,7 @@ test('browser dashboard flows work in publish mode', async () => {
   }
 }, 120_000);
 
-async function exerciseBrowserScenario(origin: string): Promise<void> {
+async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
   const browser = await launchBrowser();
   try {
     const fragmentContext = await browser.newContext({
@@ -110,12 +110,16 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
     const fragmentPage = await fragmentContext.newPage();
 
     try {
+      setScenarioStep(progress, 'load progressive enhancement home page');
       await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
+      setScenarioStep(progress, 'open progressive enhancement proof page');
       await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
       await waitForPathname(fragmentPage, '/api/demo/progressive-enhancement');
       await fragmentPage.locator('h1').waitFor({ state: 'visible' });
 
+      setScenarioStep(progress, 'verify document navigation scroll reset');
       await assertDocumentNavigationResetsScroll(fragmentPage, origin);
+      setScenarioStep(progress, 'verify fragment update and focus handoff');
       await assertFragmentUpdateAndFocus(fragmentPage);
     } finally {
       await fragmentContext.close().catch(() => undefined);
@@ -128,8 +132,10 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
     const sessionPage = await sessionContext.newPage();
 
     try {
+      setScenarioStep(progress, 'load session proof page');
       await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
       await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
+      setScenarioStep(progress, 'exercise enhanced session flow');
       await assertSessionFlow(sessionPage);
     } finally {
       await sessionContext.close().catch(() => undefined);
@@ -142,6 +148,7 @@ async function exerciseBrowserScenario(origin: string): Promise<void> {
     const baselinePage = await baselineContext.newPage();
 
     try {
+      setScenarioStep(progress, 'exercise baseline redirect flow');
       await assertNativeRedirectFlow(baselinePage, origin);
     } finally {
       await baselineContext.close().catch(() => undefined);
@@ -631,7 +638,8 @@ async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<s
   await Promise.all([
     rm(path.join(workspace, 'build'), { recursive: true, force: true }),
     rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
-    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true })
+    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true }),
+    rm(path.join(workspace, '.webstir'), { recursive: true, force: true })
   ]);
   return workspace;
 }
@@ -675,7 +683,7 @@ async function startWatchSession(
         expect(await fetchText(port, check.requestPath)).toContain(check.expectedText);
       })
     );
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   return {
     origin: `http://127.0.0.1:${port}`,
@@ -737,7 +745,7 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
 
   await waitFor(async () => {
     expect(backendStdout.text).toContain('API server running at');
-  }, 20_000);
+  }, scaledTimeout(20_000));
 
   const port = await getFreePort();
   const server = new DevServer({
@@ -751,7 +759,7 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
   await waitFor(async () => {
     expect(await fetchText(port, '/')).toContain('Home');
     expect(await fetchText(port, '/api')).toContain('API server running');
-  }, 10_000);
+  }, scaledTimeout(10_000));
 
   return {
     origin: `http://127.0.0.1:${port}`,
@@ -933,11 +941,11 @@ async function stopChildProcess(
   drains: readonly Promise<void>[],
   label: string
 ): Promise<void> {
-  child.kill('SIGTERM');
-  const exitedGracefully = await waitForProcessExit(child, 5_000);
+  sendSignal(child.pid, 'SIGTERM');
+  const exitedGracefully = await waitForProcessExit(child.pid, scaledTimeout(5_000));
   if (!exitedGracefully) {
-    child.kill('SIGKILL');
-    const exitedForcefully = await waitForProcessExit(child, 5_000);
+    sendSignal(child.pid, 'SIGKILL');
+    const exitedForcefully = await waitForProcessExit(child.pid, scaledTimeout(10_000));
     if (!exitedForcefully) {
       throw new Error(`Timed out stopping ${label}.`);
     }
@@ -946,12 +954,17 @@ async function stopChildProcess(
   await Promise.allSettled(drains);
 }
 
-async function waitForProcessExit(child: ReturnType<typeof Bun.spawn>, timeoutMs: number): Promise<boolean> {
-  const outcome = await Promise.race([
-    child.exited.then(() => 'exited' as const).catch(() => 'exited' as const),
-    Bun.sleep(timeoutMs).then(() => 'timeout' as const)
-  ]);
-  return outcome === 'exited';
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) {
+      return true;
+    }
+
+    await Bun.sleep(100);
+  }
+
+  return !isProcessAlive(pid);
 }
 
 async function runWatchBrowserScenarioWithRetry(
@@ -974,7 +987,7 @@ async function runWatchBrowserScenarioWithRetry(
       });
       await runWithTimeout(
         () => scenario(session.origin, progress),
-        options.scenarioTimeoutMs,
+        scaledTimeout(options.scenarioTimeoutMs),
         `Watch browser scenario timed out during ${progress.currentStep}.`,
         progress
       );
@@ -1090,6 +1103,40 @@ function isTransientBrowserTeardownError(error: unknown): boolean {
     || message.includes('Page crashed')
     || message.includes('browser has been closed')
     || message.includes('browser disconnected');
+}
+
+function scaledTimeout(timeoutMs: number): number {
+  return process.env.CI ? Math.round(timeoutMs * 1.5) : timeoutMs;
+}
+
+function sendSignal(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch (error) {
+    if (!isMissingProcessError(error)) {
+      throw error;
+    }
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (isMissingProcessError(error)) {
+      return false;
+    }
+
+    return true;
+  }
+}
+
+function isMissingProcessError(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && error.code === 'ESRCH';
 }
 
 interface RuntimeSession {

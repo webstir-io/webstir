@@ -16,7 +16,6 @@ const releaseToolInputs = [
 export function resolveCiAppBuilds({ eventName, changedFiles }) {
   if (eventName !== PR_EVENT) {
     return {
-      buildHub: true,
       buildPortal: true,
       testModuleContract: true,
       testReleaseTools: true,
@@ -29,19 +28,11 @@ export function resolveCiAppBuilds({ eventName, changedFiles }) {
     .filter(Boolean);
 
   return {
-    buildHub: normalizedFiles.some((file) => shouldBuildHub(file)),
     buildPortal: normalizedFiles.some((file) => shouldBuildPortal(file)),
     testModuleContract: normalizedFiles.some((file) => shouldTestModuleContract(file)),
     testReleaseTools: normalizedFiles.some((file) => shouldTestReleaseTools(file)),
     testTestingContract: normalizedFiles.some((file) => shouldTestTestingContract(file)),
   };
-}
-
-function shouldBuildHub(file) {
-  return sharedAppBuildInputs.has(file)
-    || file.startsWith('apps/hub/')
-    || file.startsWith('packages/tooling/webstir-frontend/')
-    || file.startsWith('packages/contracts/module-contract/');
 }
 
 function shouldBuildPortal(file) {
@@ -100,7 +91,6 @@ function isCliInvocation() {
 
 if (isCliInvocation()) {
   const result = resolveCiAppBuilds(parseArgs(process.argv.slice(2)));
-  console.log(`build_hub=${String(result.buildHub)}`);
   console.log(`build_portal=${String(result.buildPortal)}`);
   console.log(`test_module_contract=${String(result.testModuleContract)}`);
   console.log(`test_release_tools=${String(result.testReleaseTools)}`);

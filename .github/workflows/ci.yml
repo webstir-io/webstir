@@ -14,25 +14,27 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  BUN_VERSION: 1.3.10
+  NODE_VERSION: 20.18.1
+
 jobs:
-  ci:
+  resolve-app-builds:
+    name: Resolve App Builds
     runs-on: ubuntu-latest
+    outputs:
+      build_portal: ${{ steps.targets.outputs.build_portal }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.5
-
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 20.18.1
+          node-version: ${{ env.NODE_VERSION }}
 
-      - name: Resolve CI targets
-        id: app-builds
+      - name: Resolve app build targets
+        id: targets
         shell: bash
         run: |
           set -euo pipefail
@@ -46,62 +48,53 @@ jobs:
           fi
           node tools/resolve-ci-app-builds.mjs "${args[@]}" | tee -a "${GITHUB_OUTPUT}"
 
+  required:
+    name: Required Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Install workspace dependencies
         run: bun install --frozen-lockfile
-
-      - name: Build contract packages
-        if: github.event_name == 'pull_request'
-        run: bun run build:contracts
-
-      - name: Test release tools
-        if: steps.app-builds.outputs.test_release_tools == 'true'
-        run: bun run test:tools
-
-      - name: Test module contract
-        if: steps.app-builds.outputs.test_module_contract == 'true'
-        run: bun run --filter @webstir-io/module-contract test
-
-      - name: Test testing contract
-        if: steps.app-builds.outputs.test_testing_contract == 'true'
-        run: bun run --filter @webstir-io/testing-contract test
-
-      - name: Test backend tooling
-        run: bun run --filter @webstir-io/webstir-backend test
-
-      - name: Smoke backend tooling scaffold
-        run: bun run --filter @webstir-io/webstir-backend smoke
-        env:
-          WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN: skip
-
-      - name: Test frontend tooling
-        run: bun run --filter @webstir-io/webstir-frontend test
-
-      - name: Smoke frontend tooling scaffold
-        run: bun run --filter @webstir-io/webstir-frontend smoke
-
-      - name: Test testing tooling
-        run: bun run --filter @webstir-io/webstir-testing test
-
-      - name: Check Bun asset sources
-        run: bun run --filter @webstir-io/webstir check:assets
 
       - name: Install Playwright browser
         run: bun x playwright install --with-deps chromium
 
-      - name: Smoke Bun scaffolded flows
-        if: github.event_name == 'pull_request'
-        run: bun run --filter @webstir-io/webstir smoke:ci
+      - name: Run required repo gate
+        run: bun run check:required
 
-      - name: Test Bun orchestrator
-        if: github.event_name != 'pull_request'
-        run: bun run --filter @webstir-io/webstir test
+  build-portal:
+    name: Build Portal
+    runs-on: ubuntu-latest
+    needs: resolve-app-builds
+    if: needs.resolve-app-builds.outputs.build_portal == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
 
       - name: Build portal
-        if: steps.app-builds.outputs.build_portal == 'true'
         run: bun run --filter webstir-portal build
-
-      - name: Build hub frontend
-        if: steps.app-builds.outputs.build_hub == 'true'
-        run: |
-          bun run --filter @webstir-io/webstir-frontend build
-          node packages/tooling/webstir-frontend/dist/cli.js build --workspace "$GITHUB_WORKSPACE/apps/hub"

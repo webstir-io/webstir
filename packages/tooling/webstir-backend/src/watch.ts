@@ -8,7 +8,7 @@ import { context as createEsbuildContext, type BuildContext, type BuildResult, t
 
 import type { ModuleDiagnostic } from '@webstir-io/module-contract';
 
-import { collectOutputSizes, formatEsbuildMessage, shouldTypeCheck } from './build/pipeline.js';
+import { collectOutputSizes, ensureModuleDefinitionBuild, formatEsbuildMessage, shouldTypeCheck } from './build/pipeline.js';
 import { discoverEntryPoints } from './build/entries.js';
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
@@ -157,6 +157,14 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
             diagnostics: diagBuffer
           });
           try {
+            await ensureModuleDefinitionBuild({
+              sourceRoot: paths.sourceRoot,
+              buildRoot: paths.buildRoot,
+              tsconfigPath,
+              mode,
+              env,
+              diagnostics: diagBuffer
+            });
             const metafile: any = (result as any).metafile;
             if (metafile && metafile.outputs) {
               const outputs = collectOutputSizes(metafile, paths.buildRoot);
