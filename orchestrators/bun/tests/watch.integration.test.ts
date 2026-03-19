@@ -67,7 +67,7 @@ test('CLI watch serves the SPA demo and rebuilds after a source edit', async () 
   }
 }, 30000);
 
-test('CLI watch rejects the legacy SPA runtime now that SPA watch is Bun-native only', async () => {
+test('CLI watch rejects the removed --frontend-runtime flag', async () => {
   const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-watch');
   const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
@@ -80,8 +80,7 @@ test('CLI watch rejects the legacy SPA runtime now that SPA watch is Bun-native 
       workspace,
       '--port',
       String(port),
-      '--frontend-runtime',
-      'legacy',
+      '--frontend-runtime=bun',
     ],
     cwd: repoRoot,
     env: process.env,
@@ -96,7 +95,7 @@ test('CLI watch rejects the legacy SPA runtime now that SPA watch is Bun-native 
     expect(await child.exited).toBe(1);
     await stderrDrain;
     expect(stderrBuffer.text).toContain(
-      '[webstir] watch failed: Frontend runtime "legacy" is now supported only for ssg workspaces.'
+      'Unknown option "--frontend-runtime=bun".'
     );
   } finally {
     child.kill('SIGTERM');

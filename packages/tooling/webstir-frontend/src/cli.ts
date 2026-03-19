@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import { Command } from 'commander';
 import { runAddPage, runBuild, runPublish, runRebuild } from './operations.js';
-import { WatchDaemon } from './watch/watchDaemon.js';
 
 const program = new Command();
 
@@ -70,27 +69,6 @@ program
                 pageName: name,
                 ssg: rawMode === 'ssg' ? true : rawMode === 'standard' ? false : undefined
             });
-        } catch (error) {
-            handleError(error);
-        }
-    });
-
-program
-    .command('watch-daemon')
-    .description('Run the persistent frontend watch daemon')
-    .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
-    .option('--no-auto-start', 'Defer startup until a start command is received')
-    .option('-v, --verbose', 'Enable verbose watch diagnostics')
-    .option('--hmr-verbose', 'Log detailed hot-update diagnostics')
-    .action(async (cmd) => {
-        try {
-            const daemon = new WatchDaemon({
-                workspaceRoot: cmd.workspace,
-                autoStart: cmd.autoStart,
-                verbose: cmd.verbose === true,
-                hmrVerbose: cmd.hmrVerbose === true
-            });
-            await daemon.run();
         } catch (error) {
             handleError(error);
         }

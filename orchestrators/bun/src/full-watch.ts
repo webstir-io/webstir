@@ -28,13 +28,13 @@ export async function runFullWatch(
 
     const stopSignal = createStopSignal();
     try {
-      const daemonExitCode = await Promise.race([
+      const sessionExitCode = await Promise.race([
         frontendSession.waitForExit(),
         stopSignal.promise.then(() => null),
       ]);
 
-      if (typeof daemonExitCode === 'number' && daemonExitCode !== 0) {
-        throw new Error(`Frontend watch daemon exited with code ${daemonExitCode}.`);
+      if (typeof sessionExitCode === 'number' && sessionExitCode !== 0) {
+        throw new Error(`Frontend watch session exited with code ${sessionExitCode}.`);
       }
     } finally {
       stopSignal.dispose();

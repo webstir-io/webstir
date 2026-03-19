@@ -1,15 +1,9 @@
-import path from 'node:path';
-
 import { startBunSpaFrontendWatch } from './bun-spa-watch.ts';
 import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
-import { DevServer, type DevServerAddress } from './dev-server.ts';
-import { resolveFrontendWatchRuntime } from './frontend-watch-runtime.ts';
+import type { DevServerAddress } from './dev-server.ts';
 import { createStopSignal } from './stop-signal.ts';
-import { FrontendWatchDaemonClient } from './watch-daemon-client.ts';
-import { collectWatchActions, type StructuredDiagnosticPayload } from './watch-events.ts';
 import type { WorkspaceDescriptor } from './types.ts';
 import type { WatchIo, WatchOptions } from './watch.ts';
-import { WorkspaceWatcher, type WorkspaceWatchEvent } from './workspace-watcher.ts';
 
 export interface FrontendWatchSession {
   readonly address: DevServerAddress;
@@ -17,9 +11,7 @@ export interface FrontendWatchSession {
   stop(): Promise<void>;
 }
 
-interface FrontendWatchSessionOptions extends WatchOptions {
-  readonly server?: DevServer;
-}
+type FrontendWatchSessionOptions = WatchOptions;
 
 export async function runFrontendWatch(
   workspace: WorkspaceDescriptor,
@@ -35,13 +27,13 @@ export async function runFrontendWatch(
   const stopSignal = createStopSignal();
 
   try {
-    const daemonExitCode = await Promise.race([
+    const sessionExitCode = await Promise.race([
       session.waitForExit(),
       stopSignal.promise.then(() => null),
     ]);
 
-    if (typeof daemonExitCode === 'number' && daemonExitCode !== 0) {
-      throw new Error(`Frontend watch daemon exited with code ${daemonExitCode}.`);
+    if (typeof sessionExitCode === 'number' && sessionExitCode !== 0) {
+      throw new Error(`Frontend watch session exited with code ${sessionExitCode}.`);
     }
   } finally {
     stopSignal.dispose();
@@ -60,125 +52,19 @@ export async function startFrontendWatchSession(
 async function createFrontendWatchSession(
   workspace: WorkspaceDescriptor,
   options: FrontendWatchSessionOptions,
-  io: WatchIo
+  _io: WatchIo
 ): Promise<FrontendWatchSession> {
-  switch (resolveFrontendWatchRuntime(workspace, options.frontendRuntime)) {
-    case 'bun':
-      if (options.server) {
-        throw new Error('Frontend runtime "bun" does not support an injected legacy dev server.');
-      }
-      if (workspace.mode === 'ssg') {
-        return await startBunSsgFrontendWatch({
-          workspaceRoot: workspace.root,
-          host: options.host,
-          port: options.port,
-        });
-      }
-      return await startBunSpaFrontendWatch({
-        workspaceRoot: workspace.root,
-        host: options.host,
-        port: options.port,
-      });
-    case 'legacy':
-    default:
-      return await createLegacyFrontendWatchSession(workspace, options, io);
+  if (workspace.mode === 'ssg') {
+    return await startBunSsgFrontendWatch({
+      workspaceRoot: workspace.root,
+      host: options.host,
+      port: options.port,
+    });
   }
-}
 
-async function createLegacyFrontendWatchSession(
-  workspace: WorkspaceDescriptor,
-  options: FrontendWatchSessionOptions,
-  io: WatchIo
-): Promise<FrontendWatchSession> {
-  const server = options.server ?? new DevServer({
-    buildRoot: path.join(workspace.root, 'build', 'frontend'),
+  return await startBunSpaFrontendWatch({
+    workspaceRoot: workspace.root,
     host: options.host,
     port: options.port,
   });
-  const ownsServer = options.server === undefined;
-  const address = await server.start();
-
-  let initialBuildReady = false;
-  const daemon = new FrontendWatchDaemonClient({
-    workspaceRoot: workspace.root,
-    verbose: options.verbose,
-    hmrVerbose: options.hmrVerbose,
-    env: options.env,
-    onLine(line) {
-      io.stdout.write(`${line}\n`);
-    },
-    onErrorLine(line) {
-      io.stderr.write(`${line}\n`);
-    },
-    onDiagnostic(payload) {
-      if (!initialBuildReady && payload.code === 'frontend.watch.pipeline.success') {
-        initialBuildReady = true;
-        io.stdout.write(`[webstir] frontend ready at ${address.origin}\n`);
-      }
-
-      void applyDiagnostic(payload, server);
-    },
-  });
-
-  const watcher = new WorkspaceWatcher({
-    workspaceRoot: workspace.root,
-    onEvent(event) {
-      void dispatchWorkspaceEvent(event, daemon);
-    },
-  });
-
-  await daemon.start();
-  await watcher.start();
-  await daemon.sendStart();
-
-  let stopPromise: Promise<void> | null = null;
-
-  return {
-    address,
-    async waitForExit() {
-      return await daemon.waitForExit();
-    },
-    async stop() {
-      stopPromise ??= (async () => {
-        await watcher.stop();
-        await daemon.stop();
-        if (ownsServer) {
-          await server.stop();
-        }
-      })();
-
-      await stopPromise;
-    },
-  };
-}
-
-async function applyDiagnostic(payload: StructuredDiagnosticPayload, server: DevServer): Promise<void> {
-  const actions = collectWatchActions(payload);
-  for (const action of actions) {
-    switch (action.type) {
-      case 'status':
-        await server.publishStatus(action.status);
-        break;
-      case 'hmr':
-        await server.publishHotUpdate(action.payload);
-        break;
-      case 'reload':
-        await server.publishReload();
-        break;
-      default:
-        break;
-    }
-  }
-}
-
-async function dispatchWorkspaceEvent(
-  event: WorkspaceWatchEvent,
-  daemon: FrontendWatchDaemonClient
-): Promise<void> {
-  if (event.type === 'reload') {
-    await daemon.sendReload();
-    return;
-  }
-
-  await daemon.sendChange(event.path);
 }

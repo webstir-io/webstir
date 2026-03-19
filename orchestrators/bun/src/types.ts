@@ -4,10 +4,8 @@ import type {
 } from '@webstir-io/module-contract';
 
 export const SUPPORTED_WORKSPACE_MODES = ['spa', 'ssg', 'api', 'full'] as const;
-export const SUPPORTED_FRONTEND_WATCH_RUNTIMES = ['legacy', 'bun'] as const;
 
 export type WorkspaceMode = (typeof SUPPORTED_WORKSPACE_MODES)[number];
-export type FrontendWatchRuntime = (typeof SUPPORTED_FRONTEND_WATCH_RUNTIMES)[number];
 export type CommandMode = 'build' | 'publish';
 export type BuildTargetKind = 'frontend' | 'backend';
 export type BuildProvider = Pick<ModuleProvider, 'build' | 'resolveWorkspace'>;
