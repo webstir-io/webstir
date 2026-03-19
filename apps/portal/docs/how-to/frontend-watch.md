@@ -1,6 +1,7 @@
 # Frontend Watch Daemon
 
-Guidance for running and troubleshooting the incremental frontend watch workflow.
+Guidance for running and troubleshooting the legacy incremental frontend watch workflow.
+SPA now bypasses this daemon by default. Use `webstir watch --frontend-runtime legacy` when you need the older daemon-backed workflow.
 
 ## Overview
 - `webstir watch` launches the Bun dev server and supervises the frontend watch daemon when the workspace has a frontend surface.
@@ -8,7 +9,8 @@ Guidance for running and troubleshooting the incremental frontend watch workflow
 - Reload events are debounced so rapid edits coalesce into a single browser refresh.
 
 ## CLI Commands
-- Default workflow: `webstir watch`
+- Default workflow for non-SPA frontend workspaces: `webstir watch`
+- Legacy SPA workflow: `webstir watch --frontend-runtime legacy`
 - Manual daemon: `bunx webstir-frontend watch-daemon --workspace <absolute-path>`
 - Defer auto-start for manual control: add `--no-auto-start`
 - Enable verbose diagnostics: add `--verbose`
@@ -16,6 +18,7 @@ Guidance for running and troubleshooting the incremental frontend watch workflow
 - Send a manual change event (stdin JSON): `{"type":"change","path":"/absolute/path/to/file"}`
 - Request a manual reload: `{"type":"reload"}`
 - Shutdown the daemon cleanly: `{"type":"shutdown"}`
+- These commands apply to the legacy daemon-backed path only.
 
 ## Verbose Logging
 - Toggle verbose mode temporarily with the CLI flag (`--verbose`) or set `WEBSTIR_FRONTEND_WATCH_VERBOSE=1` before running `webstir watch`.
@@ -33,3 +36,4 @@ Guidance for running and troubleshooting the incremental frontend watch workflow
 - You can fall back to one-off frontend runs with `webstir-frontend build` or `webstir-frontend rebuild`.
 - Clearing `build/frontend` and `dist/frontend` is safe; the daemon will repopulate outputs on the next rebuild.
 - Hot-update stats are included in `frontend.watch.pipeline.success` diagnostics and browser console logs so you can confirm fallbacks stay rare (below 10%).
+- Bun-first SPA watch bypasses this daemon by default; `--frontend-runtime legacy` is the fallback path.

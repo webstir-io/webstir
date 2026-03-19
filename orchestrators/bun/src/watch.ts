@@ -1,7 +1,8 @@
 import { runApiWatch } from './api-watch.ts';
 import { runFrontendWatch } from './frontend-watch.ts';
+import { resolveFrontendWatchRuntime } from './frontend-watch-runtime.ts';
 import { runFullWatch } from './full-watch.ts';
-import type { WorkspaceDescriptor } from './types.ts';
+import type { FrontendWatchRuntime, WorkspaceDescriptor } from './types.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 
 interface WatchStream {
@@ -18,6 +19,7 @@ export interface WatchOptions {
   readonly port?: number;
   readonly verbose?: boolean;
   readonly hmrVerbose?: boolean;
+  readonly frontendRuntime?: FrontendWatchRuntime;
   readonly env?: Record<string, string | undefined>;
 }
 
@@ -42,9 +44,12 @@ const defaultIo: WatchIo = {
 export async function runWatch(options: RunWatchOptions): Promise<void> {
   const io = options.io ?? defaultIo;
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
+  resolveFrontendWatchRuntime(workspace, options.frontendRuntime);
 
   switch (workspace.mode) {
     case 'spa':
+      await runFrontendWatch(workspace, options, io);
+      return;
     case 'ssg':
       await runFrontendWatch(workspace, options, io);
       return;
