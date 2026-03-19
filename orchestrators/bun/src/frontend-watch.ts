@@ -1,6 +1,7 @@
 import path from 'node:path';
 
 import { startBunSpaFrontendWatch } from './bun-spa-watch.ts';
+import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
 import { DevServer, type DevServerAddress } from './dev-server.ts';
 import { resolveFrontendWatchRuntime } from './frontend-watch-runtime.ts';
 import { createStopSignal } from './stop-signal.ts';
@@ -65,6 +66,13 @@ async function createFrontendWatchSession(
     case 'bun':
       if (options.server) {
         throw new Error('Frontend runtime "bun" does not support an injected legacy dev server.');
+      }
+      if (workspace.mode === 'ssg') {
+        return await startBunSsgFrontendWatch({
+          workspaceRoot: workspace.root,
+          host: options.host,
+          port: options.port,
+        });
       }
       return await startBunSpaFrontendWatch({
         workspaceRoot: workspace.root,
