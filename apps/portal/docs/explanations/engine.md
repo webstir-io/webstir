@@ -15,7 +15,7 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 - Resolve the workspace descriptor from `package.json`.
 - Run frontend and backend providers in the right order for the workspace mode.
 - Serve `build/frontend/**` in watch mode and proxy `/api/*` when both surfaces are active.
-- Supervise the frontend watch daemon and backend runtime in long-running loops.
+- Supervise the Bun-native frontend watch path where supported, the legacy frontend daemon where still required, and the backend runtime in long-running loops.
 - Keep command output compact and machine-friendly enough for CI and smoke flows.
 
 ## Structure
@@ -47,9 +47,10 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 
 ### `watch`
 
-- `spa` and `ssg`: frontend watch daemon + Bun dev server
+- `spa`: Bun-native frontend watch
+- `ssg`: legacy frontend watch daemon + Bun dev server
 - `api`: backend watcher + runtime supervisor
-- `full`: both, plus `/api/*` proxying through the frontend dev server
+- `full`: Bun-native frontend watch plus backend watcher/runtime and `/api/*` proxying
 
 ### `test`
 
@@ -59,6 +60,7 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 
 ## Watch Runtime Pieces
 
+- `bun-generated-frontend-watch.ts`: Bun-native generated frontend host used by `spa` and `full`
 - `DevServer`: static file server with SSE status/reload events and optional `/api/*` proxying
 - `FrontendWatchDaemonClient`: launches and talks to `webstir-frontend watch-daemon`
 - `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload events
