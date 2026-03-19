@@ -1,9 +1,7 @@
-import path from 'node:path';
 import { createServer } from 'node:net';
 
 import { startApiWatchSession } from './api-watch.ts';
-import { DevServer } from './dev-server.ts';
-import { startFrontendWatchSession } from './frontend-watch.ts';
+import { startBunGeneratedFrontendWatch } from './bun-generated-frontend-watch.ts';
 import { createStopSignal } from './stop-signal.ts';
 import type { WorkspaceDescriptor } from './types.ts';
 import type { WatchIo, WatchOptions } from './watch.ts';
@@ -15,17 +13,15 @@ export async function runFullWatch(
 ): Promise<void> {
   const backendPort = await allocateBackendPort();
   const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io);
-  const server = new DevServer({
-    buildRoot: path.join(workspace.root, 'build', 'frontend'),
-    host: options.host,
-    port: options.port,
-    apiProxyOrigin: apiSession.origin,
-  });
-
-  let frontendSession: Awaited<ReturnType<typeof startFrontendWatchSession>> | undefined;
+  let frontendSession: Awaited<ReturnType<typeof startBunGeneratedFrontendWatch>> | undefined;
 
   try {
-    frontendSession = await startFrontendWatchSession(workspace, { ...options, server }, io);
+    frontendSession = await startBunGeneratedFrontendWatch({
+      workspaceRoot: workspace.root,
+      host: options.host,
+      port: options.port,
+      apiProxyOrigin: apiSession.origin,
+    });
     io.stdout.write(
       `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`
     );
@@ -47,7 +43,6 @@ export async function runFullWatch(
     if (frontendSession) {
       await frontendSession.stop();
     }
-    await server.stop();
     await apiSession.stop();
   }
 }
