@@ -85,6 +85,7 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
   }
 
   const nodeEnv = env.NODE_ENV ?? (mode === 'publish' ? 'production' : 'development');
+  const shouldReportBunBenchmark = isEnabled(env.WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK);
   const diagMax = (() => {
     const raw = env.WEBSTIR_BACKEND_DIAG_MAX;
     const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
@@ -118,8 +119,8 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
     console.info('[webstir-backend] watch: type-check skipped by WEBSTIR_BACKEND_TYPECHECK');
   }
 
-  if (isEnabled(env.WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK)) {
-    console.info('[webstir-backend] watch: Bun benchmark flag ignored because Bun is now the primary watch builder.');
+  if (shouldReportBunBenchmark) {
+    console.info('[webstir-backend] watch: reporting primary Bun build timings via bunBenchmark* event fields.');
   }
 
   let stopping = false;
@@ -154,6 +155,7 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
           env,
           nodeEnv,
           diagMax,
+          shouldReportBunBenchmark,
           onEvent: options.onEvent,
         });
 
@@ -228,6 +230,7 @@ interface PerformWatchBuildOptions {
   readonly env: Record<string, string | undefined>;
   readonly nodeEnv: string;
   readonly diagMax: number;
+  readonly shouldReportBunBenchmark: boolean;
   readonly onEvent?: StartWatchOptions['onEvent'];
 }
 
@@ -308,6 +311,14 @@ async function performWatchBuild(options: PerformWatchBuildOptions): Promise<Wat
 
   flushDiagnostics(diagnostics);
   const end = performance.now();
+  const bunBenchmark = options.shouldReportBunBenchmark
+    ? {
+        succeeded: buildResult.succeeded,
+        errorCount: buildResult.errorCount,
+        warningCount: buildResult.warningCount,
+        durationMs: buildResult.durationMs,
+      }
+    : undefined;
 
   await emitWatchEvent(options.onEvent, {
     type: 'build-complete',
@@ -315,6 +326,10 @@ async function performWatchBuild(options: PerformWatchBuildOptions): Promise<Wat
     errorCount: buildResult.errorCount,
     warningCount: buildResult.warningCount,
     durationMs: end - start,
+    bunBenchmarkSucceeded: bunBenchmark?.succeeded,
+    bunBenchmarkErrorCount: bunBenchmark?.errorCount,
+    bunBenchmarkWarningCount: bunBenchmark?.warningCount,
+    bunBenchmarkDurationMs: bunBenchmark?.durationMs,
   });
 
   return {
@@ -366,6 +381,9 @@ async function runPrimaryBunWatchBuild(
     define: {
       'process.env.NODE_ENV': JSON.stringify(options.nodeEnv),
     },
+    // Preserve the old esbuild watch behavior: transpile entries without requiring
+    // every relative import target to exist in minimal seeded workspaces.
+    plugins: [createRelativeImportPassthroughPlugin()],
     throw: false,
   });
   const end = performance.now();
@@ -514,6 +532,23 @@ function getBunBuild(): BunBuildFunction | undefined {
   };
   const build = runtime.Bun?.build;
   return typeof build === 'function' ? build.bind(runtime.Bun) : undefined;
+}
+
+function createRelativeImportPassthroughPlugin(): Record<string, unknown> {
+  return {
+    name: 'webstir-backend-watch-relative-imports',
+    setup(build: {
+      onResolve(
+        options: { filter: RegExp },
+        callback: (args: { path: string }) => { path: string; external: boolean }
+      ): void;
+    }) {
+      build.onResolve({ filter: /^\.\.?\// }, (args: { path: string }) => ({
+        path: args.path,
+        external: true,
+      }));
+    },
+  };
 }
 
 function isEnabled(value: string | undefined): boolean {
