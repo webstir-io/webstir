@@ -28,12 +28,6 @@ const unsupportedWorkspaces = [
     workspaceName: 'webstir-demo-api',
     mode: 'api',
   },
-  {
-    fixtureRoot: path.join(repoRoot, 'examples', 'demos', 'full'),
-    directoryName: 'full',
-    workspaceName: 'webstir-demo-full',
-    mode: 'full',
-  },
 ] as const;
 
 afterEach(async () => {
@@ -232,7 +226,7 @@ for (const unsupportedWorkspace of unsupportedWorkspaces) {
       await Promise.allSettled([stdoutDrain, stderrDrain]);
       expect(stdoutBuffer.text).toBe('');
       expect(stderrBuffer.text).toContain(
-        `[webstir] watch failed: Frontend runtime "bun" currently supports spa workspaces only. "${unsupportedWorkspace.workspaceName}" is ${unsupportedWorkspace.mode}.`
+        `[webstir] watch failed: Frontend runtime "bun" currently supports spa and full workspaces only. "${unsupportedWorkspace.workspaceName}" is ${unsupportedWorkspace.mode}.`
       );
     } finally {
       child.kill('SIGTERM');

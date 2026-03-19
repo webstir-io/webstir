@@ -93,6 +93,59 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
   }
 }, 60_000);
 
+test('CLI watch accepts --frontend-runtime bun for full workspaces', async () => {
+  const workspaceCopy = await copyDemoWorkspace('full', 'webstir-full-watch');
+  const workspace = workspaceCopy.workspaceRoot;
+  await Promise.all([
+    rm(path.join(workspace, 'build'), { recursive: true, force: true }),
+    rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
+    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true })
+  ]);
+
+  const port = await getFreePort();
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      'watch',
+      '--workspace',
+      workspace,
+      '--port',
+      String(port),
+      '--frontend-runtime',
+      'bun',
+    ],
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  childProcesses.push(child);
+  const stdoutBuffer = { text: '' };
+  const stderrBuffer = { text: '' };
+  const stdoutDrain = collectOutput(child.stdout, stdoutBuffer);
+  const stderrDrain = collectOutput(child.stderr, stderrBuffer);
+
+  try {
+    await waitFor(async () => {
+      expect(stdoutBuffer.text).toContain('[webstir] backend ready at');
+      expect(await fetchText(port, '/')).toContain('data-bun-dev-server-script');
+      expect(await fetchText(port, '/api')).toContain('API server running');
+    }, 30_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 45_000);
+
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
   if (!response.ok) {

@@ -16,6 +16,8 @@ This plan is intentionally narrower than the broader Bun migration work. It cove
 
 - Bun-first SPA watch is real in the Bun orchestrator via [orchestrators/bun/src/bun-spa-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/bun-spa-watch.ts).
 - Bun-native `full` watch is real in the Bun orchestrator via [orchestrators/bun/src/full-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/full-watch.ts) and [orchestrators/bun/src/bun-generated-frontend-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/bun-generated-frontend-watch.ts).
+- Backend watch is Bun-native in [packages/tooling/webstir-backend/src/watch.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/src/watch.ts).
+- Frontend runtime selection now matches the supported matrix: `spa` and `full` are Bun-native, `ssg` remains legacy-only for this phase.
 - SPA page scripts and templates use `import.meta.hot`.
 - Browser integration coverage exists for SPA JavaScript HMR, CSS hot refresh, and unsupported-mode rejection in [orchestrators/bun/tests/bun-first-spa.integration.test.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/tests/bun-first-spa.integration.test.ts).
 - Integration coverage exists for Bun-native `full` watch in [orchestrators/bun/tests/full-watch.integration.test.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/tests/full-watch.integration.test.ts).
@@ -23,7 +25,6 @@ This plan is intentionally narrower than the broader Bun migration work. It cove
 
 ### Still not fully Bun-native
 
-- Backend watch still uses esbuild watch contexts in [packages/tooling/webstir-backend/src/watch.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/src/watch.ts#L206).
 - The legacy frontend watch daemon still exists and still owns the remaining non-Bun frontend watch flow in [packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts#L75).
 - The legacy frontend watch flow still depends on esbuild contexts and `metafile` output in [packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts#L267).
 - SSG remains on the legacy watch path intentionally for this phase.
@@ -125,25 +126,9 @@ Exit criteria:
 
 ### 5. Replace backend esbuild watch
 
-Objectives:
+Status:
 
-- Remove the largest remaining non-Bun watch dependency in the backend loop.
-
-Concrete work:
-
-- Replace esbuild watch contexts in [packages/tooling/webstir-backend/src/watch.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/src/watch.ts#L206) with a Bun-native watch/build approach.
-- Preserve rebuild events, diagnostics, output accounting, and runtime-restart behavior.
-- Replace the benchmark-only Bun path with the real backend watch path.
-
-Design requirements:
-
-- equivalent or better error reporting
-- equivalent restart semantics
-- no regression in manifest/build artifact expectations
-
-Exit criteria:
-
-- Backend watch no longer uses esbuild watch contexts in the primary path.
+- Landed.
 
 ### 6. Remove the legacy frontend watch daemon
 
@@ -192,7 +177,12 @@ Exit criteria:
 
 ### Phase 5
 
-- Remove the legacy frontend watch daemon and runtime toggle surface.
+- Narrow the remaining legacy frontend runtime surface so the daemon-backed path is explicitly `ssg`-only for this phase.
+- Remove stale SPA legacy fallback wording from tests, docs, and CLI/runtime messages.
+
+### Phase 6
+
+- Remove the legacy frontend watch daemon and runtime toggle surface once `ssg` no longer depends on it.
 - Delete stale docs and compatibility code.
 
 ## Validation

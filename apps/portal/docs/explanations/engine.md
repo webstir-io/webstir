@@ -15,7 +15,7 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 - Resolve the workspace descriptor from `package.json`.
 - Run frontend and backend providers in the right order for the workspace mode.
 - Serve `build/frontend/**` in watch mode and proxy `/api/*` when both surfaces are active.
-- Supervise the Bun-native frontend watch path where supported, the legacy frontend daemon where still required, and the backend runtime in long-running loops.
+- Supervise the Bun-native frontend watch path for `spa` and `full`, the legacy frontend daemon where still required for `ssg`, and the backend runtime in long-running loops.
 - Keep command output compact and machine-friendly enough for CI and smoke flows.
 
 ## Structure

@@ -1,7 +1,7 @@
 # Legacy HMR Validation Checklist
 
 Follow these steps after touching the legacy frontend hot-update pipeline.
-SPA now defaults to Bun-first HMR. Use this checklist for the legacy path only when running `webstir watch --frontend-runtime legacy`.
+SPA and `full` are on the Bun-native path now. Use this checklist for the legacy path only when validating `ssg`.
 
 ## Automated Smoke
 - Run `bun run --filter @webstir-io/webstir-frontend build`.

@@ -107,7 +107,7 @@ What it does:
 - Proxies `/api/*` in `full` mode
 
 Notes:
-- `--frontend-runtime legacy` keeps the old SPA daemon-backed watch path when needed
+- `--frontend-runtime legacy` is now an `ssg`-only escape hatch for this phase
 - `--frontend-runtime bun` currently supports `spa` and `full` only and rejects `ssg` and `api`
 - SPA and SSG watch serve frontend output and trigger reloads after rebuilds
 - API watch rebuilds and restarts the backend runtime after successful backend changes
