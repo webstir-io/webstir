@@ -17,12 +17,6 @@ import {
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
 const unsupportedWorkspaces = [
   {
-    fixtureRoot: path.join(repoRoot, 'examples', 'demos', 'ssg', 'base'),
-    directoryName: 'ssg-base',
-    workspaceName: 'webstir-demo-ssg-base',
-    mode: 'ssg',
-  },
-  {
     fixtureRoot: path.join(repoRoot, 'examples', 'demos', 'api'),
     directoryName: 'api',
     workspaceName: 'webstir-demo-api',
@@ -226,7 +220,7 @@ for (const unsupportedWorkspace of unsupportedWorkspaces) {
       await Promise.allSettled([stdoutDrain, stderrDrain]);
       expect(stdoutBuffer.text).toBe('');
       expect(stderrBuffer.text).toContain(
-        `[webstir] watch failed: Frontend runtime "bun" currently supports spa and full workspaces only. "${unsupportedWorkspace.workspaceName}" is ${unsupportedWorkspace.mode}.`
+        `[webstir] watch failed: Frontend runtime "bun" currently supports spa, ssg, and full workspaces only. "${unsupportedWorkspace.workspaceName}" is ${unsupportedWorkspace.mode}.`
       );
     } finally {
       child.kill('SIGTERM');

@@ -77,7 +77,7 @@ Options:
   --host <host>            Dev host or bind address (default: 127.0.0.1).
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
   --frontend-runtime <runtime>
-                           Frontend watch runtime (legacy|bun, default: bun except ssg stays legacy).
+                           Frontend watch runtime (legacy|bun, default: bun; legacy remains SSG-only).
   --dry-run                Report repair changes without writing files.
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.

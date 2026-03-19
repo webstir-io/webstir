@@ -5,12 +5,12 @@ export function resolveFrontendWatchRuntime(
   requestedRuntime?: FrontendWatchRuntime
 ): FrontendWatchRuntime {
   if (requestedRuntime === 'bun') {
-    if (workspace.mode === 'spa' || workspace.mode === 'full') {
+    if (workspace.mode === 'spa' || workspace.mode === 'ssg' || workspace.mode === 'full') {
       return 'bun';
     }
 
     throw new Error(
-      `Frontend runtime "bun" currently supports spa and full workspaces only. "${workspace.name}" is ${workspace.mode}.`
+      `Frontend runtime "bun" currently supports spa, ssg, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`
     );
   }
 
@@ -24,5 +24,5 @@ export function resolveFrontendWatchRuntime(
     );
   }
 
-  return workspace.mode === 'ssg' ? 'legacy' : 'bun';
+  return 'bun';
 }
