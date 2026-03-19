@@ -41,7 +41,8 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 
 ### `watch`
 
-- Starts the frontend dev server and watch daemon for `spa`, `ssg`, and `full`
+- Starts Bun-native frontend watch for `spa` and `full`
+- Starts the legacy frontend watch daemon for `ssg`
 - Starts the backend build watcher and runtime for `api` and `full`
 - Proxies `/api/*` in full-stack watch mode
 

@@ -15,17 +15,19 @@ This plan is intentionally narrower than the broader Bun migration work. It cove
 ### Landed
 
 - Bun-first SPA watch is real in the Bun orchestrator via [orchestrators/bun/src/bun-spa-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/bun-spa-watch.ts).
+- Bun-native `full` watch is real in the Bun orchestrator via [orchestrators/bun/src/full-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/full-watch.ts) and [orchestrators/bun/src/bun-generated-frontend-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/bun-generated-frontend-watch.ts).
 - SPA page scripts and templates use `import.meta.hot`.
 - Browser integration coverage exists for SPA JavaScript HMR, CSS hot refresh, and unsupported-mode rejection in [orchestrators/bun/tests/bun-first-spa.integration.test.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/tests/bun-first-spa.integration.test.ts).
+- Integration coverage exists for Bun-native `full` watch in [orchestrators/bun/tests/full-watch.integration.test.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/tests/full-watch.integration.test.ts).
 - The Bun orchestrator test suite currently passes.
 
 ### Still not fully Bun-native
 
 - Backend watch still uses esbuild watch contexts in [packages/tooling/webstir-backend/src/watch.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-backend/src/watch.ts#L206).
-- The legacy frontend watch daemon still exists and still owns the non-Bun frontend watch flow in [packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts#L75).
+- The legacy frontend watch daemon still exists and still owns the remaining non-Bun frontend watch flow in [packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts#L75).
 - The legacy frontend watch flow still depends on esbuild contexts and `metafile` output in [packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts](/Users/iamce/dev/webstir-io/webstir/packages/tooling/webstir-frontend/src/watch/watchCoordinator.ts#L267).
-- Bun frontend watch currently rejects the injected legacy server boundary used by `full` in [orchestrators/bun/src/frontend-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/frontend-watch.ts#L64) and [orchestrators/bun/src/full-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/full-watch.ts#L18).
-- Bun-first frontend is still SPA-specific in its document-generation assumptions in [orchestrators/bun/src/bun-spa-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/bun-spa-watch.ts#L24).
+- SSG remains on the legacy watch path intentionally for this phase.
+- Bun-first frontend still leans on the SPA-style generated-document model in [orchestrators/bun/src/bun-generated-frontend-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/bun-generated-frontend-watch.ts#L26).
 
 ## Scope
 
@@ -97,25 +99,9 @@ Exit criteria:
 
 ### 3. Implement Bun-native `full` watch
 
-Objectives:
+Status:
 
-- Remove the current mismatch where `full` depends on a legacy-injected dev server boundary.
-- Make `full` a real Bun-native dev loop instead of Bun backend plus legacy frontend watch.
-
-Concrete work:
-
-- Design a Bun-native composition model for frontend routes plus backend runtime/API proxying.
-- Replace the `DevServer` injection dependency in [orchestrators/bun/src/full-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/full-watch.ts#L18).
-- Define how document routes, fragment/document responses, and API proxying interact in a Bun-native host.
-- Add integration coverage for frontend edits, backend edits, and combined watch behavior under the Bun-native `full` path.
-
-Open design constraint:
-
-- `full` cannot become Bun-native by simply reusing the current SPA path because the current Bun frontend path explicitly rejects the injected legacy server in [orchestrators/bun/src/frontend-watch.ts](/Users/iamce/dev/webstir-io/webstir/orchestrators/bun/src/frontend-watch.ts#L64).
-
-Exit criteria:
-
-- `full` no longer depends on the legacy frontend daemon/server boundary.
+- Landed.
 
 ### 4. Decide the SSG strategy
 
@@ -123,9 +109,8 @@ Objectives:
 
 - Remove ambiguity around whether SSG is an intended Bun-native watch target.
 
-Options:
+Decision for this phase:
 
-- Option A: implement a Bun-native SSG watch/document path.
 - Option B: keep SSG on the legacy path intentionally and document that choice clearly.
 
 Decision factors:
@@ -136,7 +121,7 @@ Decision factors:
 
 Exit criteria:
 
-- SSG is either on a real Bun-native path or explicitly declared out of scope for this phase.
+- SSG is explicitly declared out of scope for Bun-native watch in this phase.
 
 ### 5. Replace backend esbuild watch
 
@@ -193,13 +178,12 @@ Exit criteria:
 
 ### Phase 2
 
-- Implement Bun-native `full` watch.
-- Validate combined frontend/backend edit loops.
+- Bun-native `full` watch landed.
 
 ### Phase 3
 
-- Decide SSG strategy.
-- If Bun-native SSG is in scope, implement it here.
+- Keep SSG intentionally on the legacy watch path for this phase.
+- Align docs and runtime wording with that decision.
 
 ### Phase 4
 
