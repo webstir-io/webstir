@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
-import { getFreePort, removeTrackedChild, stopTrackedChildren, waitFor } from '../test-support/watch.ts';
+import { collectOutput, getFreePort, removeTrackedChild, stopTrackedChildren, waitFor } from '../test-support/watch.ts';
 
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
 
@@ -67,7 +67,7 @@ test('CLI watch serves the SPA demo and rebuilds after a source edit', async () 
   }
 }, 30000);
 
-test('CLI watch still supports the legacy SPA runtime when explicitly requested', async () => {
+test('CLI watch rejects the legacy SPA runtime now that SPA watch is Bun-native only', async () => {
   const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-watch');
   const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
@@ -89,36 +89,19 @@ test('CLI watch still supports the legacy SPA runtime when explicitly requested'
     stderr: 'pipe',
   });
   childProcesses.push(child);
+  const stderrBuffer = { text: '' };
+  const stderrDrain = collectOutput(child.stderr, stderrBuffer);
 
   try {
-    await waitFor(async () => {
-      const response = await fetch(`http://127.0.0.1:${port}/`);
-      if (!response.ok) {
-        throw new Error(`Unexpected status: ${response.status}`);
-      }
-
-      const html = await response.text();
-      expect(html).not.toContain('data-bun-dev-server-script');
-      expect(html).toContain('<main>');
-      expect(html).toContain('Home');
-    }, 20_000);
-
-    const sourceHtmlPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
-    const originalHtml = await readFile(sourceHtmlPath, 'utf8');
-    await writeFile(sourceHtmlPath, originalHtml.replace('Home', 'Legacy Home'));
-
-    await waitFor(async () => {
-      const response = await fetch(`http://127.0.0.1:${port}/`);
-      if (!response.ok) {
-        throw new Error(`Unexpected status: ${response.status}`);
-      }
-
-      const html = await response.text();
-      expect(html).toContain('Legacy Home');
-    }, 20_000);
+    expect(await child.exited).toBe(1);
+    await stderrDrain;
+    expect(stderrBuffer.text).toContain(
+      '[webstir] watch failed: Frontend runtime "legacy" is now supported only for ssg workspaces.'
+    );
   } finally {
     child.kill('SIGTERM');
     await child.exited.catch(() => undefined);
+    await Promise.allSettled([stderrDrain]);
     removeTrackedChild(childProcesses, child);
     await removeDemoWorkspace(workspaceCopy);
   }

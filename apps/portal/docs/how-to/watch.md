@@ -1,12 +1,13 @@
 # Watch
 
 Use `watch` as the default development loop for HTML-first apps.
-SPA and `full` now use Bun-native watch by default. `ssg` remains on the legacy frontend watch path intentionally for this phase, and `--frontend-runtime legacy` keeps the old SPA behavior when needed.
+SPA and `full` now use Bun-native watch. `ssg` remains on the legacy frontend watch path intentionally for this phase, and `--frontend-runtime legacy` is now only for `ssg`.
 
 ## Command
 
 ```bash
 webstir watch --workspace /absolute/path/to/workspace
+webstir watch --workspace /absolute/path/to/workspace --frontend-runtime bun
 webstir watch --workspace /absolute/path/to/workspace --frontend-runtime legacy
 ```
 
@@ -19,7 +20,7 @@ webstir watch --workspace /absolute/path/to/workspace --frontend-runtime legacy
 5. Proxies `/api/*` to the backend runtime in `full` mode.
 6. Rebuilds on changes under `src/**` and `types/**`.
 
-For `spa`, `--frontend-runtime legacy` swaps back to the older daemon-backed path. `ssg` stays on the legacy frontend runtime for now. `--frontend-runtime bun` currently supports `spa` and `full` only.
+`ssg` stays on the legacy frontend runtime for now. `--frontend-runtime bun` currently supports `spa` and `full` only. `--frontend-runtime legacy` is intentionally limited to `ssg`.
 
 ## What To Validate
 
