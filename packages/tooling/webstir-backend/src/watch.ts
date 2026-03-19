@@ -1,14 +1,14 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { tmpdir } from 'node:os';
 import { performance } from 'node:perf_hooks';
-import { context as createEsbuildContext, type BuildContext, type BuildResult, type Plugin } from 'esbuild';
+
+import { glob } from 'glob';
 
 import type { ModuleDiagnostic } from '@webstir-io/module-contract';
 
-import { collectOutputSizes, ensureModuleDefinitionBuild, formatEsbuildMessage, shouldTypeCheck } from './build/pipeline.js';
+import { ensureModuleDefinitionBuild, formatEsbuildMessage, shouldTypeCheck } from './build/pipeline.js';
 import { discoverEntryPoints } from './build/entries.js';
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
@@ -36,6 +36,38 @@ export interface StartWatchOptions {
   readonly onEvent?: (event: BackendWatchEvent) => void | Promise<void>;
 }
 
+interface BunBuildOutputFile {
+  readonly path: string;
+  readonly size?: number;
+}
+
+interface BunBuildLog {
+  readonly level?: string;
+  readonly message?: string;
+  readonly text?: string;
+  readonly position?: {
+    readonly file?: string;
+    readonly line?: number;
+    readonly column?: number;
+  } | null;
+}
+
+interface BunBuildOutput {
+  readonly success: boolean;
+  readonly outputs?: readonly BunBuildOutputFile[];
+  readonly logs?: readonly BunBuildLog[];
+}
+
+type BunBuildFunction = (config: Record<string, unknown>) => Promise<BunBuildOutput>;
+
+interface WatchBuildResult {
+  readonly succeeded: boolean;
+  readonly errorCount: number;
+  readonly warningCount: number;
+}
+
+const WATCH_POLL_INTERVAL_MS = 250;
+
 export async function startBackendWatch(options: StartWatchOptions): Promise<WatchHandle> {
   const env = { ...process.env, ...(options.env ?? {}) };
   const workspaceRoot = resolveWorkspaceRoot({
@@ -46,14 +78,13 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
   const tsconfigPath = path.join(paths.sourceRoot, 'tsconfig.json');
   const mode = normalizeMode(env.WEBSTIR_MODULE_MODE);
 
-  const entryPoints = await discoverEntryPoints(paths.sourceRoot);
-  if (entryPoints.length === 0) {
+  const initialEntryPoints = await discoverEntryPoints(paths.sourceRoot);
+  if (initialEntryPoints.length === 0) {
     console.warn(`[webstir-backend] watch: no entry found under ${paths.sourceRoot} (index.ts/js)`);
     throw new Error('No backend entry point found.');
   }
 
   const nodeEnv = env.NODE_ENV ?? (mode === 'publish' ? 'production' : 'development');
-  const shouldBenchmarkBunBuild = isEnabled(env.WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK);
   const diagMax = (() => {
     const raw = env.WEBSTIR_BACKEND_DIAG_MAX;
     const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
@@ -62,10 +93,8 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
 
   console.info(`[webstir-backend] watch:start (${mode})`);
 
-  // Start type-checker in watch mode (no emit) unless explicitly skipped for DX.
-  const shouldRunTypecheck = shouldTypeCheck(mode, env);
   let tscProc: ChildProcess | undefined;
-  if (shouldRunTypecheck) {
+  if (shouldTypeCheck(mode, env)) {
     const tscArgs = ['-p', tsconfigPath, '--noEmit', '--watch'];
     tscProc = spawn('tsc', tscArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -89,146 +118,92 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
     console.info('[webstir-backend] watch: type-check skipped by WEBSTIR_BACKEND_TYPECHECK');
   }
 
-  const timingPlugin: Plugin = {
-    name: 'webstir-watch-logger',
-    setup(build) {
-      let start = 0;
-      build.onStart(async () => {
-        start = performance.now();
-        await emitWatchEvent(options.onEvent, {
-          type: 'build-start'
+  if (isEnabled(env.WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK)) {
+    console.info('[webstir-backend] watch: Bun benchmark flag ignored because Bun is now the primary watch builder.');
+  }
+
+  let stopping = false;
+  let watchTimer: ReturnType<typeof setTimeout> | undefined;
+  let currentSnapshot = await takeWatchSnapshot(workspaceRoot, paths.sourceRoot, tsconfigPath);
+  let buildInFlight = false;
+  let pendingBuild = false;
+  let buildFailure: Error | undefined;
+
+  const runBuild = async (): Promise<void> => {
+    if (stopping) {
+      return;
+    }
+
+    if (buildInFlight) {
+      pendingBuild = true;
+      return;
+    }
+
+    buildInFlight = true;
+    try {
+      do {
+        pendingBuild = false;
+        const nextSnapshot = await takeWatchSnapshot(workspaceRoot, paths.sourceRoot, tsconfigPath);
+        currentSnapshot = nextSnapshot;
+        const result = await performWatchBuild({
+          workspaceRoot,
+          sourceRoot: paths.sourceRoot,
+          buildRoot: paths.buildRoot,
+          tsconfigPath,
+          mode,
+          env,
+          nodeEnv,
+          diagMax,
+          onEvent: options.onEvent,
         });
-      });
-      build.onEnd(async (result: BuildResult) => {
-        const end = performance.now();
-        const warnCount = result.warnings?.length ?? 0;
-        // errors is not in the typed result, but present at runtime
-        const errorList = (result as any).errors ?? [];
-        const errorCount = Array.isArray(errorList) ? errorList.length : 0;
-        // Print detailed diagnostics with file:line when available (capped for readability)
-        if (errorCount > 0) {
-          for (const msg of errorList.slice(0, diagMax)) {
-            const text = formatEsbuildMessage(msg);
-            console.error(`[webstir-backend][esbuild] ${text}`);
-          }
-          if (errorCount > diagMax) {
-            console.error(`[webstir-backend][esbuild] ... ${errorCount - diagMax} more error(s) omitted`);
-          }
-        }
-        if (warnCount > 0) {
-          for (const msg of result.warnings.slice(0, diagMax)) {
-            const text = formatEsbuildMessage(msg as any);
-            console.warn(`[webstir-backend][esbuild] ${text}`);
-          }
-          if (warnCount > diagMax) {
-            console.warn(`[webstir-backend][esbuild] ... ${warnCount - diagMax} more warning(s) omitted`);
-          }
-        }
-        console.info(`[webstir-backend] watch:esbuild ${errorCount} error(s), ${warnCount} warning(s) in ${(end - start).toFixed(1)}ms`);
 
-        let bunBenchmark: BunWatchBenchmarkResult | undefined;
-        if (shouldBenchmarkBunBuild && errorCount === 0) {
-          try {
-            bunBenchmark = await runBunWatchBenchmark({
-              entryPoints,
-              sourceRoot: paths.sourceRoot,
-              tsconfigPath,
-              nodeEnv,
-              diagMax,
-            });
-            console.info(
-              `[webstir-backend] watch:bun ${bunBenchmark.errorCount} error(s), ${bunBenchmark.warningCount} warning(s) in ${bunBenchmark.durationMs.toFixed(1)}ms`
-            );
-            console.info(
-              `[webstir-backend] watch:benchmark esbuild-incremental ${(end - start).toFixed(1)}ms vs bun-full ${bunBenchmark.durationMs.toFixed(1)}ms`
-            );
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.warn(`[webstir-backend] watch:bun-benchmark failed: ${message}`);
-          }
+        if (!result.succeeded) {
+          buildFailure = new Error('Backend watch build failed.');
+        } else {
+          buildFailure = undefined;
         }
-
-        if (errorCount === 0) {
-          const diagBuffer: ModuleDiagnostic[] = [];
-          const cacheReporter = createCacheReporter({
-            workspaceRoot,
-            buildRoot: paths.buildRoot,
-            env,
-            diagnostics: diagBuffer
-          });
-          try {
-            await ensureModuleDefinitionBuild({
-              sourceRoot: paths.sourceRoot,
-              buildRoot: paths.buildRoot,
-              tsconfigPath,
-              mode,
-              env,
-              diagnostics: diagBuffer
-            });
-            const metafile: any = (result as any).metafile;
-            if (metafile && metafile.outputs) {
-              const outputs = collectOutputSizes(metafile, paths.buildRoot);
-              await cacheReporter.diffOutputs(outputs, mode);
-            }
-            const manifest = await loadBackendModuleManifest({
-              workspaceRoot,
-              buildRoot: paths.buildRoot,
-              entryPoints,
-              diagnostics: diagBuffer
-            });
-            await cacheReporter.diffManifest(manifest);
-          } catch {
-            // cache or manifest diff failure should not break watch
-          } finally {
-            for (const diag of diagBuffer) {
-              const logger =
-                diag.severity === 'error' ? console.error : diag.severity === 'warn' ? console.warn : console.info;
-              logger(diag.message);
-            }
-          }
-        }
-
-        await emitWatchEvent(options.onEvent, {
-          type: 'build-complete',
-          succeeded: errorCount === 0,
-          errorCount,
-          warningCount: warnCount,
-          durationMs: end - start,
-          bunBenchmarkSucceeded: bunBenchmark?.succeeded,
-          bunBenchmarkErrorCount: bunBenchmark?.errorCount,
-          bunBenchmarkWarningCount: bunBenchmark?.warningCount,
-          bunBenchmarkDurationMs: bunBenchmark?.durationMs
-        });
-      });
-    },
+      } while (pendingBuild && !stopping);
+    } finally {
+      buildInFlight = false;
+    }
   };
 
-  const ctx: BuildContext = await createEsbuildContext({
-    entryPoints,
-    bundle: false,
-    platform: 'node',
-    target: 'node20',
-    format: 'esm',
-    sourcemap: true,
-    outdir: paths.buildRoot,
-    outbase: paths.sourceRoot,
-    metafile: true,
-    tsconfig: existsSync(tsconfigPath) ? tsconfigPath : undefined,
-    define: { 'process.env.NODE_ENV': JSON.stringify(nodeEnv) },
-    logLevel: 'silent',
-    plugins: [timingPlugin],
-  });
-
-  await ctx.watch();
+  await runBuild();
 
   console.info('[webstir-backend] watch:ready');
 
+  const poll = async (): Promise<void> => {
+    if (stopping) {
+      return;
+    }
+
+    try {
+      const nextSnapshot = await takeWatchSnapshot(workspaceRoot, paths.sourceRoot, tsconfigPath);
+      if (nextSnapshot !== currentSnapshot) {
+        currentSnapshot = nextSnapshot;
+        await runBuild();
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[webstir-backend] watch:poll failed: ${message}`);
+    } finally {
+      if (!stopping) {
+        watchTimer = setTimeout(() => {
+          void poll();
+        }, WATCH_POLL_INTERVAL_MS);
+      }
+    }
+  };
+
+  watchTimer = setTimeout(() => {
+    void poll();
+  }, WATCH_POLL_INTERVAL_MS);
+
   return {
     async stop() {
-      try {
-        await ctx.dispose();
-      } catch {
-        // ignore
+      stopping = true;
+      if (watchTimer) {
+        clearTimeout(watchTimer);
       }
       try {
         tscProc?.kill('SIGINT');
@@ -236,8 +211,283 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
         // ignore
       }
       console.info('[webstir-backend] watch:stopped');
+
+      if (buildFailure) {
+        buildFailure = undefined;
+      }
     },
   };
+}
+
+interface PerformWatchBuildOptions {
+  readonly workspaceRoot: string;
+  readonly sourceRoot: string;
+  readonly buildRoot: string;
+  readonly tsconfigPath: string;
+  readonly mode: ReturnType<typeof normalizeMode>;
+  readonly env: Record<string, string | undefined>;
+  readonly nodeEnv: string;
+  readonly diagMax: number;
+  readonly onEvent?: StartWatchOptions['onEvent'];
+}
+
+async function performWatchBuild(options: PerformWatchBuildOptions): Promise<WatchBuildResult> {
+  const start = performance.now();
+  await emitWatchEvent(options.onEvent, {
+    type: 'build-start',
+  });
+
+  const diagnostics: ModuleDiagnostic[] = [];
+  const entryPoints = await discoverEntryPoints(options.sourceRoot);
+  if (entryPoints.length === 0) {
+    diagnostics.push({
+      severity: 'error',
+      message: `No backend entry points found under ${options.sourceRoot}.`,
+    });
+    flushDiagnostics(diagnostics);
+    const end = performance.now();
+    await emitWatchEvent(options.onEvent, {
+      type: 'build-complete',
+      succeeded: false,
+      errorCount: 1,
+      warningCount: 0,
+      durationMs: end - start,
+    });
+    return {
+      succeeded: false,
+      errorCount: 1,
+      warningCount: 0,
+    };
+  }
+
+  const buildResult = await runPrimaryBunWatchBuild({
+    entryPoints,
+    sourceRoot: options.sourceRoot,
+    buildRoot: options.buildRoot,
+    tsconfigPath: options.tsconfigPath,
+    nodeEnv: options.nodeEnv,
+    diagMax: options.diagMax,
+  });
+
+  console.info(
+    `[webstir-backend] watch:bun ${buildResult.errorCount} error(s), ${buildResult.warningCount} warning(s) in ${buildResult.durationMs.toFixed(1)}ms`
+  );
+
+  if (buildResult.succeeded) {
+    const cacheReporter = createCacheReporter({
+      workspaceRoot: options.workspaceRoot,
+      buildRoot: options.buildRoot,
+      env: options.env,
+      diagnostics,
+    });
+
+    try {
+      await ensureModuleDefinitionBuild({
+        sourceRoot: options.sourceRoot,
+        buildRoot: options.buildRoot,
+        tsconfigPath: options.tsconfigPath,
+        mode: options.mode,
+        env: options.env,
+        diagnostics,
+      });
+      await cacheReporter.diffOutputs(
+        collectBunOutputSizes(buildResult.outputs, options.buildRoot),
+        options.mode
+      );
+      const manifest = await loadBackendModuleManifest({
+        workspaceRoot: options.workspaceRoot,
+        buildRoot: options.buildRoot,
+        entryPoints,
+        diagnostics,
+      });
+      await cacheReporter.diffManifest(manifest);
+    } catch {
+      // cache or manifest diff failure should not break watch
+    }
+  }
+
+  flushDiagnostics(diagnostics);
+  const end = performance.now();
+
+  await emitWatchEvent(options.onEvent, {
+    type: 'build-complete',
+    succeeded: buildResult.succeeded,
+    errorCount: buildResult.errorCount,
+    warningCount: buildResult.warningCount,
+    durationMs: end - start,
+  });
+
+  return {
+    succeeded: buildResult.succeeded,
+    errorCount: buildResult.errorCount,
+    warningCount: buildResult.warningCount,
+  };
+}
+
+interface RunPrimaryBunWatchBuildOptions {
+  readonly entryPoints: readonly string[];
+  readonly sourceRoot: string;
+  readonly buildRoot: string;
+  readonly tsconfigPath: string;
+  readonly nodeEnv: string;
+  readonly diagMax: number;
+}
+
+interface RunPrimaryBunWatchBuildResult {
+  readonly succeeded: boolean;
+  readonly errorCount: number;
+  readonly warningCount: number;
+  readonly durationMs: number;
+  readonly outputs?: readonly BunBuildOutputFile[];
+}
+
+async function runPrimaryBunWatchBuild(
+  options: RunPrimaryBunWatchBuildOptions
+): Promise<RunPrimaryBunWatchBuildResult> {
+  const build = getBunBuild();
+  if (!build) {
+    throw new Error('Bun.build() is not available in the current runtime.');
+  }
+
+  await rm(options.buildRoot, { recursive: true, force: true });
+  await mkdir(options.buildRoot, { recursive: true });
+
+  const start = performance.now();
+  const result = await build({
+    entrypoints: [...options.entryPoints],
+    root: options.sourceRoot,
+    outdir: options.buildRoot,
+    target: 'node',
+    format: 'esm',
+    splitting: false,
+    packages: 'external',
+    sourcemap: 'linked',
+    tsconfig: existsSync(options.tsconfigPath) ? options.tsconfigPath : undefined,
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(options.nodeEnv),
+    },
+    throw: false,
+  });
+  const end = performance.now();
+
+  const { errorCount, warningCount } = logBunBuildResult(result, options.diagMax);
+
+  return {
+    succeeded: result.success && errorCount === 0,
+    errorCount,
+    warningCount,
+    durationMs: end - start,
+    outputs: result.outputs,
+  };
+}
+
+function logBunBuildResult(result: BunBuildOutput, diagMax: number): {
+  errorCount: number;
+  warningCount: number;
+} {
+  const logs = Array.isArray(result.logs) ? result.logs : [];
+  const errorLogs = logs.filter((log) => log.level === 'error');
+  const warningLogs = logs.filter((log) => log.level === 'warning');
+
+  for (const log of errorLogs.slice(0, diagMax)) {
+    console.error(`[webstir-backend][bun] ${formatEsbuildMessage(log)}`);
+  }
+  if (errorLogs.length > diagMax) {
+    console.error(`[webstir-backend][bun] ... ${errorLogs.length - diagMax} more error(s) omitted`);
+  }
+
+  for (const log of warningLogs.slice(0, diagMax)) {
+    console.warn(`[webstir-backend][bun] ${formatEsbuildMessage(log)}`);
+  }
+  if (warningLogs.length > diagMax) {
+    console.warn(`[webstir-backend][bun] ... ${warningLogs.length - diagMax} more warning(s) omitted`);
+  }
+
+  return {
+    errorCount: errorLogs.length,
+    warningCount: warningLogs.length,
+  };
+}
+
+function collectBunOutputSizes(outputs: readonly BunBuildOutputFile[] | undefined, buildRoot: string): Record<string, number> {
+  const collected: Record<string, number> = {};
+  for (const output of outputs ?? []) {
+    const rel = path.relative(buildRoot, output.path);
+    collected[rel] = typeof output.size === 'number' ? output.size : 0;
+  }
+  return collected;
+}
+
+async function takeWatchSnapshot(
+  workspaceRoot: string,
+  sourceRoot: string,
+  tsconfigPath: string
+): Promise<string> {
+  const watchFiles = new Set<string>();
+
+  const packageJsonPath = path.join(workspaceRoot, 'package.json');
+  if (existsSync(packageJsonPath)) {
+    watchFiles.add(packageJsonPath);
+  }
+  if (existsSync(tsconfigPath)) {
+    watchFiles.add(tsconfigPath);
+  }
+
+  const typesRoot = path.join(workspaceRoot, 'types');
+  const directoryRoots = [sourceRoot];
+  if (existsSync(typesRoot)) {
+    directoryRoots.push(typesRoot);
+  }
+
+  for (const directoryRoot of directoryRoots) {
+    for (const filePath of await listWatchFiles(directoryRoot)) {
+      watchFiles.add(filePath);
+    }
+  }
+
+  const entries = await Promise.all(
+    Array.from(watchFiles).sort().map(async (filePath) => {
+      const fileStat = await stat(filePath);
+      return `${filePath}:${fileStat.size}:${fileStat.mtimeMs}`;
+    })
+  );
+
+  return entries.join('|');
+}
+
+async function listWatchFiles(root: string): Promise<string[]> {
+  if (!existsSync(root)) {
+    return [];
+  }
+
+  const entries = await glob('**/*', {
+    cwd: root,
+    absolute: true,
+    dot: false,
+    nodir: false,
+  });
+
+  const files: string[] = [];
+  for (const entry of entries) {
+    try {
+      const entryStat = await stat(entry);
+      if (entryStat.isFile()) {
+        files.push(entry);
+      }
+    } catch {
+      // Ignore files deleted between glob and stat.
+    }
+  }
+
+  return files;
+}
+
+function flushDiagnostics(diagnostics: readonly ModuleDiagnostic[]): void {
+  for (const diag of diagnostics) {
+    const logger =
+      diag.severity === 'error' ? console.error : diag.severity === 'warn' ? console.warn : console.info;
+    logger(diag.message);
+  }
 }
 
 async function emitWatchEvent(
@@ -256,85 +506,10 @@ async function emitWatchEvent(
   }
 }
 
-interface BunWatchBenchmarkResult {
-  readonly succeeded: boolean;
-  readonly errorCount: number;
-  readonly warningCount: number;
-  readonly durationMs: number;
-}
-
-interface RunBunWatchBenchmarkOptions {
-  readonly entryPoints: readonly string[];
-  readonly sourceRoot: string;
-  readonly tsconfigPath: string;
-  readonly nodeEnv: string;
-  readonly diagMax: number;
-}
-
-async function runBunWatchBenchmark(options: RunBunWatchBenchmarkOptions): Promise<BunWatchBenchmarkResult> {
-  const build = getBunBuild();
-  if (!build) {
-    throw new Error('Bun.build() is not available in the current runtime.');
-  }
-
-  const outdir = await mkdtemp(path.join(tmpdir(), 'webstir-backend-watch-benchmark-'));
-  const start = performance.now();
-
-  try {
-    const result = await build({
-      entrypoints: [...options.entryPoints],
-      root: options.sourceRoot,
-      outdir,
-      target: 'node',
-      format: 'esm',
-      splitting: false,
-      packages: 'external',
-      sourcemap: 'linked',
-      tsconfig: existsSync(options.tsconfigPath) ? options.tsconfigPath : undefined,
-      define: { 'process.env.NODE_ENV': JSON.stringify(options.nodeEnv) },
-      throw: false,
-    });
-
-    const end = performance.now();
-    const warningLogs = (result.logs ?? []).filter((log) => log.level === 'warning');
-    const errorLogs = (result.logs ?? []).filter((log) => log.level === 'error');
-
-    for (const log of errorLogs.slice(0, options.diagMax)) {
-      console.error(`[webstir-backend][bun] ${formatEsbuildMessage(log)}`);
-    }
-    if (errorLogs.length > options.diagMax) {
-      console.error(`[webstir-backend][bun] ... ${errorLogs.length - options.diagMax} more error(s) omitted`);
-    }
-
-    for (const log of warningLogs.slice(0, options.diagMax)) {
-      console.warn(`[webstir-backend][bun] ${formatEsbuildMessage(log)}`);
-    }
-    if (warningLogs.length > options.diagMax) {
-      console.warn(`[webstir-backend][bun] ... ${warningLogs.length - options.diagMax} more warning(s) omitted`);
-    }
-
-    return {
-      succeeded: result.success && errorLogs.length === 0,
-      errorCount: errorLogs.length,
-      warningCount: warningLogs.length,
-      durationMs: end - start,
-    };
-  } finally {
-    await rm(outdir, { recursive: true, force: true });
-  }
-}
-
-function getBunBuild():
-  | ((
-      options: Record<string, unknown>
-    ) => Promise<{ readonly success: boolean; readonly logs?: readonly { readonly level: string }[] }>)
-  | undefined {
+function getBunBuild(): BunBuildFunction | undefined {
   const runtime = globalThis as typeof globalThis & {
     Bun?: {
-      build?: (options: Record<string, unknown>) => Promise<{
-        readonly success: boolean;
-        readonly logs?: readonly { readonly level: string }[];
-      }>;
+      build?: BunBuildFunction;
     };
   };
   const build = runtime.Bun?.build;
