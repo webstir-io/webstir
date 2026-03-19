@@ -23,6 +23,7 @@ Today, `webstir` loads the canonical packages directly:
 - `WEBSTIR_BACKEND_PROVIDER`
 - `WEBSTIR_TESTING_PROVIDER`
 - local `*_PROVIDER_SPEC` overrides
+- Bun-first watch runtime selection is separate from provider selection and should use a dedicated watch/runtime flag, not the provider-selection surface
 
 Older docs and experiments referenced those surfaces, but they are not part of the live Bun CLI contract.
 

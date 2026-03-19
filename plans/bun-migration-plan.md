@@ -48,6 +48,16 @@ Goal:
 
 - make the published/runtime contract match the Bun-only decision instead of leaving Bun-only behavior hidden behind Node-shaped metadata
 
+## Bun-First Watch Track
+
+The frontend watch/HMR migration is now a separate opt-in runtime track, not a provider-selection exercise.
+
+- Legacy daemon-backed watch remains the default path until Bun-first proves out.
+- SPA is the first Bun-first target.
+- Full-stack Bun-first watch can follow after SPA is stable and the HTML ownership model is clear.
+- SSG stays on the legacy path until Bun-ready document composition is available.
+- The Bun-first runtime should not preserve the custom HMR protocol; it should use Bun-native HMR semantics instead.
+
 ## Current Findings
 
 ### `Bun.build()` benchmark summary
@@ -89,7 +99,7 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 
 - The Bun-only script/orchestrator track is complete.
 - The package/tooling PR track is complete through PR 7.
-- No additional active PR is justified under this migration plan.
+- The next active workstream is the Bun-first watch track described above.
 
 ### Deferred or gated
 
@@ -103,7 +113,7 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
 - Rebuild benchmark samples on Bun `1.3.10`:
   - `examples/demos/full`: esbuild incremental `8.9ms`, `8.8ms`, `9.6ms` vs Bun full build `1.5ms`, `1.4ms`, `1.2ms` (averages: `9.1ms` vs `1.4ms`)
 - `examples/demos/auth-crud`: esbuild incremental `9.8ms`, `11.1ms`, `11.6ms` vs Bun full build `2.1ms`, `2.4ms`, `2.3ms` (averages: `10.8ms` vs `2.3ms`)
-- Conclusion remains unchanged: the temporary benchmark is informative, but the watch path still stays on esbuild until the missing watch/metafile contract issues are addressed.
+- Conclusion remains unchanged for the legacy/default watch path: the temporary benchmark is informative, but the current watch path still stays on esbuild until the missing watch/metafile contract issues are addressed.
 
 ### 2026-03-16 full-demo `Bun.serve()` POC
 
@@ -133,7 +143,7 @@ No current `bcrypt` or `argon2` usage was found in the canonical codebase. There
   - Validate that Bun.build() output paths align with Bun.serve() dev server URLs for the backend-rendered demo page.
   - Measure whether the Bun.build() asset discovery adds measurable latency compared to the old self-fetch approach.
   - Consider whether the `.bun-build-manifest` transient output directory should be cleaned up on shutdown.
-  - The watch/HMR pipeline replacement remains deferred per section 13.
+  - The watch/HMR pipeline replacement remains deferred for the legacy path per section 13; the Bun-first runtime track is separate and opt-in.
 
 ## Completed Bun-Only Wins
 
@@ -571,6 +581,7 @@ Reason:
 - Current watch flows depend on esbuild `context()`, `rebuild()`, and `metafile`.
 - Bun hot reload does not replace the repo's cross-process rebuild, HMR diffing, or orchestrated reload decisions.
 - The only reasonable near-term experiment is `bun --hot` for a spawned backend runtime, not for the full watch stack.
+- This restriction applies to the legacy/default watch path; Bun-first SPA now exists as a separate opt-in rollout behind `webstir watch --frontend-runtime bun`.
 
 ### 14. No current `Bun.password` replacement
 

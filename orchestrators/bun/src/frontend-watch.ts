@@ -1,6 +1,8 @@
 import path from 'node:path';
 
+import { startBunSpaFrontendWatch } from './bun-spa-watch.ts';
 import { DevServer, type DevServerAddress } from './dev-server.ts';
+import { resolveFrontendWatchRuntime } from './frontend-watch-runtime.ts';
 import { createStopSignal } from './stop-signal.ts';
 import { FrontendWatchDaemonClient } from './watch-daemon-client.ts';
 import { collectWatchActions, type StructuredDiagnosticPayload } from './watch-events.ts';
@@ -47,6 +49,35 @@ export async function runFrontendWatch(
 }
 
 export async function startFrontendWatchSession(
+  workspace: WorkspaceDescriptor,
+  options: FrontendWatchSessionOptions,
+  io: WatchIo
+): Promise<FrontendWatchSession> {
+  return await createFrontendWatchSession(workspace, options, io);
+}
+
+async function createFrontendWatchSession(
+  workspace: WorkspaceDescriptor,
+  options: FrontendWatchSessionOptions,
+  io: WatchIo
+): Promise<FrontendWatchSession> {
+  switch (resolveFrontendWatchRuntime(workspace, options.frontendRuntime)) {
+    case 'bun':
+      if (options.server) {
+        throw new Error('Frontend runtime "bun" does not support an injected legacy dev server.');
+      }
+      return await startBunSpaFrontendWatch({
+        workspaceRoot: workspace.root,
+        host: options.host,
+        port: options.port,
+      });
+    case 'legacy':
+    default:
+      return await createLegacyFrontendWatchSession(workspace, options, io);
+  }
+}
+
+async function createLegacyFrontendWatchSession(
   workspace: WorkspaceDescriptor,
   options: FrontendWatchSessionOptions,
   io: WatchIo

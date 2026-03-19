@@ -1,30 +1,27 @@
 import { afterEach, expect, test } from 'bun:test';
-import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import {
+  appendWatchLogs,
+  collectOutput,
+  getFreePort,
+  removeTrackedChild,
+  stopTrackedChildren,
+  waitFor,
+} from '../test-support/watch.ts';
 
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
 
 afterEach(async () => {
-  while (childProcesses.length > 0) {
-    const child = childProcesses.pop();
-    if (!child) {
-      continue;
-    }
-
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-  }
+  await stopTrackedChildren(childProcesses);
 });
 
 test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and backend changes', async () => {
-  const fixtureRoot = path.join(repoRoot, 'examples', 'demos', 'full');
-  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-full-watch-'));
-  const workspace = path.join(tempRoot, 'full');
-  await cp(fixtureRoot, workspace, { recursive: true });
+  const workspaceCopy = await copyDemoWorkspace('full', 'webstir-full-watch');
+  const workspace = workspaceCopy.workspaceRoot;
   await Promise.all([
     rm(path.join(workspace, 'build'), { recursive: true, force: true }),
     rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
@@ -89,11 +86,8 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     child.kill('SIGTERM');
     await child.exited.catch(() => undefined);
     await Promise.allSettled([stdoutDrain, stderrDrain]);
-    const childIndex = childProcesses.indexOf(child);
-    if (childIndex >= 0) {
-      childProcesses.splice(childIndex, 1);
-    }
-    await rm(tempRoot, { recursive: true, force: true });
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
   }
 }, 60_000);
 
@@ -104,91 +98,4 @@ async function fetchText(port: number, requestPath: string): Promise<string> {
   }
 
   return await response.text();
-}
-
-async function getFreePort(): Promise<number> {
-  const server = createServer();
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve());
-  });
-
-  const address = server.address();
-  if (!address || typeof address === 'string') {
-    throw new Error('Failed to allocate a free TCP port.');
-  }
-
-  const port = address.port;
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
-  return port;
-}
-
-async function waitFor(
-  assertion: () => Promise<void>,
-  timeoutMs: number
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
-
-  while (Date.now() < deadline) {
-    try {
-      await assertion();
-      return;
-    } catch (error) {
-      lastError = error;
-      await Bun.sleep(150);
-    }
-  }
-
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`Timed out after ${timeoutMs}ms.`);
-}
-
-function appendWatchLogs(error: unknown, stdout: string, stderr: string): Error {
-  const message = error instanceof Error ? error.message : String(error);
-  return new Error(
-    `${message}\n\nstdout:\n${tailOutput(stdout)}\n\nstderr:\n${tailOutput(stderr)}`
-  );
-}
-
-function tailOutput(text: string): string {
-  const normalized = text.trim();
-  if (normalized.length === 0) {
-    return '(empty)';
-  }
-
-  return normalized.slice(-4_000);
-}
-
-async function collectOutput(
-  stream: ReadableStream<Uint8Array>,
-  target: { text: string }
-): Promise<void> {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      target.text += decoder.decode(value, { stream: true });
-    }
-
-    target.text += decoder.decode();
-  } finally {
-    reader.releaseLock();
-  }
 }
