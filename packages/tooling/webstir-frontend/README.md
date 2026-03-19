@@ -73,7 +73,6 @@ Binary name: `webstir-frontend`. All commands require `--workspace`.
 | `publish` | Produces optimized frontend assets. | `--mode <bundle\|ssg>` |
 | `rebuild` | Incremental rebuild after a file change. | `--changed-file <path>` |
 | `add-page <name>` | Scaffolds `index.html`, `index.css`, and `index.ts`. | None |
-| `watch-daemon` | Persistent watcher + HMR coordinator. | `--no-auto-start`, `--verbose`, `--hmr-verbose` |
 
 ## Feature Flags
 

@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -15,14 +15,6 @@ import {
 } from '../test-support/watch.ts';
 
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
-const unsupportedWorkspaces = [
-  {
-    fixtureRoot: path.join(repoRoot, 'examples', 'demos', 'api'),
-    directoryName: 'api',
-    workspaceName: 'webstir-demo-api',
-    mode: 'api',
-  },
-] as const;
 
 afterEach(async () => {
   await stopTrackedChildren(childProcesses);
@@ -208,46 +200,6 @@ test('Bun-first SPA watch hot-applies page CSS edits without a full page reload'
   }
 }, 120_000);
 
-for (const unsupportedWorkspace of unsupportedWorkspaces) {
-  test(`Bun-first SPA watch rejects ${unsupportedWorkspace.mode} workspaces with a clear runtime error`, async () => {
-    const workspaceCopy = await copyWorkspace(unsupportedWorkspace.fixtureRoot, unsupportedWorkspace.directoryName);
-    const workspace = workspaceCopy.workspaceRoot;
-    const port = await getFreePort();
-    const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
-
-    try {
-      expect(await child.exited).toBe(1);
-      await Promise.allSettled([stdoutDrain, stderrDrain]);
-      expect(stdoutBuffer.text).toBe('');
-      expect(stderrBuffer.text).toContain(
-        `[webstir] watch failed: Frontend runtime "bun" currently supports spa, ssg, and full workspaces only. "${unsupportedWorkspace.workspaceName}" is ${unsupportedWorkspace.mode}.`
-      );
-    } finally {
-      child.kill('SIGTERM');
-      await child.exited.catch(() => undefined);
-      await Promise.allSettled([stdoutDrain, stderrDrain]);
-      removeTrackedChild(childProcesses, child);
-      await removeDemoWorkspace(workspaceCopy);
-    }
-  });
-}
-
-async function copyWorkspace(fixtureRoot: string, directoryName: string) {
-  const workspaceCopy = await copyDemoWorkspace(
-    path.relative(path.join(repoRoot, 'examples', 'demos'), fixtureRoot),
-    `webstir-bun-first-${directoryName}`,
-    { workspaceName: directoryName }
-  );
-  const workspace = workspaceCopy.workspaceRoot;
-  await Promise.all([
-    rm(path.join(workspace, 'build'), { recursive: true, force: true }),
-    rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
-    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true }),
-    rm(path.join(workspace, '.webstir'), { recursive: true, force: true }),
-  ]);
-  return workspaceCopy;
-}
-
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
   if (!response.ok) {
@@ -273,8 +225,6 @@ function spawnBunFirstWatch(workspace: string, port: number): {
       workspace,
       '--port',
       String(port),
-      '--frontend-runtime',
-      'bun',
     ],
     cwd: repoRoot,
     env: process.env,

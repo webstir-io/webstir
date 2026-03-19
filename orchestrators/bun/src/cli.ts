@@ -28,7 +28,6 @@ import { runPublish } from './publish.ts';
 import { runSmoke } from './smoke.ts';
 import { runTest } from './test.ts';
 import { runWatch } from './watch.ts';
-import type { FrontendWatchRuntime } from './types.ts';
 
 interface CliStream {
   write(message: string): void;
@@ -54,7 +53,7 @@ const HELP_TEXT = `Usage:
   webstir enable <feature> [feature-args...] --workspace <path>
   webstir repair --workspace <path> [--dry-run]
   webstir refresh <mode> --workspace <path>
-  webstir watch --workspace <path> [--host <host>] [--port <port>] [--frontend-runtime <legacy|bun>]
+  webstir watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
   init       Scaffold a new Webstir workspace.
@@ -76,8 +75,6 @@ Options:
   -w, --workspace <path>   Workspace root to operate on.
   --host <host>            Dev host or bind address (default: 127.0.0.1).
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
-  --frontend-runtime <runtime>
-                           Frontend watch runtime (legacy|bun, default: bun; legacy remains SSG-only).
   --dry-run                Report repair changes without writing files.
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
@@ -137,7 +134,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
   try {
     if (command === 'init') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Init does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -152,7 +149,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
     const resolvedWorkspaceRoot = workspaceRoot ? path.resolve(workspaceRoot) : undefined;
     if (command === 'add-page') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -168,7 +165,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'add-test') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-test does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -184,7 +181,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'add-route') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-route does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -200,7 +197,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'add-job') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-job does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -216,7 +213,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'backend-inspect') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Backend-inspect does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -234,7 +231,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'test') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Test does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -248,7 +245,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'smoke') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Smoke does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -301,7 +298,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'repair') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Repair does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -320,7 +317,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'refresh') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose || options.frontendRuntime !== undefined) {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Refresh does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -344,7 +341,6 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       port: options.port,
       verbose: options.verbose,
       hmrVerbose: options.hmrVerbose,
-      frontendRuntime: options.frontendRuntime,
       io,
     });
     return 0;
@@ -362,7 +358,6 @@ interface ParsedCommandOptions {
   readonly dryRun: boolean;
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
-  readonly frontendRuntime?: FrontendWatchRuntime;
   readonly positionals: readonly string[];
   readonly rawArgs: readonly string[];
   readonly help: boolean;
@@ -379,7 +374,6 @@ function parseCommandOptions(
   let dryRun = false;
   let verbose = false;
   let hmrVerbose = false;
-  let frontendRuntime: FrontendWatchRuntime | undefined;
   const positionals: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -399,7 +393,6 @@ function parseCommandOptions(
           dryRun,
           verbose,
           hmrVerbose,
-          frontendRuntime,
           positionals,
           rawArgs: args,
           help: false,
@@ -422,7 +415,6 @@ function parseCommandOptions(
           dryRun,
           verbose,
           hmrVerbose,
-          frontendRuntime,
           positionals,
           rawArgs: args,
           help: false,
@@ -446,7 +438,6 @@ function parseCommandOptions(
           dryRun,
           verbose,
           hmrVerbose,
-          frontendRuntime,
           positionals,
           rawArgs: args,
           help: false,
@@ -469,7 +460,6 @@ function parseCommandOptions(
           dryRun,
           verbose,
           hmrVerbose,
-          frontendRuntime,
           positionals,
           rawArgs: args,
           help: false,
@@ -482,67 +472,6 @@ function parseCommandOptions(
     }
 
     if (arg.startsWith('--runtime=')) {
-      continue;
-    }
-
-    if (arg === '--frontend-runtime') {
-      const next = args[index + 1];
-      if (!next || next.startsWith('-')) {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          dryRun,
-          verbose,
-          hmrVerbose,
-          frontendRuntime,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: 'Missing value for --frontend-runtime.',
-        };
-      }
-
-      if (next !== 'legacy' && next !== 'bun') {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          dryRun,
-          verbose,
-          hmrVerbose,
-          frontendRuntime,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: `Invalid --frontend-runtime value "${next}".`,
-        };
-      }
-
-      frontendRuntime = next;
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--frontend-runtime=')) {
-      const rawRuntime = arg.slice('--frontend-runtime='.length);
-      if (rawRuntime !== 'legacy' && rawRuntime !== 'bun') {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          dryRun,
-          verbose,
-          hmrVerbose,
-          frontendRuntime,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: `Invalid --frontend-runtime value "${rawRuntime}".`,
-        };
-      }
-
-      frontendRuntime = rawRuntime;
       continue;
     }
 
@@ -564,7 +493,6 @@ function parseCommandOptions(
         dryRun,
         verbose,
         hmrVerbose,
-        frontendRuntime,
         positionals,
         rawArgs: args,
         help: true,
@@ -587,7 +515,6 @@ function parseCommandOptions(
       dryRun,
       verbose,
       hmrVerbose,
-      frontendRuntime,
       positionals,
       rawArgs: args,
       help: false,
@@ -602,7 +529,6 @@ function parseCommandOptions(
     dryRun,
     verbose,
     hmrVerbose,
-    frontendRuntime,
     positionals,
     rawArgs: args,
     help: false,
