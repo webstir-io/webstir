@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 
@@ -5,6 +6,7 @@ export interface BunSpaEntryPaths {
   readonly workspaceRoot: string;
   readonly appTemplatePath: string;
   readonly appCssPath: string;
+  readonly appScriptPath?: string;
   readonly generatedRoot: string;
   readonly generatedEntryPath: string;
   readonly generatedCssPath: string;
@@ -30,11 +32,13 @@ const GENERATED_PAGE_CSS = 'page.css';
 export function resolveBunSpaEntryPaths(workspaceRoot: string): BunSpaEntryPaths {
   const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
   const generatedRoot = path.join(resolvedWorkspaceRoot, GENERATED_DIR);
+  const appRoot = path.join(resolvedWorkspaceRoot, 'src', 'frontend', 'app');
 
   return {
     workspaceRoot: resolvedWorkspaceRoot,
-    appTemplatePath: path.join(resolvedWorkspaceRoot, 'src', 'frontend', 'app', 'app.html'),
-    appCssPath: path.join(resolvedWorkspaceRoot, 'src', 'frontend', 'app', 'app.css'),
+    appTemplatePath: path.join(appRoot, 'app.html'),
+    appCssPath: path.join(appRoot, 'app.css'),
+    appScriptPath: resolveOptionalExistingFileSync(appRoot, ['app.ts', 'app.tsx', 'app.js', 'app.jsx']),
     generatedRoot,
     generatedEntryPath: path.join(generatedRoot, GENERATED_ENTRY),
     generatedCssPath: path.join(generatedRoot, GENERATED_PAGE_CSS),
@@ -90,6 +94,9 @@ export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOption
   const appBodyClass = extractTagAttribute(appTemplate, 'body', 'class');
   const pageBodyClass = extractTagAttribute(pageHtml, 'body', 'class');
   const bodyClass = [appBodyClass, pageBodyClass].filter(Boolean).join(' ').trim();
+  const relativeAppScriptPath = options.paths.appScriptPath
+    ? toRelativeModulePath(options.paths.generatedEntryPath, options.paths.appScriptPath)
+    : undefined;
   const relativeScriptPath = toRelativeModulePath(options.paths.generatedEntryPath, options.page.scriptPath);
   const relativeStylesheetPath = await writeGeneratedPageCss({
     generatedCssPath: options.paths.generatedCssPath,
@@ -109,6 +116,7 @@ export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOption
 </head>
 <body${bodyClassAttribute}>
   <main>${mainHtml}</main>
+  ${relativeAppScriptPath ? `<script type="module" src="${relativeAppScriptPath}"></script>` : ''}
   <script type="module" src="${relativeScriptPath}"></script>
 </body>
 </html>
@@ -216,4 +224,15 @@ function escapeHtml(value: string): string {
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value).replaceAll('"', '&quot;');
+}
+
+function resolveOptionalExistingFileSync(directory: string, names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const candidate = path.join(directory, name);
+    if (existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
 }
