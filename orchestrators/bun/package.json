@@ -6,16 +6,16 @@
     "webstir": "src/cli.ts"
   },
   "scripts": {
-    "check:assets": "node scripts/sync-assets.mjs --check",
-    "build": "node scripts/sync-assets.mjs && bun run build:deps && tsc -p tsconfig.json",
+    "check:assets": "bun scripts/sync-assets.mjs --check",
+    "build": "bun scripts/sync-assets.mjs && bun run build:deps && tsc -p tsconfig.json",
     "build:deps": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build && bun run --filter @webstir-io/webstir-frontend build && bun run --filter @webstir-io/webstir-backend build && bun run --filter @webstir-io/webstir-testing build",
     "test": "bun run test:required",
-    "test:required": "bun run build && node scripts/run-tests.mjs required",
-    "test:with-watch-browser": "bun run build && node scripts/run-tests.mjs with-watch-browser",
-    "test:browser:publish": "bun run build && node scripts/run-tests.mjs publish-browser",
-    "test:browser:watch": "bun run build && node scripts/run-tests.mjs watch-browser",
+    "test:required": "bun run build && bun scripts/run-tests.mjs required",
+    "test:with-watch-browser": "bun run build && bun scripts/run-tests.mjs with-watch-browser",
+    "test:browser:publish": "bun run build && bun scripts/run-tests.mjs publish-browser",
+    "test:browser:watch": "bun run build && bun scripts/run-tests.mjs watch-browser",
     "clean": "rm -rf dist",
-    "prepack": "node scripts/sync-assets.mjs",
+    "prepack": "bun scripts/sync-assets.mjs",
     "pack:local": "bun pm pack",
     "pack:standalone": "bun scripts/pack-standalone.mjs",
     "release": "bash scripts/publish.sh"

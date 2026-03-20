@@ -21,7 +21,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test tests/*.test.js",
     "clean": "rm -rf dist",
-    "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
+    "smoke": "bun -e \"console.log('[smoke] no smoke tests configured');\"",
     "release": "bash scripts/publish.sh"
   },
   "keywords": [

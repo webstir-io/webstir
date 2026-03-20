@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
@@ -27,13 +26,17 @@ creates a package-scoped release commit and tag, and optionally pushes both upst
 }
 
 function run(command, args, cwd) {
-  const result = spawnSync(command, args, {
+  const result = Bun.spawnSync({
+    cmd: [command, ...args],
     cwd,
-    stdio: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
+    stdin: 'inherit',
+    env: process.env,
   });
 
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+  if (result.exitCode !== 0) {
+    process.exit(result.exitCode ?? 1);
   }
 }
 
@@ -95,13 +98,25 @@ function parseArgs(argv) {
 }
 
 function ensureCleanGit() {
-  const worktree = spawnSync('git', ['diff', '--quiet', '--ignore-submodules', 'HEAD'], { cwd: repoRoot });
-  if (worktree.status !== 0) {
+  const worktree = Bun.spawnSync({
+    cmd: ['git', 'diff', '--quiet', '--ignore-submodules', 'HEAD'],
+    cwd: repoRoot,
+    stdout: 'ignore',
+    stderr: 'ignore',
+    env: process.env,
+  });
+  if (worktree.exitCode !== 0) {
     fail('git worktree has uncommitted changes');
   }
 
-  const index = spawnSync('git', ['diff', '--quiet', '--cached', '--ignore-submodules'], { cwd: repoRoot });
-  if (index.status !== 0) {
+  const index = Bun.spawnSync({
+    cmd: ['git', 'diff', '--quiet', '--cached', '--ignore-submodules'],
+    cwd: repoRoot,
+    stdout: 'ignore',
+    stderr: 'ignore',
+    env: process.env,
+  });
+  if (index.exitCode !== 0) {
     fail('git index has staged changes');
   }
 }

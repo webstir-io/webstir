@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -66,17 +65,20 @@ export function buildCheckPlan(mode) {
 }
 
 function runStep(step) {
-  const result = spawnSync(step.command[0], step.command.slice(1), {
+  const result = Bun.spawnSync({
+    cmd: step.command,
     cwd: repoRoot,
-    stdio: 'inherit',
+    stdin: 'inherit',
+    stdout: 'inherit',
+    stderr: 'inherit',
     env: {
       ...process.env,
       ...(step.env ?? {}),
     },
   });
 
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
+  if (result.exitCode !== 0) {
+    process.exit(result.exitCode ?? 1);
   }
 }
 

@@ -24,12 +24,12 @@
   ],
   "scripts": {
     "clean": "rm -rf dist schema",
-    "build": "tsc -p tsconfig.json && node scripts/build-schema.mjs",
+    "build": "tsc -p tsconfig.json && bun scripts/build-schema.mjs",
     "build:types": "tsc -p tsconfig.json",
-    "build:schema": "node scripts/build-schema.mjs",
-    "test": "tsc -p tsconfig.json && node scripts/build-schema.mjs && tsc -p tsconfig.examples.json",
+    "build:schema": "bun scripts/build-schema.mjs",
+    "test": "tsc -p tsconfig.json && bun scripts/build-schema.mjs && tsc -p tsconfig.examples.json",
     "test:examples": "tsc -p tsconfig.examples.json",
-    "smoke": "node -e \"console.log('[smoke] no smoke tests configured');\"",
+    "smoke": "bun -e \"console.log('[smoke] no smoke tests configured');\"",
     "release": "bash scripts/publish.sh"
   },
   "keywords": [

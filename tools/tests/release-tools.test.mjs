@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const textDecoder = new TextDecoder();
 
 function withTempWorkspace(setup) {
   const root = mkdtempSync(path.join(os.tmpdir(), 'webstir-release-tools-'));
@@ -24,28 +24,30 @@ function copyTree(relativePath, tempRoot) {
 }
 
 function runRuntime(relativeScript, args, cwd) {
-  return spawnSync(process.execPath, [relativeScript, ...args], {
-    cwd,
-    encoding: 'utf8',
-  });
+  return run(process.execPath, [relativeScript, ...args], cwd);
 }
 
 function runRuntimeWithEnv(relativeScript, args, cwd, env) {
-  return spawnSync(process.execPath, [relativeScript, ...args], {
-    cwd,
-    encoding: 'utf8',
-    env: {
-      ...process.env,
-      ...env,
-    },
-  });
+  return run(process.execPath, [relativeScript, ...args], cwd, env);
 }
 
-function run(command, args, cwd) {
-  return spawnSync(command, args, {
+function run(command, args, cwd, extraEnv) {
+  const result = Bun.spawnSync({
+    cmd: [command, ...args],
     cwd,
-    encoding: 'utf8',
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: {
+      ...process.env,
+      ...(extraEnv ?? {}),
+    },
   });
+
+  return {
+    status: result.exitCode,
+    stdout: textDecoder.decode(result.stdout),
+    stderr: textDecoder.decode(result.stderr),
+  };
 }
 
 function readJson(relativePath) {
