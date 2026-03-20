@@ -137,7 +137,7 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
   }
 }, 120_000);
 
-test('Bun-first SPA watch hot-applies page CSS edits without a full page reload', async () => {
+test('Bun-first SPA watch reloads after page CSS edits', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
@@ -164,15 +164,25 @@ test('Bun-first SPA watch hot-applies page CSS edits without a full page reload'
 
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
     await page.locator('main').waitFor({ state: 'visible' });
+    await page.evaluate(() => {
+      (window as Window & { __bunFirstPageCssMarker?: string }).__bunFirstPageCssMarker = 'persist';
+    });
     const stylesheetPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.css');
     originalStylesheet = await readFile(stylesheetPath, 'utf8');
+    const reloadPromise = page.waitForEvent('framenavigated');
     await writeFile(
       stylesheetPath,
-      `${originalStylesheet}\nmain { color: rgb(255, 0, 0); }\n`,
+      `${originalStylesheet}\nmain { background-color: rgb(255, 0, 0) !important; }\n`,
       'utf8'
     );
 
-    await page.waitForFunction(() => getComputedStyle(document.querySelector('main')!).color === 'rgb(255, 0, 0)');
+    await reloadPromise;
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForFunction(() => {
+      const main = document.querySelector('main');
+      return main instanceof HTMLElement && getComputedStyle(main).backgroundColor === 'rgb(255, 0, 0)';
+    });
+    expect(await page.evaluate(() => (window as Window & { __bunFirstPageCssMarker?: string }).__bunFirstPageCssMarker ?? null)).toBeNull();
 
     await context.close();
   } catch (error) {
