@@ -1,6 +1,6 @@
 import type { AddCommandResult } from './add.ts';
 
-import { runAddJob, runAddRoute } from '@webstir-io/webstir-backend';
+import { monorepoRoot } from './paths.ts';
 
 export interface RunAddBackendOptions {
   readonly workspaceRoot: string;
@@ -8,6 +8,7 @@ export interface RunAddBackendOptions {
 }
 
 export async function runAddRouteCommand(options: RunAddBackendOptions): Promise<AddCommandResult> {
+  const backendAdd = await loadBackendAddModule();
   const parsed = parseBackendCommandArgs(options.rawArgs, {
     valueFlags: new Set([
       '--method',
@@ -38,7 +39,7 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
     .map((tag) => tag.trim())
     .filter(Boolean);
 
-  const result = await runAddRoute({
+  const result = await backendAdd.runAddRoute({
     workspaceRoot: options.workspaceRoot,
     name,
     method: parsed.values.get('--method'),
@@ -65,6 +66,7 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
 }
 
 export async function runAddJobCommand(options: RunAddBackendOptions): Promise<AddCommandResult> {
+  const backendAdd = await loadBackendAddModule();
   const parsed = parseBackendCommandArgs(options.rawArgs, {
     valueFlags: new Set(['--schedule', '--description', '--priority']),
     booleanFlags: new Set(),
@@ -75,7 +77,7 @@ export async function runAddJobCommand(options: RunAddBackendOptions): Promise<A
     throw new Error('Usage: webstir add-job <name> --workspace <path> [--schedule <expression>].');
   }
 
-  const result = await runAddJob({
+  const result = await backendAdd.runAddJob({
     workspaceRoot: options.workspaceRoot,
     name,
     schedule: parsed.values.get('--schedule'),
@@ -100,6 +102,56 @@ interface ParsedBackendCommandArgs {
   readonly positionals: readonly string[];
   readonly values: ReadonlyMap<string, string>;
   readonly booleans: ReadonlySet<string>;
+}
+
+interface BackendAddResult {
+  readonly target: string;
+  readonly changes: readonly string[];
+}
+
+interface BackendAddModule {
+  readonly runAddRoute: (options: {
+    readonly workspaceRoot: string;
+    readonly name: string;
+    readonly method?: string;
+    readonly path?: string;
+    readonly fastify?: boolean;
+    readonly summary?: string;
+    readonly description?: string;
+    readonly tags?: readonly string[];
+    readonly paramsSchema?: string;
+    readonly querySchema?: string;
+    readonly bodySchema?: string;
+    readonly headersSchema?: string;
+    readonly responseSchema?: string;
+    readonly responseStatus?: string | number;
+    readonly responseHeadersSchema?: string;
+  }) => Promise<BackendAddResult>;
+  readonly runAddJob: (options: {
+    readonly workspaceRoot: string;
+    readonly name: string;
+    readonly schedule?: string;
+    readonly description?: string;
+    readonly priority?: string;
+  }) => Promise<BackendAddResult>;
+}
+
+let backendAddModulePromise: Promise<BackendAddModule> | null = null;
+
+async function loadBackendAddModule(): Promise<BackendAddModule> {
+  backendAddModulePromise ??= import('@webstir-io/webstir-backend').then(async (module) => {
+    if (typeof module.runAddRoute === 'function' && typeof module.runAddJob === 'function') {
+      return module as BackendAddModule;
+    }
+
+    if (monorepoRoot) {
+      throw new Error('Installed @webstir-io/webstir-backend package does not export runAddRoute/runAddJob.');
+    }
+
+    return await import('./add-backend-compat.ts');
+  });
+
+  return await backendAddModulePromise;
 }
 
 function parseBackendCommandArgs(rawArgs: readonly string[], spec: ParseSpec): ParsedBackendCommandArgs {
