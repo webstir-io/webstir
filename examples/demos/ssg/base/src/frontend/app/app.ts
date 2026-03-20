@@ -1,4 +1,5 @@
-import './scripts/components/menu.js';
+import { defineBoundary, type CleanupScope } from './boundary.js';
+import { mountMenu } from './scripts/components/menu.js';
 
 // Global app initialization
 
@@ -33,8 +34,13 @@ declare global {
     __webstirSetDevStatus?: (status: string, message?: string) => void;
     __webstirOnHmrFallback?: (info: { reason?: string; payload?: unknown; details?: unknown }) => void;
     __webstirRegisterHotModule?: (moduleId: string, handlers: HotModuleHandlers) => void;
+    __webstirHotModuleImporting?: boolean;
     __webstirDispose?: (asset: HotAsset | undefined, context: HotModuleContext) => boolean | Promise<boolean>;
     __webstirAccept?: (moduleExports: unknown, context: HotModuleContext) => boolean | Promise<boolean>;
+    __webstirAppShellBoundary?: {
+      mount(root: Element): Promise<unknown>;
+      unmount(): Promise<void>;
+    };
   }
 }
 
@@ -102,6 +108,61 @@ async function loadErrorHandler() {
   } catch (e) {
     console.error('Failed to load error handler:', e);
   }
+}
+
+function installShellErrorListeners(scope: CleanupScope): void {
+  const handleError = async () => {
+    await loadErrorHandler();
+  };
+
+  const handleRejection = async () => {
+    await loadErrorHandler();
+  };
+
+  window.addEventListener('error', handleError);
+  window.addEventListener('unhandledrejection', handleRejection);
+
+  scope.add(() => {
+    window.removeEventListener('error', handleError);
+  });
+  scope.add(() => {
+    window.removeEventListener('unhandledrejection', handleRejection);
+  });
+}
+
+let shellMountSequence = 0;
+
+export const appShellBoundary = defineBoundary({
+  mount(root, scope) {
+    const previousMount = root.getAttribute('data-webstir-shell-mounted');
+    const mountSequence = String(++shellMountSequence);
+
+    root.setAttribute('data-webstir-shell-mounted', mountSequence);
+    scope.add(() => {
+      if (previousMount === null) {
+        root.removeAttribute('data-webstir-shell-mounted');
+        return;
+      }
+
+      root.setAttribute('data-webstir-shell-mounted', previousMount);
+    });
+
+    installShellErrorListeners(scope);
+    mountMenu(scope);
+  }
+});
+
+window.__webstirAppShellBoundary = appShellBoundary;
+
+function bootShell(): void {
+  const root = document.body;
+  if (!root) {
+    return;
+  }
+
+  void appShellBoundary.mount(root).catch((error) => {
+    console.error('Failed to mount the Webstir shell:', error);
+  });
 }
 
 export function registerHotModule(moduleId: string, handlers: HotModuleHandlers): void {
@@ -175,16 +236,7 @@ window.__webstirAccept = async (moduleExports, context) => {
   return accepted;
 };
 
-// Set up error listeners that will dynamically import the error handler
-window.addEventListener('error', async () => {
-  await loadErrorHandler();
-  // The installed handler will catch subsequent errors
-});
-
-window.addEventListener('unhandledrejection', async () => {
-  await loadErrorHandler();
-  // The installed handler will catch subsequent rejections
-});
-
 // Export for use by pages if needed
 export { loadErrorHandler };
+
+bootShell();

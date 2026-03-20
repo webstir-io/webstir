@@ -138,35 +138,20 @@ async function compileAppTypeScript(context: BuilderContext, isProduction: boole
         return;
     }
 
-    const entryPoints = (await Promise.all([
-        scanGlob('**/*.ts', { cwd: appRoot }),
-        scanGlob('**/*.tsx', { cwd: appRoot })
-    ]))
-        .flat()
-        .sort((a, b) => a.localeCompare(b))
-        .filter((relativePath) => !relativePath.endsWith('.d.ts'))
-        .map((relativePath) => path.join(appRoot, relativePath));
-    if (entryPoints.length === 0) {
+    const entryPoint = await resolveAppEntry(appRoot);
+    if (!entryPoint) {
         return;
     }
 
-    const outdir = isProduction
-        ? path.join(config.paths.dist.frontend, FOLDERS.app)
-        : path.join(config.paths.build.frontend, FOLDERS.app);
+    const outdir = path.join(config.paths.build.frontend, FOLDERS.app);
     await ensureDir(outdir);
 
-    await esbuild({
-        entryPoints,
-        outdir,
-        format: 'esm',
-        target: 'es2020',
-        platform: 'browser',
-        sourcemap: !isProduction,
-        minify: isProduction,
-        bundle: false,
-        outbase: appRoot,
-        logLevel: 'silent'
-    });
+    if (bundler === 'bun') {
+        await buildForDevelopmentWithBun(outdir, entryPoint);
+        return;
+    }
+
+    await buildAppForDevelopmentWithEsbuild(outdir, entryPoint);
 }
 
 async function buildForDevelopment(
@@ -279,6 +264,19 @@ async function buildForDevelopmentWithBun(outputDir: string, entryPoint: string)
         sourcemap: 'linked'
     });
     ensureBunBuildSucceeded(result, `development bundle ${entryPoint}`);
+}
+
+async function buildAppForDevelopmentWithEsbuild(outputDir: string, entryPoint: string): Promise<void> {
+    await esbuild({
+        entryPoints: [entryPoint],
+        outdir: outputDir,
+        format: 'esm',
+        target: 'es2020',
+        platform: 'browser',
+        sourcemap: 'linked',
+        bundle: true,
+        logLevel: 'silent'
+    });
 }
 
 async function buildPageForProductionWithEsbuild(outputDir: string, pageName: string, entryPoint: string): Promise<string> {

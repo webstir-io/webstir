@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
 import { readFile, rm, writeFile } from 'node:fs/promises';
+import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
@@ -92,6 +93,104 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
     await removeDemoWorkspace(workspaceCopy);
   }
 }, 60_000);
+
+test('CLI watch exposes a full home boundary that remounts cleanly', async () => {
+  const workspaceCopy = await copyDemoWorkspace('full', 'webstir-full-watch-js');
+  const workspace = workspaceCopy.workspaceRoot;
+  await Promise.all([
+    rm(path.join(workspace, 'build'), { recursive: true, force: true }),
+    rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
+    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true })
+  ]);
+
+  const port = await getFreePort();
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      'watch',
+      '--workspace',
+      workspace,
+      '--port',
+      String(port),
+    ],
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  childProcesses.push(child);
+  const stdoutBuffer = { text: '' };
+  const stderrBuffer = { text: '' };
+  const stdoutDrain = collectOutput(child.stdout, stdoutBuffer);
+  const stderrDrain = collectOutput(child.stderr, stderrBuffer);
+
+  let browser: Browser | undefined;
+
+  try {
+    await waitFor(async () => {
+      expect(stdoutBuffer.text).toContain('[webstir] watch starting');
+    }, 30_000);
+
+    await waitFor(async () => {
+      const rootHtml = await fetchText(port, '/');
+      expect(rootHtml).toContain('Home');
+    }, 20_000);
+
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--disable-dev-shm-usage'],
+    });
+    const context = await browser.newContext({
+      javaScriptEnabled: true,
+      viewport: { width: 1280, height: 720 },
+    });
+    const page = await context.newPage();
+
+    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => document.querySelector('main')?.dataset.hmrRendered === '1');
+    await page.waitForFunction(() => Boolean((window as Window & { __webstirHomeBoundary?: unknown }).__webstirHomeBoundary));
+    await page.evaluate(() => {
+      (window as Window & { __webstirFullMarker?: string }).__webstirFullMarker = 'persist';
+    });
+
+    await page.evaluate(async () => {
+      const boundary = (window as Window & {
+        __webstirHomeBoundary?: {
+          mount(root: Element): Promise<unknown>;
+          unmount(): Promise<void>;
+        };
+      }).__webstirHomeBoundary;
+
+      if (!boundary) {
+        throw new Error('Missing full home boundary.');
+      }
+
+      await boundary.unmount();
+      await boundary.mount(document.querySelector('main')!);
+    });
+
+    await page.waitForFunction(() => document.querySelector('main')?.dataset.hmrRendered === '2');
+    expect(await page.locator('h1').textContent()).toBe('Home');
+    expect(await page.evaluate(() => (window as Window & { __webstirFullMarker?: string }).__webstirFullMarker ?? null)).toBe('persist');
+
+    await context.close();
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
 
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);

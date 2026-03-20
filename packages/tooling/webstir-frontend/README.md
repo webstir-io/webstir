@@ -8,9 +8,31 @@ HTML-first frontend delivery for Webstir workspaces. This package builds page do
 - Publish output with fingerprinted assets under `dist/frontend/**`
 - Watch-mode rebuilds used by the Bun orchestrator
 - Shared app-shell assets such as navigation, refresh, and client enhancement hooks
+- Runtime helpers for boundary-style mount/unmount lifecycles and cleanup scopes
 - SSG as a supported mode, without making static-only delivery the center of the product story
 
 Requires Bun **1.3.5** or newer.
+
+## Runtime Model
+
+Client code that participates in hot updates should use the boundary runtime instead of relying on module top-level side effects.
+
+```ts
+import { createCleanupScope, defineBoundary } from '@webstir-io/webstir-frontend/runtime';
+```
+
+- `createCleanupScope()` collects cleanup handlers and disposes them in reverse registration order.
+- `defineBoundary()` wraps a page or app region with explicit `mount()` and `unmount()` lifecycle methods.
+- Boundary code should register DOM listeners, timers, observers, and similar side effects through the cleanup scope so remounts stay deterministic.
+
+## Hot Update Rules
+
+Webstir watch mode follows a narrow fallback policy:
+
+- CSS edits hot-swap in the browser.
+- JS edits remount only when the module or boundary explicitly opts in.
+- Content, HTML, and route-shape changes fall back to rebuild + reload.
+- Any cleanup failure or declined boundary update falls back to reload.
 
 ## HTML-First Workflow
 

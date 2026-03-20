@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DevServer, type DevServerAddress } from './dev-server.ts';
 import { ensureLocalPackageArtifacts } from './providers.ts';
 import { WorkspaceWatcher } from './workspace-watcher.ts';
+import type { HotUpdateAsset, HotUpdatePayload } from './watch-events.ts';
 
 export interface BunSsgFrontendWatchOptions {
   readonly workspaceRoot: string;
@@ -25,12 +26,14 @@ export async function startBunSsgFrontendWatch(
   options: BunSsgFrontendWatchOptions
 ): Promise<BunSsgFrontendWatchSession> {
   const workspaceRoot = path.resolve(options.workspaceRoot);
+  const frontendSourceRoot = path.join(workspaceRoot, 'src', 'frontend');
+  const buildRoot = path.join(workspaceRoot, 'build', 'frontend');
   const operations = await loadFrontendOperations();
 
   await operations.runBuild({ workspaceRoot });
 
   const server = new DevServer({
-    buildRoot: path.join(workspaceRoot, 'build', 'frontend'),
+    buildRoot,
     host: options.host,
     port: options.port,
   });
@@ -67,16 +70,29 @@ export async function startBunSsgFrontendWatch(
       void enqueue(async () => {
         await server.publishStatus('building');
 
+        let hotUpdate: HotUpdatePayload | null = null;
         if (event.type === 'change') {
           await operations.runRebuild({
             workspaceRoot,
+            changedFile: event.path,
+          });
+          hotUpdate = createHotUpdatePayload({
+            workspaceRoot,
+            frontendSourceRoot,
+            buildRoot,
             changedFile: event.path,
           });
         } else {
           await operations.runBuild({ workspaceRoot });
         }
 
-        await server.publishStatus('success');
+        if (hotUpdate) {
+          await server.publishHotUpdate(hotUpdate);
+          await server.publishStatus('success');
+          return;
+        }
+
+        await server.publishStatus('hmr-fallback');
         await server.publishReload();
       });
     },
@@ -128,4 +144,120 @@ async function reportBuildFailure(server: DevServer, error: unknown): Promise<vo
   await server.publishStatus('error');
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[webstir] frontend rebuild failed: ${message}`);
+}
+
+function createHotUpdatePayload(options: {
+  readonly workspaceRoot: string;
+  readonly frontendSourceRoot: string;
+  readonly buildRoot: string;
+  readonly changedFile: string;
+}): HotUpdatePayload | null {
+  const changedFile = path.resolve(options.changedFile);
+  if (!isWithinDirectory(changedFile, options.frontendSourceRoot)) {
+    return null;
+  }
+
+  const relativeToFrontend = path.relative(options.frontendSourceRoot, changedFile);
+  const relativeParts = splitPathSegments(relativeToFrontend);
+  if (relativeParts.length === 0) {
+    return null;
+  }
+
+  if (relativeParts[0] === 'app' && isCssFile(changedFile)) {
+    return createCssHotUpdate({
+      buildRoot: options.buildRoot,
+      changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
+      assetRelativePath: path.posix.join('app', 'app.css'),
+    });
+  }
+
+  if (relativeParts[0] === 'pages' && relativeParts.length >= 3 && isCssFile(changedFile)) {
+    const pageName = relativeParts[1];
+    if (!pageName) {
+      return null;
+    }
+
+    return createCssHotUpdate({
+      buildRoot: options.buildRoot,
+      changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
+      assetRelativePath: path.posix.join('pages', pageName, 'index.css'),
+    });
+  }
+
+  if (
+    relativeParts[0] === 'pages' &&
+    relativeParts[1] === 'docs' &&
+    typeof relativeParts[2] === 'string' &&
+    relativeParts[2].startsWith('index.') &&
+    isJavaScriptFile(changedFile)
+  ) {
+    console.info(`[webstir] docs boundary hot update detected: ${normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile))}`);
+    return createJsHotUpdate({
+      buildRoot: options.buildRoot,
+      changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
+      assetRelativePath: path.posix.join('pages', 'docs', 'index.js'),
+    });
+  }
+
+  return null;
+}
+
+function createCssHotUpdate(options: {
+  readonly buildRoot: string;
+  readonly changedFile: string;
+  readonly assetRelativePath: string;
+}): HotUpdatePayload {
+  const asset = createHotUpdateAsset(options.buildRoot, options.assetRelativePath, 'css');
+  return {
+    requiresReload: false,
+    modules: [],
+    styles: [asset],
+    changedFile: options.changedFile,
+  };
+}
+
+function createJsHotUpdate(options: {
+  readonly buildRoot: string;
+  readonly changedFile: string;
+  readonly assetRelativePath: string;
+}): HotUpdatePayload {
+  const asset = createHotUpdateAsset(options.buildRoot, options.assetRelativePath, 'js');
+  return {
+    requiresReload: false,
+    modules: [asset],
+    styles: [],
+    changedFile: options.changedFile,
+  };
+}
+
+function createHotUpdateAsset(buildRoot: string, assetRelativePath: string, type: HotUpdateAsset['type']): HotUpdateAsset {
+  const normalizedRelativePath = normalizeForwardSlashes(assetRelativePath);
+  return {
+    type,
+    path: path.join(buildRoot, normalizedRelativePath),
+    relativePath: normalizedRelativePath,
+    url: `/${normalizedRelativePath}`,
+  };
+}
+
+function isCssFile(filePath: string): boolean {
+  return path.extname(filePath).toLowerCase() === '.css';
+}
+
+function isJavaScriptFile(filePath: string): boolean {
+  const extension = path.extname(filePath).toLowerCase();
+  return extension === '.js' || extension === '.ts';
+}
+
+function isWithinDirectory(filePath: string, directory: string): boolean {
+  const relative = path.relative(directory, filePath);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function splitPathSegments(value: string): readonly string[] {
+  return normalizeForwardSlashes(value).split('/').filter(Boolean);
+}
+
+function normalizeForwardSlashes(value: string): string {
+  return value.split(path.sep).join('/');
 }
