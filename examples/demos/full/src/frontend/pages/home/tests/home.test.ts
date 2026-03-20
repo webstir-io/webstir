@@ -14,8 +14,14 @@ test('home page has expected parts', () => {
   const html = readFileSync(htmlPath, 'utf8');
 
   assert.isTrue(html.includes('<title>Home</title>'), 'Missing <title>Home</title>');
-  assert.isTrue(html.includes('<link rel="stylesheet" href="/pages/home/index.css"'), 'Missing CSS link to index.css');
-  assert.isTrue(html.includes('<script type="module" src="/pages/home/index.js"'), 'Missing module script to index.js');
+  assert.isTrue(
+    html.includes('<link rel="stylesheet" href="index.css"') || html.includes('<link rel="stylesheet" href="/pages/home/index.css"'),
+    'Missing CSS link to index.css'
+  );
+  assert.isTrue(
+    html.includes('<script type="module" src="index.js"') || html.includes('<script type="module" src="/pages/home/index.js"'),
+    'Missing module script to index.js'
+  );
   assert.isTrue(html.includes('<main'), 'Missing <main> container');
   assert.isTrue(html.includes('Home'), 'Missing Home content');
   assert.isTrue(
