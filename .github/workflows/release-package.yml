@@ -81,6 +81,11 @@ jobs:
         working-directory: ${{ steps.package.outputs.package_dir }}
         run: bun run --if-present smoke
 
+      - name: Smoke standalone install
+        if: steps.package.outputs.package_name == '@webstir-io/webstir'
+        working-directory: ${{ steps.package.outputs.package_dir }}
+        run: bun run test:install:standalone
+
       - name: Check registry for existing version
         id: registry
         run: |

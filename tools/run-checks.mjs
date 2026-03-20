@@ -45,6 +45,10 @@ export function buildCheckPlan(mode) {
       label: 'bun orchestrator required suite',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test'],
     },
+    {
+      label: 'bun standalone install smoke',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:install:standalone'],
+    },
   ];
 
   switch (mode) {
