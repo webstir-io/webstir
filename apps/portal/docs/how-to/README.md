@@ -5,7 +5,7 @@ Task-oriented docs for doing specific things.
 - [Init](./init.md)
 - [Build](./build.md)
 - [Watch](./watch.md)
-- [Frontend Watch Daemon](./frontend-watch.md)
+- [Frontend Watch](./frontend-watch.md)
 - [Test](./test.md)
 - [Publish](./publish.md)
 - [Static Sites (SSG Preview)](./static-sites.md)

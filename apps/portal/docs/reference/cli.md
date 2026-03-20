@@ -94,24 +94,20 @@ What it does:
 - Handles the required frontend prebuild for `ssg` and `full` before publish output is finalized
 
 ### watch
-Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--frontend-runtime <legacy|bun>] [--verbose] [--hmr-verbose]`
+Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--verbose] [--hmr-verbose]`
 
 What it does:
 - Starts the Bun dev loop for the selected workspace
-- `spa` now defaults to the Bun-first watch path
-- `full` now uses the Bun-native frontend host by default
-- `ssg` remains on the legacy daemon-backed frontend watch flow intentionally for this phase
 - Supports `spa`, `ssg`, `api`, and `full`
 - Runs the Bun static/dev server for frontend flows
 - Supervises the backend runtime for `api` and `full`
 - Proxies `/api/*` in `full` mode
 
 Notes:
-- `--frontend-runtime legacy` is now an `ssg`-only escape hatch for this phase
-- `--frontend-runtime bun` currently supports `spa` and `full` only and rejects `ssg` and `api`
+- Frontend runtime selection is no longer a CLI option
 - SPA and SSG watch serve frontend output and trigger reloads after rebuilds
 - API watch rebuilds and restarts the backend runtime after successful backend changes
-- Full watch now uses a Bun-native frontend host plus backend `/api` proxy composition
+- Full watch uses a Bun-native frontend host plus backend `/api` proxy composition
 
 ### test
 Usage: `webstir test --workspace <path> [--runtime <frontend|backend|all>]`

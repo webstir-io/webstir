@@ -1,12 +1,11 @@
-# Legacy HMR Validation Checklist
+# HMR Validation Checklist
 
-Follow these steps after touching the legacy frontend hot-update pipeline.
-SPA and `full` are on the Bun-native path now. Use this checklist for the legacy path only when validating `ssg`.
+Follow these steps after touching the frontend hot-update pipeline.
 
 ## Automated Smoke
 - Run `bun run --filter @webstir-io/webstir-frontend build`.
 - Run `bun run --filter @webstir-io/webstir-frontend test`.
-- Start `webstir watch` in a clean frontend-capable workspace and confirm the daemon boots without errors.
+- Start `webstir watch` in a clean frontend-capable workspace and confirm the dev loop boots without errors.
 
 ## JavaScript/Edit Loop
 1. Launch `webstir watch --workspace "$PWD/examples/demos/spa" --hmr-verbose`.
@@ -26,13 +25,13 @@ SPA and `full` are on the Bun-native path now. Use this checklist for the legacy
 3. Confirm:
    - Console warning announces fallback with reasons and totals.
    - SSE status switches to `hmr-fallback`, followed by a full reload.
-   - Daemon logs show `Hot update totals — …` and `frontend.watch.pipeline.hmrfallback`.
+   - Watch logs show `frontend.watch.pipeline.hmrfallback`.
 
 ## HTML/Manifest Change
 1. Modify `examples/demos/spa/src/frontend/app/app.html`.
-2. Observe the daemon logging a reload requirement and the browser performing a full refresh.
+2. Observe the watch loop logging a reload requirement and the browser performing a full refresh.
 
 ## Performance Spot Check
-- Capture `frontend.watch.javascript.build.stats` and `frontend.watch.hmr.summary` timings; ensure hot updates complete quickly on the demo workspace you used for validation.
+- Capture the emitted watch diagnostics and ensure hot updates complete quickly on the demo workspace you used for validation.
 
 Document any deviations (especially fallback rates above 10%) before shipping.

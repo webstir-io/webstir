@@ -8,8 +8,8 @@ The active implementation no longer uses the older `DevService` / `WatchService`
 
 - `DevServer`: serves `build/frontend/**`, emits SSE status/reload events, and proxies `/api/*` in `full` mode
 - `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload triggers
-- `FrontendWatchDaemonClient`: launches `webstir-frontend watch-daemon` and forwards structured diagnostics
-- `WatchCoordinator` (frontend package): performs incremental frontend rebuilds and decides between HMR and full reloads
+- `bun-generated-frontend-watch.ts`: runs the generated frontend host used by `spa` and `full`
+- `bun-ssg-watch.ts`: runs the SSG frontend watch session
 - `BackendRuntimeSupervisor`: starts and restarts `build/backend/index.js` after successful backend builds
 
 ## Responsibilities Split
@@ -20,8 +20,8 @@ The active implementation no longer uses the older `DevService` / `WatchService`
 
 ## Change Flow
 
-- Frontend file changes flow through `WorkspaceWatcher` to the frontend watch daemon.
-- The frontend daemon emits diagnostics that the orchestrator turns into browser status, HMR, or reload events.
+- Frontend file changes flow through `WorkspaceWatcher` to the active frontend watch session.
+- The frontend watch session emits diagnostics that the orchestrator turns into browser status, HMR, or reload events.
 - Backend rebuild completions flow through `startBackendWatch()` and trigger `BackendRuntimeSupervisor.restart()`.
 
 ## Why This Matters
