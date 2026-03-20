@@ -111,13 +111,14 @@ test('CLI watch hot-swaps docs page CSS edits without a full reload', async () =
   }
 }, 120_000);
 
-test('CLI watch remounts the docs boundary for JS edits without a full reload', async () => {
+test('CLI watch remounts the docs sidebar boundary for JS edits without a full reload', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(workspace, port);
 
   let browser: Browser | undefined;
   const browserLogs: string[] = [];
+  let originalDocsPage = '';
 
   try {
     await waitFor(async () => {
@@ -141,40 +142,27 @@ test('CLI watch remounts the docs boundary for JS edits without a full reload', 
     });
 
     await page.goto(`http://127.0.0.1:${port}/docs/`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(
-      () => document.querySelector('.docs-layout')?.dataset.webstirDocsBoundaryVersion === 'docs-boundary-v1'
-    );
-    expect(await page.evaluate(() => Boolean((window as Window & { __webstirDocsHot?: unknown }).__webstirDocsHot))).toBe(true);
+    await page.waitForFunction(() => {
+      const layout = document.querySelector('.docs-layout');
+      const links = document.querySelector('#docs-links');
+      return layout?.dataset.webstirDocsBoundaryVersion === 'docs-boundary-v1'
+        && links?.dataset.webstirDocsSidebarBoundaryVersion === 'docs-sidebar-v1';
+    });
     await page.evaluate(() => {
       (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker = 'persist';
     });
 
-    const remountedVersion = await page.evaluate(async () => {
-      const browserWindow = window as Window & {
-        __webstirDocsBoundaryVersionOverride?: string;
-        __webstirDocsBoundary?: { mount(root: Element): Promise<unknown>; unmount(): Promise<void> };
-        __webstirDocsHot?: { accept(): Promise<boolean> };
-      };
+    const docsPagePath = path.join(workspace, 'src', 'frontend', 'pages', 'docs', 'index.ts');
+    originalDocsPage = await readFile(docsPagePath, 'utf8');
+    await writeFile(
+      docsPagePath,
+      originalDocsPage.replace("docs-sidebar-v1", "docs-sidebar-v2"),
+      'utf8'
+    );
 
-      browserWindow.__webstirDocsBoundaryVersionOverride = 'docs-boundary-v2-hot';
-
-      const hot = browserWindow.__webstirDocsHot;
-      if (!hot) {
-        throw new Error('Missing docs hot hook.');
-      }
-
-      if (!browserWindow.__webstirDocsBoundary) {
-        throw new Error('Missing docs boundary.');
-      }
-
-      const accepted = await hot.accept();
-      if (!accepted) {
-        throw new Error('Docs hot hook declined the update.');
-      }
-      return document.querySelector('.docs-layout')?.getAttribute('data-webstir-docs-boundary-version') ?? null;
-    });
-
-    expect(remountedVersion).toBe('docs-boundary-v2-hot');
+    await page.waitForFunction(() => document.querySelector('#docs-links')?.dataset.webstirDocsSidebarBoundaryVersion === 'docs-sidebar-v2');
+    expect(await page.locator('.docs-layout').getAttribute('data-webstir-docs-boundary-version')).toBe('docs-boundary-v1');
+    expect(await page.locator('#docs-links').getAttribute('data-webstir-docs-sidebar-boundary-version')).toBe('docs-sidebar-v2');
     expect(await page.evaluate(() => (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker ?? null)).toBe('persist');
     expect(await page.locator('.docs-layout').textContent()).toContain('Documentation');
 
@@ -192,6 +180,13 @@ test('CLI watch remounts the docs boundary for JS edits without a full reload', 
     await child.exited.catch(() => undefined);
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
+    if (originalDocsPage) {
+      await writeFile(
+        path.join(workspace, 'src', 'frontend', 'pages', 'docs', 'index.ts'),
+        originalDocsPage,
+        'utf8'
+      );
+    }
   }
 }, 120_000);
 

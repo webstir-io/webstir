@@ -16,6 +16,10 @@ test('collectWatchActions turns pipeline success with hot update into HMR + succ
           hotUpdate: {
             requiresReload: false,
             changedFile: 'src/frontend/pages/home/index.ts',
+            target: {
+              kind: 'boundary',
+              id: 'home',
+            },
             modules: [
               {
                 type: 'js',
@@ -46,6 +50,10 @@ test('collectWatchActions turns pipeline success with hot update into HMR + succ
           },
         ],
         styles: [],
+        target: {
+          kind: 'boundary',
+          id: 'home',
+        },
         fallbackReasons: undefined,
         stats: undefined,
       },

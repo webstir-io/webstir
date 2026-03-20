@@ -80,6 +80,7 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             changedFile: payload.changedFile ?? null,
             modules,
             styles,
+            target: normalizeTarget(payload.target),
             cacheBuster,
             timestamp: Date.now()
         };
@@ -166,6 +167,7 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             changedFile: baseContext.changedFile,
             modules: baseContext.modules,
             styles: baseContext.styles,
+            target: baseContext.target,
             cacheBuster: baseContext.cacheBuster,
             timestamp: baseContext.timestamp,
             asset
@@ -191,19 +193,25 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     }
 
     async function invokeAccept(moduleExports, context) {
-        const docsHandler = window.__webstirDocsHot;
-        if (docsHandler && typeof docsHandler.accept === 'function') {
-            try {
-                const result = docsHandler.accept(context);
-                if (isPromise(result)) {
-                    const resolved = await result;
-                    return resolved !== false;
+        const targetBoundary = context.target;
+        if (targetBoundary) {
+            const boundaryHandler = getBoundaryHotHandler(targetBoundary.id);
+            if (boundaryHandler && typeof boundaryHandler.accept === 'function') {
+                try {
+                    const result = boundaryHandler.accept(context);
+                    if (isPromise(result)) {
+                        const resolved = await result;
+                        return resolved !== false;
+                    }
+                    return result !== false;
+                } catch (error) {
+                    console.error(`[webstir-hmr] Boundary hot handler threw for '${targetBoundary.id}'.`, error);
+                    return false;
                 }
-                return result !== false;
-            } catch (error) {
-                console.error('[webstir-hmr] Docs hot handler threw.', error);
-                return false;
             }
+
+            console.warn(`[webstir-hmr] No hot boundary handler registered for '${targetBoundary.id}'.`);
+            return false;
         }
 
         const moduleHandler = getModuleHotHandler(moduleExports, 'accept');
@@ -251,6 +259,35 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
 
         const handler = candidate[key];
         return typeof handler === 'function' ? handler : null;
+    }
+
+    function getBoundaryHotHandler(boundaryId) {
+        const registry = window.__webstirGetHotBoundary;
+        if (typeof registry !== 'function') {
+            return null;
+        }
+
+        try {
+            return registry(boundaryId) ?? null;
+        } catch (error) {
+            console.error(`[webstir-hmr] Failed to resolve hot boundary '${boundaryId}'.`, error);
+            return null;
+        }
+    }
+
+    function normalizeTarget(target) {
+        if (!target || typeof target !== 'object') {
+            return null;
+        }
+
+        if (target.kind !== 'boundary' || typeof target.id !== 'string' || target.id.trim() === '') {
+            return null;
+        }
+
+        return {
+            kind: 'boundary',
+            id: target.id
+        };
     }
 
     function swapStylesheet(asset, cacheBuster) {

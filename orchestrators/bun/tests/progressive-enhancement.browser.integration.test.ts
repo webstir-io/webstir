@@ -12,7 +12,7 @@ test('browser progressive enhancement flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-watch-', 'full');
 
   try {
-    await runWatchBrowserScenarioWithRetry(workspace, exerciseBrowserScenario, {
+    await runWatchBrowserScenarioWithRetry(workspace, (origin, progress) => exerciseBrowserScenario(origin, 'watch', progress), {
       scenarioTimeoutMs: 60_000
     });
   } finally {
@@ -24,7 +24,7 @@ test('browser progressive enhancement flows work in publish mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-publish-', 'full');
 
   try {
-    await runPublishBrowserScenarioWithRetry(workspace, exerciseBrowserScenario);
+    await runPublishBrowserScenarioWithRetry(workspace, (origin, progress) => exerciseBrowserScenario(origin, 'publish', progress));
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
@@ -100,7 +100,11 @@ test('browser dashboard flows work in publish mode', async () => {
   }
 }, 120_000);
 
-async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
+async function exerciseBrowserScenario(
+  origin: string,
+  mode: 'watch' | 'publish',
+  progress?: ScenarioProgress
+): Promise<void> {
   const browser = await launchBrowser();
   try {
     const fragmentContext = await browser.newContext({
@@ -136,7 +140,7 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
       await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
       await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
       setScenarioStep(progress, 'exercise enhanced session flow');
-      await assertSessionFlow(sessionPage);
+      await assertSessionFlow(sessionPage, mode);
     } finally {
       await sessionContext.close().catch(() => undefined);
     }
@@ -187,7 +191,7 @@ async function assertFragmentUpdateAndFocus(page: Page): Promise<void> {
   expect(await page.locator('#greeting-preview').textContent()).toContain('replace just this region');
 }
 
-async function assertSessionFlow(page: Page): Promise<void> {
+async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise<void> {
   await page.locator('#session-name').fill('Casey Browser');
 
   await page.locator('#demo-sign-in').click();
@@ -201,9 +205,22 @@ async function assertSessionFlow(page: Page): Promise<void> {
 
   await page.locator('#demo-sign-out').click();
   await page.locator('#demo-sign-in').waitFor({ state: 'visible' });
+
+  if (mode === 'publish') {
+    await page.waitForFunction(() => window.location.pathname === '/api/demo/progressive-enhancement' && window.location.search === '');
+  } else {
+    await page.waitForFunction(() => window.location.search === '?session=signed-out');
+  }
+
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#demo-sign-in').waitFor({ state: 'visible' });
-  expect(await page.locator('#session-status').textContent()).toContain('Not signed in');
+
+  if (mode === 'publish') {
+    expect(await page.locator('#session-status').textContent()).toContain('Not signed in');
+    return;
+  }
+
+  expect(await page.locator('#session-status').textContent()).toContain('Signed out via the no-JavaScript redirect path.');
 }
 
 async function assertNativeRedirectFlow(page: Page, origin: string): Promise<void> {

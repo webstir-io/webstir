@@ -1,4 +1,4 @@
-import { defineBoundary, type CleanupScope } from './boundary.js';
+import { defineBoundary, listen, type CleanupScope } from './boundary.js';
 import { mountMenu } from './scripts/components/menu.js';
 
 // Global app initialization
@@ -24,9 +24,15 @@ type HotModuleHandlers = {
   dispose?: (context: HotModuleContext) => void | Promise<void>;
 };
 
+type HotBoundaryHandlers = {
+  accept?: (context: HotModuleContext) => boolean | Promise<boolean>;
+};
+
 type HotModuleRecord = HotModuleHandlers & {
   currentExports?: unknown;
 };
+
+type HotBoundaryRecord = HotBoundaryHandlers;
 
 declare global {
   interface Window {
@@ -34,6 +40,8 @@ declare global {
     __webstirSetDevStatus?: (status: string, message?: string) => void;
     __webstirOnHmrFallback?: (info: { reason?: string; payload?: unknown; details?: unknown }) => void;
     __webstirRegisterHotModule?: (moduleId: string, handlers: HotModuleHandlers) => void;
+    __webstirRegisterHotBoundary?: (boundaryId: string, handlers: HotBoundaryHandlers) => void;
+    __webstirGetHotBoundary?: (boundaryId: string) => HotBoundaryRecord | undefined;
     __webstirHotModuleImporting?: boolean;
     __webstirDispose?: (asset: HotAsset | undefined, context: HotModuleContext) => boolean | Promise<boolean>;
     __webstirAccept?: (moduleExports: unknown, context: HotModuleContext) => boolean | Promise<boolean>;
@@ -45,6 +53,7 @@ declare global {
 }
 
 const hotModuleRegistry = new Map<string, HotModuleRecord>();
+const hotBoundaryRegistry = new Map<string, HotBoundaryRecord>();
 
 function ensureRecord(moduleId: string): HotModuleRecord {
   const existing = hotModuleRegistry.get(moduleId);
@@ -119,38 +128,51 @@ function installShellErrorListeners(scope: CleanupScope): void {
     await loadErrorHandler();
   };
 
-  window.addEventListener('error', handleError);
-  window.addEventListener('unhandledrejection', handleRejection);
-
-  scope.add(() => {
-    window.removeEventListener('error', handleError);
-  });
-  scope.add(() => {
-    window.removeEventListener('unhandledrejection', handleRejection);
-  });
+  listen(scope, window, 'error', handleError);
+  listen(scope, window, 'unhandledrejection', handleRejection);
 }
 
 let shellMountSequence = 0;
 
+type AppShellHotState = {
+  menuOpen: boolean;
+};
+
+function isAppShellHotState(value: unknown): value is AppShellHotState {
+  return Boolean(value && typeof value === 'object' && typeof (value as AppShellHotState).menuOpen === 'boolean');
+}
+
 export const appShellBoundary = defineBoundary({
   mount(root, scope) {
-    const previousMount = root.getAttribute('data-webstir-shell-mounted');
-    const mountSequence = String(++shellMountSequence);
-
-    root.setAttribute('data-webstir-shell-mounted', mountSequence);
-    scope.add(() => {
-      if (previousMount === null) {
-        root.removeAttribute('data-webstir-shell-mounted');
-        return;
-      }
-
-      root.setAttribute('data-webstir-shell-mounted', previousMount);
-    });
-
-    installShellErrorListeners(scope);
-    mountMenu(scope);
+    return mountAppShell(root, scope);
+  },
+  restoreState(root, scope, hotState) {
+    return mountAppShell(root, scope, isAppShellHotState(hotState) ? hotState : undefined);
+  },
+  snapshotState() {
+    return {
+      menuOpen: document.body.classList.contains('webstir-menu-open')
+    };
   }
 });
+
+function mountAppShell(root: Element, scope: CleanupScope, hotState?: AppShellHotState) {
+  const previousMount = root.getAttribute('data-webstir-shell-mounted');
+  const mountSequence = String(++shellMountSequence);
+
+  root.setAttribute('data-webstir-shell-mounted', mountSequence);
+  scope.add(() => {
+    if (previousMount === null) {
+      root.removeAttribute('data-webstir-shell-mounted');
+      return;
+    }
+
+    root.setAttribute('data-webstir-shell-mounted', previousMount);
+  });
+
+  installShellErrorListeners(scope);
+  mountMenu(scope, { open: hotState?.menuOpen ?? false });
+}
 
 window.__webstirAppShellBoundary = appShellBoundary;
 
@@ -178,6 +200,22 @@ export function registerHotModule(moduleId: string, handlers: HotModuleHandlers)
 }
 
 window.__webstirRegisterHotModule = registerHotModule;
+window.__webstirRegisterHotBoundary = (boundaryId, handlers) => {
+  const normalized = normalizeModuleId(boundaryId);
+  if (!normalized) {
+    return;
+  }
+
+  hotBoundaryRegistry.set(normalized, handlers);
+};
+window.__webstirGetHotBoundary = (boundaryId) => {
+  const normalized = normalizeModuleId(boundaryId);
+  if (!normalized) {
+    return undefined;
+  }
+
+  return hotBoundaryRegistry.get(normalized);
+};
 
 window.__webstirDispose = async (asset, context) => {
   const moduleId = normalizeModuleId(asset?.url ?? asset?.relativePath);

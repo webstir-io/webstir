@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DevServer, type DevServerAddress } from './dev-server.ts';
 import { ensureLocalPackageArtifacts } from './providers.ts';
 import { WorkspaceWatcher } from './workspace-watcher.ts';
-import type { HotUpdateAsset, HotUpdatePayload } from './watch-events.ts';
+import type { HotUpdateAsset, HotUpdatePayload, HotUpdateTarget } from './watch-events.ts';
 
 export interface BunSsgFrontendWatchOptions {
   readonly workspaceRoot: string;
@@ -191,11 +191,15 @@ function createHotUpdatePayload(options: {
     relativeParts[2].startsWith('index.') &&
     isJavaScriptFile(changedFile)
   ) {
-    console.info(`[webstir] docs boundary hot update detected: ${normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile))}`);
+    console.info(`[webstir] docs sidebar hot update detected: ${normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile))}`);
     return createJsHotUpdate({
       buildRoot: options.buildRoot,
       changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
       assetRelativePath: path.posix.join('pages', 'docs', 'index.js'),
+      target: {
+        kind: 'boundary',
+        id: 'docs-sidebar',
+      },
     });
   }
 
@@ -220,12 +224,14 @@ function createJsHotUpdate(options: {
   readonly buildRoot: string;
   readonly changedFile: string;
   readonly assetRelativePath: string;
+  readonly target?: HotUpdateTarget;
 }): HotUpdatePayload {
   const asset = createHotUpdateAsset(options.buildRoot, options.assetRelativePath, 'js');
   return {
     requiresReload: false,
     modules: [asset],
     styles: [],
+    target: options.target,
     changedFile: options.changedFile,
   };
 }
