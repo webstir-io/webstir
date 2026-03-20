@@ -7,13 +7,12 @@ import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
 import { compileTestModules } from './compile-tests.ts';
 import { loadProvider } from './providers.ts';
+import { applyRuntimeFilter, describeRuntimeFilter, normalizeRuntimeFilter } from './runtime-filter.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
+import { run as runFrontendTests } from './testing-runtime.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import {
-  applyRuntimeFilter,
-  describeRuntimeFilter,
-  normalizeRuntimeFilter,
-  createDefaultProviderRegistry,
+  createDefaultProviderRegistry as createPublishedProviderRegistry,
   discoverTestManifest,
 } from '@webstir-io/webstir-testing';
 
@@ -73,7 +72,7 @@ export function formatFailedTests(results: readonly TestRunResult[]): string[] {
 }
 
 async function executeTestRun(modules: readonly TestModule[], workspaceRoot: string): Promise<RunnerSummary> {
-  const registry = createDefaultProviderRegistry();
+  const registry = createPublishedProviderRegistry();
   const grouped = new Map<TestModule['runtime'], TestModule[]>();
 
   for (const module of modules) {
@@ -88,7 +87,9 @@ async function executeTestRun(modules: readonly TestModule[], workspaceRoot: str
   let summary = createEmptySummary();
 
   for (const [runtime, runtimeModules] of grouped) {
-    const provider = registry.get(runtime);
+    const provider = runtime === 'frontend'
+      ? { id: '@webstir-io/webstir/frontend-runtime', runTests: runFrontendTests }
+      : registry.get(runtime);
     if (!provider) {
       continue;
     }

@@ -6,7 +6,7 @@ import ts from 'typescript';
 import type { TestModule } from '@webstir-io/webstir-testing';
 
 const TESTING_PACKAGE_SPECIFIER = '@webstir-io/webstir-testing';
-const TESTING_RUNTIME_SPECIFIER = import.meta.resolve(TESTING_PACKAGE_SPECIFIER);
+const TESTING_RUNTIME_SPECIFIER = import.meta.resolve('./testing-runtime.ts');
 
 export async function compileTestModules(workspaceRoot: string, modules: readonly TestModule[]): Promise<void> {
   const shimPath = await ensureTestingRuntimeShim(workspaceRoot);

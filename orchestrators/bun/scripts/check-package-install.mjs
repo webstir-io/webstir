@@ -56,6 +56,17 @@ async function main() {
     await assertExists(path.join(workspaceRoot, '.webstir', 'backend-manifest-digest.json'), 'backend manifest digest');
     await assertExists(path.join(workspaceRoot, '.webstir', 'frontend-manifest.json'), 'frontend manifest');
 
+    const testOutput = await run([cliPath, 'test', '--workspace', workspaceRoot, '--runtime', 'frontend'], workspaceRoot);
+    if (!testOutput.includes('[webstir] test complete')) {
+      throw new Error(`Expected test summary in output, received:\n${testOutput}`);
+    }
+    if (!testOutput.includes('runtime: frontend')) {
+      throw new Error(`Expected frontend runtime summary in output, received:\n${testOutput}`);
+    }
+    if (!testOutput.includes('failed: 0')) {
+      throw new Error(`Expected zero frontend test failures in output, received:\n${testOutput}`);
+    }
+
     console.log('[webstir][install-smoke] package install smoke passed');
   } catch (error) {
     keepWorkspace = (process.env.WEBSTIR_INSTALL_SMOKE_KEEP ?? '').toLowerCase() === '1';
