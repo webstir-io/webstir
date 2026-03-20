@@ -46,6 +46,10 @@ export function buildCheckPlan(mode) {
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test'],
     },
     {
+      label: 'bun package install smoke',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:install:package'],
+    },
+    {
       label: 'bun standalone install smoke',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:install:standalone'],
     },

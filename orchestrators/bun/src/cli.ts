@@ -4,10 +4,6 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { runAddPageCommand, runAddTestCommand } from './add.ts';
-import { runAddJobCommand, runAddRouteCommand } from './add-backend.ts';
-import { runBackendInspect } from './backend-inspect.ts';
-import { runEnable } from './enable.ts';
 import {
   formatAddSummary,
   formatBackendInspectSummary,
@@ -20,14 +16,6 @@ import {
   formatSmokeSummary,
   formatTestSummary,
 } from './format.ts';
-import { runInit } from './init.ts';
-import { runRepair } from './repair.ts';
-import { runRefresh } from './refresh.ts';
-import { runBuild } from './build.ts';
-import { runPublish } from './publish.ts';
-import { runSmoke } from './smoke.ts';
-import { runTest } from './test.ts';
-import { runWatch } from './watch.ts';
 
 interface CliStream {
   write(message: string): void;
@@ -139,6 +127,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runInit } = await import('./init.ts');
       const result = await runInit({
         args: options.positionals,
         workspaceRoot,
@@ -154,6 +143,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runAddPageCommand } = await import('./add.ts');
       const result = await runAddPageCommand({
         workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
@@ -170,6 +160,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runAddTestCommand } = await import('./add.ts');
       const result = await runAddTestCommand({
         workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
@@ -186,6 +177,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runAddRouteCommand } = await import('./add-backend.ts');
       const result = await runAddRouteCommand({
         workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
@@ -202,6 +194,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runAddJobCommand } = await import('./add-backend.ts');
       const result = await runAddJobCommand({
         workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
@@ -223,6 +216,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runBackendInspect } = await import('./backend-inspect.ts');
       const result = await runBackendInspect({
         workspaceRoot: resolvedWorkspaceRoot!,
       });
@@ -236,6 +230,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runTest } = await import('./test.ts');
       const result = await runTest({
         workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
@@ -255,6 +250,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runSmoke } = await import('./smoke.ts');
       const result = await runSmoke({
         workspaceRoot: resolvedWorkspaceRoot,
       });
@@ -268,6 +264,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runBuild } = await import('./build.ts');
       const result = await runBuild({
         workspaceRoot: resolvedWorkspaceRoot!,
       });
@@ -281,6 +278,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runPublish } = await import('./publish.ts');
       const result = await runPublish({
         workspaceRoot: resolvedWorkspaceRoot!,
       });
@@ -289,6 +287,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'enable') {
+      const { runEnable } = await import('./enable.ts');
       const result = await runEnable({
         workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
@@ -308,6 +307,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runRepair } = await import('./repair.ts');
       const result = await runRepair({
         workspaceRoot: resolvedWorkspaceRoot!,
         rawArgs: options.rawArgs,
@@ -322,6 +322,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      const { runRefresh } = await import('./refresh.ts');
       const result = await runRefresh({
         workspaceRoot: resolvedWorkspaceRoot!,
         args: options.positionals,
@@ -335,6 +336,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return 1;
     }
 
+    const { runWatch } = await import('./watch.ts');
     await runWatch({
       workspaceRoot: resolvedWorkspaceRoot!,
       host: options.host,

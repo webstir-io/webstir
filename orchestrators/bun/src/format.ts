@@ -5,7 +5,6 @@ import type { RepairResult } from './repair.ts';
 import type { BackendInspectResult } from './backend-inspect.ts';
 import type { SmokeResult } from './smoke.ts';
 import type { TestCommandResult } from './test.ts';
-import { formatFailedTests } from './test.ts';
 import type { CommandExecutionResult } from './types.ts';
 
 export function formatBuildSummary(result: CommandExecutionResult): string {
@@ -206,6 +205,23 @@ function formatExecutionSummary(result: CommandExecutionResult): string {
   }
 
   return lines.join('\n');
+}
+
+function formatFailedTests(
+  results: readonly {
+    readonly passed: boolean;
+    readonly file: string;
+    readonly name: string;
+    readonly message?: string | null;
+  }[]
+): string[] {
+  return results
+    .filter((result) => !result.passed)
+    .map((result) => `${result.file}: ${result.name}${result.message ? ` — ${firstLine(result.message)}` : ''}`);
+}
+
+function firstLine(message: string): string {
+  return message.split(/\r?\n/, 1)[0] ?? message;
 }
 
 function formatWorkspaceMutationSummary(
