@@ -1,4 +1,4 @@
-import { defineBoundary, type CleanupScope } from '@webstir-io/webstir-frontend/runtime';
+import { defineBoundary, type CleanupScope } from './boundary.js';
 import { mountMenu } from './scripts/components/menu.js';
 
 // Global app initialization

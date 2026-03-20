@@ -1,4 +1,4 @@
-import { defineBoundary } from '@webstir-io/webstir-frontend/runtime';
+import { defineBoundary } from '../../app/boundary.js';
 import { DOCS_BOUNDARY_VERSION } from './boundary-version.js';
 
 type DocsNavEntry = {

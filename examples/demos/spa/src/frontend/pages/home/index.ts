@@ -1,10 +1,15 @@
-import { defineBoundary } from '@webstir-io/webstir-frontend/runtime';
 import { loadErrorHandler } from '../../app/app';
 
 type HomeState = {
-  mountSequence: number;
+  root: HTMLElement;
   previousRendered: string | null;
   previousText: string;
+  mountSequence: number;
+};
+
+type HomeBoundary = {
+  mount(root: Element): Promise<void>;
+  unmount(): Promise<void>;
 };
 
 declare global {
@@ -33,33 +38,7 @@ function waitForMain(): Promise<HTMLElement | null> {
   });
 }
 
-export const homeBoundary = defineBoundary<HomeState>({
-  async mount(root, scope) {
-    await loadErrorHandler();
-
-    const previousRendered = root.dataset.hmrRendered ?? null;
-    const previousText = root.textContent ?? '';
-    const mountSequence = ++homeMountSequence;
-
-    root.dataset.hmrRendered = String(mountSequence);
-    root.textContent = homeMessage;
-    scope.add(() => {
-      if (previousRendered === null) {
-        delete root.dataset.hmrRendered;
-      } else {
-        root.dataset.hmrRendered = previousRendered;
-      }
-
-      root.textContent = previousText;
-    });
-
-    return {
-      mountSequence,
-      previousRendered,
-      previousText
-    };
-  }
-});
+export const homeBoundary: HomeBoundary = createHomeBoundary();
 
 window.__webstirHomeBoundary = homeBoundary;
 
@@ -80,4 +59,49 @@ if (import.meta.hot) {
     disposed = true;
     void homeBoundary.unmount();
   });
+}
+
+function createHomeBoundary(): HomeBoundary {
+  let currentState: HomeState | null = null;
+
+  return {
+    async mount(root: Element) {
+      if (currentState) {
+        throw new Error('Home boundary is already mounted.');
+      }
+
+      await loadErrorHandler();
+
+      const element = root instanceof HTMLElement ? root : document.querySelector<HTMLElement>('main');
+      if (!element) {
+        throw new Error('Missing home root.');
+      }
+
+      const state: HomeState = {
+        root: element,
+        previousRendered: element.dataset.hmrRendered ?? null,
+        previousText: element.textContent ?? '',
+        mountSequence: ++homeMountSequence
+      };
+
+      element.dataset.hmrRendered = String(state.mountSequence);
+      element.textContent = homeMessage;
+      currentState = state;
+    },
+    async unmount() {
+      const state = currentState;
+      if (!state) {
+        return;
+      }
+
+      if (state.previousRendered === null) {
+        delete state.root.dataset.hmrRendered;
+      } else {
+        state.root.dataset.hmrRendered = state.previousRendered;
+      }
+
+      state.root.textContent = state.previousText;
+      currentState = null;
+    }
+  };
 }

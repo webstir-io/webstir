@@ -8,6 +8,12 @@ const packageRoot = path.resolve(__dirname, '..');
 const testsDir = path.join(packageRoot, 'tests');
 
 const browserTestFile = 'tests/progressive-enhancement.browser.integration.test.ts';
+const watchBrowserTestFiles = [
+  'tests/runtime-boundary.integration.test.ts',
+  'tests/bun-first-spa.integration.test.ts',
+  'tests/ssg-watch.integration.test.ts',
+  'tests/full-watch.integration.test.ts'
+];
 const publishModeFilter = 'publish mode';
 const watchModeFilter = 'watch mode';
 
@@ -15,6 +21,7 @@ export function listCoreTestFiles() {
   return readdirSync(testsDir)
     .filter((file) => file.endsWith('.ts'))
     .filter((file) => file !== path.basename(browserTestFile))
+    .filter((file) => !watchBrowserTestFiles.includes(path.posix.join('tests', file)))
     .sort()
     .map((file) => path.posix.join('tests', file));
 }
@@ -28,6 +35,10 @@ export function buildTestPlan(mode) {
     label: 'browser publish proofs',
     args: ['test', '--bail=1', browserTestFile, '-t', publishModeFilter]
   };
+  const integrationWatchBrowserTests = {
+    label: 'browser watch integration proofs',
+    args: ['test', '--bail=1', ...watchBrowserTestFiles]
+  };
   const watchBrowserTests = {
     label: 'browser watch proofs',
     args: ['test', '--bail=1', browserTestFile, '-t', watchModeFilter]
@@ -39,10 +50,10 @@ export function buildTestPlan(mode) {
     case 'publish-browser':
       return [publishBrowserTests];
     case 'watch-browser':
-      return [watchBrowserTests];
+      return [integrationWatchBrowserTests, watchBrowserTests];
     case 'all':
     case 'with-watch-browser':
-      return [coreTests, publishBrowserTests, watchBrowserTests];
+      return [coreTests, publishBrowserTests, integrationWatchBrowserTests, watchBrowserTests];
     default:
       throw new Error(
         `Unknown orchestrator test mode "${mode}". Expected one of: required, publish-browser, watch-browser, with-watch-browser.`
