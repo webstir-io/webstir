@@ -16,6 +16,7 @@ describe('buildCheckPlan', () => {
       'testing tooling',
       'bun asset sources',
       'bun orchestrator required suite',
+      'bun standalone install smoke',
     ]);
     expect(plan.some((step) => step.command.includes('test:watch-browser'))).toBe(false);
   });
