@@ -14,6 +14,7 @@
     "test:with-watch-browser": "bun run build && bun scripts/run-tests.mjs with-watch-browser",
     "test:browser:publish": "bun run build && bun scripts/run-tests.mjs publish-browser",
     "test:browser:watch": "bun run build && bun scripts/run-tests.mjs watch-browser",
+    "test:install:package": "bun scripts/check-package-install.mjs",
     "test:install:standalone": "bun scripts/check-standalone-install.mjs",
     "clean": "rm -rf dist",
     "prepack": "bun scripts/sync-assets.mjs",
