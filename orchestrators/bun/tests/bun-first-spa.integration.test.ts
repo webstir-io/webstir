@@ -137,63 +137,6 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
   }
 }, 120_000);
 
-test('Bun-first SPA watch applies page CSS edits', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
-  const port = await getFreePort();
-  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
-
-  let browser: Browser | undefined;
-  let originalStylesheet = '';
-
-  try {
-    await waitFor(async () => {
-      const html = await fetchText(port, '/');
-      expect(html).toContain('data-bun-dev-server-script');
-      expect(html).toContain('Home');
-    }, 30_000);
-
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-dev-shm-usage'],
-    });
-    const context = await browser.newContext({
-      javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-
-    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
-    await page.locator('main').waitFor({ state: 'visible' });
-    const stylesheetPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.css');
-    originalStylesheet = await readFile(stylesheetPath, 'utf8');
-    await writeFile(
-      stylesheetPath,
-      `${originalStylesheet}\nmain { background-color: rgb(255, 0, 0) !important; }\n`,
-      'utf8'
-    );
-
-    await page.waitForFunction(() => {
-      const main = document.querySelector('main');
-      return main instanceof HTMLElement && getComputedStyle(main).backgroundColor === 'rgb(255, 0, 0)';
-    });
-
-    await context.close();
-  } catch (error) {
-    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-    await Promise.allSettled([stdoutDrain, stderrDrain]);
-    removeTrackedChild(childProcesses, child);
-    if (originalStylesheet) {
-      await writeFile(path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.css'), originalStylesheet, 'utf8');
-    }
-  }
-}, 120_000);
-
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
   if (!response.ok) {
