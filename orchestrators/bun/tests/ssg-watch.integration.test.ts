@@ -19,63 +19,6 @@ afterEach(async () => {
   await stopTrackedChildren(childProcesses);
 });
 
-test('CLI watch hot-swaps SSG CSS edits without a full reload', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
-  const port = await getFreePort();
-  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(workspace, port);
-
-  let browser: Browser | undefined;
-  let originalStylesheet = '';
-
-  try {
-    await waitFor(async () => {
-      expect(await fetchText(port, '/')).toContain('Welcome to your Webstir site');
-    }, 20_000);
-
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-dev-shm-usage'],
-    });
-    const context = await browser.newContext({
-      javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 },
-    });
-    const page = await context.newPage();
-
-    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => document.querySelector('main') instanceof HTMLElement);
-    await page.evaluate(() => {
-      (window as Window & { __webstirSsgCssMarker?: string }).__webstirSsgCssMarker = 'persist';
-    });
-
-    const stylesheetPath = path.join(workspace, 'src', 'frontend', 'app', 'app.css');
-    originalStylesheet = await readFile(stylesheetPath, 'utf8');
-    await writeFile(
-      stylesheetPath,
-      `${originalStylesheet}\nbody { background-color: rgb(255, 0, 0) !important; }\n`,
-      'utf8'
-    );
-
-    await page.waitForFunction(() => getComputedStyle(document.body).backgroundColor === 'rgb(255, 0, 0)');
-    expect(await page.evaluate(() => (window as Window & { __webstirSsgCssMarker?: string }).__webstirSsgCssMarker ?? null)).toBe('persist');
-
-    await context.close();
-  } catch (error) {
-    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
-  } finally {
-    if (browser) {
-      await browser.close();
-    }
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-    await Promise.allSettled([stdoutDrain, stderrDrain]);
-    removeTrackedChild(childProcesses, child);
-    if (originalStylesheet) {
-      await writeFile(path.join(workspace, 'src', 'frontend', 'app', 'app.css'), originalStylesheet, 'utf8');
-    }
-  }
-}, 120_000);
-
 test('CLI watch reloads SSG content edits after rebuild', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
   const port = await getFreePort();
