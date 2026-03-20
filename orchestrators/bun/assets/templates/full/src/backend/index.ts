@@ -13,8 +13,8 @@ const SESSION_COOKIE_NAME = 'webstir_demo_session';
 const SESSION_SIGN_IN_ACTION = './progressive-enhancement/session/sign-in';
 const SESSION_SIGN_OUT_ACTION = './progressive-enhancement/session/sign-out';
 const DEV_FRONTEND_ASSETS = {
-  cssHref: '/app/app.css',
-  scriptSrc: '/app/app.js'
+  cssHref: '/src/frontend/app/app.css',
+  scriptSrc: '/src/frontend/app/app.ts'
 } as const;
 
 interface RouteMatch {
@@ -589,6 +589,10 @@ function clearSessionCookie(): string {
 }
 
 function resolveFrontendAssets(): { cssHref: string; scriptSrc: string } {
+  if (process.env.WEBSTIR_FRONTEND_DEV_SERVER === '1') {
+    return DEV_FRONTEND_ASSETS;
+  }
+
   const manifestPath = path.join(process.cwd(), 'dist', 'frontend', 'manifest.json');
   if (!existsSync(manifestPath)) {
     return DEV_FRONTEND_ASSETS;

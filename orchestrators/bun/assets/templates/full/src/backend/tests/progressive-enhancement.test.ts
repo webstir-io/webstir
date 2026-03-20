@@ -11,8 +11,13 @@ test('progressive enhancement demo page renders a form shell', async () => {
   assert.isTrue(html.includes('data-webstir-fragment-target="greeting-preview"'));
   assert.isTrue(html.includes('data-webstir-fragment-target="session-panel"'));
   assert.isTrue(
-    html.includes('type="module" src="/app/')
+    html.includes('type="module" src="/src/frontend/app/app.ts"')
+    || html.includes('type="module" src="/app/')
     || html.includes('type="module" src="/pages/home/index.js"')
+  );
+  assert.isTrue(
+    html.includes('rel="stylesheet" href="/src/frontend/app/app.css"')
+    || html.includes('rel="stylesheet" href="/app/')
   );
 });
 

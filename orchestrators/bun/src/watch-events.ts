@@ -19,10 +19,16 @@ export interface HotUpdateAsset {
   readonly url: string;
 }
 
+export interface HotUpdateTarget {
+  readonly kind: 'boundary';
+  readonly id: string;
+}
+
 export interface HotUpdatePayload {
   readonly requiresReload: boolean;
   readonly modules: readonly HotUpdateAsset[];
   readonly styles: readonly HotUpdateAsset[];
+  readonly target?: HotUpdateTarget;
   readonly changedFile?: string;
   readonly fallbackReasons?: readonly string[];
   readonly stats?: {
@@ -127,6 +133,7 @@ function readHotUpdatePayload(data: Record<string, unknown> | undefined): HotUpd
     requiresReload: payload.requiresReload,
     modules: readAssets(payload.modules),
     styles: readAssets(payload.styles),
+    target: readTarget(payload.target),
     changedFile: typeof payload.changedFile === 'string' ? payload.changedFile : undefined,
     fallbackReasons: Array.isArray(payload.fallbackReasons)
       ? payload.fallbackReasons.filter((value): value is string => typeof value === 'string')
@@ -177,6 +184,22 @@ function readStats(value: unknown): HotUpdatePayload['stats'] | undefined {
   return {
     hotUpdates: stats.hotUpdates,
     reloadFallbacks: stats.reloadFallbacks,
+  };
+}
+
+function readTarget(value: unknown): HotUpdateTarget | undefined {
+  if (typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const target = value as Record<string, unknown>;
+  if (target.kind !== 'boundary' || typeof target.id !== 'string' || target.id.trim() === '') {
+    return undefined;
+  }
+
+  return {
+    kind: 'boundary',
+    id: target.id,
   };
 }
 

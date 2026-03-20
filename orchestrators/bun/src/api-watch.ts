@@ -37,7 +37,10 @@ export async function startApiWatchSession(
   options: WatchOptions,
   io: WatchIo
 ): Promise<ApiWatchSession> {
-  const runtimeEnv = createWorkspaceRuntimeEnv(workspace.root, 'build', options.env);
+  const runtimeEnv = {
+    ...createWorkspaceRuntimeEnv(workspace.root, 'build', options.env),
+    WEBSTIR_FRONTEND_DEV_SERVER: '1',
+  };
   const runtime = new BackendRuntimeSupervisor({
     workspaceRoot: workspace.root,
     buildRoot: path.join(workspace.root, 'build', 'backend'),

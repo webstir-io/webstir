@@ -1,9 +1,13 @@
 import { createDrawer } from './drawer.js';
-import type { CleanupScope } from '@webstir-io/webstir-frontend/runtime';
+import { listen, type CleanupScope } from '../../boundary.js';
 
 type BackdropResolution = {
   element: HTMLElement | null;
   created: boolean;
+};
+
+type MountMenuOptions = {
+  open?: boolean;
 };
 
 function resolveBackdrop(root: HTMLElement | null): BackdropResolution {
@@ -26,7 +30,7 @@ function resolveBackdrop(root: HTMLElement | null): BackdropResolution {
   return { element: created, created: true };
 }
 
-export function mountMenu(scope: CleanupScope): void {
+export function mountMenu(scope: CleanupScope, options: MountMenuOptions = {}): void {
   const menu = document.querySelector<HTMLElement>('[data-app-menu]');
   const toggle = menu?.querySelector<HTMLButtonElement>('.app-menu__toggle');
   if (!menu || !toggle) {
@@ -79,19 +83,14 @@ export function mountMenu(scope: CleanupScope): void {
   };
 
   syncMode();
-  mobileQuery.addEventListener('change', syncMode);
-  toggle.addEventListener('click', handleToggleClick);
-  window.addEventListener('resize', handleResize);
+  listen(scope, mobileQuery, 'change', syncMode);
+  listen(scope, toggle, 'click', handleToggleClick);
+  listen(scope, window, 'resize', handleResize);
 
-  scope.add(() => {
-    mobileQuery.removeEventListener('change', syncMode);
-  });
-  scope.add(() => {
-    toggle.removeEventListener('click', handleToggleClick);
-  });
-  scope.add(() => {
-    window.removeEventListener('resize', handleResize);
-  });
+  if (options.open) {
+    drawer.open();
+  }
+
   scope.add(() => {
     drawer.close();
     drawer.destroy();

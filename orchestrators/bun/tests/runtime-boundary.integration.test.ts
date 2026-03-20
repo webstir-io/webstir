@@ -39,6 +39,10 @@ test('SSG shell boundary remounts cleanly and restores shell state', async () =>
     expect(harness.window.listenerCount('error')).toBe(1);
     expect(harness.window.listenerCount('unhandledrejection')).toBe(1);
 
+    harness.toggle.click();
+    expect(harness.menu.classList.contains('is-open')).toBe(true);
+    expect(harness.body.classList.contains('webstir-menu-open')).toBe(true);
+
     await boundary.unmount();
     expect(harness.body.getAttribute('data-webstir-shell-mounted')).toBeNull();
     expect(harness.toggle.listenerCount('click')).toBe(0);
@@ -46,6 +50,7 @@ test('SSG shell boundary remounts cleanly and restores shell state', async () =>
     expect(harness.document.listenerCount('click')).toBe(0);
     expect(harness.window.listenerCount('error')).toBe(0);
     expect(harness.window.listenerCount('unhandledrejection')).toBe(0);
+    expect(harness.body.classList.contains('webstir-menu-open')).toBe(false);
 
     await boundary.mount(harness.body);
     expect(harness.body.getAttribute('data-webstir-shell-mounted')).not.toBeNull();
@@ -54,10 +59,9 @@ test('SSG shell boundary remounts cleanly and restores shell state', async () =>
     expect(harness.document.listenerCount('click')).toBe(1);
     expect(harness.window.listenerCount('error')).toBe(1);
     expect(harness.window.listenerCount('unhandledrejection')).toBe(1);
-
-    harness.toggle.click();
     expect(harness.menu.classList.contains('is-open')).toBe(true);
     expect(harness.body.classList.contains('webstir-menu-open')).toBe(true);
+    expect(harness.toggle.getAttribute('aria-expanded')).toBe('true');
   } finally {
     (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = previousWindow;
     (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = previousDocument;
@@ -114,6 +118,85 @@ test('SPA home boundary remounts cleanly and refreshes page state', async () => 
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
   }
+}, 120_000);
+
+test('copied SSG boundary helper disposes child boundaries before parent cleanup', async () => {
+  const modulePath = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base', 'src', 'frontend', 'app', 'boundary.ts');
+  const boundaryModule = await import(pathToFileURL(modulePath).href);
+  const defineBoundary = boundaryModule.defineBoundary as typeof boundaryModule.defineBoundary;
+  const events: string[] = [];
+
+  const childBoundary = defineBoundary({
+    mount(root, scope) {
+      events.push('child-mount');
+      const button = createElement('button');
+      const onClick = () => {
+        events.push('child-click');
+      };
+
+      button.addEventListener('click', onClick);
+      scope.add(() => {
+        events.push('child-cleanup');
+        button.removeEventListener('click', onClick);
+      });
+      root.append(button);
+      return { button };
+    },
+    unmount(state, scope) {
+      events.push('child-unmount');
+      scope.add(() => {
+        events.push('child-unmount-cleanup');
+      });
+      state.button.remove();
+    }
+  });
+
+  const parentBoundary = defineBoundary({
+    async mount(root, scope) {
+      events.push('parent-mount');
+      const childRoot = createElement('div');
+      const child = await scope.mountChild(childBoundary, childRoot);
+
+      scope.add(() => {
+        events.push('parent-cleanup');
+      });
+
+      root.append(childRoot);
+      return { child, childRoot };
+    },
+    unmount(state, scope) {
+      events.push('parent-unmount');
+      scope.add(() => {
+        events.push('parent-unmount-cleanup');
+      });
+      state.childRoot.remove();
+    }
+  });
+
+  const root = createElement('section');
+  const state = await parentBoundary.mount(root);
+  expect(state.childRoot.children[0].listenerCount('click')).toBe(1);
+
+  await state.child.unmount();
+  await state.child.mount(state.childRoot);
+
+  expect(state.childRoot.children[0].listenerCount('click')).toBe(1);
+  await parentBoundary.unmount();
+
+  expect(events).toEqual([
+    'parent-mount',
+    'child-mount',
+    'child-unmount',
+    'child-unmount-cleanup',
+    'child-cleanup',
+    'child-mount',
+    'child-unmount',
+    'child-unmount-cleanup',
+    'child-cleanup',
+    'parent-unmount',
+    'parent-unmount-cleanup',
+    'parent-cleanup'
+  ]);
 }, 120_000);
 
 function spawnWatch(workspace: string, port: number): {
@@ -366,7 +449,13 @@ function createElement(
     },
     remove() {
       if (element.parentElement) {
-        element.parentElement.removeChild?.(element);
+        if (element.parentElement.removeChild) {
+          element.parentElement.removeChild(element);
+          return;
+        }
+
+        element.parentElement.children = element.parentElement.children.filter((candidate) => candidate !== element);
+        element.parentElement = null;
       }
     },
     querySelector(selector: string) {

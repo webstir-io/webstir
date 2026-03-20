@@ -23,6 +23,9 @@ import { createCleanupScope, defineBoundary } from '@webstir-io/webstir-frontend
 
 - `createCleanupScope()` collects cleanup handlers and disposes them in reverse registration order.
 - `defineBoundary()` wraps a page or app region with explicit `mount()` and `unmount()` lifecycle methods.
+- Boundary scopes can mount nested child boundaries with `scope.mountChild(...)`; child boundaries unmount before the parent boundary tears down.
+- Boundaries can opt into hot-state preservation with `snapshotState()` and `restoreState()`; when those hooks are absent, remounts start fresh.
+- `listen()`, `scheduleTimeout()`, `scheduleInterval()`, `trackObserver()`, and `createAbortController()` wrap common side effects so cleanup stays attached to the boundary scope.
 - Boundary code should register DOM listeners, timers, observers, and similar side effects through the cleanup scope so remounts stay deterministic.
 
 ## Hot Update Rules
@@ -33,6 +36,18 @@ Webstir watch mode follows a narrow fallback policy:
 - JS edits remount only when the module or boundary explicitly opts in.
 - Content, HTML, and route-shape changes fall back to rebuild + reload.
 - Any cleanup failure or declined boundary update falls back to reload.
+
+## Fragment Ownership Decision
+
+The current SSG runtime has a working fragment-ownership pilot on the docs sidebar boundary, but owned-fragment HTML replacement is not justified yet as a general mechanism.
+
+Keep reload/remount as the default until the runtime has:
+
+- More than one real owned fragment with clear parent/child invalidation rules
+- A stable fragment-to-source mapping for generated HTML updates
+- A lifecycle contract for replacing HTML without duplicating side effects or breaking page state
+
+Until then, content and HTML changes should continue to fall back to rebuild + reload.
 
 ## HTML-First Workflow
 

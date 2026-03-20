@@ -1,5 +1,7 @@
-import { defineBoundary } from '../../app/boundary.js';
+import { createAbortController, createCleanupScope, defineBoundary, listen, trackObserver, type CleanupScope } from '../../app/boundary.js';
 import { DOCS_BOUNDARY_VERSION } from './boundary-version.js';
+
+const DOCS_SIDEBAR_BOUNDARY_VERSION = 'docs-sidebar-v1';
 
 type DocsNavEntry = {
   path: string;
@@ -21,19 +23,32 @@ type DocsRuntimeState = {
   originalHtml: string;
   originalBoundaryVersion: string | null;
   tocObserver?: IntersectionObserver;
+  renderScope?: CleanupScope;
+  active: boolean;
+};
+
+type DocsSidebarRuntimeState = {
+  root: HTMLElement;
+  originalHtml: string;
+  originalBoundaryVersion: string | null;
+  originalMountGeneration: string | null;
+  renderScope?: CleanupScope;
   active: boolean;
 };
 
 declare global {
   interface Window {
     __webstirHotModuleImporting?: boolean;
-    __webstirDocsBoundaryVersionOverride?: string;
-    __webstirDocsBoundary?: {
+    __webstirRegisterHotBoundary?: (boundaryId: string, handlers: { accept(context?: unknown): boolean | Promise<boolean> }) => void;
+    __webstirGetHotBoundary?: (boundaryId: string) => { accept(context?: unknown): boolean | Promise<boolean> } | undefined;
+    __webstirDocsSidebarBoundary?: {
       mount(root: Element): Promise<unknown>;
       unmount(): Promise<void>;
     };
-    __webstirDocsHot?: {
-      accept(): Promise<boolean>;
+    __webstirDocsSidebarMountGeneration?: number;
+    __webstirDocsBoundary?: {
+      mount(root: Element): Promise<unknown>;
+      unmount(): Promise<void>;
     };
   }
 }
@@ -81,24 +96,43 @@ function joinPath(segments: readonly string[]): string {
   return segments.join('/');
 }
 
-async function loadJson<T>(path: string): Promise<T | null> {
+async function loadJson<T>(path: string, signal?: AbortSignal): Promise<T | null | undefined> {
   try {
-    const response = await fetch(path, { headers: { Accept: 'application/json' } });
+    const response = await fetch(path, { headers: { Accept: 'application/json' }, signal });
     if (!response.ok) return null;
     return (await response.json()) as T;
-  } catch {
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return undefined;
+    }
     return null;
   }
 }
 
-async function ensureNavLoaded(): Promise<DocsNavEntry[] | null> {
+async function ensureNavLoaded(scope: CleanupScope): Promise<DocsNavEntry[] | null> {
   if (navCache !== undefined) {
     return navCache;
   }
 
-  navPromise ??= loadJson<DocsNavEntry[]>('/docs-nav.json');
-  navCache = await navPromise;
-  return navCache;
+  if (!navPromise) {
+    const controller = createAbortController(scope);
+    navPromise = loadJson<DocsNavEntry[]>('/docs-nav.json', controller.signal).then((loaded) => {
+      if (loaded !== undefined) {
+        navCache = loaded;
+      }
+
+      return loaded;
+    }).finally(() => {
+      navPromise = null;
+    });
+  }
+
+  const loaded = await navPromise;
+  if (loaded !== undefined) {
+    navCache = loaded;
+  }
+
+  return loaded === undefined ? null : navCache;
 }
 
 function loadOpenState(): Record<string, boolean> {
@@ -187,7 +221,7 @@ function normalizeEntries(entries: DocsNavEntry[]): DocsNavEntry[] {
     .map((entry) => ({ ...entry, path: normalizePath(entry.path) }));
 }
 
-function renderSidebar(entries: DocsNavEntry[], links: HTMLElement): void {
+function renderSidebar(entries: DocsNavEntry[], links: HTMLElement, scope: CleanupScope): void {
   const normalizedCurrent = normalizePath(window.location.pathname);
   const safeEntries = normalizeEntries(entries);
 
@@ -261,7 +295,7 @@ function renderSidebar(entries: DocsNavEntry[], links: HTMLElement): void {
   links.innerHTML = rendered.join('');
 
   links.querySelectorAll<HTMLButtonElement>('button[data-docs-folder]').forEach((button) => {
-    button.addEventListener('click', () => {
+    listen(scope, button, 'click', () => {
       const key = button.getAttribute('data-docs-folder');
       if (!key) return;
 
@@ -300,7 +334,7 @@ function ensureBreadcrumbContainer(root: HTMLElement): HTMLElement | null {
   return container;
 }
 
-function renderBreadcrumbs(entries: DocsNavEntry[], root: HTMLElement): void {
+function renderBreadcrumbs(entries: DocsNavEntry[], root: HTMLElement, scope: CleanupScope): void {
   const segments = parseDocsSegments(window.location.pathname);
   const container = ensureBreadcrumbContainer(root);
   if (!container) return;
@@ -382,7 +416,7 @@ function slugifyHeading(value: string): string {
     .replace(/-+/g, '-');
 }
 
-function refreshToc(state: DocsRuntimeState): void {
+function refreshToc(state: DocsRuntimeState, scope: CleanupScope): void {
   const layout = state.root;
   const article = layout.querySelector<HTMLElement>('.docs-article');
   const tocAside = layout.querySelector<HTMLElement>('.docs-toc');
@@ -446,7 +480,7 @@ function refreshToc(state: DocsRuntimeState): void {
   });
 
   tocLinks.forEach((anchor) => {
-    anchor.addEventListener('click', (event) => {
+    listen(scope, anchor, 'click', (event) => {
       const raw = anchor.getAttribute('href') ?? '';
       const id = raw.startsWith('#') ? raw.slice(1) : raw;
       if (!id) return;
@@ -458,7 +492,7 @@ function refreshToc(state: DocsRuntimeState): void {
     });
   });
 
-  const observer = new IntersectionObserver(
+  const observer = trackObserver(scope, new IntersectionObserver(
     (entries) => {
       const visible = entries
         .filter((entry) => entry.isIntersecting)
@@ -470,7 +504,7 @@ function refreshToc(state: DocsRuntimeState): void {
       linkById.get(active.id)?.setAttribute('aria-current', 'true');
     },
     { root: null, rootMargin: '-20% 0px -70% 0px', threshold: [0, 1] }
-  );
+  ));
 
   headings.forEach((heading) => observer.observe(heading));
   state.tocObserver = observer;
@@ -481,27 +515,115 @@ async function refresh(state: DocsRuntimeState): Promise<void> {
     return;
   }
 
-  const nav = await ensureNavLoaded();
+  const previousRenderScope = state.renderScope;
+  const renderScope = createCleanupScope();
+  state.renderScope = renderScope;
+
+  try {
+    await previousRenderScope?.dispose().catch(() => undefined);
+    const nav = await ensureNavLoaded(renderScope);
+    if (!state.active) {
+      await renderScope.dispose().catch(() => undefined);
+      return;
+    }
+
+    if (nav) {
+      renderBreadcrumbs(nav, state.root, renderScope);
+    }
+
+    refreshToc(state, renderScope);
+  } catch (error) {
+    await renderScope.dispose().catch(() => undefined);
+    if (state.renderScope === renderScope) {
+      state.renderScope = previousRenderScope;
+    }
+    throw error;
+  }
+}
+
+async function refreshSidebar(state: DocsSidebarRuntimeState): Promise<void> {
   if (!state.active) {
     return;
   }
 
-  if (nav) {
-    const sidebarLinks = state.root.querySelector<HTMLElement>('#docs-links');
-    if (sidebarLinks) {
-      renderSidebar(nav, sidebarLinks);
+  const previousRenderScope = state.renderScope;
+  const renderScope = createCleanupScope();
+  state.renderScope = renderScope;
+
+  try {
+    await previousRenderScope?.dispose().catch(() => undefined);
+    const nav = await ensureNavLoaded(renderScope);
+    if (!state.active) {
+      await renderScope.dispose().catch(() => undefined);
+      return;
     }
 
-    renderBreadcrumbs(nav, state.root);
+    if (nav) {
+      renderSidebar(nav, state.root, renderScope);
+    }
+  } catch (error) {
+    await renderScope.dispose().catch(() => undefined);
+    if (state.renderScope === renderScope) {
+      state.renderScope = previousRenderScope;
+    }
+    throw error;
   }
-
-  refreshToc(state);
 }
+
+export const docsSidebarBoundary = defineBoundary<DocsSidebarRuntimeState>({
+  async mount(root, scope) {
+    const layout = root as HTMLElement;
+    const state: DocsSidebarRuntimeState = {
+      root: layout,
+      originalHtml: layout.innerHTML,
+      originalBoundaryVersion: layout.getAttribute('data-webstir-docs-sidebar-boundary-version'),
+      originalMountGeneration: layout.getAttribute('data-webstir-docs-sidebar-mount-generation'),
+      active: true,
+    };
+
+    const nextGeneration = (window.__webstirDocsSidebarMountGeneration ?? 0) + 1;
+    window.__webstirDocsSidebarMountGeneration = nextGeneration;
+    layout.setAttribute('data-webstir-docs-sidebar-boundary-version', DOCS_SIDEBAR_BOUNDARY_VERSION);
+    layout.setAttribute('data-webstir-docs-sidebar-mount-generation', String(nextGeneration));
+    window.__webstirDocsSidebarBoundary = docsSidebarBoundary;
+
+    scope.add(() => {
+      return state.renderScope?.dispose();
+    });
+
+    listen(scope, window, 'webstir:client-nav', () => {
+      void refreshSidebar(state);
+    });
+
+    await refreshSidebar(state);
+    return state;
+  },
+  async unmount(state) {
+    state.active = false;
+    await state.renderScope?.dispose().catch(() => undefined);
+    state.renderScope = undefined;
+    state.root.innerHTML = state.originalHtml;
+    if (window.__webstirDocsSidebarBoundary === docsSidebarBoundary) {
+      delete window.__webstirDocsSidebarBoundary;
+    }
+
+    if (state.originalBoundaryVersion === null) {
+      state.root.removeAttribute('data-webstir-docs-sidebar-boundary-version');
+    } else {
+      state.root.setAttribute('data-webstir-docs-sidebar-boundary-version', state.originalBoundaryVersion);
+    }
+
+    if (state.originalMountGeneration === null) {
+      state.root.removeAttribute('data-webstir-docs-sidebar-mount-generation');
+    } else {
+      state.root.setAttribute('data-webstir-docs-sidebar-mount-generation', state.originalMountGeneration);
+    }
+  }
+});
 
 export const docsBoundary = defineBoundary<DocsRuntimeState>({
   async mount(root, scope) {
     const layout = root as HTMLElement;
-    const boundaryVersion = window.__webstirDocsBoundaryVersionOverride ?? DOCS_BOUNDARY_VERSION;
     const state: DocsRuntimeState = {
       root: layout,
       originalHtml: layout.innerHTML,
@@ -509,19 +631,22 @@ export const docsBoundary = defineBoundary<DocsRuntimeState>({
       active: true,
     };
 
-    layout.setAttribute('data-webstir-docs-boundary-version', boundaryVersion);
+    layout.setAttribute('data-webstir-docs-boundary-version', DOCS_BOUNDARY_VERSION);
 
     scope.add(() => {
       state.tocObserver?.disconnect();
     });
-
-    const handleClientNav = () => {
-      void refresh(state);
-    };
-
-    window.addEventListener('webstir:client-nav', handleClientNav);
     scope.add(() => {
-      window.removeEventListener('webstir:client-nav', handleClientNav);
+      return state.renderScope?.dispose();
+    });
+
+    const sidebarRoot = layout.querySelector<HTMLElement>('#docs-links');
+    if (sidebarRoot) {
+      await scope.mountChild(docsSidebarBoundary, sidebarRoot);
+    }
+
+    listen(scope, window, 'webstir:client-nav', () => {
+      void refresh(state);
     });
 
     await refresh(state);
@@ -530,6 +655,8 @@ export const docsBoundary = defineBoundary<DocsRuntimeState>({
   async unmount(state) {
     state.active = false;
     state.tocObserver?.disconnect();
+    await state.renderScope?.dispose().catch(() => undefined);
+    state.renderScope = undefined;
     state.root.innerHTML = state.originalHtml;
 
     if (state.originalBoundaryVersion === null) {
@@ -540,7 +667,7 @@ export const docsBoundary = defineBoundary<DocsRuntimeState>({
   }
 });
 
-window.__webstirDocsHot = {
+const docsBoundaryHotController = {
   async accept(): Promise<boolean> {
     console.info('[webstir-hmr] Docs boundary hot accept received.');
     const previousBoundary = window.__webstirDocsBoundary;
@@ -560,6 +687,30 @@ window.__webstirDocsHot = {
     return true;
   }
 };
+
+const docsSidebarBoundaryHotController = {
+  async accept(): Promise<boolean> {
+    console.info('[webstir-hmr] Docs sidebar hot accept received.');
+    const previousBoundary = window.__webstirDocsSidebarBoundary;
+    if (previousBoundary) {
+      await previousBoundary.unmount();
+    }
+
+    window.__webstirDocsSidebarBoundary = docsSidebarBoundary;
+
+    const links = document.querySelector<HTMLElement>('#docs-links');
+    if (!links) {
+      return false;
+    }
+
+    await docsSidebarBoundary.mount(links);
+    console.info('[webstir-hmr] Docs sidebar hot accept applied.');
+    return true;
+  }
+};
+
+window.__webstirRegisterHotBoundary?.('docs', docsBoundaryHotController);
+window.__webstirRegisterHotBoundary?.('docs-sidebar', docsSidebarBoundaryHotController);
 
 async function bootDocsPage(): Promise<void> {
   if (window.__webstirHotModuleImporting) {
