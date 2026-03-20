@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 import {
   appendWatchLogs,
   collectOutput,
@@ -18,6 +19,48 @@ const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
 afterEach(async () => {
   await stopTrackedChildren(childProcesses);
 });
+
+test('Bun-first SPA watch serves distinct HTML for non-home pages', async () => {
+  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa-');
+  const workspace = workspaceCopy.workspaceRoot;
+  const addPageResult = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      'add-page',
+      'about',
+      '--workspace',
+      workspace,
+    ],
+    cwd: repoRoot,
+    env: process.env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
+
+  try {
+    expect(addPageResult.exitCode).toBe(0);
+
+    await waitFor(async () => {
+      const homeHtml = await fetchText(port, '/');
+      const aboutHtml = await fetchText(port, '/about');
+      expect(homeHtml).toContain('<title>Home</title>');
+      expect(homeHtml).toContain('Home');
+      expect(aboutHtml).toContain('<title>about</title>');
+      expect(aboutHtml).toContain('Content for the about page.');
+    }, 30_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
 
 test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');

@@ -252,7 +252,7 @@ function isCssFile(filePath: string): boolean {
 
 function isJavaScriptFile(filePath: string): boolean {
   const extension = path.extname(filePath).toLowerCase();
-  return extension === '.js' || extension === '.ts';
+  return extension === '.js' || extension === '.jsx' || extension === '.ts' || extension === '.tsx';
 }
 
 function isWithinDirectory(filePath: string, directory: string): boolean {

@@ -9,6 +9,11 @@ export interface BunFrontendFetchHandlerOptions {
   readonly apiProxyOrigin?: string;
 }
 
+export interface BunSpaRouteEntry {
+  readonly routes: readonly string[];
+  readonly entry: BodyInit;
+}
+
 export async function loadBunSpaEntry(generatedEntryPath: string): Promise<BodyInit> {
   const routeModule = await import(
     `${pathToFileURL(generatedEntryPath).href}?t=${Date.now()}`
@@ -16,13 +21,19 @@ export async function loadBunSpaEntry(generatedEntryPath: string): Promise<BodyI
   return routeModule.default as BodyInit;
 }
 
-export function createBunSpaRoutes(spaEntry: BodyInit) {
-  return {
+export function createBunSpaRoutes(entries: readonly BunSpaRouteEntry[]) {
+  const routes: Record<string, BodyInit | false> = {
     '/api': false,
     '/api/*': false,
-    '/': spaEntry,
-    '/*': spaEntry,
   };
+
+  for (const entry of entries) {
+    for (const route of entry.routes) {
+      routes[route] = entry.entry;
+    }
+  }
+
+  return routes;
 }
 
 export function createBunFrontendFetchHandler(options: BunFrontendFetchHandlerOptions = {}) {

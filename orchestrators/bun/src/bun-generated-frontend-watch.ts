@@ -1,16 +1,18 @@
 import { watch, type FSWatcher } from 'node:fs';
 
 import {
-  prepareBunSpaGeneratedEntry,
+  prepareBunSpaGeneratedEntries,
   regenerateBunSpaEntry,
+  resolveBunSpaGeneratedPagePaths,
   resolveBunSpaEntryPaths,
-  resolvePrimaryBunSpaPage,
+  resolveBunSpaPages,
   type BunSpaEntryPaths,
   type BunSpaPageDetails,
 } from './bun-spa-document.ts';
 import {
   createBunFrontendFetchHandler,
   createBunSpaRoutes,
+  type BunSpaRouteEntry,
   loadBunSpaEntry,
   type ReloadableServeServer,
 } from './bun-spa-routes.ts';
@@ -33,21 +35,21 @@ export async function startBunGeneratedFrontendWatch(
   options: BunGeneratedFrontendWatchOptions
 ): Promise<BunGeneratedFrontendWatchSession> {
   const paths = resolveBunSpaEntryPaths(options.workspaceRoot);
-  const page = await resolvePrimaryBunSpaPage(paths.workspaceRoot);
+  const pages = await resolveBunSpaPages(paths.workspaceRoot);
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? 8088;
 
-  await prepareBunSpaGeneratedEntry({ paths, page });
+  await prepareBunSpaGeneratedEntries({ paths, pages });
 
-  const servedEntry = await loadBunSpaEntry(paths.generatedEntryPath);
+  const servedEntries = await loadServedEntries(paths, pages);
   const servedAddress = createServedAddress(
     host,
-    startFrontendServer(host, port, servedEntry, options.apiProxyOrigin)
+    startFrontendServer(host, port, servedEntries, options.apiProxyOrigin)
   );
-  const watchers = watchRegenerationTargets(paths, page, async (nextEntry) => {
+  const watchers = watchRegenerationTargets(paths, pages, async (nextEntries) => {
     servedAddress.server.reload({
       fetch: createBunFrontendFetchHandler({ apiProxyOrigin: options.apiProxyOrigin }),
-      routes: createBunSpaRoutes(nextEntry),
+      routes: createBunSpaRoutes(nextEntries),
     } as any);
   });
 
@@ -62,14 +64,14 @@ interface ServedAddress {
 function startFrontendServer(
   host: string,
   port: number,
-  spaEntry: BodyInit,
+  spaEntries: readonly BunSpaRouteEntry[],
   apiProxyOrigin?: string
 ): ReloadableServeServer {
   return Bun.serve({
     hostname: host,
     port,
     development: true,
-    routes: createBunSpaRoutes(spaEntry),
+    routes: createBunSpaRoutes(spaEntries),
     fetch: createBunFrontendFetchHandler({ apiProxyOrigin }),
   } as any) as ReloadableServeServer;
 }
@@ -88,22 +90,26 @@ function createServedAddress(host: string, server: ReloadableServeServer): Serve
 
 function watchRegenerationTargets(
   paths: BunSpaEntryPaths,
-  page: BunSpaPageDetails,
-  onEntryReload: (nextEntry: BodyInit) => Promise<void>
+  pages: readonly BunSpaPageDetails[],
+  onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>
 ): Set<FSWatcher> {
   const watchers = new Set<FSWatcher>();
   let regenerationPromise: Promise<void> | null = null;
 
-  const regenerationTargets = [
+  const regenerationTargets = new Set<string>([
     paths.appTemplatePath,
     paths.appCssPath,
-    page.htmlPath,
-    page.cssPath,
-  ];
+  ]);
+  for (const page of pages) {
+    regenerationTargets.add(page.htmlPath);
+    if (page.cssPath) {
+      regenerationTargets.add(page.cssPath);
+    }
+  }
 
-  for (const target of regenerationTargets.filter((value): value is string => Boolean(value))) {
+  for (const target of regenerationTargets) {
     watchers.add(watch(target, () => {
-      regenerationPromise ??= regenerateAndReloadSpaEntry(paths, page, onEntryReload).finally(() => {
+      regenerationPromise ??= regenerateAndReloadSpaEntries(paths, pages, onEntriesReload).finally(() => {
         regenerationPromise = null;
       });
     }));
@@ -112,13 +118,50 @@ function watchRegenerationTargets(
   return watchers;
 }
 
-async function regenerateAndReloadSpaEntry(
+async function regenerateAndReloadSpaEntries(
   paths: BunSpaEntryPaths,
-  page: BunSpaPageDetails,
-  onEntryReload: (nextEntry: BodyInit) => Promise<void>
+  pages: readonly BunSpaPageDetails[],
+  onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>
 ): Promise<void> {
-  await regenerateBunSpaEntry({ paths, page });
-  await onEntryReload(await loadBunSpaEntry(paths.generatedEntryPath));
+  for (const page of pages) {
+    await regenerateBunSpaEntry({ paths, page });
+  }
+
+  await onEntriesReload(await loadServedEntries(paths, pages));
+}
+
+async function loadServedEntries(
+  paths: BunSpaEntryPaths,
+  pages: readonly BunSpaPageDetails[]
+): Promise<readonly BunSpaRouteEntry[]> {
+  return await Promise.all(pages.map(async (page, index) => {
+    const generatedPaths = resolveBunSpaGeneratedPagePaths(paths, page);
+    return {
+      routes: resolvePageRoutes(page, index === 0),
+      entry: await loadBunSpaEntry(generatedPaths.generatedEntryPath),
+    } satisfies BunSpaRouteEntry;
+  }));
+}
+
+function resolvePageRoutes(page: BunSpaPageDetails, isRootPage: boolean): readonly string[] {
+  const routes = new Set<string>();
+
+  if (isRootPage) {
+    routes.add('/');
+    routes.add('/index.html');
+  }
+
+  if (page.routePath !== '/') {
+    routes.add(page.routePath);
+    routes.add(`${page.routePath}/`);
+    routes.add(`${page.routePath}/index.html`);
+    return Array.from(routes);
+  }
+
+  routes.add('/home');
+  routes.add('/home/');
+  routes.add('/home/index.html');
+  return Array.from(routes);
 }
 
 function createSession(

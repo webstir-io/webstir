@@ -8,16 +8,21 @@ export interface BunSpaEntryPaths {
   readonly appCssPath: string;
   readonly appScriptPath?: string;
   readonly generatedRoot: string;
-  readonly generatedEntryPath: string;
-  readonly generatedCssPath: string;
 }
 
 export interface BunSpaPageDetails {
   readonly name: string;
+  readonly routePath: string;
   readonly directory: string;
   readonly htmlPath: string;
-  readonly scriptPath: string;
+  readonly scriptPath?: string;
   readonly cssPath?: string;
+}
+
+export interface BunSpaGeneratedPagePaths {
+  readonly generatedPageRoot: string;
+  readonly generatedEntryPath: string;
+  readonly generatedCssPath: string;
 }
 
 export interface RegenerateBunSpaEntryOptions {
@@ -28,6 +33,7 @@ export interface RegenerateBunSpaEntryOptions {
 const GENERATED_DIR = path.join('.webstir', 'bun-first-spa');
 const GENERATED_ENTRY = 'index.html';
 const GENERATED_PAGE_CSS = 'page.css';
+const PAGE_SCRIPT_NAMES = ['index.ts', 'index.tsx', 'index.js', 'index.jsx'] as const;
 
 export function resolveBunSpaEntryPaths(workspaceRoot: string): BunSpaEntryPaths {
   const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
@@ -40,51 +46,65 @@ export function resolveBunSpaEntryPaths(workspaceRoot: string): BunSpaEntryPaths
     appCssPath: path.join(appRoot, 'app.css'),
     appScriptPath: resolveOptionalExistingFileSync(appRoot, ['app.ts', 'app.tsx', 'app.js', 'app.jsx']),
     generatedRoot,
-    generatedEntryPath: path.join(generatedRoot, GENERATED_ENTRY),
-    generatedCssPath: path.join(generatedRoot, GENERATED_PAGE_CSS),
   };
 }
 
-export async function resolvePrimaryBunSpaPage(workspaceRoot: string): Promise<BunSpaPageDetails> {
+export async function resolveBunSpaPages(workspaceRoot: string): Promise<readonly BunSpaPageDetails[]> {
   const pagesRoot = path.join(workspaceRoot, 'src', 'frontend', 'pages');
-  const entries = (await readdir(pagesRoot, { withFileTypes: true }))
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort((left, right) => {
-      if (left === 'home') {
-        return -1;
-      }
-      if (right === 'home') {
-        return 1;
-      }
-      return left.localeCompare(right);
-    });
-
-  const pageName = entries[0];
-  if (!pageName) {
+  const directories = await collectSpaPageDirectories(pagesRoot);
+  if (directories.length === 0) {
     throw new Error(`No SPA pages found under ${pagesRoot}.`);
   }
 
-  const directory = path.join(pagesRoot, pageName);
-  const htmlPath = path.join(directory, 'index.html');
-  const scriptPath = await resolveExistingFile(directory, ['index.ts', 'index.tsx', 'index.js', 'index.jsx']);
-  const cssPath = await resolveOptionalFile(directory, ['index.css']);
+  const pages = await Promise.all(directories.map(async (directory) => {
+    const pageName = normalizeForwardSlashes(path.relative(pagesRoot, directory));
+    const htmlPath = path.join(directory, 'index.html');
+    const scriptPath = await resolveOptionalFile(directory, PAGE_SCRIPT_NAMES);
+    const cssPath = await resolveOptionalFile(directory, ['index.css']);
 
+    return {
+      name: pageName,
+      routePath: pageName === 'home' ? '/' : `/${pageName}`,
+      directory,
+      htmlPath,
+      scriptPath,
+      cssPath,
+    } satisfies BunSpaPageDetails;
+  }));
+
+  pages.sort((left, right) => comparePageNames(left.name, right.name));
+  return pages;
+}
+
+export function resolveBunSpaGeneratedPagePaths(
+  paths: BunSpaEntryPaths,
+  page: BunSpaPageDetails
+): BunSpaGeneratedPagePaths {
+  const generatedPageRoot = path.join(paths.generatedRoot, ...page.name.split('/'));
   return {
-    name: pageName,
-    directory,
-    htmlPath,
-    scriptPath,
-    cssPath,
+    generatedPageRoot,
+    generatedEntryPath: path.join(generatedPageRoot, GENERATED_ENTRY),
+    generatedCssPath: path.join(generatedPageRoot, GENERATED_PAGE_CSS),
   };
 }
 
-export async function prepareBunSpaGeneratedEntry(options: RegenerateBunSpaEntryOptions): Promise<void> {
+export async function prepareBunSpaGeneratedEntries(options: {
+  readonly paths: BunSpaEntryPaths;
+  readonly pages: readonly BunSpaPageDetails[];
+}): Promise<void> {
   await mkdir(options.paths.generatedRoot, { recursive: true });
-  await regenerateBunSpaEntry(options);
+
+  for (const page of options.pages) {
+    await regenerateBunSpaEntry({
+      paths: options.paths,
+      page,
+    });
+  }
 }
 
 export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOptions): Promise<void> {
+  const generatedPaths = resolveBunSpaGeneratedPagePaths(options.paths, options.page);
+  await mkdir(generatedPaths.generatedPageRoot, { recursive: true });
   const appTemplate = await readFile(options.paths.appTemplatePath, 'utf8');
   const pageHtml = await readFile(options.page.htmlPath, 'utf8');
   const title = extractTitle(pageHtml) ?? extractTitle(appTemplate) ?? 'Webstir SPA';
@@ -95,12 +115,14 @@ export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOption
   const pageBodyClass = extractTagAttribute(pageHtml, 'body', 'class');
   const bodyClass = [appBodyClass, pageBodyClass].filter(Boolean).join(' ').trim();
   const relativeAppScriptPath = options.paths.appScriptPath
-    ? toRelativeModulePath(options.paths.generatedEntryPath, options.paths.appScriptPath)
+    ? toRelativeModulePath(generatedPaths.generatedEntryPath, options.paths.appScriptPath)
     : undefined;
-  const relativeScriptPath = toRelativeModulePath(options.paths.generatedEntryPath, options.page.scriptPath);
+  const relativeScriptPath = options.page.scriptPath
+    ? toRelativeModulePath(generatedPaths.generatedEntryPath, options.page.scriptPath)
+    : undefined;
   const relativeStylesheetPath = await writeGeneratedPageCss({
-    generatedCssPath: options.paths.generatedCssPath,
-    generatedEntryPath: options.paths.generatedEntryPath,
+    generatedCssPath: generatedPaths.generatedCssPath,
+    generatedEntryPath: generatedPaths.generatedEntryPath,
     pageCssPath: options.page.cssPath,
     appCssPath: options.paths.appCssPath,
   });
@@ -117,26 +139,12 @@ export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOption
 <body${bodyClassAttribute}>
   <main>${mainHtml}</main>
   ${relativeAppScriptPath ? `<script type="module" src="${relativeAppScriptPath}"></script>` : ''}
-  <script type="module" src="${relativeScriptPath}"></script>
+  ${relativeScriptPath ? `<script type="module" src="${relativeScriptPath}"></script>` : ''}
 </body>
 </html>
 `;
 
-  await writeFile(options.paths.generatedEntryPath, output, 'utf8');
-}
-
-async function resolveExistingFile(directory: string, names: readonly string[]): Promise<string> {
-  for (const name of names) {
-    const candidate = path.join(directory, name);
-    try {
-      await access(candidate);
-      return candidate;
-    } catch {
-      // Fall through.
-    }
-  }
-
-  throw new Error(`No entry file found in ${directory}.`);
+  await writeFile(generatedPaths.generatedEntryPath, output, 'utf8');
 }
 
 async function resolveOptionalFile(directory: string, names: readonly string[]): Promise<string | undefined> {
@@ -235,4 +243,49 @@ function resolveOptionalExistingFileSync(directory: string, names: readonly stri
   }
 
   return undefined;
+}
+
+async function collectSpaPageDirectories(root: string): Promise<string[]> {
+  try {
+    await access(root);
+  } catch {
+    return [];
+  }
+
+  const directories: string[] = [];
+  const stack = [path.resolve(root)];
+
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    const entries = await readdir(current, { withFileTypes: true });
+    const hasIndexHtml = entries.some((entry) => entry.isFile() && entry.name === 'index.html');
+    if (hasIndexHtml) {
+      directories.push(current);
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        stack.push(path.join(current, entry.name));
+      }
+    }
+  }
+
+  return directories;
+}
+
+function comparePageNames(left: string, right: string): number {
+  if (left === 'home') {
+    return -1;
+  }
+
+  if (right === 'home') {
+    return 1;
+  }
+
+  return left.localeCompare(right);
+}
+
+function normalizeForwardSlashes(value: string): string {
+  return value.split(path.sep).join('/');
 }
