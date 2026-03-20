@@ -72,10 +72,11 @@ Validation:
 - Done: added one regular packaged-install smoke that installs the non-standalone Bun CLI into a fresh temp root, scaffolds a sibling external workspace, and verifies published dependency resolution before `webstir build`.
 - Done: extended the regular packaged-install smoke to run `webstir add-test` in that external workspace, assert the generated test file on disk, and confirm the workspace still builds afterward.
 - Done: closed the regular packaged-install `webstir test --runtime frontend` gap by moving Bun-orchestrator frontend test runtime/filter compatibility off newer `@webstir-io/webstir-testing` root exports and asserting the published external-workspace path in the regular install smoke.
+- Done: closed the regular packaged-install backend add-command gap by falling back when older published `@webstir-io/webstir-backend` packages lack `runAddRoute`/`runAddJob`, then asserting `webstir add-route` and `webstir add-job` through the external-workspace smoke.
 - Run consumer-path checks against maintained first-party surfaces, not abandoned rewrite workspaces.
 - Run package smoke checks in PR CI when tooling/templates/assets change, with path filtering if needed to keep runtime bounded.
 - Add at least one packed-artifact or external-workspace install check for the Bun CLI publish surface.
-- Follow-up: broaden regular packaged-install command coverage beyond frontend test/add-test, starting with backend add commands if they stay within the published dependency surface.
+- Follow-up: broaden regular packaged-install command coverage beyond frontend test and backend add commands where the installed publish surface still needs explicit consumer-path proof.
 - Keep the release workflow, but make it the final publish gate rather than the first place smoke/install regressions can appear.
 
 Validation:
