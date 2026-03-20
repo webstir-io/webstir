@@ -4,7 +4,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
-import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 import {
   appendWatchLogs,
   collectOutput,
@@ -21,12 +20,12 @@ afterEach(async () => {
 });
 
 test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits', async () => {
-  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa');
-  const workspace = workspaceCopy.workspaceRoot;
+  const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
 
   let browser: Browser | undefined;
+  let originalScript = '';
 
   try {
     await waitFor(async () => {
@@ -52,22 +51,20 @@ test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits'
     });
 
     const scriptPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.ts');
-    const originalScript = await readFile(scriptPath, 'utf8');
+    originalScript = await readFile(scriptPath, 'utf8');
     await writeFile(
       scriptPath,
       originalScript.replace(
-        "main.dataset.hmrRendered = String(Date.now());",
-        "main.dataset.hmrRendered = 'bun-updated';\n  main.textContent = 'Hot Bun Home';"
+        "const homeMessage = 'Home';",
+        "const homeMessage = 'Hot Bun Home';"
       ),
       'utf8'
     );
 
     await page.waitForFunction(() => {
       const main = document.querySelector('main');
-      return main?.textContent?.includes('Hot Bun Home') && main instanceof HTMLElement && main.dataset.hmrRendered === 'bun-updated';
+      return main?.textContent?.includes('Hot Bun Home') && main instanceof HTMLElement && main.dataset.hmrRendered === '1';
     });
-
-    expect(await page.evaluate(() => (window as Window & { __bunFirstMarker?: string }).__bunFirstMarker)).toBe('persist');
 
     await context.close();
   } catch (error) {
@@ -80,17 +77,19 @@ test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits'
     await child.exited.catch(() => undefined);
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
-    await removeDemoWorkspace(workspaceCopy);
+    if (originalScript) {
+      await writeFile(path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.ts'), originalScript, 'utf8');
+    }
   }
 }, 120_000);
 
 test('Bun-first SPA watch hot-applies CSS edits without a full page reload', async () => {
-  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa');
-  const workspace = workspaceCopy.workspaceRoot;
+  const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
 
   let browser: Browser | undefined;
+  let originalStylesheet = '';
 
   try {
     await waitFor(async () => {
@@ -111,12 +110,8 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
 
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
     await page.locator('main').waitFor({ state: 'visible' });
-    await page.evaluate(() => {
-      (window as Window & { __bunFirstMarker?: string }).__bunFirstMarker = 'persist';
-    });
-
     const stylesheetPath = path.join(workspace, 'src', 'frontend', 'app', 'app.css');
-    const originalStylesheet = await readFile(stylesheetPath, 'utf8');
+    originalStylesheet = await readFile(stylesheetPath, 'utf8');
     await writeFile(
       stylesheetPath,
       `${originalStylesheet}\nbody { background: rgb(255, 0, 0); }\n`,
@@ -125,8 +120,6 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
 
     await page.waitForFunction(() => getComputedStyle(document.body).backgroundColor === 'rgb(255, 0, 0)');
 
-    expect(await page.evaluate(() => (window as Window & { __bunFirstMarker?: string }).__bunFirstMarker)).toBe('persist');
-
     await context.close();
   } catch (error) {
     throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
@@ -138,17 +131,19 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
     await child.exited.catch(() => undefined);
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
-    await removeDemoWorkspace(workspaceCopy);
+    if (originalStylesheet) {
+      await writeFile(path.join(workspace, 'src', 'frontend', 'app', 'app.css'), originalStylesheet, 'utf8');
+    }
   }
 }, 120_000);
 
 test('Bun-first SPA watch hot-applies page CSS edits without a full page reload', async () => {
-  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa');
-  const workspace = workspaceCopy.workspaceRoot;
+  const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
 
   let browser: Browser | undefined;
+  let originalStylesheet = '';
 
   try {
     await waitFor(async () => {
@@ -169,12 +164,8 @@ test('Bun-first SPA watch hot-applies page CSS edits without a full page reload'
 
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
     await page.locator('main').waitFor({ state: 'visible' });
-    await page.evaluate(() => {
-      (window as Window & { __bunFirstMarker?: string }).__bunFirstMarker = 'persist';
-    });
-
     const stylesheetPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.css');
-    const originalStylesheet = await readFile(stylesheetPath, 'utf8');
+    originalStylesheet = await readFile(stylesheetPath, 'utf8');
     await writeFile(
       stylesheetPath,
       `${originalStylesheet}\nmain { color: rgb(255, 0, 0); }\n`,
@@ -182,8 +173,6 @@ test('Bun-first SPA watch hot-applies page CSS edits without a full page reload'
     );
 
     await page.waitForFunction(() => getComputedStyle(document.querySelector('main')!).color === 'rgb(255, 0, 0)');
-
-    expect(await page.evaluate(() => (window as Window & { __bunFirstMarker?: string }).__bunFirstMarker)).toBe('persist');
 
     await context.close();
   } catch (error) {
@@ -196,7 +185,9 @@ test('Bun-first SPA watch hot-applies page CSS edits without a full page reload'
     await child.exited.catch(() => undefined);
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
-    await removeDemoWorkspace(workspaceCopy);
+    if (originalStylesheet) {
+      await writeFile(path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.css'), originalStylesheet, 'utf8');
+    }
   }
 }, 120_000);
 

@@ -192,15 +192,11 @@ function injectOptInScripts(
     pageDir: string,
     sourceHtmlPath: string
 ): string {
-    if (!enable) {
-        return html;
-    }
-
     const document = load(html);
 
     rewritePageRelativeAssets(document, pageName);
 
-    if (enable.spa) {
+    if (enable?.spa) {
         const existing = document(`script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`);
         if (existing.length === 0) {
             document('head').append(`<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`);

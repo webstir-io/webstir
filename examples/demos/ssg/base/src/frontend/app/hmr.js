@@ -124,10 +124,13 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             const specifier = withCacheBuster(asset.url, baseContext.cacheBuster);
             let moduleExports;
             try {
+                window.__webstirHotModuleImporting = true;
                 moduleExports = await import(specifier);
             } catch (error) {
                 console.error(`[webstir-hmr] Failed to import module '${asset.url}'.`, error);
                 return { success: false, reason: 'module.import', error, details: asset };
+            } finally {
+                window.__webstirHotModuleImporting = false;
             }
 
             if (!(await invokeAccept(moduleExports, context))) {
@@ -188,6 +191,36 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     }
 
     async function invokeAccept(moduleExports, context) {
+        const docsHandler = window.__webstirDocsHot;
+        if (docsHandler && typeof docsHandler.accept === 'function') {
+            try {
+                const result = docsHandler.accept(context);
+                if (isPromise(result)) {
+                    const resolved = await result;
+                    return resolved !== false;
+                }
+                return result !== false;
+            } catch (error) {
+                console.error('[webstir-hmr] Docs hot handler threw.', error);
+                return false;
+            }
+        }
+
+        const moduleHandler = getModuleHotHandler(moduleExports, 'accept');
+        if (typeof moduleHandler === 'function') {
+            try {
+                const result = moduleHandler(context);
+                if (isPromise(result)) {
+                    const resolved = await result;
+                    return resolved !== false;
+                }
+                return result !== false;
+            } catch (error) {
+                console.error('[webstir-hmr] Module accept handler threw.', error);
+                return false;
+            }
+        }
+
         const handler = window.__webstirAccept;
         if (typeof handler !== 'function') {
             return true;
@@ -204,6 +237,20 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             console.error('[webstir-hmr] Accept handler threw.', error);
             return false;
         }
+    }
+
+    function getModuleHotHandler(moduleExports, key) {
+        if (!moduleExports || typeof moduleExports !== 'object') {
+            return null;
+        }
+
+        const candidate = moduleExports.webstirHot;
+        if (!candidate || typeof candidate !== 'object') {
+            return null;
+        }
+
+        const handler = candidate[key];
+        return typeof handler === 'function' ? handler : null;
     }
 
     function swapStylesheet(asset, cacheBuster) {

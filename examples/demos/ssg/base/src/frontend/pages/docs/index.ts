@@ -1,3 +1,6 @@
+import { defineBoundary } from '@webstir-io/webstir-frontend/runtime';
+import { DOCS_BOUNDARY_VERSION } from './boundary-version.js';
+
 type DocsNavEntry = {
   path: string;
   title: string;
@@ -13,31 +16,37 @@ type FolderNode = {
   pages: DocsNavEntry[];
 };
 
-type DocsUiState = {
-  nav?: DocsNavEntry[] | null;
-  navPromise?: Promise<DocsNavEntry[] | null>;
+type DocsRuntimeState = {
+  root: HTMLElement;
+  originalHtml: string;
+  originalBoundaryVersion: string | null;
   tocObserver?: IntersectionObserver;
+  active: boolean;
 };
 
-function getState(): DocsUiState {
-  const w = window as unknown as Record<string, unknown>;
-  const key = '__webstirDocsUiStateV1';
-  const existing = w[key] as DocsUiState | undefined;
-  if (existing) {
-    return existing;
+declare global {
+  interface Window {
+    __webstirHotModuleImporting?: boolean;
+    __webstirDocsBoundaryVersionOverride?: string;
+    __webstirDocsBoundary?: {
+      mount(root: Element): Promise<unknown>;
+      unmount(): Promise<void>;
+    };
+    __webstirDocsHot?: {
+      accept(): Promise<boolean>;
+    };
   }
-  const state: DocsUiState = {};
-  w[key] = state;
-  return state;
 }
 
-const state = getState();
+let navCache: DocsNavEntry[] | null | undefined;
+let navPromise: Promise<DocsNavEntry[] | null> | null = null;
 
 function normalizePath(value: string): string {
   const trimmed = value.trim();
   if (!trimmed.startsWith('/')) {
     return `/${trimmed}`;
   }
+
   return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }
 
@@ -52,7 +61,7 @@ function escapeHtml(value: string): string {
 
 function toTitleCase(value: string): string {
   return value
-    .split(/[-_\\s]+/g)
+    .split(/[-_\s]+/g)
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
@@ -64,6 +73,7 @@ function parseDocsSegments(urlPath: string): string[] {
   if (parts[0] === 'docs') {
     return parts.slice(1);
   }
+
   return parts;
 }
 
@@ -82,12 +92,13 @@ async function loadJson<T>(path: string): Promise<T | null> {
 }
 
 async function ensureNavLoaded(): Promise<DocsNavEntry[] | null> {
-  if (state.nav !== undefined) {
-    return state.nav;
+  if (navCache !== undefined) {
+    return navCache;
   }
-  state.navPromise ??= loadJson<DocsNavEntry[]>('/docs-nav.json');
-  state.nav = await state.navPromise;
-  return state.nav;
+
+  navPromise ??= loadJson<DocsNavEntry[]>('/docs-nav.json');
+  navCache = await navPromise;
+  return navCache;
 }
 
 function loadOpenState(): Record<string, boolean> {
@@ -177,7 +188,6 @@ function normalizeEntries(entries: DocsNavEntry[]): DocsNavEntry[] {
 }
 
 function renderSidebar(entries: DocsNavEntry[], links: HTMLElement): void {
-
   const normalizedCurrent = normalizePath(window.location.pathname);
   const safeEntries = normalizeEntries(entries);
 
@@ -275,8 +285,8 @@ function renderSidebar(entries: DocsNavEntry[], links: HTMLElement): void {
   });
 }
 
-function ensureBreadcrumbContainer(): HTMLElement | null {
-  const main = document.querySelector<HTMLElement>('.docs-main');
+function ensureBreadcrumbContainer(root: HTMLElement): HTMLElement | null {
+  const main = root.querySelector<HTMLElement>('.docs-main');
   if (!main) return null;
 
   let container = main.querySelector<HTMLElement>('.docs-breadcrumb');
@@ -286,12 +296,13 @@ function ensureBreadcrumbContainer(): HTMLElement | null {
     container.setAttribute('aria-label', 'Breadcrumb');
     main.insertBefore(container, main.firstChild);
   }
+
   return container;
 }
 
-function renderBreadcrumbs(entries: DocsNavEntry[]): void {
+function renderBreadcrumbs(entries: DocsNavEntry[], root: HTMLElement): void {
   const segments = parseDocsSegments(window.location.pathname);
-  const container = ensureBreadcrumbContainer();
+  const container = ensureBreadcrumbContainer(root);
   if (!container) return;
 
   const safeEntries = normalizeEntries(entries);
@@ -300,14 +311,14 @@ function renderBreadcrumbs(entries: DocsNavEntry[]): void {
     entryByPath.set(normalizePath(entry.path), entry);
   });
 
-  const { root } = buildNavTree(safeEntries);
+  const { root: navRoot } = buildNavTree(safeEntries);
 
   const isRoot = segments.length === 0;
   const crumbs: Array<{ label: string; href?: string; current?: boolean; home?: boolean }> = [
     { label: 'Docs', href: isRoot ? undefined : '/docs/', current: isRoot, home: true }
   ];
 
-  let cursor: FolderNode | undefined = root;
+  let cursor: FolderNode | undefined = navRoot;
   const prefix: string[] = [];
 
   segments.forEach((segment, index) => {
@@ -352,6 +363,7 @@ function renderBreadcrumbs(entries: DocsNavEntry[]): void {
       const ariaLabel = crumb.home ? ' aria-label="Docs home"' : '';
       return `<li><a class="docs-breadcrumb__item" href="${escapeHtml(crumb.href)}"${ariaLabel}>${content}</a></li>`;
     }
+
     const currentAttr = crumb.current ? ' aria-current="page"' : '';
     return `<li><span class="docs-breadcrumb__item"${currentAttr}>${content}</span></li>`;
   });
@@ -365,26 +377,26 @@ function slugifyHeading(value: string): string {
     .trim()
     .toLowerCase()
     .replace(/['"]/g, '')
-    .replace(/[^a-z0-9\\s-]/g, '')
-    .replace(/\\s+/g, '-')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
     .replace(/-+/g, '-');
 }
 
-function refreshToc(): void {
-  const layout = document.querySelector<HTMLElement>('.docs-layout');
-  const article = document.querySelector<HTMLElement>('.docs-article');
-  const tocAside = document.querySelector<HTMLElement>('.docs-toc');
-  const tocList = document.getElementById('docs-toc');
+function refreshToc(state: DocsRuntimeState): void {
+  const layout = state.root;
+  const article = layout.querySelector<HTMLElement>('.docs-article');
+  const tocAside = layout.querySelector<HTMLElement>('.docs-toc');
+  const tocList = layout.querySelector<HTMLElement>('#docs-toc');
 
   if (!layout || !tocAside || !tocList || !article) {
+    state.tocObserver?.disconnect();
+    state.tocObserver = undefined;
     layout?.classList.remove('has-toc');
     return;
   }
 
-  if (state.tocObserver) {
-    state.tocObserver.disconnect();
-    state.tocObserver = undefined;
-  }
+  state.tocObserver?.disconnect();
+  state.tocObserver = undefined;
 
   const headings = Array.from(article.querySelectorAll<HTMLElement>('h2, h3'));
   if (headings.length === 0) {
@@ -425,7 +437,7 @@ function refreshToc(): void {
   tocAside.removeAttribute('hidden');
   layout.classList.add('has-toc');
 
-  const tocLinks = Array.from(tocList.querySelectorAll<HTMLAnchorElement>('a[href^=\"#\"]'));
+  const tocLinks = Array.from(tocList.querySelectorAll<HTMLAnchorElement>('a[href^="#"]'));
   const linkById = new Map<string, HTMLAnchorElement>();
   tocLinks.forEach((anchor) => {
     const raw = anchor.getAttribute('href') ?? '';
@@ -464,32 +476,107 @@ function refreshToc(): void {
   state.tocObserver = observer;
 }
 
-async function refresh(): Promise<void> {
+async function refresh(state: DocsRuntimeState): Promise<void> {
+  if (!state.active) {
+    return;
+  }
+
   const nav = await ensureNavLoaded();
+  if (!state.active) {
+    return;
+  }
+
   if (nav) {
-    const sidebarLinks = document.getElementById('docs-links');
+    const sidebarLinks = state.root.querySelector<HTMLElement>('#docs-links');
     if (sidebarLinks) {
       renderSidebar(nav, sidebarLinks);
     }
 
-    renderBreadcrumbs(nav);
+    renderBreadcrumbs(nav, state.root);
   }
-  refreshToc();
+
+  refreshToc(state);
 }
 
-function boot(): void {
-  const w = window as unknown as Record<string, unknown>;
-  const key = '__webstirDocsUiBootedV1';
-  if (w[key] === true) {
-    void refresh();
+export const docsBoundary = defineBoundary<DocsRuntimeState>({
+  async mount(root, scope) {
+    const layout = root as HTMLElement;
+    const boundaryVersion = window.__webstirDocsBoundaryVersionOverride ?? DOCS_BOUNDARY_VERSION;
+    const state: DocsRuntimeState = {
+      root: layout,
+      originalHtml: layout.innerHTML,
+      originalBoundaryVersion: layout.getAttribute('data-webstir-docs-boundary-version'),
+      active: true,
+    };
+
+    layout.setAttribute('data-webstir-docs-boundary-version', boundaryVersion);
+
+    scope.add(() => {
+      state.tocObserver?.disconnect();
+    });
+
+    const handleClientNav = () => {
+      void refresh(state);
+    };
+
+    window.addEventListener('webstir:client-nav', handleClientNav);
+    scope.add(() => {
+      window.removeEventListener('webstir:client-nav', handleClientNav);
+    });
+
+    await refresh(state);
+    return state;
+  },
+  async unmount(state) {
+    state.active = false;
+    state.tocObserver?.disconnect();
+    state.root.innerHTML = state.originalHtml;
+
+    if (state.originalBoundaryVersion === null) {
+      state.root.removeAttribute('data-webstir-docs-boundary-version');
+    } else {
+      state.root.setAttribute('data-webstir-docs-boundary-version', state.originalBoundaryVersion);
+    }
+  }
+});
+
+window.__webstirDocsHot = {
+  async accept(): Promise<boolean> {
+    console.info('[webstir-hmr] Docs boundary hot accept received.');
+    const previousBoundary = window.__webstirDocsBoundary;
+    if (previousBoundary) {
+      await previousBoundary.unmount();
+    }
+
+    window.__webstirDocsBoundary = docsBoundary;
+
+    const layout = document.querySelector<HTMLElement>('.docs-layout');
+    if (!layout) {
+      return false;
+    }
+
+    await docsBoundary.mount(layout);
+    console.info('[webstir-hmr] Docs boundary hot accept applied.');
+    return true;
+  }
+};
+
+async function bootDocsPage(): Promise<void> {
+  if (window.__webstirHotModuleImporting) {
     return;
   }
 
-  w[key] = true;
-  window.addEventListener('webstir:client-nav', () => {
-    void refresh();
-  });
-  void refresh();
+  const layout = document.querySelector<HTMLElement>('.docs-layout');
+  if (!layout) {
+    return;
+  }
+
+  try {
+    window.__webstirDocsBoundary = docsBoundary;
+    await docsBoundary.mount(layout);
+  } catch (error) {
+    console.error('Failed to mount the docs boundary:', error);
+  }
 }
 
-boot();
+void bootDocsPage();

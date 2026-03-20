@@ -21,6 +21,11 @@
       "import": "./dist/builders/index.js",
       "default": "./dist/builders/index.js"
     },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
     "./cli": {
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"
