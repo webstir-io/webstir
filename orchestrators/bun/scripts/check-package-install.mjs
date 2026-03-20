@@ -12,6 +12,8 @@ async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-package-install-'));
   const installRoot = path.join(tempRoot, 'install-root');
   const workspaceRoot = path.join(tempRoot, 'site');
+  const addTestTarget = 'frontend/pages/home/package-install-smoke';
+  const addedTestPath = path.join(workspaceRoot, 'src', 'frontend', 'pages', 'home', 'tests', 'package-install-smoke.test.ts');
   const existingTarballs = await listTarballs(packageRoot);
   let tarballPath = null;
   let keepWorkspace = false;
@@ -38,6 +40,14 @@ async function main() {
     await assertPublishedDependencySpecs(installRoot, workspaceRoot);
 
     await run(['bun', 'install'], workspaceRoot);
+    const addTestOutput = await run([cliPath, 'add-test', addTestTarget, '--workspace', workspaceRoot], workspaceRoot);
+    if (!addTestOutput.includes('[webstir] add-test complete')) {
+      throw new Error(`Expected add-test summary in output, received:\n${addTestOutput}`);
+    }
+
+    await assertExists(addedTestPath, 'scaffolded add-test file');
+    await assertFileContains(addedTestPath, "test('sample passes'", 'sample test body');
+
     await run([cliPath, 'build', '--workspace', workspaceRoot], workspaceRoot);
 
     await assertExists(path.join(workspaceRoot, 'build', 'backend', 'index.js'), 'backend build output');
@@ -117,6 +127,13 @@ async function assertExists(targetPath, label) {
     await access(targetPath, fsConstants.F_OK);
   } catch {
     throw new Error(`Expected ${label} at ${targetPath}`);
+  }
+}
+
+async function assertFileContains(targetPath, expectedSnippet, label) {
+  const content = await readFile(targetPath, 'utf8');
+  if (!content.includes(expectedSnippet)) {
+    throw new Error(`Expected ${label} in ${targetPath}`);
   }
 }
 

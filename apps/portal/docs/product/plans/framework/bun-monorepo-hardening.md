@@ -70,9 +70,11 @@ Validation:
 ### 3. Promote Consumer-Path Checks Into PR CI
 - Done: added one packaged Bun CLI install smoke that packs the orchestrator, installs it into a fresh temp workspace, scaffolds a site, and runs `webstir build` as part of normal CI.
 - Done: added one regular packaged-install smoke that installs the non-standalone Bun CLI into a fresh temp root, scaffolds a sibling external workspace, and verifies published dependency resolution before `webstir build`.
+- Done: extended the regular packaged-install smoke to run `webstir add-test` in that external workspace, assert the generated test file on disk, and confirm the workspace still builds afterward.
 - Run consumer-path checks against maintained first-party surfaces, not abandoned rewrite workspaces.
 - Run package smoke checks in PR CI when tooling/templates/assets change, with path filtering if needed to keep runtime bounded.
 - Add at least one packed-artifact or external-workspace install check for the Bun CLI publish surface.
+- Follow-up: broaden regular packaged-install command coverage beyond `add-test`, starting with the remaining `webstir test` published-runtime gap and then backend add commands if they stay within the published dependency surface.
 - Keep the release workflow, but make it the final publish gate rather than the first place smoke/install regressions can appear.
 
 Validation:
