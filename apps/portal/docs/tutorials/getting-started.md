@@ -1,47 +1,50 @@
 # Getting Started
 
-Install the prerequisites, inspect the active CLI, and run one of the proof apps that demonstrates the current HTML-first runtime.
+Install the packaged CLI, scaffold a workspace outside the monorepo, and run the built-in full-stack template.
 
-> Historical note: older repo snapshots used the `.NET` orchestrator. The active path is the Bun orchestrator in `orchestrators/bun`.
+> These docs default to the packaged CLI path. If you are contributing inside this repo, use `bun run webstir -- ...` from the monorepo root instead.
 
 ## Prerequisites
 
 - Bun 1.3.x
 - Node.js 20.18+
-- TypeScript on `PATH` if you are working directly on framework packages
 
-## First Run
+## Install The CLI
 
-1. Install dependencies and inspect the CLI
+Create a small tool root for the CLI, install it once, and keep the binary path around for the rest of the tutorial:
 
 ```bash
+mkdir webstir-playground
+cd webstir-playground
+printf '{\n  "name": "webstir-playground",\n  "private": true\n}\n' > package.json
+bun add @webstir-io/webstir
+WEBSTIR="$PWD/node_modules/.bin/webstir"
+```
+
+Check the installed command surface:
+
+```bash
+"$WEBSTIR" --help
+```
+
+## Scaffold A Workspace
+
+```bash
+"$WEBSTIR" init full my-first-app
+cd my-first-app
 bun install
-bun run webstir -- --help
 ```
 
-2. Start a proof app
+## Run The App
 
 ```bash
-bun run watch:auth-crud
-# or
-bun run watch:dashboard
+"$WEBSTIR" watch --workspace "$PWD"
 ```
 
-3. Open the printed URL and compare:
+Open the printed URL, then check both of these routes:
 
-- `auth-crud` for server-handled sign-in, validation, redirect-after-post, and CRUD flows
-- `dashboard` for shell-level and panel-level fragment refreshes on top of normal HTML forms
-
-## Create A Fresh Workspace
-
-```bash
-bun run webstir -- init my-app
-cd my-app
-bun install
-bun run webstir -- watch --workspace "$PWD"
-```
-
-Edit files under `src/**` and let the watch loop rebuild the frontend and backend surfaces that exist in the workspace.
+- `/` for the scaffolded frontend shell
+- `/api/demo/progressive-enhancement` for the built-in backend form flow that demonstrates the baseline redirect-after-post path you will later upgrade with `client-nav`
 
 ## Next
 
@@ -49,3 +52,12 @@ Edit files under `src/**` and let the watch loop rebuild the frontend and backen
 - [Watch](../how-to/watch.md)
 - [Test](../how-to/test.md)
 - [Publish](../how-to/publish.md)
+
+## Repo Contributor Path
+
+If you are working inside this monorepo instead of consuming Webstir as a packaged tool, use the repo-root command form:
+
+```bash
+bun install
+bun run webstir -- watch --workspace "$PWD/examples/demos/full"
+```

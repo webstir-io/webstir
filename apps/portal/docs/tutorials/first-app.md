@@ -1,49 +1,69 @@
 # Your First App
 
-Build a small HTML-first full-stack app, then validate it through the same watch, test, and publish flow used by the proof apps.
+Build a small HTML-first full-stack app with the packaged CLI, then validate the same watch, test, and publish loop you will use in a real workspace.
 
-## Create The App
+## Start From A Fresh Workspace
+
+This tutorial assumes you already installed the CLI as shown in [Getting Started](./getting-started.md) and still have the absolute `WEBSTIR` path in your shell.
 
 ```bash
-bun run webstir -- init my-first-app
+"$WEBSTIR" init full my-first-app
 cd my-first-app
 bun install
+```
+
+## Turn On Client Navigation
+
+The full template ships a backend-served form route already. Enable `client-nav` so you can compare the redirect path with fragment updates driven by the same form.
+
+```bash
+"$WEBSTIR" enable client-nav --workspace "$PWD"
 ```
 
 ## Run In Dev Mode
 
 ```bash
-bun run webstir -- watch --workspace "$PWD"
+"$WEBSTIR" watch --workspace "$PWD"
 ```
 
-This starts the frontend dev server plus the backend runtime when `src/backend` exists. The watch loop keeps document assets and `/api/*` responses in sync.
+This starts the frontend dev server plus the backend runtime. The watch loop keeps document assets and `/api/*` responses in sync.
+
+## Walk The Built-In Form Flow
+
+Open `/api/demo/progressive-enhancement` and compare two cases:
+
+1. Submit the form with JavaScript enabled after `client-nav` is on. The backend returns a targeted fragment update.
+2. Disable JavaScript or reload normally and submit again. The same backend handler falls back to redirect-after-post.
+
+That route lives in `src/backend/index.ts` and gives you a working reference for:
+
+- `application/x-www-form-urlencoded` form handling
+- redirect responses for the baseline HTML path
+- fragment responses when `x-webstir-client-nav: 1` is present
 
 ## Add A Page
 
 ```bash
-bun run webstir -- add-page about --workspace "$PWD"
+"$WEBSTIR" add-page about --workspace "$PWD"
 ```
 
 Open `/about`, edit files under `src/frontend/pages/about/`, and watch the document rebuild.
 
-## Add A Backend Form Flow
+## Adapt The Backend Demo
 
-Use `src/backend/index.ts` or `src/backend/module.ts` to add:
+To make the scaffold feel like your app instead of the stock demo, start by editing the existing backend route in `src/backend/index.ts`:
 
-- a GET document route
-- a POST form handler that redirects back to the document
-- an enhanced fragment response when `x-webstir-client-nav: 1` is present
+- change `DEMO_PATH` to the route you actually want
+- rename the route summaries
+- replace the HTML in `renderGreeting()` with your own document or fragment markup
 
-The repo proof apps show the target shape:
+Once that is working, split the demo helpers into your own route handlers or module exports as the backend surface grows.
 
-- [`examples/demos/auth-crud`](https://github.com/webstir-io/webstir/tree/main/examples/demos/auth-crud)
-- [`examples/demos/dashboard`](https://github.com/webstir-io/webstir/tree/main/examples/demos/dashboard)
-
-## Test And Publish
+## Validate The Workspace
 
 ```bash
-bun run webstir -- test --workspace "$PWD"
-bun run webstir -- publish --workspace "$PWD"
+"$WEBSTIR" test --workspace "$PWD"
+"$WEBSTIR" publish --workspace "$PWD"
 ```
 
 Inspect:
