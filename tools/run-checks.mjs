@@ -7,6 +7,14 @@ const repoRoot = path.resolve(__dirname, '..');
 export function buildCheckPlan(mode) {
   const requiredSteps = [
     {
+      label: 'repo biome check',
+      command: ['bun', 'run', 'check:biome'],
+    },
+    {
+      label: 'repo biome lint',
+      command: ['bun', 'run', 'lint'],
+    },
+    {
       label: 'repo tool contracts',
       command: ['bun', 'run', 'test:tools'],
     },
@@ -36,6 +44,10 @@ export function buildCheckPlan(mode) {
     {
       label: 'testing tooling',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'test'],
+    },
+    {
+      label: 'testing tooling smoke',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'smoke'],
     },
     {
       label: 'bun asset sources',
@@ -68,7 +80,9 @@ export function buildCheckPlan(mode) {
         },
       ];
     default:
-      throw new Error(`Unknown check mode "${mode}". Expected one of: required, with-watch-browser.`);
+      throw new Error(
+        `Unknown check mode "${mode}". Expected one of: required, with-watch-browser.`,
+      );
   }
 }
 

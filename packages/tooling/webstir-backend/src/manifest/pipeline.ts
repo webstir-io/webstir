@@ -3,269 +3,315 @@ import { existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 import { moduleManifestSchema, CONTRACT_VERSION } from '@webstir-io/module-contract';
-import type { ModuleDefinition, ModuleDiagnostic, ModuleManifest } from '@webstir-io/module-contract';
+import type {
+  ModuleDefinition,
+  ModuleDiagnostic,
+  ModuleManifest,
+} from '@webstir-io/module-contract';
 
 import { readTextFile } from '../utils/bun.js';
 
 interface WorkspacePackageJson {
-    readonly name?: string;
-    readonly version?: string;
-    readonly webstir?: {
-        readonly moduleManifest?: WorkspaceModuleConfig;
-    };
+  readonly name?: string;
+  readonly version?: string;
+  readonly webstir?: {
+    readonly moduleManifest?: WorkspaceModuleConfig;
+  };
 }
 
 type WorkspaceModuleConfig = Partial<ModuleManifest> & {
-    readonly contractVersion?: string;
-    readonly capabilities?: ModuleManifest['capabilities'];
+  readonly contractVersion?: string;
+  readonly capabilities?: ModuleManifest['capabilities'];
 };
 
+type ManifestRouteLike = { readonly method?: string; readonly path?: string };
+type ManifestJobLike = { readonly name?: string; readonly schedule?: string | null };
+
 export interface LoadManifestOptions {
-    readonly workspaceRoot: string;
-    readonly buildRoot: string;
-    readonly entryPoints: readonly string[];
-    readonly diagnostics: ModuleDiagnostic[];
+  readonly workspaceRoot: string;
+  readonly buildRoot: string;
+  readonly entryPoints: readonly string[];
+  readonly diagnostics: ModuleDiagnostic[];
 }
 
-export async function loadBackendModuleManifest(options: LoadManifestOptions): Promise<ModuleManifest> {
-    const { workspaceRoot, buildRoot, entryPoints, diagnostics } = options;
-    const pkgPath = path.join(workspaceRoot, 'package.json');
-    let workspacePackage: WorkspacePackageJson | undefined;
+export async function loadBackendModuleManifest(
+  options: LoadManifestOptions,
+): Promise<ModuleManifest> {
+  const { workspaceRoot, buildRoot, entryPoints, diagnostics } = options;
+  const pkgPath = path.join(workspaceRoot, 'package.json');
+  let workspacePackage: WorkspacePackageJson | undefined;
 
-    try {
-        const raw = await readTextFile(pkgPath);
-        workspacePackage = JSON.parse(raw) as WorkspacePackageJson;
-    } catch (error) {
-        const err = error as NodeJS.ErrnoException;
-        // Missing package.json is expected in some temporary workspaces; avoid noisy warnings.
-        if (err.code !== 'ENOENT') {
-            diagnostics.push({
-                severity: 'warn',
-                message: `[webstir-backend] unable to read ${pkgPath}: ${err.message}. Using defaults.`
-            });
-        }
+  try {
+    const raw = await readTextFile(pkgPath);
+    workspacePackage = JSON.parse(raw) as WorkspacePackageJson;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    // Missing package.json is expected in some temporary workspaces; avoid noisy warnings.
+    if (err.code !== 'ENOENT') {
+      diagnostics.push({
+        severity: 'warn',
+        message: `[webstir-backend] unable to read ${pkgPath}: ${err.message}. Using defaults.`,
+      });
     }
+  }
 
-    const moduleConfig = workspacePackage?.webstir?.moduleManifest ?? {};
+  const moduleConfig = workspacePackage?.webstir?.moduleManifest ?? {};
 
-    let manifestCandidate: ModuleManifest = {
-        contractVersion: typeof moduleConfig.contractVersion === 'string' ? moduleConfig.contractVersion : CONTRACT_VERSION,
-        name: typeof moduleConfig.name === 'string' ? moduleConfig.name : deriveModuleName(workspacePackage, workspaceRoot),
-        version: typeof moduleConfig.version === 'string' ? moduleConfig.version : deriveModuleVersion(workspacePackage),
-        kind: 'backend',
-        capabilities: Array.isArray(moduleConfig.capabilities) ? moduleConfig.capabilities : [],
-        routes: moduleConfig.routes ?? [],
-        views: moduleConfig.views ?? [],
-        jobs: moduleConfig.jobs ?? [],
-        events: moduleConfig.events ?? [],
-        services: moduleConfig.services ?? [],
-        init: moduleConfig.init,
-        dispose: moduleConfig.dispose
+  let manifestCandidate: ModuleManifest = {
+    contractVersion:
+      typeof moduleConfig.contractVersion === 'string'
+        ? moduleConfig.contractVersion
+        : CONTRACT_VERSION,
+    name:
+      typeof moduleConfig.name === 'string'
+        ? moduleConfig.name
+        : deriveModuleName(workspacePackage, workspaceRoot),
+    version:
+      typeof moduleConfig.version === 'string'
+        ? moduleConfig.version
+        : deriveModuleVersion(workspacePackage),
+    kind: 'backend',
+    capabilities: Array.isArray(moduleConfig.capabilities) ? moduleConfig.capabilities : [],
+    routes: moduleConfig.routes ?? [],
+    views: moduleConfig.views ?? [],
+    jobs: moduleConfig.jobs ?? [],
+    events: moduleConfig.events ?? [],
+    services: moduleConfig.services ?? [],
+    init: moduleConfig.init,
+    dispose: moduleConfig.dispose,
+  };
+
+  const definition = await loadModuleDefinition(buildRoot, diagnostics);
+  if (definition) {
+    const definitionManifest = definition.manifest ?? ({} as ModuleManifest);
+    const routesFromDefinition = definition.routes?.map((route) => route.definition);
+    const viewsFromDefinition = definition.views?.map((view) => view.definition);
+
+    const mergedCapabilities = Array.from(
+      new Set([
+        ...(manifestCandidate.capabilities ?? []),
+        ...(definitionManifest.capabilities ?? []),
+      ]),
+    );
+
+    manifestCandidate = {
+      ...manifestCandidate,
+      ...definitionManifest,
+      capabilities: mergedCapabilities,
+      routes: routesFromDefinition ?? definitionManifest.routes ?? manifestCandidate.routes ?? [],
+      views: viewsFromDefinition ?? definitionManifest.views ?? manifestCandidate.views ?? [],
+      jobs: definitionManifest.jobs ?? manifestCandidate.jobs ?? [],
+      events: definitionManifest.events ?? manifestCandidate.events ?? [],
+      services: definitionManifest.services ?? manifestCandidate.services ?? [],
+      init: definitionManifest.init ?? manifestCandidate.init,
+      dispose: definitionManifest.dispose ?? manifestCandidate.dispose,
     };
+  }
 
-    const definition = await loadModuleDefinition(buildRoot, diagnostics);
-    if (definition) {
-        const definitionManifest = definition.manifest ?? ({} as ModuleManifest);
-        const routesFromDefinition = definition.routes?.map((route) => route.definition);
-        const viewsFromDefinition = definition.views?.map((view) => view.definition);
+  const validation = moduleManifestSchema.safeParse(manifestCandidate);
+  if (!validation.success) {
+    const problems = validation.error.issues
+      .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
+      .join('; ');
+    diagnostics.push({
+      severity: 'error',
+      message: `[webstir-backend] module manifest validation failed (${problems}). Falling back to defaults.`,
+    });
+    return {
+      contractVersion: CONTRACT_VERSION,
+      name: deriveModuleName(workspacePackage, workspaceRoot),
+      version: deriveModuleVersion(workspacePackage),
+      kind: 'backend',
+      capabilities: [],
+      routes: [],
+      views: [],
+      jobs: [],
+      events: [],
+      services: [],
+    };
+  }
 
-        const mergedCapabilities = Array.from(
-            new Set([...(manifestCandidate.capabilities ?? []), ...(definitionManifest.capabilities ?? [])])
-        );
+  const manifest = validation.data;
 
-        manifestCandidate = {
-            ...manifestCandidate,
-            ...definitionManifest,
-            capabilities: mergedCapabilities,
-            routes: routesFromDefinition ?? definitionManifest.routes ?? manifestCandidate.routes ?? [],
-            views: viewsFromDefinition ?? definitionManifest.views ?? manifestCandidate.views ?? [],
-            jobs: definitionManifest.jobs ?? manifestCandidate.jobs ?? [],
-            events: definitionManifest.events ?? manifestCandidate.events ?? [],
-            services: definitionManifest.services ?? manifestCandidate.services ?? [],
-            init: definitionManifest.init ?? manifestCandidate.init,
-            dispose: definitionManifest.dispose ?? manifestCandidate.dispose
-        };
+  try {
+    const normalizePath = (p: unknown) => {
+      let s = typeof p === 'string' ? p : '';
+      if (!s.startsWith('/')) s = `/${s}`;
+      s = s.replace(/\/+/, '/');
+      if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
+      return s;
+    };
+    const seen = new Map<string, number>();
+    for (const route of (manifest.routes ?? []) as readonly ManifestRouteLike[]) {
+      const method = typeof route.method === 'string' ? route.method.toUpperCase() : '';
+      const pathKey = normalizePath(route.path);
+      const key = `${method} ${pathKey}`;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
+    }
+    const dups = Array.from(seen.entries()).filter(([, count]) => count > 1);
+    if (dups.length > 0) {
+      const list = dups.map(([k, c]) => `${k} (${c}x)`).join(', ');
+      diagnostics.push({
+        severity: 'warn',
+        message: `[webstir-backend] duplicate route definitions: ${list}`,
+      });
+    }
+  } catch {
+    // best-effort only
+  }
+
+  if (manifest.routes?.length && entryPoints.length === 0) {
+    diagnostics.push({
+      severity: 'warn',
+      message:
+        '[webstir-backend] module manifest defines routes but no entry points were built. Ensure backend compilation produced handlers.',
+    });
+  }
+
+  try {
+    const jobs = Array.isArray(manifest.jobs) ? manifest.jobs : [];
+    const events = Array.isArray(manifest.events) ? manifest.events : [];
+    const services = Array.isArray(manifest.services) ? manifest.services : [];
+    if (jobs.length + events.length + services.length > 0) {
+      diagnostics.push({
+        severity: 'info',
+        message: `[webstir-backend] manifest jobs=${jobs.length} events=${events.length} services=${services.length}`,
+      });
     }
 
-    const validation = moduleManifestSchema.safeParse(manifestCandidate);
-    if (!validation.success) {
-        const problems = validation.error.issues
-            .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
-            .join('; ');
-        diagnostics.push({
-            severity: 'error',
-            message: `[webstir-backend] module manifest validation failed (${problems}). Falling back to defaults.`
-        });
-        return {
-            contractVersion: CONTRACT_VERSION,
-            name: deriveModuleName(workspacePackage, workspaceRoot),
-            version: deriveModuleVersion(workspacePackage),
-            kind: 'backend',
-            capabilities: [],
-            routes: [],
-            views: [],
-            jobs: [],
-            events: [],
-            services: []
-        };
+    const noSchedule = (jobs as readonly ManifestJobLike[]).filter(
+      (job) =>
+        typeof job.name === 'string' && (job.schedule === undefined || job.schedule === null),
+    );
+    if (noSchedule.length > 0) {
+      const MAX_LIST = 10;
+      const names = noSchedule
+        .map((job) => job.name)
+        .slice(0, MAX_LIST)
+        .join(', ');
+      const omitted =
+        noSchedule.length > MAX_LIST ? ` (+${noSchedule.length - MAX_LIST} more)` : '';
+      diagnostics.push({
+        severity: 'warn',
+        message: `[webstir-backend] jobs without schedules: ${names}${omitted}`,
+      });
     }
+  } catch {
+    // best-effort only
+  }
 
-    const manifest = validation.data;
+  try {
+    const routes = Array.isArray(manifest.routes) ? manifest.routes.length : 0;
+    const views = Array.isArray(manifest.views) ? manifest.views.length : 0;
+    const caps =
+      Array.isArray(manifest.capabilities) && manifest.capabilities.length > 0
+        ? ` [${manifest.capabilities.join(', ')}]`
+        : '';
+    diagnostics.push({
+      severity: 'info',
+      message: `[webstir-backend] manifest routes=${routes} views=${views}${caps}`,
+    });
+  } catch {
+    // ignore
+  }
 
-    try {
-        const normalizePath = (p: unknown) => {
-            let s = typeof p === 'string' ? p : '';
-            if (!s.startsWith('/')) s = '/' + s;
-            s = s.replace(/\/+/, '/');
-            if (s.length > 1 && s.endsWith('/')) s = s.slice(0, -1);
-            return s;
-        };
-        const seen = new Map<string, number>();
-        for (const r of manifest.routes ?? []) {
-            const method = typeof (r as any).method === 'string' ? (r as any).method.toUpperCase() : '';
-            const pathKey = normalizePath((r as any).path);
-            const key = `${method} ${pathKey}`;
-            seen.set(key, (seen.get(key) ?? 0) + 1);
-        }
-        const dups = Array.from(seen.entries()).filter(([, count]) => count > 1);
-        if (dups.length > 0) {
-            const list = dups.map(([k, c]) => `${k} (${c}x)`).join(', ');
-            diagnostics.push({ severity: 'warn', message: `[webstir-backend] duplicate route definitions: ${list}` });
-        }
-    } catch {
-        // best-effort only
-    }
-
-    if (manifest.routes?.length && entryPoints.length === 0) {
-        diagnostics.push({
-            severity: 'warn',
-            message: '[webstir-backend] module manifest defines routes but no entry points were built. Ensure backend compilation produced handlers.'
-        });
-    }
-
-    try {
-        const jobs = Array.isArray(manifest.jobs) ? manifest.jobs : [];
-        const events = Array.isArray(manifest.events) ? manifest.events : [];
-        const services = Array.isArray(manifest.services) ? manifest.services : [];
-        if (jobs.length + events.length + services.length > 0) {
-            diagnostics.push({
-                severity: 'info',
-                message: `[webstir-backend] manifest jobs=${jobs.length} events=${events.length} services=${services.length}`
-            });
-        }
-
-        const noSchedule = jobs.filter((j: any) => j && typeof j.name === 'string' && (j.schedule === undefined || j.schedule === null));
-        if (noSchedule.length > 0) {
-            const MAX_LIST = 10;
-            const names = noSchedule.map((j: any) => j.name).slice(0, MAX_LIST).join(', ');
-            const omitted = noSchedule.length > MAX_LIST ? ` (+${noSchedule.length - MAX_LIST} more)` : '';
-            diagnostics.push({
-                severity: 'warn',
-                message: `[webstir-backend] jobs without schedules: ${names}${omitted}`
-            });
-        }
-    } catch {
-        // best-effort only
-    }
-
-    try {
-        const routes = Array.isArray(manifest.routes) ? manifest.routes.length : 0;
-        const views = Array.isArray(manifest.views) ? manifest.views.length : 0;
-        const caps = Array.isArray(manifest.capabilities) && manifest.capabilities.length > 0 ? ` [${manifest.capabilities.join(', ')}]` : '';
-        diagnostics.push({ severity: 'info', message: `[webstir-backend] manifest routes=${routes} views=${views}${caps}` });
-    } catch {
-        // ignore
-    }
-
-    return manifest;
+  return manifest;
 }
 
 async function loadModuleDefinition(
-    buildRoot: string,
-    diagnostics: ModuleDiagnostic[]
+  buildRoot: string,
+  diagnostics: ModuleDiagnostic[],
 ): Promise<ModuleDefinition | undefined> {
-    const candidates = [
-        path.join(buildRoot, 'module.js'),
-        path.join(buildRoot, 'module.mjs'),
-        path.join(buildRoot, 'module/index.js'),
-        path.join(buildRoot, 'module/index.mjs')
-    ];
+  const candidates = [
+    path.join(buildRoot, 'module.js'),
+    path.join(buildRoot, 'module.mjs'),
+    path.join(buildRoot, 'module/index.js'),
+    path.join(buildRoot, 'module/index.mjs'),
+  ];
 
-    for (const fullPath of candidates) {
-        if (!existsSync(fullPath)) {
-            continue;
-        }
-
-        try {
-            const moduleUrl = `${pathToFileURL(fullPath).href}?t=${Date.now()}`;
-            const imported = (await import(moduleUrl)) as Record<string, unknown>;
-            const definitionCandidate = extractModuleDefinition(imported);
-            if (isModuleDefinition(definitionCandidate)) {
-                return definitionCandidate;
-            }
-            diagnostics.push({
-                severity: 'warn',
-                message: `[webstir-backend] module definition at ${fullPath} does not export a createModule() definition.`
-            });
-        } catch (error) {
-            diagnostics.push({
-                severity: 'warn',
-                message: `[webstir-backend] failed to load module definition from ${fullPath}: ${(error as Error).message}`
-            });
-        }
+  for (const fullPath of candidates) {
+    if (!existsSync(fullPath)) {
+      continue;
     }
 
-    return undefined;
+    try {
+      const moduleUrl = `${pathToFileURL(fullPath).href}?t=${Date.now()}`;
+      const imported = (await import(moduleUrl)) as Record<string, unknown>;
+      const definitionCandidate = extractModuleDefinition(imported);
+      if (isModuleDefinition(definitionCandidate)) {
+        return definitionCandidate;
+      }
+      diagnostics.push({
+        severity: 'warn',
+        message: `[webstir-backend] module definition at ${fullPath} does not export a createModule() definition.`,
+      });
+    } catch (error) {
+      diagnostics.push({
+        severity: 'warn',
+        message: `[webstir-backend] failed to load module definition from ${fullPath}: ${(error as Error).message}`,
+      });
+    }
+  }
+
+  return undefined;
 }
 
 function extractModuleDefinition(exports: Record<string, unknown>): unknown {
-    const keys = ['module', 'moduleDefinition', 'default', 'backendModule'];
-    for (const key of keys) {
-        if (key in exports) {
-            const value = exports[key as keyof typeof exports];
-            if (value !== null && value !== undefined) {
-                return value;
-            }
-        }
+  const keys = ['module', 'moduleDefinition', 'default', 'backendModule'];
+  for (const key of keys) {
+    if (key in exports) {
+      const value = exports[key as keyof typeof exports];
+      if (value !== null && value !== undefined) {
+        return value;
+      }
     }
-    return undefined;
+  }
+  return undefined;
 }
 
 function isModuleDefinition(value: unknown): value is ModuleDefinition {
-    return typeof value === 'object' && value !== null && 'manifest' in (value as Record<string, unknown>);
+  return (
+    typeof value === 'object' && value !== null && 'manifest' in (value as Record<string, unknown>)
+  );
 }
 
 function deriveModuleName(pkg: WorkspacePackageJson | undefined, workspaceRoot: string): string {
-    if (typeof pkg?.webstir?.moduleManifest?.name === 'string' && pkg.webstir.moduleManifest.name.length > 0) {
-        return pkg.webstir.moduleManifest.name;
-    }
-    if (typeof pkg?.name === 'string' && pkg.name.length > 0) {
-        return pkg.name;
-    }
-    return `backend-module-${path.basename(workspaceRoot)}`;
+  if (
+    typeof pkg?.webstir?.moduleManifest?.name === 'string' &&
+    pkg.webstir.moduleManifest.name.length > 0
+  ) {
+    return pkg.webstir.moduleManifest.name;
+  }
+  if (typeof pkg?.name === 'string' && pkg.name.length > 0) {
+    return pkg.name;
+  }
+  return `backend-module-${path.basename(workspaceRoot)}`;
 }
 
 function deriveModuleVersion(pkg: WorkspacePackageJson | undefined): string {
-    if (typeof pkg?.webstir?.moduleManifest?.version === 'string' && pkg.webstir.moduleManifest.version.length > 0) {
-        return pkg.webstir.moduleManifest.version;
-    }
-    if (typeof pkg?.version === 'string' && pkg.version.length > 0) {
-        return pkg.version;
-    }
-    return '0.0.0';
+  if (
+    typeof pkg?.webstir?.moduleManifest?.version === 'string' &&
+    pkg.webstir.moduleManifest.version.length > 0
+  ) {
+    return pkg.webstir.moduleManifest.version;
+  }
+  if (typeof pkg?.version === 'string' && pkg.version.length > 0) {
+    return pkg.version;
+  }
+  return '0.0.0';
 }
 
 export async function summarizeBuiltManifest(
-    buildRoot: string
+  buildRoot: string,
 ): Promise<{ routes: number; views: number; capabilities?: readonly string[] } | undefined> {
-    const definition = await loadModuleDefinition(buildRoot, []);
-    if (!definition || !definition.manifest) {
-        return undefined;
-    }
-    const manifest = definition.manifest;
-    return {
-        routes: Array.isArray(manifest.routes) ? manifest.routes.length : 0,
-        views: Array.isArray(manifest.views) ? manifest.views.length : 0,
-        capabilities: manifest.capabilities
-    };
+  const definition = await loadModuleDefinition(buildRoot, []);
+  if (!definition || !definition.manifest) {
+    return undefined;
+  }
+  const manifest = definition.manifest;
+  return {
+    routes: Array.isArray(manifest.routes) ? manifest.routes.length : 0,
+    views: Array.isArray(manifest.views) ? manifest.views.length : 0,
+    capabilities: manifest.capabilities,
+  };
 }

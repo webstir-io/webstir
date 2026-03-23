@@ -21,7 +21,7 @@ async function main() {
     await writeFile(
       path.join(consumerRoot, 'package.json'),
       `${JSON.stringify({ name: 'webstir-standalone-smoke', private: true }, null, 2)}\n`,
-      'utf8'
+      'utf8',
     );
 
     tarballPath = await packStandaloneTarball();
@@ -35,16 +35,31 @@ async function main() {
     await run([cliPath, 'init', 'full', 'site'], consumerRoot);
 
     const workspaceRoot = path.join(consumerRoot, 'site');
-    await assertExists(path.join(workspaceRoot, 'package.json'), 'scaffolded workspace package.json');
+    await assertExists(
+      path.join(workspaceRoot, 'package.json'),
+      'scaffolded workspace package.json',
+    );
 
     await run(['bun', 'install'], workspaceRoot);
     await run([cliPath, 'build', '--workspace', workspaceRoot], workspaceRoot);
 
-    await assertExists(path.join(workspaceRoot, 'build', 'backend', 'index.js'), 'backend build output');
+    await assertExists(
+      path.join(workspaceRoot, 'build', 'backend', 'index.js'),
+      'backend build output',
+    );
     await assertExists(path.join(workspaceRoot, 'build', 'frontend'), 'frontend build output');
-    await assertExists(path.join(workspaceRoot, '.webstir', 'backend-outputs.json'), 'backend outputs cache');
-    await assertExists(path.join(workspaceRoot, '.webstir', 'backend-manifest-digest.json'), 'backend manifest digest');
-    await assertExists(path.join(workspaceRoot, '.webstir', 'frontend-manifest.json'), 'frontend manifest');
+    await assertExists(
+      path.join(workspaceRoot, '.webstir', 'backend-outputs.json'),
+      'backend outputs cache',
+    );
+    await assertExists(
+      path.join(workspaceRoot, '.webstir', 'backend-manifest-digest.json'),
+      'backend manifest digest',
+    );
+    await assertExists(
+      path.join(workspaceRoot, '.webstir', 'frontend-manifest.json'),
+      'frontend manifest',
+    );
 
     console.log('[webstir][install-smoke] standalone install smoke passed');
   } catch (error) {
@@ -124,7 +139,9 @@ async function run(command, cwd) {
 
   if (exitCode !== 0) {
     const detail = [stdout.trim(), stderr.trim()].filter(Boolean).join('\n');
-    throw new Error(`Command failed (${exitCode}): ${command.join(' ')}${detail ? `\n${detail}` : ''}`);
+    throw new Error(
+      `Command failed (${exitCode}): ${command.join(' ')}${detail ? `\n${detail}` : ''}`,
+    );
   }
 
   return stdout;

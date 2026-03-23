@@ -4,28 +4,28 @@ import assert from 'node:assert/strict';
 import {
   createInMemorySessionStore,
   prepareSessionState,
-  resetInMemorySessionStore
+  resetInMemorySessionStore,
 } from '../dist/runtime/session.js';
 
 const config = {
   secret: 'test-session-secret',
   cookieName: 'webstir_session',
   secure: false,
-  maxAgeSeconds: 60
+  maxAgeSeconds: 60,
 };
 
 const loginRoute = {
   form: {
     session: { write: true },
     flash: {
-      publish: [{ key: 'signed-in', level: 'success', when: 'success' }]
-    }
-  }
+      publish: [{ key: 'signed-in', level: 'success', when: 'success' }],
+    },
+  },
 };
 
 const accountRoute = {
   session: { mode: 'optional' },
-  flash: { consume: ['signed-in'] }
+  flash: { consume: ['signed-in'] },
 };
 
 test('prepareSessionState honors an injected in-memory store boundary', () => {
@@ -36,25 +36,25 @@ test('prepareSessionState honors an injected in-memory store boundary', () => {
     cookies: '',
     route: loginRoute,
     config,
-    store
+    store,
   });
   const createdCommit = created.commit({
     session: {
       userId: 'ada@example.com',
-      data: { email: 'ada@example.com' }
+      data: { email: 'ada@example.com' },
     },
     route: loginRoute,
     result: {
       status: 303,
-      redirect: { location: '/session/account' }
-    }
+      redirect: { location: '/session/account' },
+    },
   });
   const cookieHeader = extractCookieHeader(createdCommit.setCookie);
 
   const globalRead = prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
-    config
+    config,
   });
   assert.equal(globalRead.session, null);
   assert.deepEqual(globalRead.flash, []);
@@ -63,12 +63,12 @@ test('prepareSessionState honors an injected in-memory store boundary', () => {
     cookies: cookieHeader,
     route: accountRoute,
     config,
-    store
+    store,
   });
   assert.equal(scopedRead.session?.userId, 'ada@example.com');
   assert.deepEqual(
     scopedRead.flash.map((message) => ({ key: message.key, level: message.level })),
-    [{ key: 'signed-in', level: 'success' }]
+    [{ key: 'signed-in', level: 'success' }],
   );
 });
 
@@ -79,17 +79,17 @@ test('resetInMemorySessionStore clears an injected in-memory store', () => {
     cookies: '',
     route: loginRoute,
     config,
-    store
+    store,
   });
   const createdCommit = created.commit({
     session: {
-      userId: 'ada@example.com'
+      userId: 'ada@example.com',
     },
     route: loginRoute,
     result: {
       status: 303,
-      redirect: { location: '/session/account' }
-    }
+      redirect: { location: '/session/account' },
+    },
   });
   const cookieHeader = extractCookieHeader(createdCommit.setCookie);
 
@@ -99,7 +99,7 @@ test('resetInMemorySessionStore clears an injected in-memory store', () => {
     cookies: cookieHeader,
     route: accountRoute,
     config,
-    store
+    store,
   });
   assert.equal(afterReset.session, null);
   assert.deepEqual(afterReset.flash, []);

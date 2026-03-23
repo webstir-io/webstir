@@ -11,13 +11,20 @@ async function createTempDir(prefix) {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
 }
 
-async function writeHarnessFixture(workspace, {
-  entryPath = path.join(workspace, 'build', 'backend', 'index.js'),
-  manifestPath = path.join(workspace, '.webstir', 'backend-manifest.json'),
-  manifest = { name: '@demo/backend', version: '0.0.1', routes: [] }
-} = {}) {
+async function writeHarnessFixture(
+  workspace,
+  {
+    entryPath = path.join(workspace, 'build', 'backend', 'index.js'),
+    manifestPath = path.join(workspace, '.webstir', 'backend-manifest.json'),
+    manifest = { name: '@demo/backend', version: '0.0.1', routes: [] },
+  } = {},
+) {
   await fs.mkdir(path.dirname(entryPath), { recursive: true });
-  await fs.writeFile(entryPath, "console.log('API server running');\nsetInterval(() => {}, 1000);\n", 'utf8');
+  await fs.writeFile(
+    entryPath,
+    "console.log('API server running');\nsetInterval(() => {}, 1000);\n",
+    'utf8',
+  );
   await fs.mkdir(path.dirname(manifestPath), { recursive: true });
   await fs.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
 }
@@ -114,7 +121,11 @@ test('createBackendTestHarness resolves WEBSTIR_WORKSPACE_ROOT from env override
   await writeHarnessFixture(workspace, {
     entryPath: path.join(workspace, 'custom', 'backend', 'index.js'),
     manifestPath: path.join(workspace, '.webstir', 'custom-backend-manifest.json'),
-    manifest: { name: '@demo/env-harness', version: '1.2.3', routes: [{ path: '/env', method: 'GET' }] }
+    manifest: {
+      name: '@demo/env-harness',
+      version: '1.2.3',
+      routes: [{ path: '/env', method: 'GET' }],
+    },
   });
 
   const previousCwd = process.cwd();
@@ -128,8 +139,8 @@ test('createBackendTestHarness resolves WEBSTIR_WORKSPACE_ROOT from env override
       env: {
         WEBSTIR_WORKSPACE_ROOT: workspace,
         WEBSTIR_BACKEND_BUILD_ROOT: 'custom/backend',
-        WEBSTIR_BACKEND_TEST_MANIFEST: '.webstir/custom-backend-manifest.json'
-      }
+        WEBSTIR_BACKEND_TEST_MANIFEST: '.webstir/custom-backend-manifest.json',
+      },
     });
 
     assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
@@ -154,7 +165,11 @@ test('createBackendTestHarness resolves option-based relative entry and manifest
   await writeHarnessFixture(workspace, {
     entryPath: path.join(workspace, 'artifacts', 'backend', 'server.js'),
     manifestPath: path.join(workspace, 'artifacts', 'backend', 'manifest.json'),
-    manifest: { name: '@demo/options-harness', version: '4.5.6', routes: [{ path: '/options', method: 'POST' }] }
+    manifest: {
+      name: '@demo/options-harness',
+      version: '4.5.6',
+      routes: [{ path: '/options', method: 'POST' }],
+    },
   });
 
   const previousCwd = process.cwd();
@@ -168,7 +183,7 @@ test('createBackendTestHarness resolves option-based relative entry and manifest
       buildRoot: 'artifacts/backend',
       entry: 'artifacts/backend/server.js',
       manifestPath: 'artifacts/backend/manifest.json',
-      port
+      port,
     });
 
     assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);

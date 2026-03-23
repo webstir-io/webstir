@@ -8,17 +8,20 @@ export function createBaseLogger(env: AppEnv): Logger {
     level: env.logging.level,
     base: {
       service: env.logging.serviceName,
-      environment: env.NODE_ENV
+      environment: env.NODE_ENV,
     },
-    timestamp: stdTimeFunctions.isoTime
+    timestamp: stdTimeFunctions.isoTime,
   });
 }
 
-export function createRequestLogger(baseLogger: Logger, options: { requestId: string; req: http.IncomingMessage; route?: string }): Logger {
+export function createRequestLogger(
+  baseLogger: Logger,
+  options: { requestId: string; req: http.IncomingMessage; route?: string },
+): Logger {
   return baseLogger.child({
     requestId: options.requestId,
     method: options.req.method ?? 'GET',
     path: options.req.url ?? '/',
-    route: options.route
+    route: options.route,
   });
 }

@@ -44,33 +44,42 @@ export function resolveBunSpaEntryPaths(workspaceRoot: string): BunSpaEntryPaths
     workspaceRoot: resolvedWorkspaceRoot,
     appTemplatePath: path.join(appRoot, 'app.html'),
     appCssPath: path.join(appRoot, 'app.css'),
-    appScriptPath: resolveOptionalExistingFileSync(appRoot, ['app.ts', 'app.tsx', 'app.js', 'app.jsx']),
+    appScriptPath: resolveOptionalExistingFileSync(appRoot, [
+      'app.ts',
+      'app.tsx',
+      'app.js',
+      'app.jsx',
+    ]),
     generatedRoot,
   };
 }
 
-export async function resolveBunSpaPages(workspaceRoot: string): Promise<readonly BunSpaPageDetails[]> {
+export async function resolveBunSpaPages(
+  workspaceRoot: string,
+): Promise<readonly BunSpaPageDetails[]> {
   const pagesRoot = path.join(workspaceRoot, 'src', 'frontend', 'pages');
   const directories = await collectSpaPageDirectories(pagesRoot);
   if (directories.length === 0) {
     throw new Error(`No SPA pages found under ${pagesRoot}.`);
   }
 
-  const pages = await Promise.all(directories.map(async (directory) => {
-    const pageName = normalizeForwardSlashes(path.relative(pagesRoot, directory));
-    const htmlPath = path.join(directory, 'index.html');
-    const scriptPath = await resolveOptionalFile(directory, PAGE_SCRIPT_NAMES);
-    const cssPath = await resolveOptionalFile(directory, ['index.css']);
+  const pages = await Promise.all(
+    directories.map(async (directory) => {
+      const pageName = normalizeForwardSlashes(path.relative(pagesRoot, directory));
+      const htmlPath = path.join(directory, 'index.html');
+      const scriptPath = await resolveOptionalFile(directory, PAGE_SCRIPT_NAMES);
+      const cssPath = await resolveOptionalFile(directory, ['index.css']);
 
-    return {
-      name: pageName,
-      routePath: pageName === 'home' ? '/' : `/${pageName}`,
-      directory,
-      htmlPath,
-      scriptPath,
-      cssPath,
-    } satisfies BunSpaPageDetails;
-  }));
+      return {
+        name: pageName,
+        routePath: pageName === 'home' ? '/' : `/${pageName}`,
+        directory,
+        htmlPath,
+        scriptPath,
+        cssPath,
+      } satisfies BunSpaPageDetails;
+    }),
+  );
 
   pages.sort((left, right) => comparePageNames(left.name, right.name));
   return pages;
@@ -78,7 +87,7 @@ export async function resolveBunSpaPages(workspaceRoot: string): Promise<readonl
 
 export function resolveBunSpaGeneratedPagePaths(
   paths: BunSpaEntryPaths,
-  page: BunSpaPageDetails
+  page: BunSpaPageDetails,
 ): BunSpaGeneratedPagePaths {
   const generatedPageRoot = path.join(paths.generatedRoot, ...page.name.split('/'));
   return {
@@ -147,7 +156,10 @@ export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOption
   await writeFile(generatedPaths.generatedEntryPath, output, 'utf8');
 }
 
-async function resolveOptionalFile(directory: string, names: readonly string[]): Promise<string | undefined> {
+async function resolveOptionalFile(
+  directory: string,
+  names: readonly string[],
+): Promise<string | undefined> {
   for (const name of names) {
     const candidate = path.join(directory, name);
     try {
@@ -190,7 +202,11 @@ function extractTagContents(html: string, tagName: string): string | null {
   return match?.[1] ?? null;
 }
 
-function extractTagAttribute(html: string, tagName: string, attributeName: string): string | undefined {
+function extractTagAttribute(
+  html: string,
+  tagName: string,
+  attributeName: string,
+): string | undefined {
   const tagPattern = new RegExp(`<${tagName}\\b([^>]*)>`, 'i');
   const tagMatch = html.match(tagPattern);
   if (!tagMatch?.[1]) {
@@ -224,17 +240,17 @@ function toRelativeModulePath(fromFile: string, targetFile: string): string {
 }
 
 function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
 
 function escapeAttribute(value: string): string {
   return escapeHtml(value).replaceAll('"', '&quot;');
 }
 
-function resolveOptionalExistingFileSync(directory: string, names: readonly string[]): string | undefined {
+function resolveOptionalExistingFileSync(
+  directory: string,
+  names: readonly string[],
+): string | undefined {
   for (const name of names) {
     const candidate = path.join(directory, name);
     if (existsSync(candidate)) {
@@ -256,7 +272,10 @@ async function collectSpaPageDirectories(root: string): Promise<string[]> {
   const stack = [path.resolve(root)];
 
   while (stack.length > 0) {
-    const current = stack.pop()!;
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
     const entries = await readdir(current, { withFileTypes: true });
     const hasIndexHtml = entries.some((entry) => entry.isFile() && entry.name === 'index.html');
     if (hasIndexHtml) {

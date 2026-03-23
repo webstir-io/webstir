@@ -148,19 +148,27 @@ export class BackendRuntimeSupervisor {
 
     let ready = false;
 
-    exitPromise.then((code) => {
-      if (!ready) {
-        return;
-      } else if (!processRecord.expectedExit && !this.isStopping && this.current === processRecord) {
-        this.io.stderr.write(`[webstir] backend runtime exited unexpectedly with code ${code ?? 'null'}.\n`);
-      }
-    }).finally(() => {
-      if (this.current === processRecord) {
-        this.current = undefined;
-      }
-      stdoutReader.close();
-      stderrReader.close();
-    });
+    exitPromise
+      .then((code) => {
+        if (!ready) {
+          return;
+        } else if (
+          !processRecord.expectedExit &&
+          !this.isStopping &&
+          this.current === processRecord
+        ) {
+          this.io.stderr.write(
+            `[webstir] backend runtime exited unexpectedly with code ${code ?? 'null'}.\n`,
+          );
+        }
+      })
+      .finally(() => {
+        if (this.current === processRecord) {
+          this.current = undefined;
+        }
+        stdoutReader.close();
+        stderrReader.close();
+      });
 
     try {
       await waitForRuntimeReady(port, exitPromise);
@@ -232,7 +240,7 @@ function normalizeDisplayHost(host: string): string {
 
 async function waitForRuntimeReady(
   port: number,
-  exitPromise: Promise<number | null>
+  exitPromise: Promise<number | null>,
 ): Promise<void> {
   const abortController = new AbortController();
 

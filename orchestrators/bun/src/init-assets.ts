@@ -22,37 +22,67 @@ export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
     createAsset(sharedTemplateRoot, 'Errors.500.html', 'Errors.500.html'),
     createAsset(sharedTemplateRoot, 'Errors.default.html', 'Errors.default.html'),
     createAsset(sharedTemplateRoot, 'types.global.d.ts', 'types.global.d.ts'),
-    createAsset(sharedTemplateRoot, path.join('types', 'global.d.ts'), path.join('types', 'global.d.ts')),
+    createAsset(
+      sharedTemplateRoot,
+      path.join('types', 'global.d.ts'),
+      path.join('types', 'global.d.ts'),
+    ),
   ];
 }
 
-export async function getModeScaffoldAssets(mode: WorkspaceMode): Promise<readonly ScaffoldAsset[]> {
+export async function getModeScaffoldAssets(
+  mode: WorkspaceMode,
+): Promise<readonly ScaffoldAsset[]> {
   switch (mode) {
     case 'ssg':
       return collectModeAssets([
-        { sourceRoot: path.join(ssgTemplateRoot, 'src', 'frontend'), targetRoot: path.join('src', 'frontend') },
+        {
+          sourceRoot: path.join(ssgTemplateRoot, 'src', 'frontend'),
+          targetRoot: path.join('src', 'frontend'),
+        },
       ]);
     case 'spa':
       return collectModeAssets([
-        { sourceRoot: path.join(spaTemplateRoot, 'src', 'frontend'), targetRoot: path.join('src', 'frontend') },
-        { sourceRoot: path.join(spaTemplateRoot, 'src', 'shared'), targetRoot: path.join('src', 'shared') },
+        {
+          sourceRoot: path.join(spaTemplateRoot, 'src', 'frontend'),
+          targetRoot: path.join('src', 'frontend'),
+        },
+        {
+          sourceRoot: path.join(spaTemplateRoot, 'src', 'shared'),
+          targetRoot: path.join('src', 'shared'),
+        },
       ]);
     case 'api':
       return collectModeAssets([
-        { sourceRoot: path.join(apiTemplateRoot, 'src', 'backend'), targetRoot: path.join('src', 'backend') },
-        { sourceRoot: path.join(apiTemplateRoot, 'src', 'shared'), targetRoot: path.join('src', 'shared') },
+        {
+          sourceRoot: path.join(apiTemplateRoot, 'src', 'backend'),
+          targetRoot: path.join('src', 'backend'),
+        },
+        {
+          sourceRoot: path.join(apiTemplateRoot, 'src', 'shared'),
+          targetRoot: path.join('src', 'shared'),
+        },
       ]);
     case 'full':
       return collectModeAssets([
-        { sourceRoot: path.join(fullTemplateRoot, 'src', 'frontend'), targetRoot: path.join('src', 'frontend') },
-        { sourceRoot: path.join(fullTemplateRoot, 'src', 'backend'), targetRoot: path.join('src', 'backend') },
-        { sourceRoot: path.join(fullTemplateRoot, 'src', 'shared'), targetRoot: path.join('src', 'shared') },
+        {
+          sourceRoot: path.join(fullTemplateRoot, 'src', 'frontend'),
+          targetRoot: path.join('src', 'frontend'),
+        },
+        {
+          sourceRoot: path.join(fullTemplateRoot, 'src', 'backend'),
+          targetRoot: path.join('src', 'backend'),
+        },
+        {
+          sourceRoot: path.join(fullTemplateRoot, 'src', 'shared'),
+          targetRoot: path.join('src', 'shared'),
+        },
       ]);
   }
 }
 
 async function collectModeAssets(
-  roots: readonly { sourceRoot: string; targetRoot: string }[]
+  roots: readonly { sourceRoot: string; targetRoot: string }[],
 ): Promise<readonly ScaffoldAsset[]> {
   const assets: ScaffoldAsset[] = [];
   for (const root of roots) {

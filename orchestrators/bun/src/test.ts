@@ -2,12 +2,21 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 
 import type { ModuleManifest } from '@webstir-io/module-contract';
-import type { TestModule, RunnerSummary, TestRunResult, RuntimeFilter } from '@webstir-io/webstir-testing';
+import type {
+  TestModule,
+  RunnerSummary,
+  TestRunResult,
+  RuntimeFilter,
+} from '@webstir-io/webstir-testing';
 import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
 import { compileTestModules } from './compile-tests.ts';
 import { loadProvider } from './providers.ts';
-import { applyRuntimeFilter, describeRuntimeFilter, normalizeRuntimeFilter } from './runtime-filter.ts';
+import {
+  applyRuntimeFilter,
+  describeRuntimeFilter,
+  normalizeRuntimeFilter,
+} from './runtime-filter.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import { run as runFrontendTests } from './testing-runtime.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
@@ -40,7 +49,11 @@ export async function runTest(options: RunTestOptions): Promise<TestCommandResul
     const provider = await loadProvider(target);
     const result = await provider.build({
       workspaceRoot: workspace.root,
-      env: createWorkspaceRuntimeEnv(workspace.root, target === 'backend' ? 'test' : 'build', options.env),
+      env: createWorkspaceRuntimeEnv(
+        workspace.root,
+        target === 'backend' ? 'test' : 'build',
+        options.env,
+      ),
       incremental: false,
     });
 
@@ -51,7 +64,9 @@ export async function runTest(options: RunTestOptions): Promise<TestCommandResul
 
   const manifest = await discoverTestManifest(workspace.root);
   const filteredManifest = applyRuntimeFilter(manifest, runtime);
-  const filterMessage = describeRuntimeFilter(runtime, manifest.modules.length, filteredManifest.modules.length) ?? undefined;
+  const filterMessage =
+    describeRuntimeFilter(runtime, manifest.modules.length, filteredManifest.modules.length) ??
+    undefined;
   await compileTestModules(workspace.root, filteredManifest.modules);
   const summary = await executeTestRun(filteredManifest.modules, workspace.root);
 
@@ -68,10 +83,16 @@ export async function runTest(options: RunTestOptions): Promise<TestCommandResul
 export function formatFailedTests(results: readonly TestRunResult[]): string[] {
   return results
     .filter((result) => !result.passed)
-    .map((result) => `${result.file}: ${result.name}${result.message ? ` — ${firstLine(result.message)}` : ''}`);
+    .map(
+      (result) =>
+        `${result.file}: ${result.name}${result.message ? ` — ${firstLine(result.message)}` : ''}`,
+    );
 }
 
-async function executeTestRun(modules: readonly TestModule[], workspaceRoot: string): Promise<RunnerSummary> {
+async function executeTestRun(
+  modules: readonly TestModule[],
+  workspaceRoot: string,
+): Promise<RunnerSummary> {
   const registry = createPublishedProviderRegistry();
   const grouped = new Map<TestModule['runtime'], TestModule[]>();
 
@@ -87,9 +108,10 @@ async function executeTestRun(modules: readonly TestModule[], workspaceRoot: str
   let summary = createEmptySummary();
 
   for (const [runtime, runtimeModules] of grouped) {
-    const provider = runtime === 'frontend'
-      ? { id: '@webstir-io/webstir/frontend-runtime', runTests: runFrontendTests }
-      : registry.get(runtime);
+    const provider =
+      runtime === 'frontend'
+        ? { id: '@webstir-io/webstir/frontend-runtime', runTests: runFrontendTests }
+        : registry.get(runtime);
     if (!provider) {
       continue;
     }
@@ -97,7 +119,11 @@ async function executeTestRun(modules: readonly TestModule[], workspaceRoot: str
     const files = runtimeModules
       .map((module) => module.compiledPath)
       .filter((compiledPath): compiledPath is string => typeof compiledPath === 'string');
-    const runtimeSummary = await withRuntimeEnv(runtime, workspaceRoot, async () => await provider.runTests(files));
+    const runtimeSummary = await withRuntimeEnv(
+      runtime,
+      workspaceRoot,
+      async () => await provider.runTests(files),
+    );
     summary = {
       passed: summary.passed + runtimeSummary.passed,
       failed: summary.failed + runtimeSummary.failed,
@@ -113,7 +139,7 @@ async function executeTestRun(modules: readonly TestModule[], workspaceRoot: str
 async function withRuntimeEnv<T>(
   runtime: TestModule['runtime'],
   workspaceRoot: string,
-  callback: () => Promise<T>
+  callback: () => Promise<T>,
 ): Promise<T> {
   if (runtime !== 'backend') {
     return await callback();
@@ -155,7 +181,10 @@ function createEmptySummary(): RunnerSummary {
   };
 }
 
-function selectBuildTargets(mode: WorkspaceDescriptor['mode'], runtime: RuntimeFilter): BuildTargetKind[] {
+function selectBuildTargets(
+  mode: WorkspaceDescriptor['mode'],
+  runtime: RuntimeFilter,
+): BuildTargetKind[] {
   if (runtime === 'frontend') {
     if (mode === 'spa' || mode === 'ssg' || mode === 'full') {
       return ['frontend'];
@@ -185,7 +214,7 @@ function selectBuildTargets(mode: WorkspaceDescriptor['mode'], runtime: RuntimeF
 
 function parseRuntimeFlag(
   rawArgs: readonly string[],
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
 ): RuntimeFilter {
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index];
@@ -201,13 +230,16 @@ function parseRuntimeFlag(
   return normalizeRuntimeFilter(env.WEBSTIR_TEST_RUNTIME);
 }
 
-async function persistBackendManifest(workspaceRoot: string, manifest: ModuleManifest): Promise<void> {
+async function persistBackendManifest(
+  workspaceRoot: string,
+  manifest: ModuleManifest,
+): Promise<void> {
   const webstirDir = path.join(workspaceRoot, '.webstir');
   await mkdir(webstirDir, { recursive: true });
   await writeFile(
     path.join(webstirDir, 'backend-manifest.json'),
     `${JSON.stringify(manifest, null, 2)}\n`,
-    'utf8'
+    'utf8',
   );
 }
 

@@ -6,11 +6,11 @@ import { createStaticAssetsBuilder } from './staticAssetsBuilder.js';
 import { createContentBuilder } from './contentBuilder.js';
 
 export function createBuilders(context: BuilderContext): Builder[] {
-    return [
-        createJavaScriptBuilder(context),
-        createCssBuilder(context),
-        createHtmlBuilder(context),
-        createContentBuilder(context),
-        createStaticAssetsBuilder(context)
-    ];
+  return [
+    createJavaScriptBuilder(context),
+    createCssBuilder(context),
+    createHtmlBuilder(context),
+    createContentBuilder(context),
+    createStaticAssetsBuilder(context),
+  ];
 }

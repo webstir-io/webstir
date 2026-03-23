@@ -1,4 +1,4 @@
-import http from 'node:http';
+import type http from 'node:http';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -8,17 +8,14 @@ import {
   type CompiledRequestHook,
   type RequestHookDefinitionLike,
   type RequestHookHandler,
-  type RequestHookReferenceLike
+  type RequestHookReferenceLike,
 } from './request-hooks.js';
-import {
-  type PreparedSessionState,
-  type SessionAwareRouteDefinitionLike
-} from './session.js';
+import type { PreparedSessionState, SessionAwareRouteDefinitionLike } from './session.js';
 import {
   compileViews,
   type CompiledView,
   type ModuleViewLike,
-  type ViewDefinitionLike
+  type ViewDefinitionLike,
 } from './views.js';
 
 export interface EnvAccessor {
@@ -70,13 +67,13 @@ export interface NodeHttpRouteDefinitionLike extends SessionAwareRouteDefinition
 }
 
 export type RouteHandler<TContext, TResult extends RouteHandlerResult> = (
-  ctx: TContext
+  ctx: TContext,
 ) => Promise<TResult> | TResult;
 
 export interface ModuleRouteLike<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 > {
   definition?: TRouteDefinition;
   handler?: RouteHandler<TContext, TResult>;
@@ -84,7 +81,7 @@ export interface ModuleRouteLike<
 
 export interface ModuleManifestLike<
   TRouteDefinition extends NodeHttpRouteDefinitionLike = NodeHttpRouteDefinitionLike,
-  TViewDefinition extends ViewDefinitionLike = ViewDefinitionLike
+  TViewDefinition extends ViewDefinitionLike = ViewDefinitionLike,
 > {
   name?: string;
   version?: string;
@@ -94,12 +91,15 @@ export interface ModuleManifestLike<
   views?: TViewDefinition[];
 }
 
-export type LifecycleHook = (context: { env: EnvAccessor; logger: { info(message: string): void } }) => Promise<void> | void;
+export type LifecycleHook = (context: {
+  env: EnvAccessor;
+  logger: { info(message: string): void };
+}) => Promise<void> | void;
 
 export interface ModuleRequestHook<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 > {
   id?: string;
   handler?: RequestHookHandler<TContext, TResult, TRouteDefinition>;
@@ -108,7 +108,7 @@ export interface ModuleRequestHook<
 export interface ModuleDefinitionLike<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike = NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike = NodeHttpRouteDefinitionLike,
 > {
   manifest?: ModuleManifestLike<TRouteDefinition>;
   routes?: ModuleRouteLike<TContext, TResult, TRouteDefinition>[];
@@ -121,7 +121,7 @@ export interface ModuleDefinitionLike<
 export interface CompiledRoute<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 > {
   method: string;
   name: string;
@@ -134,7 +134,7 @@ export interface CompiledRoute<
 export interface ModuleRuntime<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike = NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike = NodeHttpRouteDefinitionLike,
 > {
   definition?: ModuleDefinitionLike<TContext, TResult, TRouteDefinition>;
   manifest?: ModuleManifestLike<TRouteDefinition>;
@@ -185,7 +185,7 @@ export function createProcessEnvAccessor(): EnvAccessor {
       }
       return value;
     },
-    entries: () => ({ ...process.env })
+    entries: () => ({ ...process.env }),
   };
 }
 
@@ -223,7 +223,7 @@ export function createReadinessTracker(): ReadinessTracker {
     },
     snapshot(): ReadinessState {
       return { status, message };
-    }
+    },
   };
 }
 
@@ -238,12 +238,14 @@ export function normalizePath(value: string | undefined): string {
 export function matchRoute<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(
   routes: readonly CompiledRoute<TContext, TResult, TRouteDefinition>[],
   method: string,
-  pathname: string
-): { route: CompiledRoute<TContext, TResult, TRouteDefinition>; params: Record<string, string> } | undefined {
+  pathname: string,
+):
+  | { route: CompiledRoute<TContext, TResult, TRouteDefinition>; params: Record<string, string> }
+  | undefined {
   const normalizedMethod = (method ?? 'GET').toUpperCase();
   for (const route of routes) {
     if (route.method !== normalizedMethod) {
@@ -260,7 +262,7 @@ export function matchRoute<
 export async function loadModuleRuntime<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(options: {
   importMetaUrl: string;
   candidates?: readonly string[];
@@ -271,10 +273,13 @@ export async function loadModuleRuntime<
   }
 
   const manifest = sanitizeManifest<TRouteDefinition>(loaded.definition.manifest);
-  const compiled = compileRoutes<TContext, TResult, TRouteDefinition>(loaded.definition.routes ?? [], {
-    manifestRequestHooks: manifest?.requestHooks,
-    requestHookImplementations: loaded.definition.requestHooks
-  });
+  const compiled = compileRoutes<TContext, TResult, TRouteDefinition>(
+    loaded.definition.routes ?? [],
+    {
+      manifestRequestHooks: manifest?.requestHooks,
+      requestHookImplementations: loaded.definition.requestHooks,
+    },
+  );
   const views = compileViews(resolveModuleViews(loaded.definition, manifest));
 
   return {
@@ -283,13 +288,13 @@ export async function loadModuleRuntime<
     routes: compiled.routes,
     views,
     source: loaded.source,
-    warnings: compiled.warnings
+    warnings: compiled.warnings,
   };
 }
 
-export function summarizeManifest<
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
->(manifest?: ModuleManifestLike<TRouteDefinition>): ManifestSummary | undefined {
+export function summarizeManifest<TRouteDefinition extends NodeHttpRouteDefinitionLike>(
+  manifest?: ModuleManifestLike<TRouteDefinition>,
+): ManifestSummary | undefined {
   if (!manifest) {
     return undefined;
   }
@@ -299,7 +304,8 @@ export function summarizeManifest<
     version: manifest.version,
     routes: Array.isArray(manifest.routes) ? manifest.routes.length : 0,
     views: Array.isArray(manifest.views) ? manifest.views.length : 0,
-    capabilities: manifest.capabilities && manifest.capabilities.length > 0 ? manifest.capabilities : undefined
+    capabilities:
+      manifest.capabilities && manifest.capabilities.length > 0 ? manifest.capabilities : undefined,
   };
 }
 
@@ -307,20 +313,26 @@ export function logManifestSummary(
   logger: { info(message: string): void },
   manifest: ModuleManifestLike | undefined,
   routeCount: number,
-  viewCount: number
+  viewCount: number,
 ): void {
   if (!manifest) {
-    logger.info(`[webstir-backend] manifest routes=${routeCount} views=${viewCount} (no manifest metadata found)`);
+    logger.info(
+      `[webstir-backend] manifest routes=${routeCount} views=${viewCount} (no manifest metadata found)`,
+    );
     return;
   }
 
   const caps = manifest.capabilities?.length ? ` [${manifest.capabilities.join(', ')}]` : '';
   const routes = Array.isArray(manifest.routes) ? manifest.routes.length : routeCount;
   const views = Array.isArray(manifest.views) ? manifest.views.length : viewCount;
-  logger.info(`[webstir-backend] manifest name=${manifest.name ?? 'unknown'} routes=${routes} views=${views}${caps}`);
+  logger.info(
+    `[webstir-backend] manifest name=${manifest.name ?? 'unknown'} routes=${routes} views=${views}${caps}`,
+  );
 }
 
-export function normalizeRouteHandlerResult(result: RouteHandlerResult): NormalizedRouteHandlerResult {
+export function normalizeRouteHandlerResult(
+  result: RouteHandlerResult,
+): NormalizedRouteHandlerResult {
   const validatedFragment = validateFragmentResult(result.fragment);
   if (!validatedFragment.valid) {
     return {
@@ -330,9 +342,9 @@ export function normalizeRouteHandlerResult(result: RouteHandlerResult): Normali
         {
           code: 'invalid_fragment_response',
           message: 'Fragment responses require a non-empty target, supported mode, and body.',
-          details: validatedFragment.issues
-        }
-      ]
+          details: validatedFragment.issues,
+        },
+      ],
     };
   }
 
@@ -342,11 +354,13 @@ export function normalizeRouteHandlerResult(result: RouteHandlerResult): Normali
 
   return {
     ...result,
-    fragment: validatedFragment.fragment
+    fragment: validatedFragment.fragment,
   };
 }
 
-export function resolveResponseHeaders(result: NormalizedRouteHandlerResult): Record<string, string> {
+export function resolveResponseHeaders(
+  result: NormalizedRouteHandlerResult,
+): Record<string, string> {
   const headers: Record<string, string> = { ...(result.headers ?? {}) };
   const lowerCaseHeaders = lowerCaseHeaderMap(headers);
 
@@ -391,7 +405,7 @@ export function respondJson(res: http.ServerResponse, status: number, payload: u
 export function sendCommittedRouteResponse<
   TSession extends Record<string, unknown>,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(
   res: http.ServerResponse,
   result: TResult,
@@ -399,18 +413,21 @@ export function sendCommittedRouteResponse<
     sessionState: PreparedSessionState<TSession, TResult>;
     session: TSession | null;
     route?: TRouteDefinition;
-  }
+  },
 ): void {
   const normalizedResult = normalizeRouteHandlerResult(result);
   const commit = options.sessionState.commit({
     session: options.session,
     route: options.route,
-    result: normalizedResult as TResult
+    result: normalizedResult as TResult,
   });
   sendRouteResponse(res, normalizedResult, commit.setCookie);
 }
 
-export async function readRequestBody(req: http.IncomingMessage, maxBodyBytes: number): Promise<unknown> {
+export async function readRequestBody(
+  req: http.IncomingMessage,
+  maxBodyBytes: number,
+): Promise<unknown> {
   const method = (req.method ?? 'GET').toUpperCase();
   if (method === 'GET' || method === 'HEAD') {
     return undefined;
@@ -456,7 +473,7 @@ export async function readRequestBody(req: http.IncomingMessage, maxBodyBytes: n
 function sendRouteResponse(
   res: http.ServerResponse,
   result: NormalizedRouteHandlerResult,
-  setCookie?: string
+  setCookie?: string,
 ): void {
   const status = resolveResponseStatus(result);
   const headers = resolveResponseHeaders(result);
@@ -512,7 +529,9 @@ function appendSetCookieHeader(res: http.ServerResponse, value: string): void {
 }
 
 function lowerCaseHeaderMap(headers: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+  return Object.fromEntries(
+    Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]),
+  );
 }
 
 function resolveContentType(payload: unknown): string {
@@ -525,7 +544,9 @@ function resolveContentType(payload: unknown): string {
   return 'application/json';
 }
 
-function validateFragmentResult(fragment: RouteHandlerResult['fragment']):
+function validateFragmentResult(
+  fragment: RouteHandlerResult['fragment'],
+):
   | { valid: true; fragment?: NormalizedRouteHandlerResult['fragment'] }
   | { valid: false; issues: string[] } {
   if (!fragment) {
@@ -570,13 +591,13 @@ function validateFragmentResult(fragment: RouteHandlerResult['fragment']):
       target,
       selector,
       mode,
-      body: fragment.body
-    }
+      body: fragment.body,
+    },
   };
 }
 
 function sanitizeManifest<TRouteDefinition extends NodeHttpRouteDefinitionLike>(
-  manifest?: ModuleManifestLike<TRouteDefinition>
+  manifest?: ModuleManifestLike<TRouteDefinition>,
 ): ModuleManifestLike<TRouteDefinition> | undefined {
   if (!manifest || typeof manifest !== 'object') {
     return undefined;
@@ -587,20 +608,20 @@ function sanitizeManifest<TRouteDefinition extends NodeHttpRouteDefinitionLike>(
     routes: Array.isArray(manifest.routes) ? manifest.routes : [],
     views: Array.isArray(manifest.views) ? manifest.views : [],
     requestHooks: Array.isArray(manifest.requestHooks) ? manifest.requestHooks : [],
-    capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : undefined
+    capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : undefined,
   };
 }
 
 function compileRoutes<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(
   routes: ModuleRouteLike<TContext, TResult, TRouteDefinition>[],
   options: {
     manifestRequestHooks?: RequestHookDefinitionLike[];
     requestHookImplementations?: ModuleRequestHook<TContext, TResult, TRouteDefinition>[];
-  }
+  },
 ): { routes: CompiledRoute<TContext, TResult, TRouteDefinition>[]; warnings: string[] } {
   const compiled: CompiledRoute<TContext, TResult, TRouteDefinition>[] = [];
   const warnings: string[] = [];
@@ -617,7 +638,7 @@ function compileRoutes<
       routeName,
       routeReferences: route.definition?.requestHooks,
       manifestDefinitions: options.manifestRequestHooks,
-      registrations: options.requestHookImplementations
+      registrations: options.requestHookImplementations,
     });
 
     compiled.push({
@@ -626,7 +647,7 @@ function compileRoutes<
       match: createPathMatcher(pathPattern),
       handler: route.handler,
       requestHooks: resolvedHooks.hooks,
-      definition: route.definition
+      definition: route.definition,
     });
     warnings.push(...resolvedHooks.warnings);
   }
@@ -637,10 +658,10 @@ function compileRoutes<
 function resolveModuleViews<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(
   definition: ModuleDefinitionLike<TContext, TResult, TRouteDefinition>,
-  manifest?: ModuleManifestLike<TRouteDefinition>
+  manifest?: ModuleManifestLike<TRouteDefinition>,
 ): ModuleViewLike[] {
   if (Array.isArray(definition.views) && definition.views.length > 0) {
     return definition.views;
@@ -659,7 +680,7 @@ function createPathMatcher(pattern: string) {
       normalized
         .replace(/\//g, '\\/')
         .replace(paramRegex, (_segment, name) => `(?<${name}>[^/]+)`) +
-      '$'
+      '$',
   );
 
   return (pathname: string) => {
@@ -670,7 +691,7 @@ function createPathMatcher(pattern: string) {
     }
     return {
       matched: true,
-      params: (match.groups ?? {}) as Record<string, string>
+      params: (match.groups ?? {}) as Record<string, string>,
     };
   };
 }
@@ -678,13 +699,21 @@ function createPathMatcher(pattern: string) {
 async function tryLoadModuleDefinition<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(options: {
   importMetaUrl: string;
   candidates?: readonly string[];
-}): Promise<{ definition: ModuleDefinitionLike<TContext, TResult, TRouteDefinition>; source: string } | undefined> {
+}): Promise<
+  | { definition: ModuleDefinitionLike<TContext, TResult, TRouteDefinition>; source: string }
+  | undefined
+> {
   const here = path.dirname(fileURLToPath(options.importMetaUrl));
-  const candidates = options.candidates ?? ['module.js', 'module.mjs', 'module/index.js', 'module/index.mjs'];
+  const candidates = options.candidates ?? [
+    'module.js',
+    'module.mjs',
+    'module/index.js',
+    'module/index.mjs',
+  ];
 
   for (const rel of candidates) {
     const full = path.join(here, rel);
@@ -705,8 +734,10 @@ async function tryLoadModuleDefinition<
 function extractModuleDefinition<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
->(exports: Record<string, unknown>): ModuleDefinitionLike<TContext, TResult, TRouteDefinition> | undefined {
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
+>(
+  exports: Record<string, unknown>,
+): ModuleDefinitionLike<TContext, TResult, TRouteDefinition> | undefined {
   const keys = ['module', 'moduleDefinition', 'default', 'backendModule'];
   for (const key of keys) {
     if (key in exports) {

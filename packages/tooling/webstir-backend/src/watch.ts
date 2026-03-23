@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, rm, stat } from 'node:fs/promises';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
 
@@ -8,7 +8,11 @@ import { glob } from 'glob';
 
 import type { ModuleDiagnostic } from '@webstir-io/module-contract';
 
-import { ensureModuleDefinitionBuild, formatEsbuildMessage, shouldTypeCheck } from './build/pipeline.js';
+import {
+  ensureModuleDefinitionBuild,
+  formatEsbuildMessage,
+  shouldTypeCheck,
+} from './build/pipeline.js';
 import { discoverEntryPoints } from './build/entries.js';
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
@@ -120,7 +124,9 @@ export async function startBackendWatch(options: StartWatchOptions): Promise<Wat
   }
 
   if (shouldReportBunBenchmark) {
-    console.info('[webstir-backend] watch: reporting primary Bun build timings via bunBenchmark* event fields.');
+    console.info(
+      '[webstir-backend] watch: reporting primary Bun build timings via bunBenchmark* event fields.',
+    );
   }
 
   let stopping = false;
@@ -273,7 +279,7 @@ async function performWatchBuild(options: PerformWatchBuildOptions): Promise<Wat
   });
 
   console.info(
-    `[webstir-backend] watch:bun ${buildResult.errorCount} error(s), ${buildResult.warningCount} warning(s) in ${buildResult.durationMs.toFixed(1)}ms`
+    `[webstir-backend] watch:bun ${buildResult.errorCount} error(s), ${buildResult.warningCount} warning(s) in ${buildResult.durationMs.toFixed(1)}ms`,
   );
 
   if (buildResult.succeeded) {
@@ -295,7 +301,7 @@ async function performWatchBuild(options: PerformWatchBuildOptions): Promise<Wat
       });
       await cacheReporter.diffOutputs(
         collectBunOutputSizes(buildResult.outputs, options.buildRoot),
-        options.mode
+        options.mode,
       );
       const manifest = await loadBackendModuleManifest({
         workspaceRoot: options.workspaceRoot,
@@ -357,7 +363,7 @@ interface RunPrimaryBunWatchBuildResult {
 }
 
 async function runPrimaryBunWatchBuild(
-  options: RunPrimaryBunWatchBuildOptions
+  options: RunPrimaryBunWatchBuildOptions,
 ): Promise<RunPrimaryBunWatchBuildResult> {
   const build = getBunBuild();
   if (!build) {
@@ -399,7 +405,10 @@ async function runPrimaryBunWatchBuild(
   };
 }
 
-function logBunBuildResult(result: BunBuildOutput, diagMax: number): {
+function logBunBuildResult(
+  result: BunBuildOutput,
+  diagMax: number,
+): {
   errorCount: number;
   warningCount: number;
 } {
@@ -418,7 +427,9 @@ function logBunBuildResult(result: BunBuildOutput, diagMax: number): {
     console.warn(`[webstir-backend][bun] ${formatEsbuildMessage(log)}`);
   }
   if (warningLogs.length > diagMax) {
-    console.warn(`[webstir-backend][bun] ... ${warningLogs.length - diagMax} more warning(s) omitted`);
+    console.warn(
+      `[webstir-backend][bun] ... ${warningLogs.length - diagMax} more warning(s) omitted`,
+    );
   }
 
   return {
@@ -427,7 +438,10 @@ function logBunBuildResult(result: BunBuildOutput, diagMax: number): {
   };
 }
 
-function collectBunOutputSizes(outputs: readonly BunBuildOutputFile[] | undefined, buildRoot: string): Record<string, number> {
+function collectBunOutputSizes(
+  outputs: readonly BunBuildOutputFile[] | undefined,
+  buildRoot: string,
+): Record<string, number> {
   const collected: Record<string, number> = {};
   for (const output of outputs ?? []) {
     const rel = path.relative(buildRoot, output.path);
@@ -439,7 +453,7 @@ function collectBunOutputSizes(outputs: readonly BunBuildOutputFile[] | undefine
 async function takeWatchSnapshot(
   workspaceRoot: string,
   sourceRoot: string,
-  tsconfigPath: string
+  tsconfigPath: string,
 ): Promise<string> {
   const watchFiles = new Set<string>();
 
@@ -464,10 +478,12 @@ async function takeWatchSnapshot(
   }
 
   const entries = await Promise.all(
-    Array.from(watchFiles).sort().map(async (filePath) => {
-      const fileStat = await stat(filePath);
-      return `${filePath}:${fileStat.size}:${fileStat.mtimeMs}`;
-    })
+    Array.from(watchFiles)
+      .sort()
+      .map(async (filePath) => {
+        const fileStat = await stat(filePath);
+        return `${filePath}:${fileStat.size}:${fileStat.mtimeMs}`;
+      }),
   );
 
   return entries.join('|');
@@ -503,14 +519,18 @@ async function listWatchFiles(root: string): Promise<string[]> {
 function flushDiagnostics(diagnostics: readonly ModuleDiagnostic[]): void {
   for (const diag of diagnostics) {
     const logger =
-      diag.severity === 'error' ? console.error : diag.severity === 'warn' ? console.warn : console.info;
+      diag.severity === 'error'
+        ? console.error
+        : diag.severity === 'warn'
+          ? console.warn
+          : console.info;
     logger(diag.message);
   }
 }
 
 async function emitWatchEvent(
   onEvent: StartWatchOptions['onEvent'],
-  event: BackendWatchEvent
+  event: BackendWatchEvent,
 ): Promise<void> {
   if (!onEvent) {
     return;
@@ -540,7 +560,7 @@ function createRelativeImportPassthroughPlugin(): Record<string, unknown> {
     setup(build: {
       onResolve(
         options: { filter: RegExp },
-        callback: (args: { path: string }) => { path: string; external: boolean }
+        callback: (args: { path: string }) => { path: string; external: boolean },
       ): void;
     }) {
       build.onResolve({ filter: /^\.\.?\// }, (args: { path: string }) => ({

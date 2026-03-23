@@ -157,15 +157,15 @@ Stick with the built-in server while exploring the manifest helpers, opt into th
 
 The backend template now ships a lightweight auth adapter so you can secure routes without wiring a full identity provider on day one:
 
-- **Environment-driven secrets** — populate `.env.local`/`.env` with `AUTH_JWT_SECRET` (required for bearer tokens), optional `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE`, and comma/space-delimited `AUTH_SERVICE_TOKENS`. An example lives in `templates/backend/.env.example`.
-- **Bearer verification (HS256)** — when `AUTH_JWT_SECRET` is set, incoming `Authorization: Bearer <token>` headers are validated using HMAC-SHA256. Matching issuer/audience plus `nbf` and `exp` claims are enforced when present. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
+- **Environment-driven secrets** — populate `.env.local`/`.env` with one JWT verification input: `AUTH_JWT_SECRET` for shared-secret HS256, `AUTH_JWT_PUBLIC_KEY` or `AUTH_JWT_PUBLIC_KEY_FILE` for RSA public-key verification, or `AUTH_JWKS_URL` for remote JWKS discovery. Optional `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` claims and comma/space-delimited `AUTH_SERVICE_TOKENS` still apply. An example lives in `templates/backend/.env.example`.
+- **Bearer verification (HS256 + RS256)** — incoming `Authorization: Bearer <token>` headers now validate against HS256 shared secrets, inline/file-backed RSA public keys, or RSA keys discovered from JWKS. Matching issuer/audience plus `nbf` and `exp` claims are enforced when present. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
 - **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users.
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
-- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies; when omitted, the scaffold falls back to a per-process random secret instead of a fixed shared default. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the built-in, Bun, and Fastify server templates.
-- **Durable session storage (optional)** — the scaffold defaults to the explicit in-memory `SessionStore`, but you can switch to the bundled SQLite adapter with `SESSION_STORE_DRIVER=sqlite`. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
+- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies. In development, the scaffold still falls back to a per-process random secret when unset; in production, `SESSION_SECRET` is now required and startup fails fast when it is missing. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the built-in, Bun, and Fastify server templates.
+- **Durable session storage (optional)** — the scaffold now defaults to SQLite-backed sessions in production when `SESSION_STORE_DRIVER` is unset, while keeping in-memory storage as the development default. You can still opt into SQLite explicitly with `SESSION_STORE_DRIVER=sqlite` or just configure `SESSION_STORE_URL`; set `SESSION_STORE_DRIVER=memory` only when you intentionally want the non-durable path. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` when the SQLite store is active and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
 - Install `pino` in your workspace (`bun add pino`) before running the scaffold; the template server imports it directly.
 
-This adapter is intentionally simple (HS256 only) but gives you a hook to plug in third-party IdPs: generate/sign tokens there, supply the shared secret via env, and the scaffold will populate `ctx.auth` for every route.
+This adapter is still intentionally scoped, but it now supports the two most common integration paths: shared-secret HS256 for local/simple deployments and RSA/JWKS verification for third-party IdPs. The scaffold populates `ctx.auth` for every route once one of those verification inputs is configured.
 
 ### Observability & metrics
 
@@ -183,18 +183,19 @@ Install `pino` (and optionally `pino-pretty` for local formatting) in any worksp
 ```bash
 bun add pino                    # already needed for the server
 bun src/backend/jobs/scheduler.ts --list
+bun src/backend/jobs/scheduler.ts --json
 bun build/backend/jobs/scheduler.js --job nightly
 bun build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekly/@reboot or rate(...) jobs
 ```
 
 - `/readyz` surfaces manifest job counts, and `bun build/backend/jobs/<name>/index.js` remains the quickest way to execute a single job in isolation.
-- Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). The built-in watcher supports the `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n units)` patterns for basic local loops; fall back to external tooling for full cron semantics.
+- Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). The built-in watcher supports the `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n units)` patterns for basic local loops; use `--json` when you want a machine-friendly export of job metadata for an external scheduler instead of relying on the local watcher.
 
 ### Database & migrations
 
 - `DATABASE_URL` defaults to `file:./data/dev.sqlite`. Point it at Postgres (`postgres://...`) or another SQLite file as needed. Override the tracking table via `DATABASE_MIGRATIONS_TABLE` (defaults to `_webstir_migrations`).
 - `src/backend/db/connection.ts` exposes a tiny helper that connects to SQLite via Bun's built-in `bun:sqlite` runtime or to Postgres via `pg`. The default SQLite flow needs Bun; install `pg` only when you use Postgres.
-- `src/backend/session/store.ts` now owns the runtime session-store choice. Keep the default in-memory store for stateless/local flows, or set `SESSION_STORE_DRIVER=sqlite` to persist sessions in a SQLite file via `src/backend/session/sqlite.ts`. The SQLite adapter creates its table lazily and runs on Bun without any extra SQLite package install.
+- `src/backend/session/store.ts` now owns the runtime session-store choice. Development still defaults to the in-memory store for stateless/local flows, while production defaults to SQLite unless you pin `SESSION_STORE_DRIVER=memory`. You can also persist sessions explicitly in SQLite via `src/backend/session/sqlite.ts` by setting `SESSION_STORE_DRIVER=sqlite` or just configuring `SESSION_STORE_URL`. The SQLite adapter creates its table lazily and runs on Bun without any extra SQLite package install.
 - Drop SQL/TypeScript migrations under `src/backend/db/migrations/*.ts`, exporting `id`, `up`, and optional `down`.
 - Run migrations with:
 

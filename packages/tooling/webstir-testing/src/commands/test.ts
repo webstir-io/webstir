@@ -3,7 +3,11 @@ import path from 'node:path';
 import { discoverTestManifest } from '../discovery.js';
 import { emitEvent, createRunId } from '../events.js';
 import { executeRun } from '../execution.js';
-import { applyRuntimeFilter, describeRuntimeFilter, normalizeRuntimeFilter } from '../runtime-filter.js';
+import {
+  applyRuntimeFilter,
+  describeRuntimeFilter,
+  normalizeRuntimeFilter,
+} from '../runtime-filter.js';
 import type { RunnerLogEvent, RunnerSummary, RunnerSummaryEvent } from '../types.js';
 
 export interface TestCommandOptions {
@@ -18,7 +22,11 @@ export async function runTestCommand(options: TestCommandOptions): Promise<void>
   try {
     const manifest = await discoverTestManifest(workspaceRoot);
     const filteredManifest = applyRuntimeFilter(manifest, runtimeFilter);
-    const filterMessage = describeRuntimeFilter(runtimeFilter, manifest.modules.length, filteredManifest.modules.length);
+    const filterMessage = describeRuntimeFilter(
+      runtimeFilter,
+      manifest.modules.length,
+      filteredManifest.modules.length,
+    );
     if (filterMessage) {
       emitEvent({
         type: 'log',
@@ -53,7 +61,7 @@ export async function runTestCommand(options: TestCommandOptions): Promise<void>
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack ?? undefined : undefined;
+    const stack = error instanceof Error ? (error.stack ?? undefined) : undefined;
     emitEvent({
       type: 'error',
       runId,
@@ -64,7 +72,10 @@ export async function runTestCommand(options: TestCommandOptions): Promise<void>
   }
 }
 
-function makeOverallSummary(runId: string, summary: RunnerSummary = emptySummary): RunnerSummaryEvent {
+function makeOverallSummary(
+  runId: string,
+  summary: RunnerSummary = emptySummary,
+): RunnerSummaryEvent {
   return {
     type: 'summary',
     runId,

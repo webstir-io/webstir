@@ -11,8 +11,10 @@ function createFakeProvider(
   kind: BuildTargetKind,
   calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }>,
   options: {
-    readonly diagnosticsForMode?: (mode: string | undefined) => Array<{ severity: 'error' | 'warn' | 'info'; message: string }>;
-  } = {}
+    readonly diagnosticsForMode?: (
+      mode: string | undefined,
+    ) => Array<{ severity: 'error' | 'warn' | 'info'; message: string }>;
+  } = {},
 ): BuildProvider {
   return {
     resolveWorkspace({ workspaceRoot }) {
@@ -54,8 +56,8 @@ test('runBuild composes frontend and backend providers for full workspaces', asy
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
@@ -92,8 +94,8 @@ test('runPublish prebuilds frontend targets before publish and reports dist outp
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
@@ -101,6 +103,9 @@ test('runPublish prebuilds frontend targets before publish and reports dist outp
 
   const result = await runPublish({
     workspaceRoot: workspace,
+    env: {
+      WEBSTIR_FRONTEND_MODE: 'ssg',
+    },
     loadProvider: async () => frontend,
   });
 
@@ -110,6 +115,7 @@ test('runPublish prebuilds frontend targets before publish and reports dist outp
   expect(result.targets[0]?.outputRoot).toBe(path.join(workspace, 'dist', 'frontend'));
   expect(calls).toHaveLength(2);
   expect(calls.map((call) => call.env.WEBSTIR_MODULE_MODE)).toEqual(['build', 'publish']);
+  expect(calls.every((call) => call.env.WEBSTIR_FRONTEND_MODE === 'ssg')).toBe(true);
 });
 
 test('runBuild fails when a provider reports fatal diagnostics', async () => {
@@ -124,8 +130,8 @@ test('runBuild fails when a provider reports fatal diagnostics', async () => {
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
@@ -137,7 +143,7 @@ test('runBuild fails when a provider reports fatal diagnostics', async () => {
         createFakeProvider('frontend', calls, {
           diagnosticsForMode: () => [{ severity: 'error', message: 'broken manifest' }],
         }),
-    })
+    }),
   ).rejects.toThrow(/frontend build reported 1 error diagnostic/);
 
   expect(calls).toHaveLength(1);
@@ -156,8 +162,8 @@ test('runPublish fails when the frontend prebuild reports fatal diagnostics', as
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
@@ -170,7 +176,7 @@ test('runPublish fails when the frontend prebuild reports fatal diagnostics', as
           diagnosticsForMode: (mode) =>
             mode === 'build' ? [{ severity: 'error', message: 'broken prebuild' }] : [],
         }),
-    })
+    }),
   ).rejects.toThrow(/frontend prebuild reported 1 error diagnostic/);
 
   expect(calls).toHaveLength(1);

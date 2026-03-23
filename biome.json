@@ -1,0 +1,62 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.8/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "package.json",
+      "tsconfig.base.json",
+      "tools/**/*.mjs",
+      "packages/contracts/*/package.json",
+      "packages/contracts/*/tsconfig.json",
+      "packages/contracts/*/src/**/*.{ts,js,mjs,json}",
+      "packages/contracts/*/tests/**/*.{ts,js,mjs,json}",
+      "packages/tooling/*/package.json",
+      "packages/tooling/*/tsconfig.json",
+      "packages/tooling/*/src/**/*.{ts,js,mjs,json}",
+      "packages/tooling/*/tests/**/*.{ts,js,mjs,json}",
+      "packages/tooling/*/scripts/**/*.{ts,js,mjs,json}",
+      "packages/tooling/*/templates/**/*.{ts,js,mjs,json}",
+      "orchestrators/bun/package.json",
+      "orchestrators/bun/tsconfig.json",
+      "orchestrators/bun/src/**/*.{ts,js,mjs,json}",
+      "orchestrators/bun/tests/**/*.{ts,js,mjs,json}",
+      "orchestrators/bun/scripts/**/*.{ts,js,mjs,json}",
+      "orchestrators/bun/test-support/**/*.{ts,js,mjs,json}"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "jsxQuoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "json": {
+    "formatter": {
+      "indentStyle": "space",
+      "indentWidth": 2
+    }
+  },
+  "assist": {
+    "enabled": false
+  }
+}

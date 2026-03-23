@@ -38,7 +38,10 @@ test('Bun-first SPA watch serves distinct HTML for non-home pages', async () => 
     stderr: 'pipe',
   });
   const port = await getFreePort();
-  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
 
   try {
     expect(addPageResult.exitCode).toBe(0);
@@ -65,7 +68,10 @@ test('Bun-first SPA watch serves distinct HTML for non-home pages', async () => 
 test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
-  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
 
   let browser: Browser | undefined;
   let originalScript = '';
@@ -97,16 +103,17 @@ test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits'
     originalScript = await readFile(scriptPath, 'utf8');
     await writeFile(
       scriptPath,
-      originalScript.replace(
-        "const homeMessage = 'Home';",
-        "const homeMessage = 'Hot Bun Home';"
-      ),
-      'utf8'
+      originalScript.replace("const homeMessage = 'Home';", "const homeMessage = 'Hot Bun Home';"),
+      'utf8',
     );
 
     await page.waitForFunction(() => {
       const main = document.querySelector('main');
-      return main?.textContent?.includes('Hot Bun Home') && main instanceof HTMLElement && main.dataset.hmrRendered === '1';
+      return (
+        main?.textContent?.includes('Hot Bun Home') &&
+        main instanceof HTMLElement &&
+        main.dataset.hmrRendered === '1'
+      );
     });
 
     await context.close();
@@ -121,7 +128,11 @@ test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits'
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
     if (originalScript) {
-      await writeFile(path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.ts'), originalScript, 'utf8');
+      await writeFile(
+        path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.ts'),
+        originalScript,
+        'utf8',
+      );
     }
   }
 }, 120_000);
@@ -129,7 +140,10 @@ test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits'
 test('Bun-first SPA watch hot-applies CSS edits without a full page reload', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
-  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(workspace, port);
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
 
   let browser: Browser | undefined;
   let originalStylesheet = '';
@@ -158,10 +172,12 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
     await writeFile(
       stylesheetPath,
       `${originalStylesheet}\nbody { background: rgb(255, 0, 0); }\n`,
-      'utf8'
+      'utf8',
     );
 
-    await page.waitForFunction(() => getComputedStyle(document.body).backgroundColor === 'rgb(255, 0, 0)');
+    await page.waitForFunction(
+      () => getComputedStyle(document.body).backgroundColor === 'rgb(255, 0, 0)',
+    );
 
     await context.close();
   } catch (error) {
@@ -175,7 +191,11 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
     if (originalStylesheet) {
-      await writeFile(path.join(workspace, 'src', 'frontend', 'app', 'app.css'), originalStylesheet, 'utf8');
+      await writeFile(
+        path.join(workspace, 'src', 'frontend', 'app', 'app.css'),
+        originalStylesheet,
+        'utf8',
+      );
     }
   }
 }, 120_000);
@@ -189,7 +209,10 @@ async function fetchText(port: number, requestPath: string): Promise<string> {
   return await response.text();
 }
 
-function spawnBunFirstWatch(workspace: string, port: number): {
+function spawnBunFirstWatch(
+  workspace: string,
+  port: number,
+): {
   child: ReturnType<typeof Bun.spawn>;
   stdoutBuffer: { text: string };
   stderrBuffer: { text: string };

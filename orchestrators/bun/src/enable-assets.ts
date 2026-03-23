@@ -40,7 +40,14 @@ export function getClientNavAssets(): readonly StaticFeatureAsset[] {
     },
     {
       sourcePath: path.join(featuresRoot, 'client_nav', 'document_navigation.ts'),
-      targetPath: path.join('src', 'frontend', 'app', 'scripts', 'features', 'document-navigation.ts'),
+      targetPath: path.join(
+        'src',
+        'frontend',
+        'app',
+        'scripts',
+        'features',
+        'document-navigation.ts',
+      ),
       overwrite: true,
     },
   ];

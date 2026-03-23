@@ -23,11 +23,23 @@ test('SSG shell boundary remounts cleanly and restores shell state', async () =>
   const harness = createShellHarness();
   const previousWindow = globalThis.window;
   const previousDocument = globalThis.document;
-  (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = harness.window;
-  (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = harness.document;
+  (globalThis as typeof globalThis & { window: unknown; document: unknown }).window =
+    harness.window;
+  (globalThis as typeof globalThis & { window: unknown; document: unknown }).document =
+    harness.document;
 
   try {
-    const modulePath = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base', 'src', 'frontend', 'app', 'app.ts');
+    const modulePath = path.join(
+      repoRoot,
+      'examples',
+      'demos',
+      'ssg',
+      'base',
+      'src',
+      'frontend',
+      'app',
+      'app.ts',
+    );
     const shellModule = await import(pathToFileURL(modulePath).href);
     const boundary = shellModule.appShellBoundary;
 
@@ -63,15 +75,20 @@ test('SSG shell boundary remounts cleanly and restores shell state', async () =>
     expect(harness.body.classList.contains('webstir-menu-open')).toBe(true);
     expect(harness.toggle.getAttribute('aria-expanded')).toBe('true');
   } finally {
-    (globalThis as typeof globalThis & { window: unknown; document: unknown }).window = previousWindow;
-    (globalThis as typeof globalThis & { window: unknown; document: unknown }).document = previousDocument;
+    (globalThis as typeof globalThis & { window: unknown; document: unknown }).window =
+      previousWindow;
+    (globalThis as typeof globalThis & { window: unknown; document: unknown }).document =
+      previousDocument;
   }
 }, 120_000);
 
 test('SPA home boundary remounts cleanly and refreshes page state', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();
-  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(workspace, port);
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
+    workspace,
+    port,
+  );
 
   let browser: Browser | undefined;
 
@@ -99,8 +116,13 @@ test('SPA home boundary remounts cleanly and refreshes page state', async () => 
         throw new Error('Missing home boundary.');
       }
 
+      const main = document.querySelector('main');
+      if (!main) {
+        throw new Error('Missing <main> element.');
+      }
+
       await boundary.unmount();
-      await boundary.mount(document.querySelector('main')!);
+      await boundary.mount(main);
     });
 
     await page.waitForFunction(() => document.querySelector('main')?.dataset.hmrRendered === '2');
@@ -121,7 +143,17 @@ test('SPA home boundary remounts cleanly and refreshes page state', async () => 
 }, 120_000);
 
 test('copied SSG boundary helper disposes child boundaries before parent cleanup', async () => {
-  const modulePath = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base', 'src', 'frontend', 'app', 'boundary.ts');
+  const modulePath = path.join(
+    repoRoot,
+    'examples',
+    'demos',
+    'ssg',
+    'base',
+    'src',
+    'frontend',
+    'app',
+    'boundary.ts',
+  );
   const boundaryModule = await import(pathToFileURL(modulePath).href);
   const defineBoundary = boundaryModule.defineBoundary as typeof boundaryModule.defineBoundary;
   const events: string[] = [];
@@ -148,7 +180,7 @@ test('copied SSG boundary helper disposes child boundaries before parent cleanup
         events.push('child-unmount-cleanup');
       });
       state.button.remove();
-    }
+    },
   });
 
   const parentBoundary = defineBoundary({
@@ -170,7 +202,7 @@ test('copied SSG boundary helper disposes child boundaries before parent cleanup
         events.push('parent-unmount-cleanup');
       });
       state.childRoot.remove();
-    }
+    },
   });
 
   const root = createElement('section');
@@ -195,11 +227,14 @@ test('copied SSG boundary helper disposes child boundaries before parent cleanup
     'child-cleanup',
     'parent-unmount',
     'parent-unmount-cleanup',
-    'parent-cleanup'
+    'parent-cleanup',
   ]);
 }, 120_000);
 
-function spawnWatch(workspace: string, port: number): {
+function spawnWatch(
+  workspace: string,
+  port: number,
+): {
   child: ReturnType<typeof Bun.spawn>;
   stdoutBuffer: { text: string };
   stderrBuffer: { text: string };
@@ -266,9 +301,12 @@ function createShellHarness(): {
       'data-drawer': 'menu',
       'data-drawer-close': '',
       'aria-hidden': 'true',
-    }
+    },
   });
-  const toggle = createElement('button', { className: 'app-menu__toggle', clickable: true }) as ShellButton;
+  const toggle = createElement('button', {
+    className: 'app-menu__toggle',
+    clickable: true,
+  }) as ShellButton;
   const menu = createElement('div', {
     attributes: { 'data-app-menu': '' },
     querySelector(selector) {
@@ -276,7 +314,7 @@ function createShellHarness(): {
         return toggle;
       }
       return null;
-    }
+    },
   });
 
   body.appendChild(header);
@@ -314,7 +352,7 @@ function createShellHarness(): {
     },
     listenerCount(type: string) {
       return documentListeners.get(type)?.size ?? 0;
-    }
+    },
   } as ShellDocument;
 
   const window = {
@@ -333,9 +371,9 @@ function createShellHarness(): {
       return {
         matches: true,
         addEventListener() {},
-        removeEventListener() {}
+        removeEventListener() {},
       };
-    }
+    },
   } as ShellWindow;
 
   (body as ShellElement).ownerDocument = document;
@@ -400,7 +438,7 @@ function createElement(
     rectBottom?: number;
     clickable?: boolean;
     querySelector?: (selector: string) => ShellElement | ShellButton | null;
-  } = {}
+  } = {},
 ): ShellElement {
   const attributes = new Map<string, string>();
   const listeners = new Map<string, Set<Listener>>();
@@ -413,7 +451,7 @@ function createElement(
     parentElement: null,
     ownerDocument: null,
     style: {
-      setProperty() {}
+      setProperty() {},
     },
     textContent: '',
     getAttribute(name: string) {
@@ -422,18 +460,14 @@ function createElement(
     setAttribute(name: string, value: string) {
       attributes.set(name, value);
       if (name.startsWith('data-')) {
-        const key = name
-          .slice(5)
-          .replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+        const key = name.slice(5).replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
         element.dataset[key] = value;
       }
     },
     removeAttribute(name: string) {
       attributes.delete(name);
       if (name.startsWith('data-')) {
-        const key = name
-          .slice(5)
-          .replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+        const key = name.slice(5).replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
         delete element.dataset[key];
       }
     },
@@ -454,7 +488,9 @@ function createElement(
           return;
         }
 
-        element.parentElement.children = element.parentElement.children.filter((candidate) => candidate !== element);
+        element.parentElement.children = element.parentElement.children.filter(
+          (candidate) => candidate !== element,
+        );
         element.parentElement = null;
       }
     },
@@ -478,16 +514,22 @@ function createElement(
       return candidate === element || element.children.includes(candidate as ShellElement);
     },
     click() {
-      const event = { type: 'click', target: element, currentTarget: element, bubbles: true, cancelable: true };
+      const event = {
+        type: 'click',
+        target: element,
+        currentTarget: element,
+        bubbles: true,
+        cancelable: true,
+      };
       for (const listener of listeners.get('click') ?? []) {
         listener.call(element, event);
       }
     },
     getBoundingClientRect() {
       return {
-        bottom: options.rectBottom ?? 0
+        bottom: options.rectBottom ?? 0,
       } as DOMRect;
-    }
+    },
   };
 
   if (options.className) {
@@ -540,7 +582,7 @@ function createClassList(): ShellClassList {
     },
     toString(): string {
       return Array.from(tokens).join(' ');
-    }
+    },
   };
 }
 

@@ -4,83 +4,81 @@ import { runAddPage, runBuild, runPublish, runRebuild } from './operations.js';
 
 const program = new Command();
 
-program
-    .name('webstir-frontend')
-    .description('Webstir frontend build orchestrator');
+program.name('webstir-frontend').description('Webstir frontend build orchestrator');
 
 program
-    .command('build')
-    .description('Build frontend assets for development workflows')
-    .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
-    .option('-c, --changed-file <path>', 'Optional path filter for incremental builds')
-    .action(async (cmd) => {
-        try {
-            await runBuild({
-                workspaceRoot: cmd.workspace,
-                changedFile: cmd.changedFile ?? undefined
-            });
-        } catch (error) {
-            handleError(error);
-        }
-    });
+  .command('build')
+  .description('Build frontend assets for development workflows')
+  .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
+  .option('-c, --changed-file <path>', 'Optional path filter for incremental builds')
+  .action(async (cmd) => {
+    try {
+      await runBuild({
+        workspaceRoot: cmd.workspace,
+        changedFile: cmd.changedFile ?? undefined,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 program
-    .command('publish')
-    .description('Build production assets into the dist directory')
-    .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
-    .option('-m, --mode <mode>', 'Publish mode: bundle or ssg', 'bundle')
-    .action(async (cmd) => {
-        try {
-            await runPublish({
-                workspaceRoot: cmd.workspace,
-                publishMode: cmd.mode === 'ssg' ? 'ssg' : 'bundle'
-            });
-        } catch (error) {
-            handleError(error);
-        }
-    });
+  .command('publish')
+  .description('Build production assets into the dist directory')
+  .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
+  .option('-m, --mode <mode>', 'Publish mode: bundle or ssg', 'bundle')
+  .action(async (cmd) => {
+    try {
+      await runPublish({
+        workspaceRoot: cmd.workspace,
+        publishMode: cmd.mode === 'ssg' ? 'ssg' : 'bundle',
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 program
-    .command('rebuild')
-    .description('Rebuild frontend assets in response to file changes')
-    .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
-    .requiredOption('-c, --changed-file <path>', 'Path to the changed file triggering the rebuild')
-    .action(async (cmd) => {
-        try {
-            await runRebuild({
-                workspaceRoot: cmd.workspace,
-                changedFile: cmd.changedFile ?? undefined
-            });
-        } catch (error) {
-            handleError(error);
-        }
-    });
+  .command('rebuild')
+  .description('Rebuild frontend assets in response to file changes')
+  .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
+  .requiredOption('-c, --changed-file <path>', 'Path to the changed file triggering the rebuild')
+  .action(async (cmd) => {
+    try {
+      await runRebuild({
+        workspaceRoot: cmd.workspace,
+        changedFile: cmd.changedFile ?? undefined,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 program
-    .command('add-page <name>')
-    .description('Scaffold a new frontend page (HTML/CSS/TS)')
-    .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
-    .option('-m, --mode <mode>', 'Page mode: standard or ssg (defaults to ssg when webstir.mode=ssg)')
-    .action(async (name, cmd) => {
-        try {
-            const rawMode = typeof cmd.mode === 'string' ? cmd.mode.toLowerCase() : undefined;
-            await runAddPage({
-                workspaceRoot: cmd.workspace,
-                pageName: name,
-                ssg: rawMode === 'ssg' ? true : rawMode === 'standard' ? false : undefined
-            });
-        } catch (error) {
-            handleError(error);
-        }
-    });
+  .command('add-page <name>')
+  .description('Scaffold a new frontend page (HTML/CSS/TS)')
+  .requiredOption('-w, --workspace <path>', 'Absolute path to the workspace root')
+  .option('-m, --mode <mode>', 'Page mode: standard or ssg (defaults to ssg when webstir.mode=ssg)')
+  .action(async (name, cmd) => {
+    try {
+      const rawMode = typeof cmd.mode === 'string' ? cmd.mode.toLowerCase() : undefined;
+      await runAddPage({
+        workspaceRoot: cmd.workspace,
+        pageName: name,
+        ssg: rawMode === 'ssg' ? true : rawMode === 'standard' ? false : undefined,
+      });
+    } catch (error) {
+      handleError(error);
+    }
+  });
 
 program.parseAsync(process.argv).catch(handleError);
 
 function handleError(error: unknown): void {
-    if (error instanceof Error) {
-        console.error(error.message);
-    } else {
-        console.error('Unknown error', error);
-    }
-    process.exitCode = 1;
+  if (error instanceof Error) {
+    console.error(error.message);
+  } else {
+    console.error('Unknown error', error);
+  }
+  process.exitCode = 1;
 }

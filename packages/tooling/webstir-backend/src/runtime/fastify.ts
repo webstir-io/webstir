@@ -1,23 +1,16 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import {
-  createProcessEnvAccessor,
-  createReadinessTracker,
   extractRequestId as extractNodeHttpRequestId,
   loadModuleRuntime,
   normalizeRouteHandlerResult,
   resolveResponseHeaders,
-  summarizeManifest,
-  type EnvAccessor,
   type ModuleManifestLike,
-  type ManifestSummary,
   type ModuleRuntime,
   type NodeHttpRouteDefinitionLike,
-  type RouteHandlerResult
+  type RouteHandlerResult,
 } from './node-http.js';
-import {
-  type PreparedSessionState
-} from './session.js';
+import type { PreparedSessionState } from './session.js';
 
 export {
   createProcessEnvAccessor,
@@ -25,7 +18,7 @@ export {
   summarizeManifest,
   type EnvAccessor,
   type ManifestSummary,
-  type RouteHandlerResult
+  type RouteHandlerResult,
 } from './node-http.js';
 
 export type FastifyRouteDefinitionLike = NodeHttpRouteDefinitionLike;
@@ -33,14 +26,14 @@ export type FastifyRouteDefinitionLike = NodeHttpRouteDefinitionLike;
 export type FastifyModuleRuntime<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends FastifyRouteDefinitionLike = FastifyRouteDefinitionLike
+  TRouteDefinition extends FastifyRouteDefinitionLike = FastifyRouteDefinitionLike,
 > = ModuleRuntime<TContext, TResult, TRouteDefinition>;
 
 export function logFastifyManifestSummary(
   logger: { info(message: string): void },
   manifest: ModuleManifestLike | undefined,
   routeCount: number,
-  viewCount: number
+  viewCount: number,
 ): void {
   if (!manifest) {
     logger.info('[fastify] manifest metadata not found.');
@@ -50,30 +43,31 @@ export function logFastifyManifestSummary(
   const caps = manifest.capabilities?.length ? ` [${manifest.capabilities.join(', ')}]` : '';
   const routes = Array.isArray(manifest.routes) ? manifest.routes.length : routeCount;
   const views = Array.isArray(manifest.views) ? manifest.views.length : viewCount;
-  logger.info(`[fastify] manifest name=${manifest.name ?? 'unknown'} routes=${routes} views=${views}${caps}`);
+  logger.info(
+    `[fastify] manifest name=${manifest.name ?? 'unknown'} routes=${routes} views=${views}${caps}`,
+  );
 }
 
 export async function loadFastifyModuleRuntime<
   TContext,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends FastifyRouteDefinitionLike
+  TRouteDefinition extends FastifyRouteDefinitionLike,
 >(options: {
   importMetaUrl: string;
   candidates?: readonly string[];
 }): Promise<FastifyModuleRuntime<TContext, TResult, TRouteDefinition>> {
   return await loadModuleRuntime<TContext, TResult, TRouteDefinition>({
     importMetaUrl: options.importMetaUrl,
-    candidates:
-      options.candidates ?? [
-        './module.js',
-        './module.mjs',
-        './module/index.js',
-        './module/index.mjs',
-        '../module.js',
-        '../module.mjs',
-        '../module/index.js',
-        '../module/index.mjs'
-      ]
+    candidates: options.candidates ?? [
+      './module.js',
+      './module.mjs',
+      './module/index.js',
+      './module/index.mjs',
+      '../module.js',
+      '../module.mjs',
+      '../module/index.js',
+      '../module/index.mjs',
+    ],
   });
 }
 
@@ -87,7 +81,7 @@ export function extractFastifyRequestId(req: Pick<FastifyRequest, 'id' | 'header
 export function sendCommittedFastifyRouteResponse<
   TSession extends Record<string, unknown>,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends FastifyRouteDefinitionLike
+  TRouteDefinition extends FastifyRouteDefinitionLike,
 >(
   reply: FastifyReply,
   result: TResult,
@@ -95,13 +89,13 @@ export function sendCommittedFastifyRouteResponse<
     sessionState: PreparedSessionState<TSession, TResult>;
     session: TSession | null;
     route?: TRouteDefinition;
-  }
+  },
 ): void {
   const normalizedResult = normalizeRouteHandlerResult(result);
   const commit = options.sessionState.commit({
     session: options.session,
     route: options.route,
-    result: normalizedResult as TResult
+    result: normalizedResult as TResult,
   });
 
   sendFastifyRouteResponse(reply, normalizedResult, commit.setCookie);
@@ -119,7 +113,7 @@ export function isFastifyRequestBodyTooLargeError(error: unknown): boolean {
 function sendFastifyRouteResponse(
   reply: FastifyReply,
   result: RouteHandlerResult,
-  setCookie?: string
+  setCookie?: string,
 ): void {
   const status = resolveResponseStatus(result);
   const headers = resolveResponseHeaders(result);
@@ -146,7 +140,7 @@ function sendFastifyRouteResponse(
     return;
   }
 
-  const payload = result.fragment ? result.fragment.body : result.body ?? null;
+  const payload = result.fragment ? result.fragment.body : (result.body ?? null);
   reply.code(status).send(payload);
 }
 

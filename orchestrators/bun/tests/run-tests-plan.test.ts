@@ -17,7 +17,7 @@ test('required orchestrator plan excludes watch browser proofs from the default 
     '--bail=1',
     'tests/progressive-enhancement.browser.integration.test.ts',
     '-t',
-    'publish mode'
+    'publish mode',
   ]);
 });
 
@@ -31,14 +31,14 @@ test('with-watch-browser orchestrator plan adds watch browser tests to the requi
     'tests/runtime-boundary.integration.test.ts',
     'tests/bun-first-spa.integration.test.ts',
     'tests/ssg-watch.integration.test.ts',
-    'tests/full-watch.integration.test.ts'
+    'tests/full-watch.integration.test.ts',
   ]);
   expect(plan[3]?.args).toEqual([
     'test',
     '--bail=1',
     'tests/progressive-enhancement.browser.integration.test.ts',
     '-t',
-    'watch mode'
+    'watch mode',
   ]);
 });
 

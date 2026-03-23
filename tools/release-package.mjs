@@ -45,7 +45,7 @@ function readPackageJson(packageDir) {
 }
 
 function hasScript(packageJson, scriptName) {
-  return Boolean(packageJson.scripts && Object.prototype.hasOwnProperty.call(packageJson.scripts, scriptName));
+  return Boolean(packageJson.scripts && Object.hasOwn(packageJson.scripts, scriptName));
 }
 
 function parseArgs(argv) {
@@ -90,9 +90,7 @@ function parseArgs(argv) {
 
   return {
     bump,
-    noPush:
-      noPush ||
-      /^(?:yes|y|1|true)$/i.test(process.env.PUBLISH_NO_PUSH ?? ''),
+    noPush: noPush || /^(?:yes|y|1|true)$/i.test(process.env.PUBLISH_NO_PUSH ?? ''),
     packageDir: path.resolve(packageDir),
   };
 }
@@ -173,4 +171,6 @@ console.log('› git push');
 run('git', ['push'], repoRoot);
 console.log(`› git push origin ${releaseTag}`);
 run('git', ['push', 'origin', releaseTag], repoRoot);
-console.log(`› Release workflow will publish ${packageJson.name}@${packageJson.version} from tag ${releaseTag}.`);
+console.log(
+  `› Release workflow will publish ${packageJson.name}@${packageJson.version} from tag ${releaseTag}.`,
+);

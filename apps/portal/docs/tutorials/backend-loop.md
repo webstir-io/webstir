@@ -113,7 +113,7 @@ export async function run() {
 Test it quickly:
 
 ```bash
-node build/backend/jobs/scheduler.js --job nightly
+bun build/backend/jobs/scheduler.js --job nightly
 ```
 
 ## 6. Inspect the manifest

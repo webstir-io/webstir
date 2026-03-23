@@ -20,13 +20,25 @@ async function createWorkspace(prefix = 'webstir-frontend-bundler-parity-') {
   await fs.writeFile(
     path.join(appDir, 'app.html'),
     '<!DOCTYPE html><html><head><title>App</title></head><body><main></main><script type="module" src="/app/app.js"></script></body></html>',
-    'utf8'
+    'utf8',
   );
   await fs.writeFile(path.join(appScriptsDir, 'boot.ts'), 'export const boot = "ready";\n', 'utf8');
-  await fs.writeFile(path.join(appDir, 'app.ts'), 'import { boot } from "./scripts/boot"; console.log(boot);\n', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.html'), '<head></head><main><section>Home</section></main>', 'utf8');
+  await fs.writeFile(
+    path.join(appDir, 'app.ts'),
+    'import { boot } from "./scripts/boot"; console.log(boot);\n',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head></head><main><section>Home</section></main>',
+    'utf8',
+  );
   await fs.writeFile(path.join(pageDir, 'message.ts'), 'export const message = "home";\n', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.ts'), 'import { message } from "./message"; console.log(message);\n', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.ts'),
+    'import { message } from "./message"; console.log(message);\n',
+    'utf8',
+  );
 
   return root;
 }
@@ -96,7 +108,7 @@ async function snapshotWorkspace(workspace, entryPoints) {
     buildFiles: await listRelativeFiles(buildRoot),
     distFiles: (await listRelativeFiles(distRoot)).map(normalizeHashedPath),
     sharedJs: normalizeHashedName(sharedJs),
-    pageJs: normalizeHashedName(pageJs)
+    pageJs: normalizeHashedName(pageJs),
   };
 }
 
@@ -116,17 +128,20 @@ async function runWithNodeProvider(workspace) {
   const buildResult = await frontendProvider.build({
     workspaceRoot: workspace,
     env: { WEBSTIR_MODULE_MODE: 'build' },
-    incremental: false
+    incremental: false,
   });
   const publishResult = await frontendProvider.build({
     workspaceRoot: workspace,
     env: { WEBSTIR_MODULE_MODE: 'publish' },
-    incremental: false
+    incremental: false,
   });
 
-  return await snapshotWorkspace(workspace, publishResult.manifest.entryPoints.length > 0
-    ? publishResult.manifest.entryPoints
-    : buildResult.manifest.entryPoints);
+  return await snapshotWorkspace(
+    workspace,
+    publishResult.manifest.entryPoints.length > 0
+      ? publishResult.manifest.entryPoints
+      : buildResult.manifest.entryPoints,
+  );
 }
 
 async function runWithBunProvider(workspace) {
@@ -156,7 +171,7 @@ console.log('__RESULT__' + JSON.stringify(payload));
   const child = spawn('bun', ['--eval', script, workspace], {
     cwd: packageRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env
+    env: process.env,
   });
 
   let stdout = '';
@@ -182,7 +197,9 @@ console.log('__RESULT__' + JSON.stringify(payload));
     .at(-1);
 
   if (exitCode !== 0 || !resultLine) {
-    throw new Error(`bun frontend parity harness failed (exit=${exitCode ?? 'null'})\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    throw new Error(
+      `bun frontend parity harness failed (exit=${exitCode ?? 'null'})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
   }
 
   const payload = JSON.parse(resultLine.slice('__RESULT__'.length));
@@ -202,14 +219,34 @@ async function compareBundlerSnapshots() {
 test('build mode Bun bundler preserves frontend build output shape', async () => {
   const { esbuildSnapshot, bunSnapshot } = await compareBundlerSnapshots();
 
-  assert.deepEqual(bunSnapshot.entryPoints, esbuildSnapshot.entryPoints, 'build manifest entry points should stay aligned');
-  assert.deepEqual(bunSnapshot.buildFiles, esbuildSnapshot.buildFiles, 'build/frontend output shape should stay aligned');
+  assert.deepEqual(
+    bunSnapshot.entryPoints,
+    esbuildSnapshot.entryPoints,
+    'build manifest entry points should stay aligned',
+  );
+  assert.deepEqual(
+    bunSnapshot.buildFiles,
+    esbuildSnapshot.buildFiles,
+    'build/frontend output shape should stay aligned',
+  );
 });
 
 test('publish mode Bun bundler preserves frontend filename/hash resolution parity', async () => {
   const { esbuildSnapshot, bunSnapshot } = await compareBundlerSnapshots();
 
-  assert.deepEqual(bunSnapshot.distFiles, esbuildSnapshot.distFiles, 'dist/frontend output shape should stay aligned');
-  assert.equal(bunSnapshot.sharedJs, esbuildSnapshot.sharedJs, 'shared app bundle name should keep the same hashed shape');
-  assert.equal(bunSnapshot.pageJs, esbuildSnapshot.pageJs, 'page bundle name should keep the same hashed shape');
+  assert.deepEqual(
+    bunSnapshot.distFiles,
+    esbuildSnapshot.distFiles,
+    'dist/frontend output shape should stay aligned',
+  );
+  assert.equal(
+    bunSnapshot.sharedJs,
+    esbuildSnapshot.sharedJs,
+    'shared app bundle name should keep the same hashed shape',
+  );
+  assert.equal(
+    bunSnapshot.pageJs,
+    esbuildSnapshot.pageJs,
+    'page bundle name should keep the same hashed shape',
+  );
 });

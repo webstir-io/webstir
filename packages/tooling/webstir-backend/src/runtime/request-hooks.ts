@@ -12,8 +12,8 @@ export interface RequestHookReferenceLike {
 
 export type RequestHookHandler<TContext, TResult, TRoute> = (
   context: TContext,
-  input: { phase: RequestHookPhase; route: TRoute; result?: TResult }
-) => Promise<TResult | void> | TResult | void;
+  input: { phase: RequestHookPhase; route: TRoute; result?: TResult },
+) => Promise<TResult | undefined> | TResult | undefined;
 
 export interface RegisteredRequestHook<TContext, TResult, TRoute> {
   id?: string;
@@ -62,13 +62,17 @@ export function resolveRequestHooks<TContext, TResult, TRoute>(options: {
 
     const definition = definitions.get(hookId);
     if (!definition?.phase) {
-      warnings.push(`Route "${options.routeName}" references request hook "${hookId}" without manifest metadata.`);
+      warnings.push(
+        `Route "${options.routeName}" references request hook "${hookId}" without manifest metadata.`,
+      );
       continue;
     }
 
     const handler = registrations.get(hookId);
     if (!handler) {
-      warnings.push(`Route "${options.routeName}" references request hook "${hookId}" without an implementation.`);
+      warnings.push(
+        `Route "${options.routeName}" references request hook "${hookId}" without an implementation.`,
+      );
       continue;
     }
 
@@ -76,7 +80,7 @@ export function resolveRequestHooks<TContext, TResult, TRoute>(options: {
       id: hookId,
       phase: definition.phase,
       order: Number.isInteger(definition.order) ? Number(definition.order) : 0,
-      handler
+      handler,
     });
   }
 
@@ -116,7 +120,7 @@ export async function executeRequestHookPhase<TContext, TResult, TRoute>(options
       const hookResult = await hook.handler(options.context, {
         phase: options.phase,
         route: options.route,
-        result: currentResult
+        result: currentResult,
       });
 
       if (options.phase === 'afterHandler') {
@@ -129,7 +133,7 @@ export async function executeRequestHookPhase<TContext, TResult, TRoute>(options
       if (hookResult !== undefined) {
         options.logger?.info?.('request hook produced early response', {
           hookId: hook.id,
-          phase: hook.phase
+          phase: hook.phase,
         });
         return { result: hookResult, shortCircuited: true };
       }
@@ -137,7 +141,7 @@ export async function executeRequestHookPhase<TContext, TResult, TRoute>(options
       options.logger?.error?.('request hook failed', {
         err: error,
         hookId: hook.id,
-        phase: hook.phase
+        phase: hook.phase,
       });
       throw error;
     }

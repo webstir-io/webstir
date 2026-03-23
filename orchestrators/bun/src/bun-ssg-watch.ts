@@ -18,12 +18,18 @@ export interface BunSsgFrontendWatchSession {
 }
 
 interface FrontendOperationsModule {
-  runBuild(options: { readonly workspaceRoot: string; readonly changedFile?: string }): Promise<void>;
-  runRebuild(options: { readonly workspaceRoot: string; readonly changedFile?: string }): Promise<void>;
+  runBuild(options: {
+    readonly workspaceRoot: string;
+    readonly changedFile?: string;
+  }): Promise<void>;
+  runRebuild(options: {
+    readonly workspaceRoot: string;
+    readonly changedFile?: string;
+  }): Promise<void>;
 }
 
 export async function startBunSsgFrontendWatch(
-  options: BunSsgFrontendWatchOptions
+  options: BunSsgFrontendWatchOptions,
 ): Promise<BunSsgFrontendWatchSession> {
   const workspaceRoot = path.resolve(options.workspaceRoot);
   const frontendSourceRoot = path.join(workspaceRoot, 'src', 'frontend');
@@ -71,19 +77,24 @@ export async function startBunSsgFrontendWatch(
         await server.publishStatus('building');
 
         let hotUpdate: HotUpdatePayload | null = null;
+        const changedPath =
+          event.type === 'change' || event.type === 'reload' ? event.path : undefined;
         if (event.type === 'change') {
           await operations.runRebuild({
             workspaceRoot,
             changedFile: event.path,
           });
+        } else {
+          await operations.runBuild({ workspaceRoot });
+        }
+
+        if (changedPath) {
           hotUpdate = createHotUpdatePayload({
             workspaceRoot,
             frontendSourceRoot,
             buildRoot,
-            changedFile: event.path,
+            changedFile: changedPath,
           });
-        } else {
-          await operations.runBuild({ workspaceRoot });
         }
 
         if (hotUpdate) {
@@ -137,7 +148,7 @@ export async function startBunSsgFrontendWatch(
 
 async function loadFrontendOperations(): Promise<FrontendOperationsModule> {
   await ensureLocalPackageArtifacts();
-  return await import('@webstir-io/webstir-frontend') as FrontendOperationsModule;
+  return (await import('@webstir-io/webstir-frontend')) as FrontendOperationsModule;
 }
 
 async function reportBuildFailure(server: DevServer, error: unknown): Promise<void> {
@@ -191,7 +202,27 @@ function createHotUpdatePayload(options: {
     relativeParts[2].startsWith('index.') &&
     isJavaScriptFile(changedFile)
   ) {
-    console.info(`[webstir] docs sidebar hot update detected: ${normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile))}`);
+    console.info(
+      `[webstir] docs sidebar hot update detected: ${normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile))}`,
+    );
+    return createJsHotUpdate({
+      buildRoot: options.buildRoot,
+      changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
+      assetRelativePath: path.posix.join('pages', 'docs', 'index.js'),
+      target: {
+        kind: 'boundary',
+        id: 'docs-sidebar',
+      },
+    });
+  }
+
+  if (
+    relativeParts[0] === 'content' &&
+    relativeParts[relativeParts.length - 1] === '_sidebar.json'
+  ) {
+    console.info(
+      `[webstir] docs sidebar manifest hot update detected: ${normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile))}`,
+    );
     return createJsHotUpdate({
       buildRoot: options.buildRoot,
       changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
@@ -236,7 +267,11 @@ function createJsHotUpdate(options: {
   };
 }
 
-function createHotUpdateAsset(buildRoot: string, assetRelativePath: string, type: HotUpdateAsset['type']): HotUpdateAsset {
+function createHotUpdateAsset(
+  buildRoot: string,
+  assetRelativePath: string,
+  type: HotUpdateAsset['type'],
+): HotUpdateAsset {
   const normalizedRelativePath = normalizeForwardSlashes(assetRelativePath);
   return {
     type,

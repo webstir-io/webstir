@@ -104,7 +104,7 @@ async function snapshotWorkspaceBuild(workspace, entryPoints) {
     entryPoints: [...entryPoints].sort(),
     artifactPaths,
     primaryArtifactPaths: selectPrimaryArtifactPaths(artifactPaths).sort(),
-    cachedOutputPaths: await readCachedOutputPaths(workspace)
+    cachedOutputPaths: await readCachedOutputPaths(workspace),
   };
 }
 
@@ -112,7 +112,7 @@ async function buildWithNodeProvider(workspace, env) {
   const result = await backendProvider.build({
     workspaceRoot: workspace,
     env,
-    incremental: false
+    incremental: false,
   });
   return await snapshotWorkspaceBuild(workspace, result.manifest.entryPoints);
 }
@@ -136,7 +136,7 @@ console.log('__RESULT__' + JSON.stringify({ entryPoints: result.manifest.entryPo
   const child = spawn('bun', ['--eval', script, workspace, JSON.stringify(env)], {
     cwd: packageRoot,
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env
+    env: process.env,
   });
 
   let stdout = '';
@@ -162,7 +162,9 @@ console.log('__RESULT__' + JSON.stringify({ entryPoints: result.manifest.entryPo
     .at(-1);
 
   if (exitCode !== 0 || !resultLine) {
-    throw new Error(`bun build parity harness failed (exit=${exitCode ?? 'null'})\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    throw new Error(
+      `bun build parity harness failed (exit=${exitCode ?? 'null'})\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
   }
 
   const payload = JSON.parse(resultLine.slice('__RESULT__'.length));
@@ -178,25 +180,29 @@ async function compareBundlerSnapshots(mode, extraEnv = {}) {
   const baseEnv = {
     WEBSTIR_MODULE_MODE: mode,
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
-    ...extraEnv
+    ...extraEnv,
   };
 
   const esbuildSnapshot = await buildWithNodeProvider(esbuildWorkspace, baseEnv);
   const bunSnapshot = await buildWithBunProvider(bunWorkspace, {
     ...baseEnv,
-    WEBSTIR_BACKEND_BUNDLER: 'bun'
+    WEBSTIR_BACKEND_BUNDLER: 'bun',
   });
 
-  assert.deepEqual(bunSnapshot.entryPoints, esbuildSnapshot.entryPoints, `${mode}: entry points should stay aligned`);
+  assert.deepEqual(
+    bunSnapshot.entryPoints,
+    esbuildSnapshot.entryPoints,
+    `${mode}: entry points should stay aligned`,
+  );
   assert.deepEqual(
     bunSnapshot.cachedOutputPaths,
     esbuildSnapshot.cachedOutputPaths,
-    `${mode}: cached output accounting should stay aligned`
+    `${mode}: cached output accounting should stay aligned`,
   );
   assert.deepEqual(
     bunSnapshot.primaryArtifactPaths,
     esbuildSnapshot.primaryArtifactPaths,
-    `${mode}: primary emitted artifacts should stay aligned`
+    `${mode}: primary emitted artifacts should stay aligned`,
   );
 }
 
@@ -206,6 +212,6 @@ test('build mode Bun bundler preserves artifact accounting parity', async () => 
 
 test('publish mode Bun bundler preserves artifact accounting parity with sourcemaps enabled', async () => {
   await compareBundlerSnapshots('publish', {
-    WEBSTIR_BACKEND_SOURCEMAPS: 'on'
+    WEBSTIR_BACKEND_SOURCEMAPS: 'on',
   });
 });

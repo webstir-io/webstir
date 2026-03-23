@@ -46,7 +46,12 @@ async function emptyDirectory(directoryPath: string): Promise<void> {
 
 function parseWorkspaceMode(value: string): WorkspaceMode {
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'ssg' || normalized === 'spa' || normalized === 'api' || normalized === 'full') {
+  if (
+    normalized === 'ssg' ||
+    normalized === 'spa' ||
+    normalized === 'api' ||
+    normalized === 'full'
+  ) {
     return normalized;
   }
 
@@ -58,7 +63,7 @@ function parseWorkspaceMode(value: string): WorkspaceMode {
 }
 
 async function readWorkspaceManifestMetadata(
-  workspaceRoot: string
+  workspaceRoot: string,
 ): Promise<{ readonly packageName?: string; readonly description?: string } | undefined> {
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
   if (!existsSync(packageJsonPath)) {

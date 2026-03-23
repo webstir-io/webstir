@@ -8,39 +8,44 @@ import type { TestModule } from '@webstir-io/webstir-testing';
 const TESTING_PACKAGE_SPECIFIER = '@webstir-io/webstir-testing';
 const TESTING_RUNTIME_SPECIFIER = import.meta.resolve('./testing-runtime.ts');
 
-export async function compileTestModules(workspaceRoot: string, modules: readonly TestModule[]): Promise<void> {
+export async function compileTestModules(
+  workspaceRoot: string,
+  modules: readonly TestModule[],
+): Promise<void> {
   const shimPath = await ensureTestingRuntimeShim(workspaceRoot);
 
-  await Promise.all(modules.map(async (module) => {
-    if (!module.compiledPath) {
-      return;
-    }
+  await Promise.all(
+    modules.map(async (module) => {
+      if (!module.compiledPath) {
+        return;
+      }
 
-    await mkdir(path.dirname(module.compiledPath), { recursive: true });
+      await mkdir(path.dirname(module.compiledPath), { recursive: true });
 
-    if (module.sourcePath.endsWith('.js')) {
+      if (module.sourcePath.endsWith('.js')) {
+        const source = await readFile(module.sourcePath, 'utf8');
+        const rewritten = rewriteTestingImports(source, module.compiledPath, shimPath);
+        await writeFile(module.compiledPath, rewritten, 'utf8');
+        return;
+      }
+
       const source = await readFile(module.sourcePath, 'utf8');
-      const rewritten = rewriteTestingImports(source, module.compiledPath, shimPath);
+      const output = ts.transpileModule(source, {
+        fileName: module.sourcePath,
+        compilerOptions: {
+          target: ts.ScriptTarget.ES2022,
+          module: ts.ModuleKind.ESNext,
+          moduleResolution: ts.ModuleResolutionKind.Bundler,
+          verbatimModuleSyntax: true,
+          rewriteRelativeImportExtensions: true,
+        },
+        reportDiagnostics: false,
+      });
+
+      const rewritten = rewriteTestingImports(output.outputText, module.compiledPath, shimPath);
       await writeFile(module.compiledPath, rewritten, 'utf8');
-      return;
-    }
-
-    const source = await readFile(module.sourcePath, 'utf8');
-    const output = ts.transpileModule(source, {
-      fileName: module.sourcePath,
-      compilerOptions: {
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.ESNext,
-        moduleResolution: ts.ModuleResolutionKind.Bundler,
-        verbatimModuleSyntax: true,
-        rewriteRelativeImportExtensions: true,
-      },
-      reportDiagnostics: false,
-    });
-
-    const rewritten = rewriteTestingImports(output.outputText, module.compiledPath, shimPath);
-    await writeFile(module.compiledPath, rewritten, 'utf8');
-  }));
+    }),
+  );
 }
 
 async function ensureTestingRuntimeShim(workspaceRoot: string): Promise<string> {
@@ -52,7 +57,10 @@ async function ensureTestingRuntimeShim(workspaceRoot: string): Promise<string> 
 }
 
 function rewriteTestingImports(source: string, compiledPath: string, shimPath: string): string {
-  const relativeShim = path.relative(path.dirname(compiledPath), shimPath).split(path.sep).join('/');
+  const relativeShim = path
+    .relative(path.dirname(compiledPath), shimPath)
+    .split(path.sep)
+    .join('/');
   const specifier = relativeShim.startsWith('.') ? relativeShim : `./${relativeShim}`;
 
   return source

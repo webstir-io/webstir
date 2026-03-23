@@ -18,7 +18,7 @@ async function runCli(args: readonly string[]): Promise<{
 
 async function runCliWithEnv(
   args: readonly string[],
-  envOverrides: Record<string, string | undefined>
+  envOverrides: Record<string, string | undefined>,
 ): Promise<{
   readonly stdout: string;
   readonly stderr: string;
@@ -73,12 +73,8 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
     expect(addJob.exitCode).toBe(0);
 
     const inspectResult = await runCliWithEnv(
-      [
-        'backend-inspect',
-        '--workspace',
-        copiedWorkspace.workspaceRoot,
-      ],
-      { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
+      ['backend-inspect', '--workspace', copiedWorkspace.workspaceRoot],
+      { WEBSTIR_BACKEND_TYPECHECK: 'skip' },
     );
 
     expect(inspectResult.exitCode).toBe(0);
@@ -89,7 +85,9 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
     expect(inspectResult.stdout).toContain('routes: 1');
     expect(inspectResult.stdout).toContain('GET /api/accounts (accounts)');
     expect(inspectResult.stdout).toContain('jobs: 1');
-    expect(inspectResult.stdout).toContain('nightly (schedule: 0 0 * * *, description: Nightly maintenance run, priority: 5)');
+    expect(inspectResult.stdout).toContain(
+      'nightly (schedule: 0 0 * * *, description: Nightly maintenance run, priority: 5)',
+    );
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

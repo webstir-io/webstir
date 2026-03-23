@@ -45,7 +45,6 @@ function parseArgs(argv) {
     if (arg === '--tag') {
       tag = argv[index + 1] ?? '';
       index += 1;
-      continue;
     }
   }
 

@@ -12,7 +12,7 @@ const watchBrowserTestFiles = [
   'tests/runtime-boundary.integration.test.ts',
   'tests/bun-first-spa.integration.test.ts',
   'tests/ssg-watch.integration.test.ts',
-  'tests/full-watch.integration.test.ts'
+  'tests/full-watch.integration.test.ts',
 ];
 const publishModeFilter = 'publish mode';
 const watchModeFilter = 'watch mode';
@@ -29,19 +29,19 @@ export function listCoreTestFiles() {
 export function buildTestPlan(mode) {
   const coreTests = {
     label: 'core orchestrator tests',
-    args: ['test', '--bail=1', ...listCoreTestFiles()]
+    args: ['test', '--bail=1', ...listCoreTestFiles()],
   };
   const publishBrowserTests = {
     label: 'browser publish proofs',
-    args: ['test', '--bail=1', browserTestFile, '-t', publishModeFilter]
+    args: ['test', '--bail=1', browserTestFile, '-t', publishModeFilter],
   };
   const integrationWatchBrowserTests = {
     label: 'browser watch integration proofs',
-    args: ['test', '--bail=1', ...watchBrowserTestFiles]
+    args: ['test', '--bail=1', ...watchBrowserTestFiles],
   };
   const watchBrowserTests = {
     label: 'browser watch proofs',
-    args: ['test', '--bail=1', browserTestFile, '-t', watchModeFilter]
+    args: ['test', '--bail=1', browserTestFile, '-t', watchModeFilter],
   };
 
   switch (mode) {
@@ -56,7 +56,7 @@ export function buildTestPlan(mode) {
       return [coreTests, publishBrowserTests, integrationWatchBrowserTests, watchBrowserTests];
     default:
       throw new Error(
-        `Unknown orchestrator test mode "${mode}". Expected one of: required, publish-browser, watch-browser, with-watch-browser.`
+        `Unknown orchestrator test mode "${mode}". Expected one of: required, publish-browser, watch-browser, with-watch-browser.`,
       );
   }
 }
@@ -65,7 +65,7 @@ function runStep(step) {
   const result = spawnSync('bun', step.args, {
     cwd: packageRoot,
     stdio: 'inherit',
-    env: process.env
+    env: process.env,
   });
 
   if (result.status !== 0) {

@@ -11,7 +11,10 @@ async function loadProviderOrSkip(t) {
     return mod.frontendProvider;
   } catch (err) {
     // Likely due to optional native deps like sharp; skip gracefully.
-    console.warn('[frontend-tests] Skipping provider integration: optional dependency unavailable:', err?.message ?? err);
+    console.warn(
+      '[frontend-tests] Skipping provider integration: optional dependency unavailable:',
+      err?.message ?? err,
+    );
     t?.diagnostic?.('skip: missing optional dependency');
     return null;
   }
@@ -25,8 +28,16 @@ async function createWorkspace() {
   await fs.mkdir(pageDir, { recursive: true });
 
   // Minimal app template and page fragment
-  await fs.writeFile(path.join(appDir, 'app.html'), '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.html'), '<head></head><main><section>Home</section></main>', 'utf8');
+  await fs.writeFile(
+    path.join(appDir, 'app.html'),
+    '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head></head><main><section>Home</section></main>',
+    'utf8',
+  );
   await fs.writeFile(path.join(pageDir, 'index.ts'), 'console.log("home");', 'utf8');
 
   return root;
@@ -47,16 +58,28 @@ async function createWorkspaceWithClientNav() {
     webstir: {
       mode: 'ssg',
       enable: {
-        clientNav: true
-      }
-    }
+        clientNav: true,
+      },
+    },
   };
   await fs.writeFile(path.join(root, 'package.json'), JSON.stringify(pkg, null, 2), 'utf8');
 
-  await fs.writeFile(path.join(appDir, 'app.html'), '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>', 'utf8');
-  await fs.writeFile(path.join(appDir, 'app.ts'), 'import "./scripts/features/client-nav.js";', 'utf8');
+  await fs.writeFile(
+    path.join(appDir, 'app.html'),
+    '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(appDir, 'app.ts'),
+    'import "./scripts/features/client-nav.js";',
+    'utf8',
+  );
   await fs.writeFile(path.join(featureDir, 'client-nav.ts'), 'export {};', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.html'), '<head></head><main><section>Home</section></main>', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head></head><main><section>Home</section></main>',
+    'utf8',
+  );
 
   return root;
 }
@@ -85,8 +108,16 @@ test('frontend provider publish produces dist assets and preserves entry in mani
   const workspace = await createWorkspace();
 
   // Run build first so manifest has entries from build/frontend
-  await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'build' }, incremental: false });
-  const publishResult = await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'publish' }, incremental: false });
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'build' },
+    incremental: false,
+  });
+  const publishResult = await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'publish' },
+    incremental: false,
+  });
 
   // Dist should contain a hashed JS file
   const distPageDir = path.join(workspace, 'dist', 'frontend', 'pages', 'home');
@@ -102,13 +133,28 @@ test('enable.clientNav uses feature module (no legacy helper injection)', async 
   if (!frontendProvider) return; // skip
   const workspace = await createWorkspaceWithClientNav();
 
-  await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'build' }, incremental: false });
-  await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'publish' }, incremental: false });
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'build' },
+    incremental: false,
+  });
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'publish' },
+    incremental: false,
+  });
 
   const distClientNav = path.join(workspace, 'dist', 'frontend', 'clientNav.js');
-  assert.equal(fssync.existsSync(distClientNav), false, 'did not expect dist/frontend/clientNav.js');
+  assert.equal(
+    fssync.existsSync(distClientNav),
+    false,
+    'did not expect dist/frontend/clientNav.js',
+  );
 
-  const distHtml = await fs.readFile(path.join(workspace, 'dist', 'frontend', 'index.html'), 'utf8');
+  const distHtml = await fs.readFile(
+    path.join(workspace, 'dist', 'frontend', 'index.html'),
+    'utf8',
+  );
   assert.ok(!distHtml.includes('clientNav.js'), 'did not expect client-nav script injected');
   assert.ok(!distHtml.includes('index.js'), 'should not inject page index.js when none exists');
 });
@@ -124,14 +170,19 @@ test('enable.clientNav without feature module fails fast', async (t) => {
     webstir: {
       mode: 'ssg',
       enable: {
-        clientNav: true
-      }
-    }
+        clientNav: true,
+      },
+    },
   };
   await fs.writeFile(path.join(workspace, 'package.json'), JSON.stringify(pkg, null, 2), 'utf8');
 
   await assert.rejects(
-    () => frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'build' }, incremental: false }),
-    /Enabled feature module\(s\) missing: client-nav/
+    () =>
+      frontendProvider.build({
+        workspaceRoot: workspace,
+        env: { WEBSTIR_MODULE_MODE: 'build' },
+        incremental: false,
+      }),
+    /Enabled feature module\(s\) missing: client-nav/,
   );
 });

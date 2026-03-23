@@ -7,7 +7,7 @@ export type ModuleRuntimeMode = 'build' | 'publish' | 'test';
 export function createWorkspaceRuntimeEnv(
   workspaceRoot: string,
   mode: ModuleRuntimeMode,
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
 ): Record<string, string | undefined> {
   const binPaths = [
     ...collectNodeModuleBins(workspaceRoot),

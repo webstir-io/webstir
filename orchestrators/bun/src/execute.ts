@@ -19,7 +19,7 @@ export interface RunCommandOptions {
 
 export async function runCommand(
   mode: CommandMode,
-  options: RunCommandOptions
+  options: RunCommandOptions,
 ): Promise<CommandExecutionResult> {
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   const providerLoader = options.loadProvider ?? loadProvider;
@@ -58,7 +58,7 @@ async function prepareCommandTarget(
   workspaceRoot: string,
   kind: BuildTargetKind,
   mode: CommandMode,
-  env?: Record<string, string | undefined>
+  env?: Record<string, string | undefined>,
 ): Promise<void> {
   if (kind !== 'frontend' || mode !== 'publish') {
     return;
@@ -77,7 +77,7 @@ function resolveOutputRoot(
   workspaceRoot: string,
   kind: BuildTargetKind,
   mode: CommandMode,
-  buildRoot: string
+  buildRoot: string,
 ): string {
   if (kind === 'frontend' && mode === 'publish') {
     return path.join(workspaceRoot, 'dist', 'frontend');
@@ -89,9 +89,11 @@ function resolveOutputRoot(
 function assertNoFatalDiagnostics(
   kind: BuildTargetKind,
   phase: CommandMode | 'prebuild',
-  result: CommandExecutionResult['targets'][number]['result']
+  result: CommandExecutionResult['targets'][number]['result'],
 ): void {
-  const errors = result.manifest.diagnostics.filter((diagnostic) => diagnostic.severity === 'error');
+  const errors = result.manifest.diagnostics.filter(
+    (diagnostic) => diagnostic.severity === 'error',
+  );
   if (errors.length === 0) {
     return;
   }
@@ -101,5 +103,7 @@ function assertNoFatalDiagnostics(
     .map((diagnostic) => diagnostic.message)
     .join(' | ');
   const extra = errors.length > 3 ? ` (+${errors.length - 3} more)` : '';
-  throw new Error(`${kind} ${phase} reported ${errors.length} error diagnostic(s): ${summary}${extra}`);
+  throw new Error(
+    `${kind} ${phase} reported ${errors.length} error diagnostic(s): ${summary}${extra}`,
+  );
 }

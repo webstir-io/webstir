@@ -26,7 +26,7 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
   await Promise.all([
     rm(path.join(workspace, 'build'), { recursive: true, force: true }),
     rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
-    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true })
+    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true }),
   ]);
 
   const port = await getFreePort();
@@ -77,7 +77,11 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
 
     const backendPath = path.join(workspace, 'src', 'backend', 'index.ts');
     const originalBackend = await readFile(backendPath, 'utf8');
-    await writeFile(backendPath, originalBackend.replaceAll('API server running', 'Full API changed'), 'utf8');
+    await writeFile(
+      backendPath,
+      originalBackend.replaceAll('API server running', 'Full API changed'),
+      'utf8',
+    );
 
     await waitFor(async () => {
       expect(stdoutBuffer.text).toContain('backend restarted at');
@@ -100,7 +104,7 @@ test('CLI watch exposes a full home boundary that remounts cleanly', async () =>
   await Promise.all([
     rm(path.join(workspace, 'build'), { recursive: true, force: true }),
     rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
-    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true })
+    rm(path.join(workspace, 'node_modules'), { recursive: true, force: true }),
   ]);
 
   const port = await getFreePort();
@@ -152,30 +156,43 @@ test('CLI watch exposes a full home boundary that remounts cleanly', async () =>
 
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.querySelector('main')?.dataset.hmrRendered === '1');
-    await page.waitForFunction(() => Boolean((window as Window & { __webstirHomeBoundary?: unknown }).__webstirHomeBoundary));
+    await page.waitForFunction(() =>
+      Boolean((window as Window & { __webstirHomeBoundary?: unknown }).__webstirHomeBoundary),
+    );
     await page.evaluate(() => {
       (window as Window & { __webstirFullMarker?: string }).__webstirFullMarker = 'persist';
     });
 
     await page.evaluate(async () => {
-      const boundary = (window as Window & {
-        __webstirHomeBoundary?: {
-          mount(root: Element): Promise<unknown>;
-          unmount(): Promise<void>;
-        };
-      }).__webstirHomeBoundary;
+      const boundary = (
+        window as Window & {
+          __webstirHomeBoundary?: {
+            mount(root: Element): Promise<unknown>;
+            unmount(): Promise<void>;
+          };
+        }
+      ).__webstirHomeBoundary;
 
       if (!boundary) {
         throw new Error('Missing full home boundary.');
       }
 
+      const main = document.querySelector('main');
+      if (!main) {
+        throw new Error('Missing <main> element.');
+      }
+
       await boundary.unmount();
-      await boundary.mount(document.querySelector('main')!);
+      await boundary.mount(main);
     });
 
     await page.waitForFunction(() => document.querySelector('main')?.dataset.hmrRendered === '2');
     expect(await page.locator('h1').textContent()).toBe('Home');
-    expect(await page.evaluate(() => (window as Window & { __webstirFullMarker?: string }).__webstirFullMarker ?? null)).toBe('persist');
+    expect(
+      await page.evaluate(
+        () => (window as Window & { __webstirFullMarker?: string }).__webstirFullMarker ?? null,
+      ),
+    ).toBe('persist');
 
     await context.close();
   } catch (error) {

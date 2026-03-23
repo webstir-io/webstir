@@ -25,7 +25,11 @@ program
   .command('watch')
   .description('Run tests in watch mode, re-running after file changes')
   .addOption(workspaceOption())
-  .addOption(new Option('-d, --debounce <ms>', 'Debounce duration between runs (ms)').argParser(parseInteger).default(150))
+  .addOption(
+    new Option('-d, --debounce <ms>', 'Debounce duration between runs (ms)')
+      .argParser(parseInteger)
+      .default(150),
+  )
   .action(async (options) => {
     await runWatchCommand({
       workspace: options.workspace,
@@ -40,7 +44,9 @@ program.parseAsync(process.argv).catch((error) => {
 });
 
 function workspaceOption(): Option {
-  return new Option('-w, --workspace <path>', 'Absolute path to the workspace root').default(process.cwd());
+  return new Option('-w, --workspace <path>', 'Absolute path to the workspace root').default(
+    process.cwd(),
+  );
 }
 
 function parseInteger(value: string): number {

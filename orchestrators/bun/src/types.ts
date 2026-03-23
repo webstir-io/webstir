@@ -1,7 +1,4 @@
-import type {
-  ModuleBuildResult,
-  ModuleProvider,
-} from '@webstir-io/module-contract';
+import type { ModuleBuildResult, ModuleProvider } from '@webstir-io/module-contract';
 
 export const SUPPORTED_WORKSPACE_MODES = ['spa', 'ssg', 'api', 'full'] as const;
 

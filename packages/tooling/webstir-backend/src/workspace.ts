@@ -14,9 +14,7 @@ interface ResolveWorkspaceRootOptions {
 
 const WORKSPACE_ROOT_PATTERN = /^(.*)[/\\](?:src|build)[/\\]backend(?:[/\\].*)?$/;
 
-export function resolveWorkspaceRoot(
-  options?: string | ResolveWorkspaceRootOptions
-): string {
+export function resolveWorkspaceRoot(options?: string | ResolveWorkspaceRootOptions): string {
   if (typeof options === 'string') {
     return path.resolve(options);
   }
@@ -32,7 +30,9 @@ export function resolveWorkspaceRoot(
     return path.resolve(envRoot);
   }
 
-  const inferredRoot = options?.importMetaUrl ? inferWorkspaceRootFromImportMetaUrl(options.importMetaUrl) : undefined;
+  const inferredRoot = options?.importMetaUrl
+    ? inferWorkspaceRootFromImportMetaUrl(options.importMetaUrl)
+    : undefined;
   if (inferredRoot) {
     return inferredRoot;
   }
@@ -45,7 +45,7 @@ export function resolveWorkspacePaths(workspaceRoot: string): ResolvedModuleWork
   return {
     sourceRoot: path.join(resolvedWorkspaceRoot, 'src', 'backend'),
     buildRoot: path.join(resolvedWorkspaceRoot, 'build', 'backend'),
-    testsRoot: path.join(resolvedWorkspaceRoot, 'src', 'backend', 'tests')
+    testsRoot: path.join(resolvedWorkspaceRoot, 'src', 'backend', 'tests'),
   };
 }
 

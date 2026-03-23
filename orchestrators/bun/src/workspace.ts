@@ -25,7 +25,7 @@ export function parseWorkspaceMode(value: unknown): WorkspaceMode {
   }
 
   throw new Error(
-    `Unsupported webstir.mode "${value}". Expected one of: ${SUPPORTED_WORKSPACE_MODES.join(', ')}.`
+    `Unsupported webstir.mode "${value}". Expected one of: ${SUPPORTED_WORKSPACE_MODES.join(', ')}.`,
   );
 }
 
@@ -44,7 +44,9 @@ export async function readWorkspaceDescriptor(workspacePath: string): Promise<Wo
   try {
     packageJson = JSON.parse(rawPackageJson) as WorkspacePackageJson;
   } catch (error) {
-    throw new Error(`Workspace package.json at ${packageJsonPath} is not valid JSON.`, { cause: error });
+    throw new Error(`Workspace package.json at ${packageJsonPath} is not valid JSON.`, {
+      cause: error,
+    });
   }
 
   return {

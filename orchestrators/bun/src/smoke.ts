@@ -95,14 +95,15 @@ export async function runSmoke(options: RunSmokeOptions = {}): Promise<SmokeResu
 
 function createSmokeEnv(
   workspaceRoot: string,
-  env: Record<string, string | undefined> = process.env
+  env: Record<string, string | undefined> = process.env,
 ): Record<string, string | undefined> {
   if (env.WEBSTIR_BACKEND_TYPECHECK) {
     return env;
   }
 
   const relativeToRepo = monorepoRoot ? path.relative(monorepoRoot, workspaceRoot) : '../external';
-  const isExternalWorkspace = !monorepoRoot || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo);
+  const isExternalWorkspace =
+    !monorepoRoot || relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo);
   if (!isExternalWorkspace) {
     return env;
   }

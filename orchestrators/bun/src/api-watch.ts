@@ -15,12 +15,12 @@ export interface ApiWatchSession {
 export async function runApiWatch(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
-  io: WatchIo
+  io: WatchIo,
 ): Promise<void> {
   const session = await startApiWatchSession(workspace, options, io);
 
   io.stdout.write(
-    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.origin}\n`
+    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.origin}\n`,
   );
 
   const stopSignal = createStopSignal();
@@ -35,7 +35,7 @@ export async function runApiWatch(
 export async function startApiWatchSession(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
-  io: WatchIo
+  io: WatchIo,
 ): Promise<ApiWatchSession> {
   const runtimeEnv = {
     ...createWorkspaceRuntimeEnv(workspace.root, 'build', options.env),

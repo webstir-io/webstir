@@ -50,15 +50,19 @@ test('manifest loader honors package overrides', async () => {
         name: '@demo/custom',
         version: '2.0.0',
         kind: 'backend',
-        capabilities: ['db']
-      }
-    }
+        capabilities: ['db'],
+      },
+    },
   };
-  await fs.writeFile(path.join(workspace, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(pkgJson, null, 2),
+    'utf8',
+  );
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
@@ -76,13 +80,17 @@ test('manifest loader falls back to package name/version when no overrides prese
   const pkgJson = {
     name: '@demo/fallback',
     version: '4.5.6',
-    type: 'module'
+    type: 'module',
   };
-  await fs.writeFile(path.join(workspace, 'package.json'), JSON.stringify(pkgJson, null, 2), 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(pkgJson, null, 2),
+    'utf8',
+  );
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
@@ -113,12 +121,12 @@ test('manifest loader merges compiled module definition metadata', async () => {
   await fs.writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify({ name: '@demo/fallback-package', version: '0.0.1', type: 'module' }, null, 2),
-    'utf8'
+    'utf8',
   );
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
@@ -157,13 +165,17 @@ test('manifest loader falls back to module exports from the compiled index entry
   await fs.writeFile(path.join(workspace, 'src', 'backend', 'index.ts'), indexSource, 'utf8');
   await fs.writeFile(
     path.join(workspace, 'package.json'),
-    JSON.stringify({ name: '@demo/index-fallback-package', version: '0.0.1', type: 'module' }, null, 2),
-    'utf8'
+    JSON.stringify(
+      { name: '@demo/index-fallback-package', version: '0.0.1', type: 'module' },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
@@ -172,7 +184,10 @@ test('manifest loader falls back to module exports from the compiled index entry
   assert.equal(moduleManifest?.name, '@demo/index-module');
   assert.equal(moduleManifest?.version, '3.2.1');
   assert.deepEqual(moduleManifest?.capabilities, ['http']);
-  assert.deepEqual(moduleManifest?.routes?.map((route) => route.path), ['/demo/index-entry']);
+  assert.deepEqual(
+    moduleManifest?.routes?.map((route) => route.path),
+    ['/demo/index-entry'],
+  );
 });
 
 test('scaffold assets expose core backend templates', async () => {
@@ -201,52 +216,82 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'db', 'migrate.ts'),
     path.join('src', 'backend', 'db', 'migrations', '0001-example.ts'),
     path.join('src', 'backend', 'db', 'types.d.ts'),
-    path.join('.env.example')
+    path.join('.env.example'),
   ];
 
   for (const target of requiredTargets) {
     assert.ok(targetSet.has(target), `expected scaffold assets to include ${target}`);
   }
 
-  const runtimeViewAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'views.ts'));
+  const runtimeViewAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'views.ts'),
+  );
   assert.ok(runtimeViewAsset, 'expected scaffold assets to include the runtime views helper');
 
   const runtimeViewSource = await fs.readFile(runtimeViewAsset.sourcePath, 'utf8');
   assert.match(runtimeViewSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/views';/);
 
-  const runtimeNodeHttpAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'node-http.ts'));
-  assert.ok(runtimeNodeHttpAsset, 'expected scaffold assets to include the runtime node-http helper');
+  const runtimeNodeHttpAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'node-http.ts'),
+  );
+  assert.ok(
+    runtimeNodeHttpAsset,
+    'expected scaffold assets to include the runtime node-http helper',
+  );
 
   const runtimeNodeHttpSource = await fs.readFile(runtimeNodeHttpAsset.sourcePath, 'utf8');
-  assert.match(runtimeNodeHttpSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/node-http';/);
+  assert.match(
+    runtimeNodeHttpSource,
+    /export \* from '@webstir-io\/webstir-backend\/runtime\/node-http';/,
+  );
 
-  const runtimeFastifyAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'fastify.ts'));
+  const runtimeFastifyAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'fastify.ts'),
+  );
   assert.ok(runtimeFastifyAsset, 'expected scaffold assets to include the runtime fastify helper');
 
   const runtimeFastifySource = await fs.readFile(runtimeFastifyAsset.sourcePath, 'utf8');
-  assert.match(runtimeFastifySource, /export \* from '@webstir-io\/webstir-backend\/runtime\/fastify';/);
+  assert.match(
+    runtimeFastifySource,
+    /export \* from '@webstir-io\/webstir-backend\/runtime\/fastify';/,
+  );
 
-  const sessionStoreAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'session', 'store.ts'));
+  const sessionStoreAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'session', 'store.ts'),
+  );
   assert.ok(sessionStoreAsset, 'expected scaffold assets to include the session store helper');
 
   const sessionStoreSource = await fs.readFile(sessionStoreAsset.sourcePath, 'utf8');
   assert.match(sessionStoreSource, /createSessionStoreFromEnv/);
   assert.match(sessionStoreSource, /SESSION_STORE_DRIVER/);
 
-  const sqliteSessionStoreAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'session', 'sqlite.ts'));
-  assert.ok(sqliteSessionStoreAsset, 'expected scaffold assets to include the durable sqlite session store helper');
+  const sqliteSessionStoreAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'session', 'sqlite.ts'),
+  );
+  assert.ok(
+    sqliteSessionStoreAsset,
+    'expected scaffold assets to include the durable sqlite session store helper',
+  );
 
   const sqliteSessionStoreSource = await fs.readFile(sqliteSessionStoreAsset.sourcePath, 'utf8');
   assert.match(sqliteSessionStoreSource, /createSqliteSessionStore/);
 
-  const schedulerAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'jobs', 'scheduler.ts'));
+  const schedulerAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'jobs', 'scheduler.ts'),
+  );
   assert.ok(schedulerAsset, 'expected scaffold assets to include the job scheduler');
 
   const schedulerSource = await fs.readFile(schedulerAsset.sourcePath, 'utf8');
   assert.match(schedulerSource, /^#!\/usr\/bin\/env bun/m);
   assert.match(schedulerSource, /bun build\/backend\/jobs\/scheduler\.js --job <name>/);
+  assert.match(
+    schedulerSource,
+    /--json\s+Print registered job metadata as JSON for external schedulers/,
+  );
 
-  const migrateAsset = assets.find((asset) => asset.targetPath === path.join('src', 'backend', 'db', 'migrate.ts'));
+  const migrateAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'db', 'migrate.ts'),
+  );
   assert.ok(migrateAsset, 'expected scaffold assets to include the database migration runner');
 
   const migrateSource = await fs.readFile(migrateAsset.sourcePath, 'utf8');

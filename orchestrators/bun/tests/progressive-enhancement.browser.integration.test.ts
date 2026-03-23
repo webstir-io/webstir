@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 
 import { DevServer } from '../src/dev-server.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -12,9 +12,13 @@ test('browser progressive enhancement flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-watch-', 'full');
 
   try {
-    await runWatchBrowserScenarioWithRetry(workspace, (origin, progress) => exerciseBrowserScenario(origin, 'watch', progress), {
-      scenarioTimeoutMs: 60_000
-    });
+    await runWatchBrowserScenarioWithRetry(
+      workspace,
+      (origin, progress) => exerciseBrowserScenario(origin, 'watch', progress),
+      {
+        scenarioTimeoutMs: 60_000,
+      },
+    );
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
@@ -24,7 +28,9 @@ test('browser progressive enhancement flows work in publish mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-progressive-publish-', 'full');
 
   try {
-    await runPublishBrowserScenarioWithRetry(workspace, (origin, progress) => exerciseBrowserScenario(origin, 'publish', progress));
+    await runPublishBrowserScenarioWithRetry(workspace, (origin, progress) =>
+      exerciseBrowserScenario(origin, 'publish', progress),
+    );
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
@@ -38,10 +44,10 @@ test('browser auth and CRUD flows work in watch mode', async () => {
       readinessChecks: [
         {
           requestPath: '/api/demo/auth-crud',
-          expectedText: 'id="auth-sign-in-form"'
-        }
+          expectedText: 'id="auth-sign-in-form"',
+        },
       ],
-      scenarioTimeoutMs: 45_000
+      scenarioTimeoutMs: 45_000,
     });
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
@@ -73,10 +79,10 @@ test('browser dashboard flows work in watch mode', async () => {
       readinessChecks: [
         {
           requestPath: '/api/demo/dashboard',
-          expectedText: 'id="dashboard-team"'
-        }
+          expectedText: 'id="dashboard-team"',
+        },
       ],
-      scenarioTimeoutMs: 45_000
+      scenarioTimeoutMs: 45_000,
     });
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
@@ -103,13 +109,13 @@ test('browser dashboard flows work in publish mode', async () => {
 async function exerciseBrowserScenario(
   origin: string,
   mode: 'watch' | 'publish',
-  progress?: ScenarioProgress
+  progress?: ScenarioProgress,
 ): Promise<void> {
   const browser = await launchBrowser();
   try {
     const fragmentContext = await browser.newContext({
       javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const fragmentPage = await fragmentContext.newPage();
 
@@ -117,7 +123,9 @@ async function exerciseBrowserScenario(
       setScenarioStep(progress, 'load progressive enhancement home page');
       await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
       setScenarioStep(progress, 'open progressive enhancement proof page');
-      await fragmentPage.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
+      await fragmentPage
+        .locator('a[href="/api/demo/progressive-enhancement"]')
+        .click({ noWaitAfter: true });
       await waitForPathname(fragmentPage, '/api/demo/progressive-enhancement');
       await fragmentPage.locator('h1').waitFor({ state: 'visible' });
 
@@ -131,13 +139,15 @@ async function exerciseBrowserScenario(
 
     const sessionContext = await browser.newContext({
       javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const sessionPage = await sessionContext.newPage();
 
     try {
       setScenarioStep(progress, 'load session proof page');
-      await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'domcontentloaded' });
+      await sessionPage.goto(`${origin}/api/demo/progressive-enhancement`, {
+        waitUntil: 'domcontentloaded',
+      });
       await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
       setScenarioStep(progress, 'exercise enhanced session flow');
       await assertSessionFlow(sessionPage, mode);
@@ -147,7 +157,7 @@ async function exerciseBrowserScenario(
 
     const baselineContext = await browser.newContext({
       javaScriptEnabled: false,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const baselinePage = await baselineContext.newPage();
 
@@ -162,7 +172,7 @@ async function exerciseBrowserScenario(
   }
 }
 
-async function assertDocumentNavigationResetsScroll(page: Page, origin: string): Promise<void> {
+async function assertDocumentNavigationResetsScroll(page: Page, _origin: string): Promise<void> {
   // Navigate back to home via link click — verifies client-side or full navigation works.
   await page.locator('a[href="/"]').click({ noWaitAfter: true });
   await waitForPathname(page, '/');
@@ -183,12 +193,14 @@ async function assertFragmentUpdateAndFocus(page: Page): Promise<void> {
 
   await page.locator('#demo-update-greeting').click();
   await page.waitForFunction(
-    () => document.querySelector('#greeting-preview h2')?.textContent === 'Hello, Enhanced Browser'
+    () => document.querySelector('#greeting-preview h2')?.textContent === 'Hello, Enhanced Browser',
   );
   await page.waitForFunction(() => document.activeElement?.id === 'greeting-update-focus');
 
   expect(new URL(page.url()).pathname).toBe('/api/demo/progressive-enhancement');
-  expect(await page.locator('#greeting-preview').textContent()).toContain('replace just this region');
+  expect(await page.locator('#greeting-preview').textContent()).toContain(
+    'replace just this region',
+  );
 }
 
 async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise<void> {
@@ -196,7 +208,7 @@ async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise
 
   await page.locator('#demo-sign-in').click();
   await page.waitForFunction(
-    () => document.querySelector('#session-user')?.textContent?.trim() === 'Casey Browser'
+    () => document.querySelector('#session-user')?.textContent?.trim() === 'Casey Browser',
   );
 
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -207,7 +219,11 @@ async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise
   await page.locator('#demo-sign-in').waitFor({ state: 'visible' });
 
   if (mode === 'publish') {
-    await page.waitForFunction(() => window.location.pathname === '/api/demo/progressive-enhancement' && window.location.search === '');
+    await page.waitForFunction(
+      () =>
+        window.location.pathname === '/api/demo/progressive-enhancement' &&
+        window.location.search === '',
+    );
   } else {
     await page.waitForFunction(() => window.location.search === '?session=signed-out');
   }
@@ -220,7 +236,9 @@ async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise
     return;
   }
 
-  expect(await page.locator('#session-status').textContent()).toContain('Signed out via the no-JavaScript redirect path.');
+  expect(await page.locator('#session-status').textContent()).toContain(
+    'Signed out via the no-JavaScript redirect path.',
+  );
 }
 
 async function assertNativeRedirectFlow(page: Page, origin: string): Promise<void> {
@@ -228,22 +246,28 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
   await page.locator('#demo-name').fill('Native Browser');
 
   await page.locator('#greeting-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-  await page.waitForFunction(() =>
-    window.location.pathname === '/api/demo/progressive-enhancement'
-    && window.location.search === '?source=redirect&name=Native%20Browser'
+  await page.waitForFunction(
+    () =>
+      window.location.pathname === '/api/demo/progressive-enhancement' &&
+      window.location.search === '?source=redirect&name=Native%20Browser',
   );
 
   await page.locator('#greeting-preview').waitFor({ state: 'visible' });
   expect(await page.locator('#greeting-preview').textContent()).toContain('Hello, Native Browser');
-  expect(await page.locator('body').textContent()).toContain('Last submit used the no-JavaScript redirect path.');
+  expect(await page.locator('body').textContent()).toContain(
+    'Last submit used the no-JavaScript redirect path.',
+  );
 }
 
-async function exerciseAuthCrudBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
+async function exerciseAuthCrudBrowserScenario(
+  origin: string,
+  progress?: ScenarioProgress,
+): Promise<void> {
   const browser = await launchBrowser();
   try {
     const enhancedContext = await browser.newContext({
       javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const enhancedPage = await enhancedContext.newPage();
 
@@ -256,7 +280,10 @@ async function exerciseAuthCrudBrowserScenario(origin: string, progress?: Scenar
       await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
       await enhancedPage.locator('#auth-sign-in').click();
       await enhancedPage.waitForFunction(
-        () => document.querySelector('#session-user')?.textContent?.includes('casey.browser@example.com') ?? false
+        () =>
+          document
+            .querySelector('#session-user')
+            ?.textContent?.includes('casey.browser@example.com') ?? false,
       );
 
       setScenarioStep(progress, 'submit invalid enhanced create form');
@@ -268,10 +295,14 @@ async function exerciseAuthCrudBrowserScenario(origin: string, progress?: Scenar
       setScenarioStep(progress, 'create enhanced auth-crud project');
       await enhancedPage.locator('#project-title').fill('Browser launch checklist');
       await enhancedPage.locator('#project-status').selectOption('active');
-      await enhancedPage.locator('#project-notes').fill('Created through the enhanced fragment path.');
+      await enhancedPage
+        .locator('#project-notes')
+        .fill('Created through the enhanced fragment path.');
       await enhancedPage.locator('#project-create-submit').click();
       await enhancedPage.waitForFunction(
-        () => document.body.textContent?.includes('Created project "Browser launch checklist".') ?? false
+        () =>
+          document.body.textContent?.includes('Created project "Browser launch checklist".') ??
+          false,
       );
 
       const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
@@ -282,32 +313,44 @@ async function exerciseAuthCrudBrowserScenario(origin: string, progress?: Scenar
 
       setScenarioStep(progress, 'update enhanced auth-crud project');
       await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
-      await projectRow.locator('textarea[name="notes"]').fill('Updated through the enhanced fragment path.');
-      await enhancedPage.locator(`#project-edit-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await projectRow
+        .locator('textarea[name="notes"]')
+        .fill('Updated through the enhanced fragment path.');
+      await enhancedPage
+        .locator(`#project-edit-form-${projectId}`)
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
       await enhancedPage.waitForFunction(
-        (id) => document.querySelector(`[data-project-id="${id}"] h4`)?.textContent === 'Browser launch checklist updated',
-        projectId
+        (id) =>
+          document.querySelector(`[data-project-id="${id}"] h4`)?.textContent ===
+          'Browser launch checklist updated',
+        projectId,
       );
 
       setScenarioStep(progress, 'reload enhanced auth-crud page');
       await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
       await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
-      expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe('Browser launch checklist updated');
+      expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe(
+        'Browser launch checklist updated',
+      );
 
       setScenarioStep(progress, 'delete enhanced auth-crud project');
-      await enhancedPage.locator(`#project-delete-form-${projectId}`).evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await enhancedPage
+        .locator(`#project-delete-form-${projectId}`)
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
       await enhancedPage.waitForFunction(
         (id) => !document.querySelector(`[data-project-id="${id}"]`),
-        projectId
+        projectId,
       );
-      expect(await enhancedPage.locator('#flash-region').textContent()).toContain('Deleted project "Browser launch checklist updated".');
+      expect(await enhancedPage.locator('#flash-region').textContent()).toContain(
+        'Deleted project "Browser launch checklist updated".',
+      );
     } finally {
       await enhancedContext.close().catch(() => undefined);
     }
 
     const baselineContext = await browser.newContext({
       javaScriptEnabled: false,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const baselinePage = await baselineContext.newPage();
 
@@ -317,35 +360,52 @@ async function exerciseAuthCrudBrowserScenario(origin: string, progress?: Scenar
       setScenarioStep(progress, 'verify baseline auth redirect');
       await baselinePage.locator('#project-title').fill('Native blocked project');
       await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
-      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/auth-crud'
-        && document.body.textContent?.includes('Sign in required to manage projects.')
+      await baselinePage
+        .locator('#project-create-form')
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(
+        () =>
+          window.location.pathname === '/api/demo/auth-crud' &&
+          document.body.textContent?.includes('Sign in required to manage projects.'),
       );
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
-      expect(await baselinePage.locator('body').textContent()).toContain('Sign in required to manage projects.');
+      expect(await baselinePage.locator('body').textContent()).toContain(
+        'Sign in required to manage projects.',
+      );
 
       setScenarioStep(progress, 'sign in baseline auth-crud session');
       await baselinePage.locator('#auth-email').fill('native@example.com');
-      await baselinePage.locator('#auth-sign-in-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/auth-crud'
-        && document.body.textContent?.includes('Signed in as native@example.com.')
+      await baselinePage
+        .locator('#auth-sign-in-form')
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(
+        () =>
+          window.location.pathname === '/api/demo/auth-crud' &&
+          document.body.textContent?.includes('Signed in as native@example.com.'),
       );
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
-      expect(await baselinePage.locator('body').textContent()).toContain('Signed in as native@example.com.');
+      expect(await baselinePage.locator('body').textContent()).toContain(
+        'Signed in as native@example.com.',
+      );
 
       setScenarioStep(progress, 'create baseline auth-crud project');
       await baselinePage.locator('#project-title').fill('Native create project');
       await baselinePage.locator('#project-status').selectOption('active');
-      await baselinePage.locator('#project-notes').fill('Created through the no-JavaScript redirect path.');
-      await baselinePage.locator('#project-create-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/auth-crud'
-        && document.body.textContent?.includes('Created project "Native create project".')
+      await baselinePage
+        .locator('#project-notes')
+        .fill('Created through the no-JavaScript redirect path.');
+      await baselinePage
+        .locator('#project-create-form')
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(
+        () =>
+          window.location.pathname === '/api/demo/auth-crud' &&
+          document.body.textContent?.includes('Created project "Native create project".'),
       );
       expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
-      expect(await baselinePage.locator('body').textContent()).toContain('Created project "Native create project".');
+      expect(await baselinePage.locator('body').textContent()).toContain(
+        'Created project "Native create project".',
+      );
 
       expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
     } finally {
@@ -359,14 +419,19 @@ async function exerciseAuthCrudBrowserScenario(origin: string, progress?: Scenar
 async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   const initial = await requestHtmlDocument(origin, '/api/demo/auth-crud');
   const signInCsrf = extractFormInputValue(initial.html, 'auth-sign-in-form', '_csrf');
-  const signInResponse = await requestWithCookie(origin, '/api/demo/auth-crud/session/sign-in', initial.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded'
+  const signInResponse = await requestWithCookie(
+    origin,
+    '/api/demo/auth-crud/session/sign-in',
+    initial.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: `_csrf=${encodeURIComponent(signInCsrf)}&email=${encodeURIComponent('casey.browser@example.com')}`,
+      redirect: 'manual',
     },
-    body: `_csrf=${encodeURIComponent(signInCsrf)}&email=${encodeURIComponent('casey.browser@example.com')}`,
-    redirect: 'manual'
-  });
+  );
 
   expect(signInResponse.status).toBe(303);
   expect(signInResponse.headers.get('location')).toBe('/api/demo/auth-crud');
@@ -376,14 +441,19 @@ async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   expect(signedIn.html).toContain('Signed in as <strong>casey.browser@example.com</strong>.');
 
   const invalidCreateCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
-  const invalidCreateResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/create', signedIn.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-webstir-client-nav': '1'
+  const invalidCreateResponse = await requestWithCookie(
+    origin,
+    '/api/demo/auth-crud/projects/create',
+    signedIn.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1',
+      },
+      body: `_csrf=${encodeURIComponent(invalidCreateCsrf)}&title=&status=active&notes=${encodeURIComponent('This should fail first.')}`,
     },
-    body: `_csrf=${encodeURIComponent(invalidCreateCsrf)}&title=&status=active&notes=${encodeURIComponent('This should fail first.')}`
-  });
+  );
   const invalidCreateHtml = await invalidCreateResponse.text();
 
   expect(invalidCreateResponse.status).toBe(422);
@@ -391,19 +461,24 @@ async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   expect(invalidCreateHtml).toContain('Project title is required.');
 
   const createCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
-  const createResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/create', signedIn.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded'
+  const createResponse = await requestWithCookie(
+    origin,
+    '/api/demo/auth-crud/projects/create',
+    signedIn.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: [
+        `_csrf=${encodeURIComponent(createCsrf)}`,
+        `title=${encodeURIComponent('Browser launch checklist')}`,
+        'status=active',
+        `notes=${encodeURIComponent('Created through the publish redirect path.')}`,
+      ].join('&'),
+      redirect: 'manual',
     },
-    body: [
-      `_csrf=${encodeURIComponent(createCsrf)}`,
-      `title=${encodeURIComponent('Browser launch checklist')}`,
-      'status=active',
-      `notes=${encodeURIComponent('Created through the publish redirect path.')}`
-    ].join('&'),
-    redirect: 'manual'
-  });
+  );
 
   expect(createResponse.status).toBe(303);
   expect(createResponse.headers.get('location')).toBe('/api/demo/auth-crud');
@@ -413,21 +488,30 @@ async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   expect(afterCreate.html).toContain('Browser launch checklist');
 
   const projectId = extractFirstEntityId(afterCreate.html, 'project');
-  const updateCsrf = extractFormInputValue(afterCreate.html, `project-edit-form-${projectId}`, '_csrf');
-  const updateResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/update', signedIn.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-webstir-client-nav': '1'
+  const updateCsrf = extractFormInputValue(
+    afterCreate.html,
+    `project-edit-form-${projectId}`,
+    '_csrf',
+  );
+  const updateResponse = await requestWithCookie(
+    origin,
+    '/api/demo/auth-crud/projects/update',
+    signedIn.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1',
+      },
+      body: [
+        `_csrf=${encodeURIComponent(updateCsrf)}`,
+        `projectId=${encodeURIComponent(projectId)}`,
+        `title=${encodeURIComponent('Operations cleanup updated')}`,
+        'status=archived',
+        `notes=${encodeURIComponent('Persist this edit across the next document request.')}`,
+      ].join('&'),
     },
-    body: [
-      `_csrf=${encodeURIComponent(updateCsrf)}`,
-      `projectId=${encodeURIComponent(projectId)}`,
-      `title=${encodeURIComponent('Operations cleanup updated')}`,
-      'status=archived',
-      `notes=${encodeURIComponent('Persist this edit across the next document request.')}`
-    ].join('&')
-  });
+  );
   const updateHtml = await updateResponse.text();
 
   expect(updateResponse.status).toBe(200);
@@ -437,15 +521,24 @@ async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   const afterUpdate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
   expect(afterUpdate.html).toContain('Operations cleanup updated');
 
-  const deleteCsrf = extractFormInputValue(afterUpdate.html, `project-delete-form-${projectId}`, '_csrf');
-  const deleteResponse = await requestWithCookie(origin, '/api/demo/auth-crud/projects/delete', signedIn.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-webstir-client-nav': '1'
+  const deleteCsrf = extractFormInputValue(
+    afterUpdate.html,
+    `project-delete-form-${projectId}`,
+    '_csrf',
+  );
+  const deleteResponse = await requestWithCookie(
+    origin,
+    '/api/demo/auth-crud/projects/delete',
+    signedIn.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1',
+      },
+      body: `_csrf=${encodeURIComponent(deleteCsrf)}&projectId=${encodeURIComponent(projectId)}`,
     },
-    body: `_csrf=${encodeURIComponent(deleteCsrf)}&projectId=${encodeURIComponent(projectId)}`
-  });
+  );
   const deleteHtml = await deleteResponse.text();
 
   expect(deleteResponse.status).toBe(200);
@@ -456,12 +549,15 @@ async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
   expect(afterDelete.html.includes(`project-edit-form-${projectId}`)).toBe(false);
 }
 
-async function exerciseDashboardBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
+async function exerciseDashboardBrowserScenario(
+  origin: string,
+  progress?: ScenarioProgress,
+): Promise<void> {
   const browser = await launchBrowser();
   try {
     const enhancedContext = await browser.newContext({
       javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const enhancedPage = await enhancedContext.newPage();
 
@@ -475,20 +571,19 @@ async function exerciseDashboardBrowserScenario(origin: string, progress?: Scena
       await enhancedPage.locator('#dashboard-range').selectOption('month');
       await enhancedPage.locator('#dashboard-apply-filters').click();
       await enhancedPage.waitForFunction(
-        () => document.querySelector('#dashboard-heading')?.textContent === 'Dashboard focus: Growth · last 30 days'
+        () =>
+          document.querySelector('#dashboard-heading')?.textContent ===
+          'Dashboard focus: Growth · last 30 days',
       );
 
       setScenarioStep(progress, 'refresh enhanced dashboard metrics');
       const enhancedRefreshCount = await readRefreshCount(enhancedPage);
       await enhancedPage.locator('#metrics-refresh').click();
-      await enhancedPage.waitForFunction(
-        (previousCount) => {
-          const text = document.querySelector('#metrics-refresh-count')?.textContent ?? '';
-          const match = text.match(/Refresh count: (\d+)/);
-          return match ? Number(match[1]) > previousCount : false;
-        },
-        enhancedRefreshCount
-      );
+      await enhancedPage.waitForFunction((previousCount) => {
+        const text = document.querySelector('#metrics-refresh-count')?.textContent ?? '';
+        const match = text.match(/Refresh count: (\d+)/);
+        return match ? Number(match[1]) > previousCount : false;
+      }, enhancedRefreshCount);
 
       const alertRow = enhancedPage.locator('[data-alert-row="true"]').first();
       const alertId = await alertRow.getAttribute('data-alert-id');
@@ -500,14 +595,16 @@ async function exerciseDashboardBrowserScenario(origin: string, progress?: Scena
       await enhancedPage.locator(`#acknowledge-alert-${alertId}`).click();
       await enhancedPage.waitForFunction(
         (id) => !document.querySelector(`[data-alert-id="${id}"]`),
-        alertId
+        alertId,
       );
       expect(await enhancedPage.locator('#alerts-status').textContent()).toContain('Acknowledged');
 
       setScenarioStep(progress, 'reload enhanced dashboard page');
       await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
       await enhancedPage.locator('#dashboard-heading').waitFor({ state: 'visible' });
-      expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: Growth · last 30 days');
+      expect(await enhancedPage.locator('#dashboard-heading').textContent()).toBe(
+        'Dashboard focus: Growth · last 30 days',
+      );
       expect(await readRefreshCount(enhancedPage)).toBeGreaterThan(enhancedRefreshCount);
       expect(await enhancedPage.locator(`[data-alert-id="${alertId}"]`).count()).toBe(0);
     } finally {
@@ -516,7 +613,7 @@ async function exerciseDashboardBrowserScenario(origin: string, progress?: Scena
 
     const baselineContext = await browser.newContext({
       javaScriptEnabled: false,
-      viewport: { width: 1280, height: 720 }
+      viewport: { width: 1280, height: 720 },
     });
     const baselinePage = await baselineContext.newPage();
 
@@ -526,21 +623,29 @@ async function exerciseDashboardBrowserScenario(origin: string, progress?: Scena
       setScenarioStep(progress, 'submit baseline dashboard filters');
       await baselinePage.locator('#dashboard-team').selectOption('north');
       await baselinePage.locator('#dashboard-range').selectOption('today');
-      await baselinePage.locator('#dashboard-filter-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/dashboard'
-        && document.body.textContent?.includes('Filtered to North region for today.')
+      await baselinePage
+        .locator('#dashboard-filter-form')
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(
+        () =>
+          window.location.pathname === '/api/demo/dashboard' &&
+          document.body.textContent?.includes('Filtered to North region for today.'),
       );
 
       setScenarioStep(progress, 'refresh baseline dashboard metrics');
       const baselineRefreshCount = await readRefreshCount(baselinePage);
-      await baselinePage.locator('#metrics-refresh-form').evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(() =>
-        window.location.pathname === '/api/demo/dashboard'
-        && document.body.textContent?.includes('Snapshot refreshed 1 time for North region.')
+      await baselinePage
+        .locator('#metrics-refresh-form')
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
+      await baselinePage.waitForFunction(
+        () =>
+          window.location.pathname === '/api/demo/dashboard' &&
+          document.body.textContent?.includes('Snapshot refreshed 1 time for North region.'),
       );
 
-      expect(await baselinePage.locator('#dashboard-heading').textContent()).toBe('Dashboard focus: North region · today');
+      expect(await baselinePage.locator('#dashboard-heading').textContent()).toBe(
+        'Dashboard focus: North region · today',
+      );
       expect(await readRefreshCount(baselinePage)).toBeGreaterThan(baselineRefreshCount);
     } finally {
       await baselineContext.close().catch(() => undefined);
@@ -554,14 +659,19 @@ async function exerciseDashboardPublishScenario(origin: string): Promise<void> {
   const initial = await requestHtmlDocument(origin, '/api/demo/dashboard');
 
   const nativeFilterCsrf = extractFormInputValue(initial.html, 'dashboard-filter-form', '_csrf');
-  const nativeFilterResponse = await requestWithCookie(origin, '/api/demo/dashboard/context', initial.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded'
+  const nativeFilterResponse = await requestWithCookie(
+    origin,
+    '/api/demo/dashboard/context',
+    initial.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: `_csrf=${encodeURIComponent(nativeFilterCsrf)}&team=growth&range=month`,
+      redirect: 'manual',
     },
-    body: `_csrf=${encodeURIComponent(nativeFilterCsrf)}&team=growth&range=month`,
-    redirect: 'manual'
-  });
+  );
 
   expect(nativeFilterResponse.status).toBe(303);
   expect(nativeFilterResponse.headers.get('location')).toBe('/api/demo/dashboard');
@@ -571,14 +681,19 @@ async function exerciseDashboardPublishScenario(origin: string): Promise<void> {
   expect(filtered.html).toContain('Filtered to Growth for last 30 days.');
 
   const enhancedFilterCsrf = extractFormInputValue(filtered.html, 'dashboard-filter-form', '_csrf');
-  const enhancedFilterResponse = await requestWithCookie(origin, '/api/demo/dashboard/context', filtered.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-webstir-client-nav': '1'
+  const enhancedFilterResponse = await requestWithCookie(
+    origin,
+    '/api/demo/dashboard/context',
+    filtered.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1',
+      },
+      body: `_csrf=${encodeURIComponent(enhancedFilterCsrf)}&team=north&range=today`,
     },
-    body: `_csrf=${encodeURIComponent(enhancedFilterCsrf)}&team=north&range=today`
-  });
+  );
   const enhancedFilterHtml = await enhancedFilterResponse.text();
 
   expect(enhancedFilterResponse.status).toBe(200);
@@ -586,14 +701,19 @@ async function exerciseDashboardPublishScenario(origin: string): Promise<void> {
   expect(enhancedFilterHtml).toContain('Dashboard focus: North region · today');
 
   const refreshCsrf = extractFormInputValue(filtered.html, 'metrics-refresh-form', '_csrf');
-  const refreshResponse = await requestWithCookie(origin, '/api/demo/dashboard/metrics/refresh', filtered.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-webstir-client-nav': '1'
+  const refreshResponse = await requestWithCookie(
+    origin,
+    '/api/demo/dashboard/metrics/refresh',
+    filtered.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1',
+      },
+      body: `_csrf=${encodeURIComponent(refreshCsrf)}`,
     },
-    body: `_csrf=${encodeURIComponent(refreshCsrf)}`
-  });
+  );
   const refreshHtml = await refreshResponse.text();
 
   expect(refreshResponse.status).toBe(200);
@@ -604,22 +724,35 @@ async function exerciseDashboardPublishScenario(origin: string): Promise<void> {
   expect(refreshed.html).toContain('Refresh count: 1');
 
   const alertId = extractFirstEntityId(refreshed.html, 'alert');
-  const acknowledgeCsrf = extractFormInputValue(refreshed.html, `acknowledge-alert-form-${alertId}`, '_csrf');
-  const acknowledgeResponse = await requestWithCookie(origin, '/api/demo/dashboard/alerts/acknowledge', filtered.cookie, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'x-webstir-client-nav': '1'
+  const acknowledgeCsrf = extractFormInputValue(
+    refreshed.html,
+    `acknowledge-alert-form-${alertId}`,
+    '_csrf',
+  );
+  const acknowledgeResponse = await requestWithCookie(
+    origin,
+    '/api/demo/dashboard/alerts/acknowledge',
+    filtered.cookie,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'x-webstir-client-nav': '1',
+      },
+      body: `_csrf=${encodeURIComponent(acknowledgeCsrf)}&alertId=${encodeURIComponent(alertId)}`,
     },
-    body: `_csrf=${encodeURIComponent(acknowledgeCsrf)}&alertId=${encodeURIComponent(alertId)}`
-  });
+  );
   const acknowledgeHtml = await acknowledgeResponse.text();
 
   expect(acknowledgeResponse.status).toBe(200);
   expect(acknowledgeResponse.headers.get('x-webstir-fragment-target')).toBe('alerts-panel');
   expect(acknowledgeHtml.includes(`data-alert-id="${alertId}"`)).toBe(false);
 
-  const afterAcknowledge = await requestHtmlDocument(origin, '/api/demo/dashboard', filtered.cookie);
+  const afterAcknowledge = await requestHtmlDocument(
+    origin,
+    '/api/demo/dashboard',
+    filtered.cookie,
+  );
   expect(afterAcknowledge.html.includes(`data-alert-id="${alertId}"`)).toBe(false);
 }
 
@@ -636,14 +769,14 @@ async function readRefreshCount(page: Page): Promise<number> {
 async function waitForPathname(page: Page, pathname: string): Promise<void> {
   await page.waitForFunction(
     (expectedPathname) => window.location.pathname === expectedPathname,
-    pathname
+    pathname,
   );
 }
 
 async function launchBrowser(): Promise<Browser> {
   return await chromium.launch({
     headless: true,
-    args: ['--disable-dev-shm-usage']
+    args: ['--disable-dev-shm-usage'],
   });
 }
 
@@ -656,14 +789,14 @@ async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<s
     rm(path.join(workspace, 'build'), { recursive: true, force: true }),
     rm(path.join(workspace, 'dist'), { recursive: true, force: true }),
     rm(path.join(workspace, 'node_modules'), { recursive: true, force: true }),
-    rm(path.join(workspace, '.webstir'), { recursive: true, force: true })
+    rm(path.join(workspace, '.webstir'), { recursive: true, force: true }),
   ]);
   return workspace;
 }
 
 async function startWatchSession(
   workspace: string,
-  options: WatchSessionOptions = {}
+  options: WatchSessionOptions = {},
 ): Promise<RuntimeSession> {
   const port = await getFreePort();
   const child = Bun.spawn({
@@ -674,15 +807,15 @@ async function startWatchSession(
       '--workspace',
       workspace,
       '--port',
-      String(port)
+      String(port),
     ],
     cwd: repoRoot,
     env: {
       ...process.env,
-      WEBSTIR_BACKEND_TYPECHECK: 'skip'
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
     },
     stdout: 'pipe',
-    stderr: 'pipe'
+    stderr: 'pipe',
   });
 
   const stdout = { text: '' };
@@ -698,7 +831,7 @@ async function startWatchSession(
     await Promise.all(
       (options.readinessChecks ?? []).map(async (check) => {
         expect(await fetchText(port, check.requestPath)).toContain(check.expectedText);
-      })
+      }),
     );
   }, scaledTimeout(30_000));
 
@@ -707,12 +840,12 @@ async function startWatchSession(
     getLogs() {
       return {
         watchStdout: stdout.text,
-        watchStderr: stderr.text
+        watchStderr: stderr.text,
       };
     },
     async stop() {
       await stopChildProcess(child, [stdoutDrain, stderrDrain], 'watch session');
-    }
+    },
   };
 }
 
@@ -723,22 +856,22 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
       path.join(packageRoot, 'src', 'cli.ts'),
       'publish',
       '--workspace',
-      workspace
+      workspace,
     ],
     cwd: repoRoot,
     env: {
       ...process.env,
-      WEBSTIR_BACKEND_TYPECHECK: 'skip'
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
     },
     stdout: 'pipe',
-    stderr: 'pipe'
+    stderr: 'pipe',
   });
 
   const publishStdout = decodeOutput(publishResult.stdout);
   const publishStderr = decodeOutput(publishResult.stderr);
   if (publishResult.exitCode !== 0) {
     throw new Error(
-      `Publish failed with exit code ${publishResult.exitCode}.\nstdout:\n${publishStdout}\n\nstderr:\n${publishStderr}`
+      `Publish failed with exit code ${publishResult.exitCode}.\nstdout:\n${publishStdout}\n\nstderr:\n${publishStderr}`,
     );
   }
 
@@ -749,10 +882,10 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
     env: {
       ...process.env,
       PORT: String(backendPort),
-      NODE_ENV: 'test'
+      NODE_ENV: 'test',
     },
     stdout: 'pipe',
-    stderr: 'pipe'
+    stderr: 'pipe',
   });
 
   const backendStdout = { text: '' };
@@ -769,7 +902,7 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
     buildRoot: path.join(workspace, 'dist', 'frontend'),
     host: '127.0.0.1',
     port,
-    apiProxyOrigin: `http://127.0.0.1:${backendPort}`
+    apiProxyOrigin: `http://127.0.0.1:${backendPort}`,
   });
   await server.start();
 
@@ -785,13 +918,17 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
         publishStdout,
         publishStderr,
         backendStdout: backendStdout.text,
-        backendStderr: backendStderr.text
+        backendStderr: backendStderr.text,
       };
     },
     async stop() {
       await server.stop();
-      await stopChildProcess(backendChild, [backendStdoutDrain, backendStderrDrain], 'publish backend session');
-    }
+      await stopChildProcess(
+        backendChild,
+        [backendStdoutDrain, backendStderrDrain],
+        'publish backend session',
+      );
+    },
   };
 }
 
@@ -808,7 +945,11 @@ async function fetchText(port: number, requestPath: string): Promise<string> {
   return await response.text();
 }
 
-async function requestHtmlDocument(origin: string, requestPath: string, cookie?: string): Promise<{
+async function requestHtmlDocument(
+  origin: string,
+  requestPath: string,
+  cookie?: string,
+): Promise<{
   response: Response;
   html: string;
   cookie: string;
@@ -819,7 +960,7 @@ async function requestHtmlDocument(origin: string, requestPath: string, cookie?:
   return {
     response,
     html,
-    cookie: coalesceCookie(response.headers.get('set-cookie'), cookie)
+    cookie: coalesceCookie(response.headers.get('set-cookie'), cookie),
   };
 }
 
@@ -827,7 +968,7 @@ async function requestWithCookie(
   origin: string,
   requestPath: string,
   cookie?: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
 ): Promise<Response> {
   const headers = new Headers(init.headers);
   if (cookie) {
@@ -836,14 +977,14 @@ async function requestWithCookie(
 
   return await fetch(new URL(requestPath, origin), {
     ...init,
-    headers
+    headers,
   });
 }
 
 function extractFormInputValue(html: string, formId: string, name: string): string {
   const formPattern = new RegExp(
     `<form[^>]*id="${escapeRegExp(formId)}"[\\s\\S]*?<input[^>]*name="${escapeRegExp(name)}"[^>]*value="([^"]*)"`,
-    'i'
+    'i',
   );
   const match = html.match(formPattern);
   if (!match?.[1]) {
@@ -925,14 +1066,12 @@ async function waitFor(assertion: () => Promise<void>, timeoutMs: number): Promi
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`Timed out after ${timeoutMs}ms.`);
+  throw lastError instanceof Error ? lastError : new Error(`Timed out after ${timeoutMs}ms.`);
 }
 
 async function collectOutput(
   stream: ReadableStream<Uint8Array>,
-  target: { text: string }
+  target: { text: string },
 ): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -956,7 +1095,7 @@ async function collectOutput(
 async function stopChildProcess(
   child: ReturnType<typeof Bun.spawn>,
   drains: readonly Promise<void>[],
-  label: string
+  label: string,
 ): Promise<void> {
   sendSignal(child.pid, 'SIGTERM');
   const exitedGracefully = await waitForProcessExit(child.pid, scaledTimeout(5_000));
@@ -987,7 +1126,7 @@ async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boole
 async function runWatchBrowserScenarioWithRetry(
   workspace: string,
   scenario: (origin: string, progress?: ScenarioProgress) => Promise<void>,
-  options: WatchBrowserScenarioOptions
+  options: WatchBrowserScenarioOptions,
 ): Promise<void> {
   const maxAttempts = process.env.CI ? 2 : 1;
   let lastError: Error | undefined;
@@ -995,18 +1134,18 @@ async function runWatchBrowserScenarioWithRetry(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let session: RuntimeSession | undefined;
     const progress: ScenarioProgress = {
-      currentStep: 'start watch session'
+      currentStep: 'start watch session',
     };
 
     try {
       session = await startWatchSession(workspace, {
-        readinessChecks: options.readinessChecks
+        readinessChecks: options.readinessChecks,
       });
       await runWithTimeout(
         () => scenario(session.origin, progress),
         scaledTimeout(options.scenarioTimeoutMs),
         `Watch browser scenario timed out during ${progress.currentStep}.`,
-        progress
+        progress,
       );
       return;
     } catch (error) {
@@ -1030,7 +1169,7 @@ async function runWithTimeout<T>(
   operation: () => Promise<T>,
   timeoutMs: number,
   label: string,
-  progress?: ScenarioProgress
+  progress?: ScenarioProgress,
 ): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
@@ -1041,7 +1180,7 @@ async function runWithTimeout<T>(
         timeout = setTimeout(() => {
           reject(new Error(`${label} Latest step: ${progress?.currentStep ?? 'unknown'}`));
         }, timeoutMs);
-      })
+      }),
     ]);
   } finally {
     if (timeout) {
@@ -1052,10 +1191,12 @@ async function runWithTimeout<T>(
 
 function isRetryableWatchBrowserError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('Watch browser scenario timed out during')
-    || message.includes('Timed out stopping watch session')
-    || message.includes('Timeout') // Playwright waitForFunction / waitForSelector timeouts
-    || isTransientBrowserTeardownError(error);
+  return (
+    message.includes('Watch browser scenario timed out during') ||
+    message.includes('Timed out stopping watch session') ||
+    message.includes('Timeout') || // Playwright waitForFunction / waitForSelector timeouts
+    isTransientBrowserTeardownError(error)
+  );
 }
 
 function setScenarioStep(progress: ScenarioProgress | undefined, step: string): void {
@@ -1084,7 +1225,7 @@ function tailOutput(text: string): string {
 
 async function runPublishBrowserScenarioWithRetry(
   workspace: string,
-  scenario: (origin: string) => Promise<void>
+  scenario: (origin: string) => Promise<void>,
 ): Promise<void> {
   const maxAttempts = process.env.CI ? 2 : 1;
   let lastError: Error | undefined;
@@ -1115,11 +1256,13 @@ async function runPublishBrowserScenarioWithRetry(
 
 function isTransientBrowserTeardownError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return message.includes('Target page, context or browser has been closed')
-    || message.includes('Target crashed')
-    || message.includes('Page crashed')
-    || message.includes('browser has been closed')
-    || message.includes('browser disconnected');
+  return (
+    message.includes('Target page, context or browser has been closed') ||
+    message.includes('Target crashed') ||
+    message.includes('Page crashed') ||
+    message.includes('browser has been closed') ||
+    message.includes('browser disconnected')
+  );
 }
 
 function scaledTimeout(timeoutMs: number): number {
@@ -1150,10 +1293,7 @@ function isProcessAlive(pid: number): boolean {
 }
 
 function isMissingProcessError(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && error.code === 'ESRCH';
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH';
 }
 
 interface RuntimeSession {

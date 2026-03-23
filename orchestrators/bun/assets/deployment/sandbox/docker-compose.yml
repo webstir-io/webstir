@@ -1,0 +1,25 @@
+name: webstir-sandbox
+
+services:
+  web:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    volumes:
+      - "${WEBSTIR_WORKSPACE:?set WEBSTIR_WORKSPACE to the absolute workspace path}/dist/frontend:/usr/share/nginx/html:ro"
+      - ./web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+  api:
+    image: node:20-alpine
+    working_dir: /app
+    command: ["node", "build/backend/index.js"]
+    environment:
+      PORT: "8000"
+      WEB_SERVER_URL: http://web
+      API_SERVER_URL: http://api:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - "${WEBSTIR_WORKSPACE:?set WEBSTIR_WORKSPACE to the absolute workspace path}:/app:ro"

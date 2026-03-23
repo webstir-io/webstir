@@ -10,7 +10,10 @@ async function loadProviderOrSkip(t) {
     const mod = await import('../dist/index.js');
     return mod.frontendProvider;
   } catch (err) {
-    console.warn('[frontend-tests] Skipping provider integration: optional dependency unavailable:', err?.message ?? err);
+    console.warn(
+      '[frontend-tests] Skipping provider integration: optional dependency unavailable:',
+      err?.message ?? err,
+    );
     t?.diagnostic?.('skip: missing optional dependency');
     return null;
   }
@@ -27,18 +30,23 @@ async function createWorkspace() {
   await fs.writeFile(
     path.join(appDir, 'app.html'),
     '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>',
-    'utf8'
+    'utf8',
   );
   await fs.writeFile(
     path.join(appDir, 'app.css'),
-    [
-      '@layer reset, base;',
-      '@import "./styles/base.css";'
-    ].join('\n'),
-    'utf8'
+    ['@layer reset, base;', '@import "./styles/base.css";'].join('\n'),
+    'utf8',
   );
-  await fs.writeFile(path.join(stylesDir, 'base.css'), '@layer base { body { background: blue; } }', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.html'), '<head></head><main><section>Home</section></main>', 'utf8');
+  await fs.writeFile(
+    path.join(stylesDir, 'base.css'),
+    '@layer base { body { background: blue; } }',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head></head><main><section>Home</section></main>',
+    'utf8',
+  );
   await fs.writeFile(path.join(pageDir, 'index.css'), '@import "@app/app.css";', 'utf8');
 
   return root;
@@ -50,7 +58,11 @@ test('development app.css import URLs include a cache-busting version', async (t
   const workspace = await createWorkspace();
 
   try {
-    await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'build' }, incremental: false });
+    await frontendProvider.build({
+      workspaceRoot: workspace,
+      env: { WEBSTIR_MODULE_MODE: 'build' },
+      incremental: false,
+    });
 
     const appCssPath = path.join(workspace, 'build', 'frontend', 'app', 'app.css');
     assert.equal(fssync.existsSync(appCssPath), true, `expected ${appCssPath}`);
@@ -61,4 +73,3 @@ test('development app.css import URLs include a cache-busting version', async (t
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
-

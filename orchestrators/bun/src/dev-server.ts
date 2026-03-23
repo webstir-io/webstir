@@ -39,11 +39,35 @@ const MIME_TYPES: Record<string, string> = {
 
 const RESERVED_PREFIXES = ['__webstir', 'api', 'fonts', 'images', 'media', 'pages', 'sse'];
 const STATIC_EXTENSIONS = new Set([
-  '.css', '.js', '.mjs', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
-  '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp3', '.m4a', '.wav', '.ogg', '.mp4',
-  '.webm', '.mov', '.json', '.txt', '.xml', '.map',
+  '.css',
+  '.js',
+  '.mjs',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.svg',
+  '.webp',
+  '.ico',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.eot',
+  '.mp3',
+  '.m4a',
+  '.wav',
+  '.ogg',
+  '.mp4',
+  '.webm',
+  '.mov',
+  '.json',
+  '.txt',
+  '.xml',
+  '.map',
 ]);
-const CONTENT_HASH_PATTERN = /\.[a-f0-9]{8,64}\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|mp3|m4a|wav|ogg|mp4|webm|mov)$/i;
+const CONTENT_HASH_PATTERN =
+  /\.[a-f0-9]{8,64}\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|mp3|m4a|wav|ogg|mp4|webm|mov)$/i;
 
 interface SseClient {
   send(message: string): void;
@@ -171,7 +195,7 @@ export class DevServer {
   private async handleApiProxy(
     request: Request,
     requestUrl: URL,
-    apiProxyPath: string
+    apiProxyPath: string,
   ): Promise<Response> {
     const targetUrl = new URL(apiProxyPath + requestUrl.search, this.apiProxyOrigin);
 
@@ -275,7 +299,7 @@ export function getStaticCandidatePaths(pathname: string): readonly string[] {
     candidates.push(path.posix.join('pages', relativePath, 'index.html'));
   }
 
-  return Array.from(new Set(candidates.map(candidate => candidate.replace(/^\/+/, ''))));
+  return Array.from(new Set(candidates.map((candidate) => candidate.replace(/^\/+/, ''))));
 }
 
 export function getApiProxyPath(pathname: string): string | null {
@@ -291,10 +315,7 @@ export function getApiProxyPath(pathname: string): string | null {
   return null;
 }
 
-function rewriteProxyResponseHeaders(
-  headers: Headers,
-  targetUrl: URL
-): Headers {
+function rewriteProxyResponseHeaders(headers: Headers, targetUrl: URL): Headers {
   const nextHeaders = new Headers(headers);
   const location = headers.get('location');
   if (location) {
@@ -304,7 +325,10 @@ function rewriteProxyResponseHeaders(
   return nextHeaders;
 }
 
-function createProxyRequestInit(request: Request, targetUrl: URL): RequestInit & { duplex?: 'half' } {
+function createProxyRequestInit(
+  request: Request,
+  targetUrl: URL,
+): RequestInit & { duplex?: 'half' } {
   const headers = new Headers(request.headers);
   headers.set('host', targetUrl.host);
   headers.set('connection', 'close');
@@ -352,14 +376,12 @@ function prefixApiMount(pathname: string): string {
     return pathname;
   }
 
-  return pathname === '/'
-    ? '/api'
-    : `/api${pathname}`;
+  return pathname === '/' ? '/api' : `/api${pathname}`;
 }
 
 async function resolveStaticFile(
   buildRoot: string,
-  relativePaths: readonly string[]
+  relativePaths: readonly string[],
 ): Promise<{ absolutePath: string; relativePath: string } | null> {
   for (const relativePath of relativePaths) {
     const absolutePath = path.resolve(buildRoot, relativePath);
@@ -395,7 +417,9 @@ function getGenericFileCandidates(relativePath: string): readonly string[] {
 }
 
 function hasReservedPrefix(relativePath: string): boolean {
-  return RESERVED_PREFIXES.some((prefix) => relativePath === prefix || relativePath.startsWith(`${prefix}/`));
+  return RESERVED_PREFIXES.some(
+    (prefix) => relativePath === prefix || relativePath.startsWith(`${prefix}/`),
+  );
 }
 
 function setCacheHeaders(headers: Headers, relativePath: string): void {

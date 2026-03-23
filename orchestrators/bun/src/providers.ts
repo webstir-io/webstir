@@ -10,11 +10,13 @@ let localPackageBuildPromise: Promise<void> | null = null;
 export async function loadProvider(kind: BuildTargetKind): Promise<BuildProvider> {
   await ensureLocalPackageArtifacts();
   if (kind === 'frontend') {
-    const mod = await import('@webstir-io/webstir-frontend') as { frontendProvider: BuildProvider };
+    const mod = (await import('@webstir-io/webstir-frontend')) as {
+      frontendProvider: BuildProvider;
+    };
     return mod.frontendProvider;
   }
 
-  const mod = await import('@webstir-io/webstir-backend') as { backendProvider: BuildProvider };
+  const mod = (await import('@webstir-io/webstir-backend')) as { backendProvider: BuildProvider };
   return mod.backendProvider;
 }
 

@@ -209,22 +209,30 @@ async function evaluateEsmModule(file: string): Promise<string | null> {
 }
 
 function isEsModuleSyntaxError(error: unknown): boolean {
-  const name = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name?: unknown }).name) : '';
-  const message = typeof error === 'object' && error !== null && 'message' in error
-    ? String((error as { message?: unknown }).message)
-    : '';
+  const name =
+    typeof error === 'object' && error !== null && 'name' in error
+      ? String((error as { name?: unknown }).name)
+      : '';
+  const message =
+    typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message?: unknown }).message)
+      : '';
 
   if (name !== 'SyntaxError' || message.length === 0) {
     return false;
   }
 
-  return message.includes('Cannot use import statement outside a module')
-    || message.includes('Unexpected token')
-    || message.includes('export')
-    || message.includes('import call expects one or two arguments');
+  return (
+    message.includes('Cannot use import statement outside a module') ||
+    message.includes('Unexpected token') ||
+    message.includes('export') ||
+    message.includes('import call expects one or two arguments')
+  );
 }
 
-async function runSingleTest(testCase: RegisteredTest): Promise<{ passed: boolean; message: string | null; durationMs: number; }> {
+async function runSingleTest(
+  testCase: RegisteredTest,
+): Promise<{ passed: boolean; message: string | null; durationMs: number }> {
   const start = Date.now();
   try {
     const result = testCase.fn();
@@ -247,7 +255,12 @@ async function runSingleTest(testCase: RegisteredTest): Promise<{ passed: boolea
 }
 
 function isPromiseLike(value: unknown): value is Promise<unknown> {
-  return typeof value === 'object' && value !== null && 'then' in value && typeof (value as { then?: unknown }).then === 'function';
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'then' in value &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
 }
 
 function formatError(error: unknown): string {

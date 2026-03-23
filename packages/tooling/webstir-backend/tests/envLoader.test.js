@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -29,12 +30,12 @@ async function seedBackendWorkspace(workspace, name) {
       {
         name,
         version: '0.0.0',
-        type: 'module'
+        type: 'module',
       },
       null,
-      2
+      2,
     ),
-    'utf8'
+    'utf8',
   );
 }
 
@@ -69,7 +70,7 @@ test('env loader reads .env files and surfaces typed config', async () => {
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
     NODE_OPTIONS: '--experimental-transform-types',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
@@ -100,7 +101,7 @@ test('env loader generates a non-literal session secret fallback when unset', as
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
     NODE_OPTIONS: '--experimental-transform-types',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const previousSessionSecret = process.env.SESSION_SECRET;
@@ -151,23 +152,60 @@ test('env loader generates a non-literal session secret fallback when unset', as
   }
 });
 
-test('env loader falls back from blank WORKSPACE_ROOT to WEBSTIR_WORKSPACE_ROOT outside the workspace cwd', async () => {
-  const workspace = await createTempWorkspace('webstir-backend-env-root-');
-  const alternateCwd = await createTempWorkspace('webstir-backend-env-root-cwd-');
-  await seedBackendWorkspace(workspace, '@demo/env-loader-root');
-  await fs.writeFile(path.join(workspace, '.env'), 'PORT=6060\nAPI_BASE_URL=https://root.example.com\n', 'utf8');
+test('env loader requires SESSION_SECRET in production', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-env-session-prod-');
+  await seedBackendWorkspace(workspace, '@demo/env-loader-session-prod');
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
     NODE_OPTIONS: '--experimental-transform-types',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
+  };
+
+  const previousEnv = snapshotEnv(['NODE_ENV', 'SESSION_SECRET', 'AUTH_JWT_SECRET']);
+
+  try {
+    await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+
+    const builtEnvModule = path.join(workspace, 'build', 'backend', 'env.js');
+    process.env.NODE_ENV = 'production';
+    delete process.env.SESSION_SECRET;
+    delete process.env.AUTH_JWT_SECRET;
+
+    const mod = await import(pathToFileURL(builtEnvModule).href);
+    assert.throws(() => mod.loadEnv(), /SESSION_SECRET is required when NODE_ENV=production/);
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test('env loader falls back from blank WORKSPACE_ROOT to WEBSTIR_WORKSPACE_ROOT outside the workspace cwd', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-env-root-');
+  const alternateCwd = await createTempWorkspace('webstir-backend-env-root-cwd-');
+  await seedBackendWorkspace(workspace, '@demo/env-loader-root');
+  await fs.writeFile(
+    path.join(workspace, '.env'),
+    'PORT=6060\nAPI_BASE_URL=https://root.example.com\n',
+    'utf8',
+  );
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    NODE_OPTIONS: '--experimental-transform-types',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
 
   const builtEnvModule = path.join(workspace, 'build', 'backend', 'env.js');
-  const previousEnv = snapshotEnv(['WORKSPACE_ROOT', 'WEBSTIR_WORKSPACE_ROOT', 'PORT', 'API_BASE_URL']);
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'PORT',
+    'API_BASE_URL',
+  ]);
   const previousCwd = process.cwd();
 
   try {
@@ -192,19 +230,28 @@ test('env loader infers workspace root from the built module path outside the wo
   const workspace = await createTempWorkspace('webstir-backend-env-infer-');
   const alternateCwd = await createTempWorkspace('webstir-backend-env-infer-cwd-');
   await seedBackendWorkspace(workspace, '@demo/env-loader-infer');
-  await fs.writeFile(path.join(workspace, '.env'), 'PORT=7070\nAPI_BASE_URL=https://infer.example.com\n', 'utf8');
+  await fs.writeFile(
+    path.join(workspace, '.env'),
+    'PORT=7070\nAPI_BASE_URL=https://infer.example.com\n',
+    'utf8',
+  );
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
     NODE_OPTIONS: '--experimental-transform-types',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
 
   const builtEnvModule = path.join(workspace, 'build', 'backend', 'env.js');
-  const previousEnv = snapshotEnv(['WORKSPACE_ROOT', 'WEBSTIR_WORKSPACE_ROOT', 'PORT', 'API_BASE_URL']);
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'PORT',
+    'API_BASE_URL',
+  ]);
   const previousCwd = process.cwd();
 
   try {
@@ -219,6 +266,51 @@ test('env loader infers workspace root from the built module path outside the wo
 
     assert.equal(loaded.PORT, 7070);
     assert.equal(loaded.API_BASE_URL, 'https://infer.example.com');
+  } finally {
+    process.chdir(previousCwd);
+    restoreEnv(previousEnv);
+  }
+});
+
+test('env loader resolves AUTH_JWT_PUBLIC_KEY_FILE from the workspace root', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-env-auth-key-');
+  const alternateCwd = await createTempWorkspace('webstir-backend-env-auth-key-cwd-');
+  await seedBackendWorkspace(workspace, '@demo/env-loader-auth-key');
+
+  const { publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  await fs.mkdir(path.join(workspace, 'config'), { recursive: true });
+  await fs.writeFile(path.join(workspace, 'config', 'jwt-public.pem'), publicKeyPem, 'utf8');
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    NODE_OPTIONS: '--experimental-transform-types',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
+  };
+
+  await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+
+  const builtEnvModule = path.join(workspace, 'build', 'backend', 'env.js');
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'AUTH_JWT_PUBLIC_KEY',
+    'AUTH_JWT_PUBLIC_KEY_FILE',
+  ]);
+  const previousCwd = process.cwd();
+
+  try {
+    process.env.WORKSPACE_ROOT = '   ';
+    process.env.WEBSTIR_WORKSPACE_ROOT = workspace;
+    delete process.env.AUTH_JWT_PUBLIC_KEY;
+    process.env.AUTH_JWT_PUBLIC_KEY_FILE = 'config/jwt-public.pem';
+    process.chdir(alternateCwd);
+
+    const mod = await import(pathToFileURL(builtEnvModule).href);
+    const loaded = mod.loadEnv();
+
+    assert.match(loaded.auth.jwtPublicKey ?? '', /BEGIN PUBLIC KEY/);
   } finally {
     process.chdir(previousCwd);
     restoreEnv(previousEnv);

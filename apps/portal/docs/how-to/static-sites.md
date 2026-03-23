@@ -6,10 +6,8 @@ See also: [CSS Playbook](./css-playbook.md) for the minimal, convention-first st
 
 ## Supported Paths
 
-- Top-level Bun CLI: scaffold an `ssg` workspace, then run `webstir publish --workspace <path>`.
+- Top-level Bun CLI: scaffold an `ssg` workspace, or override a publish run with `webstir publish --workspace <path> --frontend-mode ssg`.
 - Lower-level package CLI: run `webstir-frontend publish --workspace <path> --mode ssg` when you are working directly with the frontend package.
-
-The top-level `webstir` CLI does not currently expose a `--frontend-mode` switch.
 
 ## Recommended Flow
 
@@ -38,6 +36,8 @@ bunx webstir-frontend publish --workspace "$PWD" --mode ssg
 ```
 
 Use this path when you need package-level control without going through the top-level orchestrator.
+
+If you are using the top-level CLI against a non-`ssg` workspace, the equivalent override is `webstir publish --workspace "$PWD" --frontend-mode ssg`.
 
 ## Static Paths from Module Metadata
 

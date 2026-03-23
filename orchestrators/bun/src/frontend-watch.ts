@@ -16,12 +16,12 @@ type FrontendWatchSessionOptions = WatchOptions;
 export async function runFrontendWatch(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
-  io: WatchIo
+  io: WatchIo,
 ): Promise<void> {
   const session = await startFrontendWatchSession(workspace, options, io);
 
   io.stdout.write(
-    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.address.origin}\n`
+    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.address.origin}\n`,
   );
 
   const stopSignal = createStopSignal();
@@ -44,7 +44,7 @@ export async function runFrontendWatch(
 export async function startFrontendWatchSession(
   workspace: WorkspaceDescriptor,
   options: FrontendWatchSessionOptions,
-  io: WatchIo
+  io: WatchIo,
 ): Promise<FrontendWatchSession> {
   return await createFrontendWatchSession(workspace, options, io);
 }
@@ -52,7 +52,7 @@ export async function startFrontendWatchSession(
 async function createFrontendWatchSession(
   workspace: WorkspaceDescriptor,
   options: FrontendWatchSessionOptions,
-  _io: WatchIo
+  _io: WatchIo,
 ): Promise<FrontendWatchSession> {
   if (workspace.mode === 'ssg') {
     return await startBunSsgFrontendWatch({

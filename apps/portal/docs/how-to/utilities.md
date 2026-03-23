@@ -24,6 +24,24 @@ bun run test
 bun run smoke
 ```
 
+### Format the supported Bun/TypeScript surfaces
+
+```bash
+bun run format
+```
+
+### Check the formatter baseline without rewriting files
+
+```bash
+bun run check:biome
+```
+
+### Run the current lint sweep
+
+```bash
+bun run lint
+```
+
 ### Build only the portal docs
 
 ```bash
@@ -45,6 +63,7 @@ bun run webstir -- --help
 ## Notes
 
 - Run commands from the repo root unless a package README says otherwise.
+- `bun run check:required` now starts with `bun run check:biome` and `bun run lint`.
 - The archived `.NET` tree has its own historical tooling, but it is not part of the active Bun workflow.
 
 ## Related Docs

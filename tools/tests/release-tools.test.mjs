@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -68,7 +76,11 @@ test('resolve-release-package rejects mismatched tag versions', () => {
     copyTree('tools', tempRoot);
     copyTree('packages/contracts/module-contract', tempRoot);
 
-    const result = runRuntime('tools/resolve-release-package.mjs', ['--tag', 'release/module-contract/v9.9.9'], tempRoot);
+    const result = runRuntime(
+      'tools/resolve-release-package.mjs',
+      ['--tag', 'release/module-contract/v9.9.9'],
+      tempRoot,
+    );
 
     assert.equal(result.status, 1);
     assert.match(result.stderr, /tag version 9\.9\.9 does not match/i);
@@ -76,7 +88,11 @@ test('resolve-release-package rejects mismatched tag versions', () => {
 });
 
 test('resolve-release-package resolves canonical package metadata', () => {
-  const result = runRuntime('tools/resolve-release-package.mjs', ['--package-dir', 'packages/tooling/webstir-backend'], repoRoot);
+  const result = runRuntime(
+    'tools/resolve-release-package.mjs',
+    ['--package-dir', 'packages/tooling/webstir-backend'],
+    repoRoot,
+  );
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
@@ -85,7 +101,11 @@ test('resolve-release-package resolves canonical package metadata', () => {
 });
 
 test('resolve-release-package resolves package metadata by package name', () => {
-  const result = runRuntime('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir-backend'], repoRoot);
+  const result = runRuntime(
+    'tools/resolve-release-package.mjs',
+    ['--package-name', '@webstir-io/webstir-backend'],
+    repoRoot,
+  );
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
@@ -94,7 +114,11 @@ test('resolve-release-package resolves package metadata by package name', () => 
 });
 
 test('resolve-release-package resolves orchestrator package metadata', () => {
-  const result = runRuntime('tools/resolve-release-package.mjs', ['--package-name', '@webstir-io/webstir'], repoRoot);
+  const result = runRuntime(
+    'tools/resolve-release-package.mjs',
+    ['--package-name', '@webstir-io/webstir'],
+    repoRoot,
+  );
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /package_dir=orchestrators\/bun/);
@@ -118,7 +142,7 @@ if [[ "$1" == "diff" ]]; then
   exit 0
 fi
 exit 0
-`
+`,
     );
     writeExecutable(
       tempRoot,
@@ -127,7 +151,7 @@ exit 0
 set -euo pipefail
 printf 'bun %s\\n' "$*" >> "$FAKE_TOOL_LOG"
 exit 0
-`
+`,
     );
     writeExecutable(
       tempRoot,
@@ -139,7 +163,7 @@ if [[ "$1" == "version" ]]; then
   bun -e 'const fs = require("node:fs"); const file = process.argv[1]; const version = process.argv[2]; const pkg = JSON.parse(fs.readFileSync(file, "utf8")); pkg.version = version; fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\\n");' package.json "$2"
 fi
 exit 0
-`
+`,
     );
 
     const result = runRuntimeWithEnv(
@@ -149,7 +173,7 @@ exit 0
       {
         FAKE_TOOL_LOG: fakeToolLog,
         PATH: `${path.join(tempRoot, 'bin')}${path.delimiter}${process.env.PATH ?? ''}`,
-      }
+      },
     );
 
     assert.equal(result.status, 0, result.stderr);
@@ -218,12 +242,20 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       copyTree(packageDir, tempRoot);
 
       const copiedPackageDir = path.join(tempRoot, packageDir);
-      const packResult = run('bun', ['pm', 'pack', '--ignore-scripts', '--quiet'], copiedPackageDir);
+      const packResult = run(
+        'bun',
+        ['pm', 'pack', '--ignore-scripts', '--quiet'],
+        copiedPackageDir,
+      );
       assert.equal(packResult.status, 0, packResult.stderr);
 
       const filename = packResult.stdout.trim();
       const tarballPath = path.join(copiedPackageDir, filename);
-      const packedManifestResult = run('tar', ['-xOf', path.join(copiedPackageDir, filename), 'package/package.json'], copiedPackageDir);
+      const packedManifestResult = run(
+        'tar',
+        ['-xOf', path.join(copiedPackageDir, filename), 'package/package.json'],
+        copiedPackageDir,
+      );
       assert.equal(packedManifestResult.status, 0, packedManifestResult.stderr);
 
       const packedManifest = JSON.parse(packedManifestResult.stdout);

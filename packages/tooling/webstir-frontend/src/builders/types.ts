@@ -1,16 +1,16 @@
 import type { EnableFlags, FrontendConfig } from '../types.js';
 
 export interface BuilderContext {
-    readonly config: FrontendConfig;
-    readonly changedFile?: string;
-    readonly enable?: EnableFlags;
-    readonly env?: Record<string, string | undefined>;
+  readonly config: FrontendConfig;
+  readonly changedFile?: string;
+  readonly enable?: EnableFlags;
+  readonly env?: Record<string, string | undefined>;
 }
 
 export interface Builder {
-    readonly name: string;
-    build(context: BuilderContext): Promise<void>;
-    publish(context: BuilderContext): Promise<void>;
+  readonly name: string;
+  build(context: BuilderContext): Promise<void>;
+  publish(context: BuilderContext): Promise<void>;
 }
 
 export type BuilderFactory = (context: BuilderContext) => Builder;

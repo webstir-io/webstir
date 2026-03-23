@@ -12,17 +12,9 @@
     "declaration": true,
     "declarationMap": false,
     "sourceMap": false,
-    "types": [
-      "bun",
-      "node"
-    ],
+    "types": ["bun", "node"],
     "resolveJsonModule": true
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "dist",
-    "node_modules"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules"]
 }

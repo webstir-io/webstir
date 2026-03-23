@@ -10,7 +10,10 @@ async function loadProviderOrSkip(t) {
     const mod = await import('../dist/index.js');
     return mod.frontendProvider;
   } catch (err) {
-    console.warn('[frontend-tests] Skipping provider integration: optional dependency unavailable:', err?.message ?? err);
+    console.warn(
+      '[frontend-tests] Skipping provider integration: optional dependency unavailable:',
+      err?.message ?? err,
+    );
     t?.diagnostic?.('skip: missing optional dependency');
     return null;
   }
@@ -27,40 +30,44 @@ async function createWorkspace() {
   await fs.writeFile(
     path.join(appDir, 'app.html'),
     '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>',
-    'utf8'
+    'utf8',
   );
   await fs.writeFile(path.join(appDir, 'app.css'), '', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.html'), '<head></head><main><section>Home</section></main>', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head></head><main><section>Home</section></main>',
+    'utf8',
+  );
 
   await fs.writeFile(
     path.join(pageDir, 'index.css'),
     [
       '@layer overrides { .home { color: red; } }',
       '@import "./layout.css";',
-      '@import url("./partials/colors.css");'
+      '@import url("./partials/colors.css");',
     ].join('\n'),
-    'utf8'
+    'utf8',
   );
 
   await fs.writeFile(
     path.join(pageDir, 'layout.css'),
     [
       '@layer overrides { .layout { display: grid; } }',
-      '@import "./partials/typography.css";'
+      '@import "./partials/typography.css";',
     ].join('\n'),
-    'utf8'
+    'utf8',
   );
 
   await fs.writeFile(
     path.join(partialsDir, 'colors.css'),
     '@layer overrides { .colors { color: blue; } }',
-    'utf8'
+    'utf8',
   );
 
   await fs.writeFile(
     path.join(partialsDir, 'typography.css'),
     '@layer overrides { .type { font-weight: 700; } }',
-    'utf8'
+    'utf8',
   );
 
   return root;
@@ -72,7 +79,11 @@ test('build inlines page-local CSS @import files', async (t) => {
   const workspace = await createWorkspace();
 
   try {
-    await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'build' }, incremental: false });
+    await frontendProvider.build({
+      workspaceRoot: workspace,
+      env: { WEBSTIR_MODULE_MODE: 'build' },
+      incremental: false,
+    });
 
     const cssPath = path.join(workspace, 'build', 'frontend', 'pages', 'home', 'index.css');
     assert.equal(fssync.existsSync(cssPath), true, `expected ${cssPath}`);
@@ -80,12 +91,14 @@ test('build inlines page-local CSS @import files', async (t) => {
     assert.equal(
       fssync.existsSync(path.join(workspace, 'build', 'frontend', 'pages', 'home', 'layout.css')),
       true,
-      'expected imported layout.css copied for dev server'
+      'expected imported layout.css copied for dev server',
     );
     assert.equal(
-      fssync.existsSync(path.join(workspace, 'build', 'frontend', 'pages', 'home', 'partials', 'colors.css')),
+      fssync.existsSync(
+        path.join(workspace, 'build', 'frontend', 'pages', 'home', 'partials', 'colors.css'),
+      ),
       true,
-      'expected imported nested css copied for dev server'
+      'expected imported nested css copied for dev server',
     );
 
     const css = await fs.readFile(cssPath, 'utf8');
