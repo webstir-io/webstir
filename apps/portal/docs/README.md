@@ -15,6 +15,13 @@ The active implementation lives in the Bun orchestrator plus the canonical TypeS
 - [Workflows](./reference/workflows.md)
 - [Solution Overview](./explanations/solution.md)
 
+## Default User Path
+
+- Install the packaged CLI in a small tool root with `bun add @webstir-io/webstir`.
+- Scaffold a workspace outside the monorepo with `webstir init`.
+- Run `watch`, `test`, and `publish` against that workspace with the installed CLI.
+- Use the repo-local `bun run webstir -- ...` form only when you are contributing inside this monorepo.
+
 ## Proof Apps
 
 - [`examples/demos/auth-crud`](https://github.com/webstir-io/webstir/tree/main/examples/demos/auth-crud) proves sessions, auth gates, validation recovery, redirect-after-post, and fragment-enhanced CRUD forms.

@@ -1,12 +1,16 @@
 # CLI
 
-Active command reference for the Bun orchestrator. In this monorepo, the supported orchestration path is `webstir`, usually invoked from the repo root as `bun run webstir -- <command>`.
+Active command reference for the Bun orchestrator. The default user-facing path is an installed `webstir` binary; the repo-local `bun run webstir -- <command>` form is for contributors working inside this monorepo.
 
 > Historical note: the archived `.NET` orchestrator remains in-tree under `orchestrators/dotnet`, but it is no longer the active CLI for local development or framework evolution.
 
 ## Overview
-- Primary entrypoint in this repo: `bun run webstir -- <command>`
 - Package binary name: `webstir`
+- Default packaged install path:
+  - create a small tool root
+  - `bun add @webstir-io/webstir`
+  - invoke the installed binary from `node_modules/.bin/webstir`
+- Primary entrypoint in this repo: `bun run webstir -- <command>`
 - Works against a workspace root selected with `--workspace <path>` for all mutating or execution commands except `init` and `smoke`
 - Supports the current workspace modes: `spa`, `ssg`, `api`, and `full`
 
@@ -14,17 +18,17 @@ Active command reference for the Bun orchestrator. In this monorepo, the support
 
 ```bash
 webstir <command> [options]
+./node_modules/.bin/webstir <command> [options]
 bun run webstir -- <command> [options]
 ```
 
 Common patterns:
-- `bun run webstir -- init ssg ./docs`
-- `bun run webstir -- repair --workspace "$PWD/examples/demos/spa"`
-- `bun run webstir -- watch --workspace "$PWD/examples/demos/full"`
-- `bun run webstir -- test --workspace "$PWD/examples/demos/full"`
-- `bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"`
-- `bun run webstir -- add-route accounts --workspace "$PWD/examples/demos/api"`
-- `bun run webstir -- smoke`
+- external workspace: `./node_modules/.bin/webstir init full ./my-app`
+- external workspace: `./node_modules/.bin/webstir watch --workspace "$PWD/my-app"`
+- external workspace: `./node_modules/.bin/webstir publish --workspace "$PWD/my-app"`
+- monorepo contributor path: `bun run webstir -- watch --workspace "$PWD/examples/demos/full"`
+- monorepo contributor path: `bun run webstir -- add-route accounts --workspace "$PWD/examples/demos/api"`
+- monorepo contributor path: `bun run webstir -- smoke`
 
 ## Commands
 

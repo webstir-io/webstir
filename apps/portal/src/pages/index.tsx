@@ -37,13 +37,13 @@ const Icons = {
 
 const features = [
   {
-    title: 'Agentic First',
-    description: 'Built for the age of AI with context-aware workflows and automated scaffolding.',
+    title: 'HTML-First Forms',
+    description: 'Start with server-rendered documents, then layer fragment updates and navigation polish where they earn their keep.',
     icon: Icons.Brain,
   },
   {
-    title: 'Opinionated Stack',
-    description: 'Pre-configured best practices for full-stack development. Don\'t waste time configuring.',
+    title: 'Packaged CLI',
+    description: 'Install one CLI, scaffold a workspace outside the monorepo, and keep build, watch, test, and publish on one path.',
     icon: Icons.Layers,
   },
   {
@@ -55,14 +55,14 @@ const features = [
 
 const quickLinks = [
   {
-    title: 'Getting started',
-    description: 'Spin up the workspace and ship your first app with the guided tutorial.',
+    title: 'External quickstart',
+    description: 'Install the packaged CLI, scaffold a full app, and run it outside the monorepo.',
     to: '/docs/tutorials/getting-started',
     icon: Icons.Rocket,
   },
   {
     title: 'First app',
-    description: 'Walk through the full loop: init, build, watch, test, publish.',
+    description: 'Enable client navigation, inspect the built-in form flow, and adapt the scaffold into your own app.',
     to: '/docs/tutorials/first-app',
     icon: Icons.Code,
   },
@@ -167,15 +167,15 @@ export default function Home(): JSX.Element {
           <div className="heroLogo">
             <img src={logoUrl} alt="Webstir" />
           </div>
-          <div className="pill">Full-stack, agent-first workflow</div>
+          <div className="pill">HTML-first full-stack workflow</div>
           <h1>Build with Webstir</h1>
           <p>
-            Opinionated architecture, pluggable providers, and a single CLI that keeps build,
-            watch, test, and publish flows consistent. Start fast, stay fast.
+            Install the CLI, scaffold a full app, and ship server-rendered flows that still get
+            fragment updates and navigation polish when JavaScript is available.
           </p>
           <div className="heroButtons">
             <Link className="button button--secondary button--lg" to="/docs/tutorials/getting-started">
-              Start the tutorial
+              Start the quickstart
             </Link>
             <Link className="button button--secondary button--lg" to="/docs/reference/cli">
               View CLI reference
