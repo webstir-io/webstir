@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type http from 'node:http';
 
-import {
-  executeRequestHookPhase,
-  type RequestHookReferenceLike,
-} from './request-hooks.js';
+import { executeRequestHookPhase, type RequestHookReferenceLike } from './request-hooks.js';
 import {
   createProcessEnvAccessor,
   createReadinessTracker,
@@ -21,7 +18,6 @@ import {
   type ModuleRuntime,
   type NodeHttpRouteDefinitionLike,
   type ReadinessTracker,
-  type RouteHandler,
   type RouteHandlerResult,
 } from './node-http.js';
 import {
@@ -31,12 +27,7 @@ import {
   type SessionFlashMessage,
   type SessionStore,
 } from './session.js';
-import {
-  matchView,
-  renderRequestTimeView,
-  type CompiledView,
-  type LoggerLike,
-} from './views.js';
+import { matchView, renderRequestTimeView, type CompiledView, type LoggerLike } from './views.js';
 
 export interface RuntimeLogger {
   child(bindings: Record<string, unknown>): RuntimeLogger;
@@ -46,12 +37,7 @@ export interface RuntimeLogger {
 }
 
 export interface MetricsTracker {
-  record(metric: {
-    method: string;
-    route: string;
-    status: number;
-    durationMs: number;
-  }): void;
+  record(metric: { method: string; route: string; status: number; durationMs: number }): void;
   snapshot(): unknown;
 }
 
@@ -132,9 +118,9 @@ export async function startBunBackend<
   TSession extends Record<string, unknown>,
   TAuth,
   TMetricsTracker extends MetricsTracker,
->(options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>): Promise<
-  void
-> {
+>(
+  options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>,
+): Promise<void> {
   const bun = requireBunRuntime();
   const env = options.loadEnv();
   const logger = options.createBaseLogger(env);
@@ -214,7 +200,11 @@ async function handleRequest<
   TMetricsTracker extends MetricsTracker,
 >(args: {
   request: Request;
-  runtime: ModuleRuntime<RouteContext<TLogger, TSession, TAuth>, RouteHandlerResult, ModuleRouteDefinition>;
+  runtime: ModuleRuntime<
+    RouteContext<TLogger, TSession, TAuth>,
+    RouteHandlerResult,
+    ModuleRouteDefinition
+  >;
   readiness: ReadinessTracker;
   env: TEnv;
   logger: TLogger;
@@ -468,7 +458,6 @@ async function handleViewRequest<
     matchedView,
     env,
     envAccessor,
-    requestLogger,
     structuredLogger,
     requestId,
     now,
@@ -556,10 +545,7 @@ function createCommittedResponse<
   if (payload === undefined || payload === null || options.method === 'HEAD') {
     return new Response(null, { status, headers });
   }
-  if (
-    typeof payload === 'string' ||
-    payload instanceof ArrayBuffer
-  ) {
+  if (typeof payload === 'string' || payload instanceof ArrayBuffer) {
     return new Response(payload, { status, headers });
   }
   if (payload instanceof Uint8Array) {

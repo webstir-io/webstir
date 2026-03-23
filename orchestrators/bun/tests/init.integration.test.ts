@@ -167,7 +167,10 @@ test('CLI enable backend scaffolds the package-managed Bun entrypoint', async ()
     expect(enableResult.stderr).toBe('');
     expect(enableResult.stdout).toContain('[webstir] enable complete');
 
-    const backendIndex = await readFile(path.join(workspaceRoot, 'src', 'backend', 'index.ts'), 'utf8');
+    const backendIndex = await readFile(
+      path.join(workspaceRoot, 'src', 'backend', 'index.ts'),
+      'utf8',
+    );
     expect(backendIndex).toContain('@webstir-io/webstir-backend/runtime/bun');
     expect(backendIndex).not.toContain('http.createServer');
   } finally {
