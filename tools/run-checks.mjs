@@ -54,6 +54,14 @@ export function buildCheckPlan(mode) {
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'check:assets'],
     },
     {
+      label: 'bun feature projections',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'check:feature-projections'],
+    },
+    {
+      label: 'bun full demo sync',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'check:full-demo-sync'],
+    },
+    {
       label: 'bun orchestrator required suite',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test'],
     },

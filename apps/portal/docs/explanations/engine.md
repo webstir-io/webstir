@@ -31,7 +31,8 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 
 ### `init`
 
-- Copies Bun-owned template assets from `orchestrators/bun/assets/templates/**`
+- Copies generated Bun template assets from `orchestrators/bun/assets/templates/**`
+- Repo contributors edit `orchestrators/bun/resources/templates/**`, then regenerate `assets/**` before build or pack boundaries
 - Writes `package.json`, `base.tsconfig.json`, and the mode-specific `src/**` layout
 
 ### `build`

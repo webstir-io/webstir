@@ -4,8 +4,9 @@ Run a published Webstir workspace behind nginx with the Bun-owned Compose exampl
 
 ## Helper Files
 
-- Compose — `orchestrators/bun/assets/deployment/sandbox/docker-compose.yml`
-- nginx site config — `orchestrators/bun/assets/deployment/sandbox/web/nginx.conf`
+- Compose — `orchestrators/bun/resources/deployment/sandbox/docker-compose.yml`
+- nginx site config — `orchestrators/bun/resources/deployment/sandbox/web/nginx.conf`
+- The Bun package syncs this repo source into `orchestrators/bun/assets/deployment/sandbox/**` for packing and local package use.
 
 ## Prerequisites
 
@@ -18,13 +19,13 @@ Run a published Webstir workspace behind nginx with the Bun-owned Compose exampl
 
 ```bash
 WEBSTIR_WORKSPACE=/absolute/path/to/workspace \
-  docker compose -f orchestrators/bun/assets/deployment/sandbox/docker-compose.yml up --build -d
+  docker compose -f orchestrators/bun/resources/deployment/sandbox/docker-compose.yml up --build -d
 ```
 
 - Open: `http://localhost:8080` for the published site
 - Open: `http://localhost:8000` for the API server
-- Logs: `docker compose -f orchestrators/bun/assets/deployment/sandbox/docker-compose.yml logs -f web` or `... logs -f api`
-- Stop: `docker compose -f orchestrators/bun/assets/deployment/sandbox/docker-compose.yml down`
+- Logs: `docker compose -f orchestrators/bun/resources/deployment/sandbox/docker-compose.yml logs -f web` or `... logs -f api`
+- Stop: `docker compose -f orchestrators/bun/resources/deployment/sandbox/docker-compose.yml down`
 
 ## Mounts
 

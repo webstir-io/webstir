@@ -15,7 +15,7 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 - CLI workflows: `init`, `build`, `watch`, `test`, `publish`, `smoke`, and generators
 - Contracts: folder layout, emitted artifacts, exit codes, and manifest summaries
 - Watch behavior: HMR, reloads, backend restarts, and `/api/*` proxying
-- Canonical `webstir test` proof workspace: `full`
+- Canonical `webstir test` proof workspace: `full`, kept near the built-in `full` template except for explicit watch/runtime proof deltas
 - Proof apps: `auth-crud` and `dashboard` as consumer-path browser validation and publish proofs, including the manual `Watch Browser Tests` workflow, not separate required `webstir test` lanes
 - Package behavior inside `@webstir-io/webstir-frontend`, `@webstir-io/webstir-backend`, and `@webstir-io/webstir-testing`
 
@@ -54,7 +54,7 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 
 Only `webstir test` supports `--runtime <frontend|backend|all>`.
 
-In this repo, `examples/demos/full` is the canonical workspace for the `webstir test` flow. `auth-crud` and `dashboard` belong to the browser-proof layer instead: publish-mode browser coverage in the required gate, plus the manual `Watch Browser Tests` workflow when watch-mode confidence matters. Any app-local tests inside those demos should be treated as reference coverage rather than a separate required gate.
+In this repo, `examples/demos/full` is the canonical workspace for the `webstir test` flow. It stays aligned with `orchestrators/bun/resources/templates/full/src/**` outside a small set of proof-only watch/runtime files, and `bun run --filter @webstir-io/webstir check:full-demo-sync` enforces that boundary. `auth-crud` and `dashboard` belong to the browser-proof layer instead: publish-mode browser coverage in the required gate, plus the manual `Watch Browser Tests` workflow when watch-mode confidence matters. Any app-local tests inside those demos should be treated as reference coverage rather than a separate required gate.
 
 ## What We Avoid
 

@@ -8,7 +8,7 @@ Demo folders:
 - `api/` — backend-only
 - `auth-crud/` — fullstack auth and CRUD proof app for server-handled forms
 - `dashboard/` — fullstack dashboard proof app for shell and panel fragment refreshes
-- `full/` — fullstack (frontend + backend)
+- `full/` — canonical fullstack CLI proof workspace; stays aligned with the Bun `full` template except for explicit watch/runtime proof deltas
 - `spa/` — SPA frontend
 - `ssg/base/` — SSG starter (no optional features enabled)
 - `ssg/site/` — SSG starter (features enabled; see `utils/refresh-ssg.sh site`)
@@ -34,3 +34,4 @@ Root shortcuts:
 
 Notes:
 - Watch, feature-enable, and refresh helpers use the Bun orchestrator.
+- `bun run --filter @webstir-io/webstir check:full-demo-sync` verifies that `examples/demos/full/src/**` still matches `orchestrators/bun/resources/templates/full/src/**` outside the approved proof-only files.

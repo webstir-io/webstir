@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { cp, mkdir, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,9 +9,6 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, '..');
 const repoRoot = path.resolve(packageRoot, '..', '..');
 const assetsRoot = path.join(packageRoot, 'assets');
-const templatesRoot = path.join(assetsRoot, 'templates');
-const featuresRoot = path.join(assetsRoot, 'features');
-const deploymentRoot = path.join(assetsRoot, 'deployment');
 const resourcesRoot = path.join(packageRoot, 'resources');
 const templateSourcesRoot = path.join(resourcesRoot, 'templates');
 const deploymentSourcesRoot = path.join(resourcesRoot, 'deployment');
@@ -91,11 +89,20 @@ const features = [
 async function main() {
   assertNoLegacyAssetReads();
   if (checkOnly) {
-    console.log('[webstir] asset sources OK');
+    await assertAssetsInSync();
+    console.log('[webstir] assets OK');
     return;
   }
 
-  await rm(assetsRoot, { recursive: true, force: true });
+  await materializeAssets(assetsRoot);
+}
+
+async function materializeAssets(targetAssetsRoot) {
+  const templatesRoot = path.join(targetAssetsRoot, 'templates');
+  const featuresRoot = path.join(targetAssetsRoot, 'features');
+  const deploymentRoot = path.join(targetAssetsRoot, 'deployment');
+
+  await rm(targetAssetsRoot, { recursive: true, force: true });
   await mkdir(templatesRoot, { recursive: true });
   await mkdir(featuresRoot, { recursive: true });
   await mkdir(deploymentRoot, { recursive: true });
@@ -124,6 +131,88 @@ async function main() {
   const deploymentTargetPath = path.join(deploymentRoot, 'sandbox');
   await mkdir(path.dirname(deploymentTargetPath), { recursive: true });
   await cp(path.join(deploymentSourcesRoot, 'sandbox'), deploymentTargetPath, { recursive: true });
+}
+
+async function assertAssetsInSync() {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-assets-'));
+  const expectedAssetsRoot = path.join(tempRoot, 'assets');
+
+  try {
+    await materializeAssets(expectedAssetsRoot);
+    const differences = await collectDirectoryDifferences(expectedAssetsRoot, assetsRoot);
+    if (differences.length === 0) {
+      return;
+    }
+
+    throw new Error(
+      [
+        'Generated Bun assets are out of sync with orchestrators/bun/resources.',
+        'Run `bun run --filter @webstir-io/webstir build` or `bun scripts/sync-assets.mjs` from orchestrators/bun.',
+        ...differences.map((difference) => ` - ${difference}`),
+      ].join('\n'),
+    );
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+async function collectDirectoryDifferences(expectedRoot, actualRoot) {
+  const [expectedEntries, actualEntries] = await Promise.all([
+    collectEntries(expectedRoot),
+    collectEntries(actualRoot),
+  ]);
+
+  const differences = [];
+  const paths = [...new Set([...expectedEntries.keys(), ...actualEntries.keys()])].sort();
+
+  for (const relativePath of paths) {
+    const expected = expectedEntries.get(relativePath);
+    const actual = actualEntries.get(relativePath);
+
+    if (!expected) {
+      differences.push(`unexpected ${actual.type} in assets: ${relativePath}`);
+      continue;
+    }
+
+    if (!actual) {
+      differences.push(`missing ${expected.type} in assets: ${relativePath}`);
+      continue;
+    }
+
+    if (expected.type !== actual.type) {
+      differences.push(
+        `type mismatch for ${relativePath}: expected ${expected.type}, found ${actual.type}`,
+      );
+      continue;
+    }
+
+    if (expected.type === 'file' && !expected.content.equals(actual.content)) {
+      differences.push(`content mismatch in assets: ${relativePath}`);
+    }
+  }
+
+  return differences;
+}
+
+async function collectEntries(root, currentPath = root, entries = new Map()) {
+  const children = await readdir(currentPath, { withFileTypes: true });
+
+  for (const child of children) {
+    const childPath = path.join(currentPath, child.name);
+    const relativePath = path.relative(root, childPath);
+
+    if (child.isDirectory()) {
+      entries.set(relativePath, { type: 'directory' });
+      await collectEntries(root, childPath, entries);
+      continue;
+    }
+
+    if (child.isFile()) {
+      entries.set(relativePath, { type: 'file', content: await readFile(childPath) });
+    }
+  }
+
+  return entries;
 }
 
 function assertNoLegacyAssetReads() {

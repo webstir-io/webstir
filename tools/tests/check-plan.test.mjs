@@ -18,6 +18,8 @@ describe('buildCheckPlan', () => {
       'testing tooling',
       'testing tooling smoke',
       'bun asset sources',
+      'bun feature projections',
+      'bun full demo sync',
       'bun orchestrator required suite',
       'bun package install smoke',
       'bun standalone install smoke',
