@@ -84,6 +84,7 @@ async function main() {
 
     const standaloneName = tarballName.replace(/\.tgz$/, '-standalone.tgz');
     const destination = path.join(outputRoot, standaloneName);
+    await mkdir(path.dirname(destination), { recursive: true });
     await rm(destination, { force: true });
     await rename(path.join(stageRoot, tarballName), destination);
     console.log(destination);
