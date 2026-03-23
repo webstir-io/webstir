@@ -38,7 +38,7 @@ Canonical proof apps in this repo:
 
 ## Shipped HTML-First Runtime
 
-The default `src/backend/index.ts` entry, the opt-in Bun scaffold, and the optional Fastify scaffold share the same runtime guarantees:
+The default `src/backend/index.ts` entry, the optional Bun shim, and the optional Fastify scaffold share the same runtime guarantees:
 
 - Route auto-mounting from compiled `module.ts`
 - Health probes at `/api/health`, `/healthz`, and `/readyz`
@@ -86,30 +86,30 @@ The provider expects a standard workspace layout and performs two steps:
 - `build(options)` — type‑checks with `tsc --noEmit`, then runs esbuild. In `build`/`test` mode it transpiles without bundling; in `publish` it bundles workspace code, externalizes `node_modules`, minifies, strips comments, and defines `NODE_ENV=production`. Artifacts are gathered and a manifest describing entry points, diagnostics, and the module contract manifest is returned.
 - `getScaffoldAssets()` — returns starter files to bootstrap a backend workspace:
   - `src/backend/tsconfig.json` (NodeNext, outDir `build/backend`)
-- `src/backend/index.ts` (built-in HTTP server with `/api/health`, `/healthz`, `/readyz`, manifest summaries, `x-request-id` propagation, and automatic module route mounting)
+- `src/backend/index.ts` (thin composition entry that boots the package-managed Bun runtime)
 - `src/backend/module.ts` (optional manifest + handler example the server loads automatically)
-- `src/backend/server/bun.ts` (optional Bun-native server scaffold)
+- `src/backend/server/bun.ts` (optional Bun entry shim)
 - `src/backend/server/fastify.ts` (optional Fastify server scaffold)
 
-### Bun Scaffold (optional)
+### Bun Scaffold (default)
 
-The default HTTP server stays on `node:http`, but the scaffold now ships an opt-in `Bun.serve()` path through the same `src/backend/index.ts` entry:
+Fresh scaffolds now boot through the package-managed Bun runtime by default:
 
-- Set `WEBSTIR_BACKEND_SERVER_RUNTIME=bun` before starting the built backend:
+- Start the built backend with Bun:
   ```bash
-  WEBSTIR_BACKEND_SERVER_RUNTIME=bun bun build/backend/index.js
+  bun build/backend/index.js
   ```
-- Or pin the entry directly to the Bun scaffold:
+- Or pin the entry directly to the Bun shim:
   ```ts
   // src/backend/index.ts
   export { start } from './server/bun.js';
   ```
 
-This keeps the default Node server intact while giving Bun-native deployments a first-party scaffold without pulling in Fastify.
+This keeps the default entry thin while moving the operational runtime into upgradeable package code.
 
 ### Fastify Scaffold (optional)
 
-The default HTTP server handles `/api/health`, readiness logging, and auto-mounts the compiled `module.ts` handlers. If you prefer Fastify’s plugin ecosystem or need advanced routing features, you can swap the entry for the Fastify scaffold:
+The default Bun runtime handles `/api/health`, readiness logging, and auto-mounts the compiled `module.ts` handlers. If you prefer Fastify’s plugin ecosystem or need advanced routing features, you can swap the entry for the Fastify scaffold:
 
 - Install Fastify in your workspace:
   ```bash
@@ -132,7 +132,7 @@ When present, the Fastify scaffold will also attempt to auto‑mount any compile
 
 ### Server runtime baseline
 
-The default `src/backend/index.ts` entry, the opt-in Bun scaffold, and the optional Fastify scaffold share the same runtime guarantees:
+The default `src/backend/index.ts` entry, the Bun shim, and the optional Fastify scaffold share the same runtime guarantees:
 
 - Route auto-mounting: any `module.ts` routes are compiled, logged, and attached on startup with manifest summaries (name, version, route count, capabilities).
 - Health probes: `/api/health` (for the orchestrator), `/healthz` (generic health), and `/readyz` (status + manifest summary). The CLI still waits for `API server running` before proxying requests.
@@ -143,7 +143,7 @@ The default `src/backend/index.ts` entry, the opt-in Bun scaffold, and the optio
 - Progressive enhancement responses: handlers can return redirects (`303` by default) or targeted fragment payloads; the scaffold emits `Location` and `x-webstir-fragment-*` headers accordingly.
 - Form handling: JSON bodies still work as before, and the scaffold now parses `application/x-www-form-urlencoded` requests into plain objects for HTML form workflows.
 
-Stick with the built-in server while exploring the manifest helpers, opt into the Bun scaffold when you want `Bun.serve()` without extra framework surface, or drop in the Fastify scaffold when you need its plugin ecosystem. The readiness + manifest wiring stays the same.
+Stick with the default Bun entry while exploring the manifest helpers, keep the Bun shim if you want an explicit local entry, or drop in the Fastify scaffold when you need its plugin ecosystem. The readiness + manifest wiring stays the same.
 
 ### Runtime cache ergonomics
 

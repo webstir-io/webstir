@@ -152,3 +152,25 @@ test('CLI refresh preserves package identity from an existing workspace manifest
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('CLI enable backend scaffolds the package-managed Bun entrypoint', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-enable-backend-'));
+  const workspaceRoot = path.join(tempRoot, 'spa-site');
+
+  try {
+    const initResult = await runCli(['init', 'spa', workspaceRoot]);
+    expect(initResult.exitCode).toBe(0);
+
+    const enableResult = await runCli(['enable', 'backend', '--workspace', workspaceRoot]);
+
+    expect(enableResult.exitCode).toBe(0);
+    expect(enableResult.stderr).toBe('');
+    expect(enableResult.stdout).toContain('[webstir] enable complete');
+
+    const backendIndex = await readFile(path.join(workspaceRoot, 'src', 'backend', 'index.ts'), 'utf8');
+    expect(backendIndex).toContain('@webstir-io/webstir-backend/runtime/bun');
+    expect(backendIndex).not.toContain('http.createServer');
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});

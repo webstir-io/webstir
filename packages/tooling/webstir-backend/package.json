@@ -31,6 +31,11 @@
       "import": "./dist/runtime/views.js",
       "default": "./dist/runtime/views.js"
     },
+    "./runtime/bun": {
+      "types": "./dist/runtime/bun.d.ts",
+      "import": "./dist/runtime/bun.js",
+      "default": "./dist/runtime/bun.js"
+    },
     "./runtime/node-http": {
       "types": "./dist/runtime/node-http.d.ts",
       "import": "./dist/runtime/node-http.js",

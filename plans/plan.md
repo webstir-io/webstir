@@ -47,11 +47,13 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - Milestone A is done: `build`/`publish` now fail on provider error diagnostics.
 - Required checks already include stronger smoke/install coverage than the original plan assumed.
 - The low-friction durable-session path and workspace-root path hardening both moved forward enough that the next highest-leverage slice is runtime ownership.
+- Slice A of Milestone C is done: fresh backend scaffolds now default to a package-managed Bun bootstrap with thin `src/backend/index.ts` composition.
 
 ### Active
 
 - Milestone C: move the backend runtime into package-managed code and make Bun the default fresh-scaffold server path.
 - Plan-doc consolidation: stop treating roadmap docs as parallel execution plans.
+- Next slice inside Milestone C is Slice B: stop copying framework-owned runtime files from fresh backend scaffolds.
 
 ### Queued
 
@@ -154,6 +156,10 @@ This is the current active implementation track.
 #### Slice A: Package bootstrap plus thin entrypoint
 
 Create a stable exported helper in `@webstir-io/webstir-backend` that boots the default Bun server from app-provided env/auth/session/module pieces.
+
+Status:
+
+- Done.
 
 Target files:
 

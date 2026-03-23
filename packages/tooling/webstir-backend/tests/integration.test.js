@@ -2281,6 +2281,23 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   );
 });
 
+test('default backend scaffold uses the package-managed Bun bootstrap', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-bun-scaffold-');
+  await hydrateBackendScaffold(workspace);
+
+  const indexSource = await fs.readFile(path.join(workspace, 'src', 'backend', 'index.ts'), 'utf8');
+  assert.match(indexSource, /@webstir-io\/webstir-backend\/runtime\/bun/);
+  assert.doesNotMatch(indexSource, /http\.createServer/);
+  assert.doesNotMatch(indexSource, /Bun\.serve/);
+
+  const bunSource = await fs.readFile(
+    path.join(workspace, 'src', 'backend', 'server', 'bun.ts'),
+    'utf8',
+  );
+  assert.match(bunSource, /startBunBackend/);
+  assert.match(bunSource, /moduleCandidates/);
+});
+
 function extractCookieHeader(setCookie) {
   return String(setCookie ?? '').split(';')[0];
 }
