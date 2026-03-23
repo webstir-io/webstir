@@ -45,5 +45,6 @@ bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 - `bun run lint` is part of the required repo gate alongside `bun run check:biome`.
 - Published npm package names remain unchanged.
 - `orchestrators/dotnet` remains in-tree as a frozen historical snapshot only; active local workflows, releases, and package maintenance go through the Bun monorepo.
-- For a local production check, use the Bun sandbox helper under `orchestrators/bun/assets/deployment/sandbox` against published `dist/frontend` and compiled `build/backend` outputs.
+- For Bun scaffolds and bundled feature assets, edit `orchestrators/bun/resources/**`; `orchestrators/bun/assets/**` is generated package content and is verified by `bun run --filter @webstir-io/webstir check:assets`.
+- For a local production check, use the Bun sandbox helper under `orchestrators/bun/resources/deployment/sandbox`; `orchestrators/bun/assets/deployment/sandbox` is the generated packaged copy.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

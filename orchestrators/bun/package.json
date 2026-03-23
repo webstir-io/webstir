@@ -7,6 +7,8 @@
   },
   "scripts": {
     "check:assets": "bun scripts/sync-assets.mjs --check",
+    "check:feature-projections": "bun scripts/check-feature-projections.mjs",
+    "check:full-demo-sync": "bun scripts/check-full-demo-sync.mjs",
     "build": "bun scripts/sync-assets.mjs && bun run build:deps && tsc -p tsconfig.json",
     "build:deps": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build && bun run --filter @webstir-io/webstir-frontend build && bun run --filter @webstir-io/webstir-backend build && bun run --filter @webstir-io/webstir-testing build",
     "test": "bun run test:required",

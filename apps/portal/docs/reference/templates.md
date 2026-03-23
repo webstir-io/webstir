@@ -3,7 +3,8 @@
 Embedded scaffolding used by the CLI to create projects and generate files. Keeps new apps consistent and zero-config.
 
 ## Overview
-- Lives under `orchestrators/bun/assets/templates/**` and is embedded into the Bun CLI package.
+- Repo source of truth lives under `orchestrators/bun/resources/templates/**`.
+- Generated package assets live under `orchestrators/bun/assets/templates/**` and are embedded into the Bun CLI package.
 - `webstir init` lays down a full-stack project by default.
 - Generators add files in the right place with sensible defaults.
 
@@ -87,7 +88,11 @@ Typical backend scaffold:
 - App assets copied to `dist/frontend/app/*`.
 
 ## Customizing Templates
-- Edit templates under `orchestrators/bun/assets/templates/`.
+- Edit templates under `orchestrators/bun/resources/templates/`.
+- Treat `orchestrators/bun/resources/features/client_nav/**` as the canonical source for the built-in `client-nav` files projected into the `full` template.
+- Regenerate the shipped package assets with `bun run --filter @webstir-io/webstir build` or `cd orchestrators/bun && bun scripts/sync-assets.mjs`.
+- Use `bun run --filter @webstir-io/webstir check:assets` to verify the generated tree is still in sync.
+- Use `bun run --filter @webstir-io/webstir check:feature-projections` to verify the exact `client-nav` template projections still match their shared feature sources.
 - Keep conventions intact (page structure, base HTML `<main>`, server entry path).
 - After changes, rebuild the CLI to embed updated templates.
 
