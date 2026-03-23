@@ -33,7 +33,6 @@ The active implementation lives in the Bun orchestrator plus the canonical TypeS
 - How-to guides: [README](./how-to/README.md)
 - Reference: [README](./reference/README.md)
 - Explanations: [README](./explanations/README.md)
-- Product plans: [README](./product/plans/README.md)
 
 ## Current Framing
 

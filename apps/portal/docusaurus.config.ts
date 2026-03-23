@@ -83,7 +83,6 @@ const config: Config = {
         {type: 'docSidebar', sidebarId: 'howTo', position: 'left', label: 'How-to'},
         {type: 'docSidebar', sidebarId: 'reference', position: 'left', label: 'Reference'},
         {type: 'docSidebar', sidebarId: 'explanations', position: 'left', label: 'Explanations'},
-        {type: 'docSidebar', sidebarId: 'plans', position: 'left', label: 'Product Plans'},
         {href: 'https://github.com/webstir-io/webstir', label: 'GitHub', position: 'right'},
       ],
     },

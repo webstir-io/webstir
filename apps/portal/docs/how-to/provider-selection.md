@@ -31,4 +31,3 @@ Older docs and experiments referenced those surfaces, but they are not part of t
 
 - CLI reference — [cli](../reference/cli.md)
 - Utilities — [utilities](./utilities.md)
-- Product plans — [product plans](../product/plans/README.md)

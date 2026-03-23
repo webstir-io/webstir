@@ -27,9 +27,6 @@ const Icons = {
   Code: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="cardIcon"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
   ),
-  Map: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="cardIcon"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" /><line x1="9" x2="9" y1="3" y2="18" /><line x1="15" x2="15" y1="6" y2="21" /></svg>
-  ),
   Cpu: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="cardIcon"><rect x="4" y="4" width="16" height="16" rx="2" /><rect x="9" y="9" width="6" height="6" /><line x1="9" x2="9" y1="1" y2="4" /><line x1="15" x2="15" y1="1" y2="4" /><line x1="9" x2="9" y1="20" y2="23" /><line x1="15" x2="15" y1="20" y2="23" /><line x1="20" x2="23" y1="9" y2="9" /><line x1="20" x2="23" y1="15" y2="15" /><line x1="1" x2="4" y1="9" y2="9" /><line x1="1" x2="4" y1="15" y2="15" /></svg>
   ),
@@ -92,12 +89,6 @@ const sections = [
     description: 'What the engine, pipelines, services, and dev service do under the hood.',
     to: '/docs/explanations/solution',
     icon: Icons.Cpu,
-  },
-  {
-    title: 'Product plans',
-    description: 'Roadmaps and upcoming work across backend design, generators, and infrastructure.',
-    to: '/docs/product/plans',
-    icon: Icons.Map,
   },
 ];
 
