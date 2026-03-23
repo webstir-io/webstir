@@ -149,9 +149,7 @@ test('CLI publishes the spa demo workspace in ssg mode when frontend mode is ove
     true,
   );
   expect(
-    existsSync(
-      path.join(result.copiedWorkspace, 'dist', 'frontend', 'pages', 'home', 'index.html'),
-    ),
+    existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'home', 'manifest.json')),
   ).toBe(true);
 });
 
