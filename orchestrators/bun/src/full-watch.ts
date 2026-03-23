@@ -9,7 +9,7 @@ import type { WatchIo, WatchOptions } from './watch.ts';
 export async function runFullWatch(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
-  io: WatchIo
+  io: WatchIo,
 ): Promise<void> {
   const backendPort = await allocateBackendPort();
   const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io);
@@ -23,7 +23,7 @@ export async function runFullWatch(
       apiProxyOrigin: apiSession.origin,
     });
     io.stdout.write(
-      `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`
+      `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`,
     );
 
     const stopSignal = createStopSignal();

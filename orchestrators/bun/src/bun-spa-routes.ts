@@ -15,9 +15,9 @@ export interface BunSpaRouteEntry {
 }
 
 export async function loadBunSpaEntry(generatedEntryPath: string): Promise<BodyInit> {
-  const routeModule = await import(
+  const routeModule = (await import(
     `${pathToFileURL(generatedEntryPath).href}?t=${Date.now()}`
-  ) as { default: unknown };
+  )) as { default: unknown };
   return routeModule.default as BodyInit;
 }
 
@@ -73,7 +73,7 @@ async function proxyApiRequest(
   request: Request,
   requestUrl: URL,
   apiProxyPath: string,
-  apiProxyOrigin: string
+  apiProxyOrigin: string,
 ): Promise<Response> {
   const targetUrl = new URL(apiProxyPath + requestUrl.search, apiProxyOrigin);
 
@@ -90,10 +90,7 @@ async function proxyApiRequest(
   }
 }
 
-function rewriteProxyResponseHeaders(
-  headers: Headers,
-  targetUrl: URL
-): Headers {
+function rewriteProxyResponseHeaders(headers: Headers, targetUrl: URL): Headers {
   const nextHeaders = new Headers(headers);
   const location = headers.get('location');
   if (location) {
@@ -103,7 +100,10 @@ function rewriteProxyResponseHeaders(
   return nextHeaders;
 }
 
-function createProxyRequestInit(request: Request, targetUrl: URL): RequestInit & { duplex?: 'half' } {
+function createProxyRequestInit(
+  request: Request,
+  targetUrl: URL,
+): RequestInit & { duplex?: 'half' } {
   const headers = new Headers(request.headers);
   headers.set('host', targetUrl.host);
   headers.set('connection', 'close');
@@ -151,9 +151,7 @@ function prefixApiMount(pathname: string): string {
     return pathname;
   }
 
-  return pathname === '/'
-    ? '/api'
-    : `/api${pathname}`;
+  return pathname === '/' ? '/api' : `/api${pathname}`;
 }
 
 function methodAllowsBody(method: string): boolean {

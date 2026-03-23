@@ -31,11 +31,15 @@ test('collectWatchActions turns pipeline success with hot update into HMR + succ
             styles: [],
           },
         },
-      })
+      }),
   );
 
   expect(payload).not.toBeNull();
-  expect(collectWatchActions(payload!)).toEqual([
+  if (!payload) {
+    throw new Error('Expected a parsed diagnostic payload.');
+  }
+
+  expect(collectWatchActions(payload)).toEqual([
     {
       type: 'hmr',
       payload: {
@@ -84,11 +88,15 @@ test('collectWatchActions requests a full reload when the hot update requires it
             fallbackReasons: ['builder.static-assets.reload'],
           },
         },
-      })
+      }),
   );
 
   expect(payload).not.toBeNull();
-  expect(collectWatchActions(payload!)).toEqual([
+  if (!payload) {
+    throw new Error('Expected a parsed diagnostic payload.');
+  }
+
+  expect(collectWatchActions(payload)).toEqual([
     {
       type: 'status',
       status: 'hmr-fallback',

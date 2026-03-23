@@ -37,14 +37,18 @@ interface ScaffoldMetadata {
 let repoWorkspacePatternsPromise: Promise<readonly string[]> | undefined;
 
 export async function runInit(options: RunInitOptions): Promise<InitResult> {
-  const request = parseInitRequest(options.args, options.workspaceRoot, options.cwd ?? process.cwd());
+  const request = parseInitRequest(
+    options.args,
+    options.workspaceRoot,
+    options.cwd ?? process.cwd(),
+  );
   return scaffoldWorkspace(request.mode, request.workspaceRoot, { force: false });
 }
 
 export async function scaffoldWorkspace(
   mode: WorkspaceMode,
   workspaceRoot: string,
-  options: { readonly force: boolean; readonly metadata?: ScaffoldMetadata }
+  options: { readonly force: boolean; readonly metadata?: ScaffoldMetadata },
 ): Promise<InitResult> {
   if (existsSync(workspaceRoot) && !options.force && !(await isDirectoryEmpty(workspaceRoot))) {
     throw new Error(`Refusing to initialize non-empty directory: ${workspaceRoot}`);
@@ -71,7 +75,7 @@ export async function scaffoldWorkspace(
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
   await Bun.write(
     packageJsonPath,
-    `${JSON.stringify(createPackageJson(mode, packageName, dependencySpecs, options.metadata), null, 2)}\n`
+    `${JSON.stringify(createPackageJson(mode, packageName, dependencySpecs, options.metadata), null, 2)}\n`,
   );
   changes.push('package.json');
 
@@ -90,13 +94,15 @@ export async function scaffoldWorkspace(
 function parseInitRequest(
   args: readonly string[],
   workspaceOverride: string | undefined,
-  cwd: string
+  cwd: string,
 ): { readonly mode: WorkspaceMode; readonly workspaceRoot: string } {
   const [firstArg, secondArg] = args;
 
   if (workspaceOverride) {
     if (!firstArg) {
-      throw new Error('Usage: webstir init <mode> --workspace <path> or webstir init <mode> <directory>.');
+      throw new Error(
+        'Usage: webstir init <mode> --workspace <path> or webstir init <mode> <directory>.',
+      );
     }
 
     return {
@@ -124,7 +130,12 @@ function parseInitRequest(
 
 function parseWorkspaceMode(value: string): WorkspaceMode {
   const normalized = value.trim().toLowerCase();
-  if (normalized === 'ssg' || normalized === 'spa' || normalized === 'api' || normalized === 'full') {
+  if (
+    normalized === 'ssg' ||
+    normalized === 'spa' ||
+    normalized === 'api' ||
+    normalized === 'full'
+  ) {
     return normalized;
   }
 
@@ -159,14 +170,18 @@ async function resolveDependencySpecs(workspaceRoot: string): Promise<Record<str
   }
 
   return {
-    '@webstir-io/webstir-frontend': await readInstalledPackageVersion('@webstir-io/webstir-frontend'),
+    '@webstir-io/webstir-frontend': await readInstalledPackageVersion(
+      '@webstir-io/webstir-frontend',
+    ),
     '@webstir-io/webstir-backend': await readInstalledPackageVersion('@webstir-io/webstir-backend'),
     '@webstir-io/webstir-testing': await readInstalledPackageVersion('@webstir-io/webstir-testing'),
   };
 }
 
 async function readPackageVersion(packageJsonPath: string): Promise<string> {
-  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as { readonly version?: string };
+  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as {
+    readonly version?: string;
+  };
   if (!packageJson.version) {
     throw new Error(`Missing version in ${packageJsonPath}`);
   }
@@ -178,7 +193,7 @@ function createPackageJson(
   mode: WorkspaceMode,
   packageName: string,
   dependencySpecs: Record<string, string>,
-  metadata: ScaffoldMetadata | undefined
+  metadata: ScaffoldMetadata | undefined,
 ): Record<string, unknown> {
   const dependencies: Record<string, string> = {
     '@webstir-io/webstir-testing': dependencySpecs['@webstir-io/webstir-testing'],
@@ -252,10 +267,7 @@ function createBaseTsconfig(mode: WorkspaceMode): Record<string, unknown> {
       sourceMap: true,
       declaration: false,
       removeComments: true,
-      typeRoots: [
-        './types',
-        './node_modules/@types',
-      ],
+      typeRoots: ['./types', './node_modules/@types'],
       inlineSources: true,
     },
   };
@@ -276,7 +288,11 @@ async function readInstalledPackageVersion(packageName: string): Promise<string>
 }
 
 function sanitizePackageName(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   return normalized || 'webstir-project';
 }
 
@@ -292,7 +308,9 @@ function matchesWorkspacePattern(relativePath: string, pattern: string): boolean
     return false;
   }
 
-  return patternSegments.every((segment, index) => segment === '*' || segment === relativeSegments[index]);
+  return patternSegments.every(
+    (segment, index) => segment === '*' || segment === relativeSegments[index],
+  );
 }
 
 function uniqueSorted(values: readonly string[]): string[] {

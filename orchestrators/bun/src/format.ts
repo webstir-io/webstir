@@ -36,11 +36,21 @@ export function formatEnableSummary(result: EnableResult): string {
 }
 
 export function formatInitSummary(result: InitResult): string {
-  return formatWorkspaceMutationSummary('[webstir] init complete', result.mode, result.workspaceRoot, result.changes);
+  return formatWorkspaceMutationSummary(
+    '[webstir] init complete',
+    result.mode,
+    result.workspaceRoot,
+    result.changes,
+  );
 }
 
 export function formatRefreshSummary(result: RefreshResult): string {
-  return formatWorkspaceMutationSummary('[webstir] refresh complete', result.mode, result.workspaceRoot, result.changes);
+  return formatWorkspaceMutationSummary(
+    '[webstir] refresh complete',
+    result.mode,
+    result.workspaceRoot,
+    result.changes,
+  );
 }
 
 export function formatRepairSummary(result: RepairResult): string {
@@ -153,13 +163,9 @@ export function formatAddSummary(
   target: string,
   workspaceRoot: string,
   changes: readonly string[],
-  note?: string
+  note?: string,
 ): string {
-  const lines = [
-    header,
-    `target: ${target}`,
-    `root: ${workspaceRoot}`,
-  ];
+  const lines = [header, `target: ${target}`, `root: ${workspaceRoot}`];
 
   if (changes.length === 0) {
     lines.push('changes: none');
@@ -194,12 +200,12 @@ function formatExecutionSummary(result: CommandExecutionResult): string {
     lines.push(
       `${target.kind}: ${target.result.artifacts.length} artifacts, ` +
         `${target.result.manifest.entryPoints.length} entries, ` +
-        `${target.result.manifest.staticAssets.length} static assets -> ${target.outputRoot}`
+        `${target.result.manifest.staticAssets.length} static assets -> ${target.outputRoot}`,
     );
 
     if (diagnostics.errors > 0 || diagnostics.warnings > 0) {
       lines.push(
-        `${target.kind}: ${diagnostics.errors} error(s), ${diagnostics.warnings} warning(s), ${diagnostics.info} info`
+        `${target.kind}: ${diagnostics.errors} error(s), ${diagnostics.warnings} warning(s), ${diagnostics.info} info`,
       );
     }
   }
@@ -213,11 +219,14 @@ function formatFailedTests(
     readonly file: string;
     readonly name: string;
     readonly message?: string | null;
-  }[]
+  }[],
 ): string[] {
   return results
     .filter((result) => !result.passed)
-    .map((result) => `${result.file}: ${result.name}${result.message ? ` — ${firstLine(result.message)}` : ''}`);
+    .map(
+      (result) =>
+        `${result.file}: ${result.name}${result.message ? ` — ${firstLine(result.message)}` : ''}`,
+    );
 }
 
 function firstLine(message: string): string {
@@ -228,13 +237,9 @@ function formatWorkspaceMutationSummary(
   header: string,
   mode: string,
   workspaceRoot: string,
-  changes: readonly string[]
+  changes: readonly string[],
 ): string {
-  const lines = [
-    header,
-    `mode: ${mode}`,
-    `root: ${workspaceRoot}`,
-  ];
+  const lines = [header, `mode: ${mode}`, `root: ${workspaceRoot}`];
 
   if (changes.length === 0) {
     lines.push('changes: none');

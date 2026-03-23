@@ -43,7 +43,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && bun test tests/*.test.js",
     "clean": "rm -rf dist",
-    "smoke": "bun -e \"console.log('[smoke] no smoke tests configured');\"",
+    "smoke": "bun scripts/smoke.mjs",
     "release": "bash scripts/publish.sh"
   },
   "files": [

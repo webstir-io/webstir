@@ -22,7 +22,9 @@ type SqliteDatabase = {
 
 const require = createRequire(import.meta.url);
 
-export async function createDatabaseClient(url = process.env.DATABASE_URL ?? 'file:./data/dev.sqlite'): Promise<DatabaseClient> {
+export async function createDatabaseClient(
+  url = process.env.DATABASE_URL ?? 'file:./data/dev.sqlite',
+): Promise<DatabaseClient> {
   if (isSqlite(url)) {
     return createSqliteClient(url);
   }
@@ -30,7 +32,7 @@ export async function createDatabaseClient(url = process.env.DATABASE_URL ?? 'fi
     return createPostgresClient(url);
   }
   throw new Error(
-    `[db] Unsupported DATABASE_URL '${url}'. Use file:./path/to.sqlite or postgres://...`
+    `[db] Unsupported DATABASE_URL '${url}'. Use file:./path/to.sqlite or postgres://...`,
   );
 }
 
@@ -59,7 +61,7 @@ async function createSqliteClient(url: string): Promise<DatabaseClient> {
     },
     async close() {
       db.close();
-    }
+    },
   };
 }
 
@@ -69,14 +71,16 @@ function loadBunSqlite(): new (filename: string) => SqliteDatabase {
     return sqliteModule.Database ?? sqliteModule.default ?? sqliteModule;
   } catch (error) {
     throw new Error(
-      `[db] Failed to load bun:sqlite. Run the SQLite client with Bun or switch DATABASE_URL to postgres://... (${(error as Error).message})`
+      `[db] Failed to load bun:sqlite. Run the SQLite client with Bun or switch DATABASE_URL to postgres://... (${(error as Error).message})`,
     );
   }
 }
 
 async function createPostgresClient(url: string): Promise<DatabaseClient> {
-  type PgClientCtor = new (...args: any[]) => {
-    query: (text: string, params?: unknown[]) => Promise<{ rows: any[] }>;
+  type PgClientCtor = new (
+    ...args: unknown[]
+  ) => {
+    query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
     connect: () => Promise<void>;
     end: () => Promise<void>;
   };
@@ -87,7 +91,7 @@ async function createPostgresClient(url: string): Promise<DatabaseClient> {
     ClientCtor = (pgModule as unknown as { Client: PgClientCtor }).Client;
   } catch (error) {
     throw new Error(
-      `[db] Failed to load pg. Install it in your workspace with "bun add pg". (${(error as Error).message})`
+      `[db] Failed to load pg. Install it in your workspace with "bun add pg". (${(error as Error).message})`,
     );
   }
 
@@ -104,7 +108,7 @@ async function createPostgresClient(url: string): Promise<DatabaseClient> {
     },
     async close() {
       await client.end();
-    }
+    },
   };
 }
 

@@ -31,7 +31,9 @@ bun run publish:dashboard
 
 Those two demos cover the shipped server-handled forms and dashboard refresh paths.
 
-For static-site output, scaffold an `ssg` workspace or use the lower-level `webstir-frontend publish --mode ssg` package CLI directly. The top-level `webstir` CLI does not expose a `--frontend-mode` flag.
+For static-site output, scaffold an `ssg` workspace, or keep the current workspace mode and force SSG publish with `webstir publish --workspace /absolute/path/to/workspace --frontend-mode ssg`. The lower-level `webstir-frontend publish --mode ssg` package CLI still works directly when you need package-level control.
+
+For a local production-style preview of a published workspace, use the Bun-owned sandbox helper at `orchestrators/bun/assets/deployment/sandbox/docker-compose.yml` with `WEBSTIR_WORKSPACE=/absolute/path/to/workspace`.
 
 ## Related Docs
 

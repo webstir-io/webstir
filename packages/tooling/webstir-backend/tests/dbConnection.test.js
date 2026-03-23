@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { build as esbuild } from 'esbuild';
 
 import { backendProvider } from '../dist/index.js';
@@ -30,12 +30,12 @@ async function seedBackendWorkspace(workspace, name) {
       {
         name,
         version: '0.0.0',
-        type: 'module'
+        type: 'module',
       },
       null,
-      2
+      2,
     ),
-    'utf8'
+    'utf8',
   );
 }
 
@@ -43,7 +43,7 @@ async function compileTemplateDbFiles(workspace) {
   await esbuild({
     entryPoints: [
       path.join(workspace, 'src', 'backend', 'env.ts'),
-      path.join(workspace, 'src', 'backend', 'db', 'connection.ts')
+      path.join(workspace, 'src', 'backend', 'db', 'connection.ts'),
     ],
     bundle: false,
     format: 'esm',
@@ -51,7 +51,7 @@ async function compileTemplateDbFiles(workspace) {
     target: 'node20',
     outdir: path.join(workspace, 'build', 'backend'),
     outbase: path.join(workspace, 'src', 'backend'),
-    logLevel: 'silent'
+    logLevel: 'silent',
   });
 }
 
@@ -72,7 +72,7 @@ function restoreEnv(snapshot) {
 async function assertSameResolvedPath(actual, expected) {
   const [resolvedActual, resolvedExpected] = await Promise.all([
     resolveComparablePath(actual),
-    resolveComparablePath(expected)
+    resolveComparablePath(expected),
   ]);
   assert.equal(resolvedActual, resolvedExpected);
 }
@@ -83,7 +83,9 @@ async function resolveComparablePath(targetPath) {
 }
 
 async function runConnectionProbe(workspace, { cwd = workspace, env = {} } = {}) {
-  const entryUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'db', 'connection.js')).href;
+  const entryUrl = pathToFileURL(
+    path.join(workspace, 'build', 'backend', 'db', 'connection.js'),
+  ).href;
   const script = `
     import(${JSON.stringify(entryUrl)}).then(async ({ createDatabaseClient }) => {
       const db = await createDatabaseClient();
@@ -101,9 +103,9 @@ async function runConnectionProbe(workspace, { cwd = workspace, env = {} } = {})
     cwd,
     env: {
       ...process.env,
-      ...env
+      ...env,
     },
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
   let stdout = '';
@@ -148,8 +150,8 @@ test('createDatabaseClient resolves file: DATABASE_URL from WEBSTIR_WORKSPACE_RO
       env: {
         WORKSPACE_ROOT: '   ',
         WEBSTIR_WORKSPACE_ROOT: workspace,
-        DATABASE_URL: 'file:./data/env-root.sqlite'
-      }
+        DATABASE_URL: 'file:./data/env-root.sqlite',
+      },
     });
 
     await assertSameResolvedPath(result.target, path.join(workspace, 'data', 'env-root.sqlite'));
@@ -171,8 +173,8 @@ test('createDatabaseClient resolves plain relative sqlite DATABASE_URL from modu
     const result = await runConnectionProbe(workspace, {
       cwd: alternateCwd,
       env: {
-        DATABASE_URL: './data/infer.sqlite'
-      }
+        DATABASE_URL: './data/infer.sqlite',
+      },
     });
 
     await assertSameResolvedPath(result.target, path.join(workspace, 'data', 'infer.sqlite'));
@@ -195,8 +197,8 @@ test('createDatabaseClient preserves absolute sqlite paths outside the workspace
     const result = await runConnectionProbe(workspace, {
       cwd: alternateCwd,
       env: {
-        DATABASE_URL: `file:${absoluteTarget}`
-      }
+        DATABASE_URL: `file:${absoluteTarget}`,
+      },
     });
 
     await assertSameResolvedPath(result.target, absoluteTarget);

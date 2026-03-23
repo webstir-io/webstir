@@ -52,7 +52,12 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   const changes: string[] = [];
 
   await restoreScaffoldAssets(workspace.root, getRootScaffoldAssets(), changes, dryRun);
-  await restoreScaffoldAssets(workspace.root, await getModeScaffoldAssets(workspace.mode), changes, dryRun);
+  await restoreScaffoldAssets(
+    workspace.root,
+    await getModeScaffoldAssets(workspace.mode),
+    changes,
+    dryRun,
+  );
 
   if (enable.spa) {
     await restoreFeatureAssets(workspace.root, getSpaAssets(), changes, dryRun);
@@ -64,7 +69,13 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   if (enable.search) {
     await restoreFeatureAssets(workspace.root, getSearchAssets(), changes, dryRun);
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
-    await ensureAppCssImport(workspace.root, './styles/features/search.css', './styles/components/buttons.css', changes, dryRun);
+    await ensureAppCssImport(
+      workspace.root,
+      './styles/features/search.css',
+      './styles/components/buttons.css',
+      changes,
+      dryRun,
+    );
     await ensureAppImport(workspace.root, './scripts/features/search.js', changes, dryRun);
     await ensureHtmlSearchMode(workspace.root, changes, dryRun);
   }
@@ -76,7 +87,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
       './styles/features/content-nav.css',
       './styles/components/buttons.css',
       changes,
-      dryRun
+      dryRun,
     );
     await ensureAppImport(workspace.root, './scripts/features/content-nav.js', changes, dryRun);
   }
@@ -102,7 +113,7 @@ async function restoreScaffoldAssets(
   workspaceRoot: string,
   assets: readonly { sourcePath: string; targetPath: string }[],
   changes: string[],
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<void> {
   for (const asset of assets) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
@@ -123,7 +134,7 @@ async function restoreFeatureAssets(
   workspaceRoot: string,
   assets: readonly StaticFeatureAsset[],
   changes: string[],
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<void> {
   for (const asset of assets) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
@@ -143,7 +154,11 @@ async function restoreFeatureAssets(
   }
 }
 
-async function restoreBackendAssets(workspaceRoot: string, changes: string[], dryRun: boolean): Promise<void> {
+async function restoreBackendAssets(
+  workspaceRoot: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
   const assets = await getBackendScaffoldAssets();
   for (const asset of assets) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
@@ -164,7 +179,7 @@ async function ensureAppImport(
   workspaceRoot: string,
   importPath: string,
   changes: string[],
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<void> {
   const appTsPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
   if (!existsSync(appTsPath)) {
@@ -187,7 +202,7 @@ async function ensureCssLayerIncludes(
   workspaceRoot: string,
   layerName: string,
   changes: string[],
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<void> {
   const appCssPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.css');
   if (!existsSync(appCssPath)) {
@@ -211,7 +226,7 @@ async function ensureAppCssImport(
   importPath: string,
   insertAfterImportPath: string,
   changes: string[],
-  dryRun: boolean
+  dryRun: boolean,
 ): Promise<void> {
   const appCssPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.css');
   if (!existsSync(appCssPath)) {
@@ -230,7 +245,11 @@ async function ensureAppCssImport(
   changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
 }
 
-async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[], dryRun: boolean): Promise<void> {
+async function ensureHtmlSearchMode(
+  workspaceRoot: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
   const appHtmlPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.html');
   if (!existsSync(appHtmlPath)) {
     return;
@@ -243,7 +262,7 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[], dr
 
   const updated = source.replace(
     /<html\b(?![^>]*\bdata-webstir-search-styles=)/i,
-    '<html data-webstir-search-styles="css"'
+    '<html data-webstir-search-styles="css"',
   );
   if (updated === source) {
     return;
@@ -255,7 +274,11 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[], dr
   changes.push(relativeWorkspacePath(workspaceRoot, appHtmlPath));
 }
 
-async function ensureBackendTsReference(workspaceRoot: string, changes: string[], dryRun: boolean): Promise<void> {
+async function ensureBackendTsReference(
+  workspaceRoot: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
   const tsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
   if (!existsSync(tsconfigPath)) {
     return;
@@ -264,10 +287,11 @@ async function ensureBackendTsReference(workspaceRoot: string, changes: string[]
   const source = await readTextFile(tsconfigPath);
   const root = JSON.parse(source) as Record<string, unknown>;
   const references = Array.isArray(root.references) ? [...root.references] : [];
-  const exists = references.some((entry) =>
-    typeof entry === 'object'
-    && entry !== null
-    && (entry as Record<string, unknown>).path === 'src/backend'
+  const exists = references.some(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as Record<string, unknown>).path === 'src/backend',
   );
   if (exists) {
     return;
@@ -283,7 +307,11 @@ async function ensureBackendTsReference(workspaceRoot: string, changes: string[]
   changes.push(relativeWorkspacePath(workspaceRoot, tsconfigPath));
 }
 
-async function ensureGithubPagesDeployScript(workspaceRoot: string, changes: string[], dryRun: boolean): Promise<void> {
+async function ensureGithubPagesDeployScript(
+  workspaceRoot: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
   const deployScriptPath = path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh');
   if (existsSync(deployScriptPath)) {
     return;
@@ -297,7 +325,11 @@ async function ensureGithubPagesDeployScript(workspaceRoot: string, changes: str
   changes.push(relativeWorkspacePath(workspaceRoot, deployScriptPath));
 }
 
-async function ensureDeployScriptEntry(packageJsonPath: string, changes: string[], dryRun: boolean): Promise<void> {
+async function ensureDeployScriptEntry(
+  packageJsonPath: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
   const source = await readTextFile(packageJsonPath);
   const root = JSON.parse(source) as RepairPackageJson & Record<string, unknown>;
   const scripts = root.scripts && typeof root.scripts === 'object' ? { ...root.scripts } : {};
@@ -315,7 +347,11 @@ async function ensureDeployScriptEntry(packageJsonPath: string, changes: string[
   changes.push(path.basename(packageJsonPath));
 }
 
-async function ensureFrontendConfigBasePath(workspaceRoot: string, changes: string[], dryRun: boolean): Promise<void> {
+async function ensureFrontendConfigBasePath(
+  workspaceRoot: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
   const configPath = path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json');
   let root: Record<string, unknown> = {};
 
@@ -364,7 +400,10 @@ function ensureLayerIncludes(css: string, layerName: string): string {
     return css;
   }
 
-  const layers = match[1].split(',').map((layer) => layer.trim()).filter(Boolean);
+  const layers = match[1]
+    .split(',')
+    .map((layer) => layer.trim())
+    .filter(Boolean);
   if (layers.includes(layerName)) {
     return css;
   }
@@ -372,13 +411,18 @@ function ensureLayerIncludes(css: string, layerName: string): string {
   const updated = [...layers];
   const utilitiesIndex = updated.indexOf('utilities');
   const overridesIndex = updated.indexOf('overrides');
-  const insertIndex = utilitiesIndex >= 0 ? utilitiesIndex : overridesIndex >= 0 ? overridesIndex : updated.length;
+  const insertIndex =
+    utilitiesIndex >= 0 ? utilitiesIndex : overridesIndex >= 0 ? overridesIndex : updated.length;
   updated.splice(insertIndex, 0, layerName);
   const replacement = `@layer ${updated.join(', ')};`;
   return `${css.slice(0, match.index)}${replacement}${css.slice(match.index + match[0].length)}`;
 }
 
-function ensureImportIncludes(css: string, importPath: string, insertAfterImportPath: string): string {
+function ensureImportIncludes(
+  css: string,
+  importPath: string,
+  insertAfterImportPath: string,
+): string {
   if (css.includes(`@import "${importPath}"`) || css.includes(`@import '${importPath}'`)) {
     return css;
   }

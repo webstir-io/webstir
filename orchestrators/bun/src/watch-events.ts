@@ -80,16 +80,14 @@ export function collectWatchActions(payload: StructuredDiagnosticPayload): reado
   }
 
   const hotUpdate = readHotUpdatePayload(payload.data);
-  const changedFile = typeof hotUpdate?.changedFile === 'string' ? hotUpdate.changedFile : undefined;
+  const changedFile =
+    typeof hotUpdate?.changedFile === 'string' ? hotUpdate.changedFile : undefined;
   if (!hotUpdate || !changedFile) {
     return [{ type: 'status', status: 'success' }];
   }
 
   if (hotUpdate.requiresReload) {
-    return [
-      { type: 'status', status: 'hmr-fallback' },
-      { type: 'reload' },
-    ];
+    return [{ type: 'status', status: 'hmr-fallback' }, { type: 'reload' }];
   }
 
   if (hotUpdate.modules.length === 0 && hotUpdate.styles.length === 0) {
@@ -103,15 +101,19 @@ export function collectWatchActions(payload: StructuredDiagnosticPayload): reado
 }
 
 function isBuildStartDiagnostic(code: string): boolean {
-  return code === 'frontend.watch.starting' ||
+  return (
+    code === 'frontend.watch.starting' ||
     code === 'frontend.watch.reload' ||
-    code.endsWith('.build.start');
+    code.endsWith('.build.start')
+  );
 }
 
 function isBuildFailureDiagnostic(code: string): boolean {
-  return code === 'frontend.watch.unexpected' ||
+  return (
+    code === 'frontend.watch.unexpected' ||
     code === 'frontend.watch.command.failure' ||
-    code.endsWith('.build.failure');
+    code.endsWith('.build.failure')
+  );
 }
 
 function readHotUpdatePayload(data: Record<string, unknown> | undefined): HotUpdatePayload | null {
@@ -162,12 +164,14 @@ function readAssets(value: unknown): readonly HotUpdateAsset[] {
       return [];
     }
 
-    return [{
-      type: asset.type,
-      path: asset.path,
-      relativePath: asset.relativePath,
-      url: asset.url,
-    }];
+    return [
+      {
+        type: asset.type,
+        path: asset.path,
+        relativePath: asset.relativePath,
+        url: asset.url,
+      },
+    ];
   });
 }
 
@@ -209,10 +213,12 @@ function isStructuredDiagnosticPayload(value: unknown): value is StructuredDiagn
   }
 
   const payload = value as Record<string, unknown>;
-  return payload.type === 'diagnostic' &&
+  return (
+    payload.type === 'diagnostic' &&
     typeof payload.code === 'string' &&
     typeof payload.kind === 'string' &&
     typeof payload.stage === 'string' &&
     typeof payload.severity === 'string' &&
-    typeof payload.message === 'string';
+    typeof payload.message === 'string'
+  );
 }

@@ -4,7 +4,13 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
-import { collectOutput, getFreePort, removeTrackedChild, stopTrackedChildren, waitFor } from '../test-support/watch.ts';
+import {
+  collectOutput,
+  getFreePort,
+  removeTrackedChild,
+  stopTrackedChildren,
+  waitFor,
+} from '../test-support/watch.ts';
 
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
 
@@ -94,9 +100,7 @@ test('CLI watch rejects the removed --frontend-runtime flag', async () => {
   try {
     expect(await child.exited).toBe(1);
     await stderrDrain;
-    expect(stderrBuffer.text).toContain(
-      'Unknown option "--frontend-runtime=bun".'
-    );
+    expect(stderrBuffer.text).toContain('Unknown option "--frontend-runtime=bun".');
   } finally {
     child.kill('SIGTERM');
     await child.exited.catch(() => undefined);

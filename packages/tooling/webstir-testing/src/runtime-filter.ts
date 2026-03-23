@@ -26,7 +26,11 @@ export function applyRuntimeFilter(manifest: TestManifest, runtime: RuntimeFilte
   };
 }
 
-export function describeRuntimeFilter(runtime: RuntimeFilter, before: number, after: number): string | null {
+export function describeRuntimeFilter(
+  runtime: RuntimeFilter,
+  before: number,
+  after: number,
+): string | null {
   if (!runtime) {
     return null;
   }

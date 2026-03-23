@@ -18,6 +18,9 @@
     "test": "bun run --workspaces --if-present test",
     "test:with-watch-browser": "bun run test && bun run test:watch-browser",
     "test:watch-browser": "bun run --filter @webstir-io/webstir test:browser:watch",
+    "format": "biome format --write .",
+    "lint": "biome lint .",
+    "check:biome": "biome check . --linter-enabled=false --assist-enabled=false",
     "test:tools": "bun test tools/tests/*.test.mjs",
     "check:required": "bun tools/run-checks.mjs required",
     "check:with-watch-browser": "bun tools/run-checks.mjs with-watch-browser",
@@ -40,5 +43,8 @@
     "publish:full": "bun run webstir -- publish --workspace \"$PWD/examples/demos/full\"",
     "publish:auth-crud": "bun run webstir -- publish --workspace \"$PWD/examples/demos/auth-crud\"",
     "publish:dashboard": "bun run webstir -- publish --workspace \"$PWD/examples/demos/dashboard\""
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8"
   }
 }

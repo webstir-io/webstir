@@ -6,13 +6,15 @@ import { pathExists, readFile, stat } from '../utils/fs.js';
 import { resolvePageAssetUrl } from '../utils/pagePaths.js';
 
 const INLINE_THRESHOLD_BYTES = 6 * 1024;
-const csso = ((cssoModule as unknown as { default?: typeof cssoModule }).default ?? cssoModule) as typeof cssoModule;
+const csso = ((cssoModule as unknown as { default?: typeof cssoModule }).default ??
+  cssoModule) as typeof cssoModule;
 
 function minifyCriticalCss(css: string): string {
-    return csso.minify(css).css;
+  return csso.minify(css).css;
 }
 
-const APP_SHELL_CRITICAL_CSS = minifyCriticalCss(`
+const APP_SHELL_CRITICAL_CSS = minifyCriticalCss(
+  `
 @layer tokens {
     :root {
         --ws-header-control-size: 2.6rem;
@@ -83,8 +85,10 @@ const APP_SHELL_CRITICAL_CSS = minifyCriticalCss(`
         height: calc(var(--ws-header-sticky-offset) - 1px);
     }
 }
-`.trim());
-const DOCS_SHELL_CRITICAL_CSS = minifyCriticalCss(`
+`.trim(),
+);
+const DOCS_SHELL_CRITICAL_CSS = minifyCriticalCss(
+  `
 @layer overrides {
     .docs-layout {
         --ws-docs-sidebar-width: clamp(14rem, 20vw, 18rem);
@@ -130,85 +134,88 @@ const DOCS_SHELL_CRITICAL_CSS = minifyCriticalCss(`
         }
     }
 }
-`.trim());
+`.trim(),
+);
 
 export async function inlineCriticalCss(
-    document: CheerioAPI,
-    pageName: string,
-    pagesRoot: string,
-    pagesUrlPrefix: string,
-    cssFile?: string
+  document: CheerioAPI,
+  pageName: string,
+  pagesRoot: string,
+  pagesUrlPrefix: string,
+  cssFile?: string,
 ): Promise<void> {
-    if (!cssFile) {
-        return;
-    }
+  if (!cssFile) {
+    return;
+  }
 
-    const cssPath = path.join(pagesRoot, pageName, cssFile);
-    if (!(await pathExists(cssPath))) {
-        return;
-    }
+  const cssPath = path.join(pagesRoot, pageName, cssFile);
+  if (!(await pathExists(cssPath))) {
+    return;
+  }
 
-    const info = await stat(cssPath).catch(() => null);
-    if (!info || !info.isFile() || info.size > INLINE_THRESHOLD_BYTES) {
-        return;
-    }
+  const info = await stat(cssPath).catch(() => null);
+  if (!info || !info.isFile() || info.size > INLINE_THRESHOLD_BYTES) {
+    return;
+  }
 
-    const cssContent = minifyCriticalCss(await readFile(cssPath));
-    const head = document('head').first();
-    if (head.length === 0) {
-        return;
-    }
+  const cssContent = minifyCriticalCss(await readFile(cssPath));
+  const head = document('head').first();
+  if (head.length === 0) {
+    return;
+  }
 
-    const href = resolvePageAssetUrl(pagesUrlPrefix, pageName, cssFile);
-    document(`link[href="${href}"]`).remove();
+  const href = resolvePageAssetUrl(pagesUrlPrefix, pageName, cssFile);
+  document(`link[href="${href}"]`).remove();
 
-    if (cssFile.endsWith(EXTENSIONS.css)) {
-        document(`link[rel="preload"][href="${href}"]`).remove();
-    }
+  if (cssFile.endsWith(EXTENSIONS.css)) {
+    document(`link[rel="preload"][href="${href}"]`).remove();
+  }
 
-    head.append(`\n<style data-critical>\n${cssContent}\n</style>\n`);
+  head.append(`\n<style data-critical>\n${cssContent}\n</style>\n`);
 }
 
 export function ensureAppShellCriticalCss(document: CheerioAPI, appCssHref: string): void {
-    const head = document('head').first();
-    if (head.length === 0) {
-        return;
-    }
+  const head = document('head').first();
+  if (head.length === 0) {
+    return;
+  }
 
-    const existing = head.find('style[data-critical="app"]').first();
-    if (existing.length > 0) {
-        return;
-    }
+  const existing = head.find('style[data-critical="app"]').first();
+  if (existing.length > 0) {
+    return;
+  }
 
-    const stylesheet = document(`link[rel="stylesheet"][href="${appCssHref}"]`).first();
-    const styleTag = `<style data-critical="app">\n${APP_SHELL_CRITICAL_CSS}\n</style>`;
-    if (stylesheet.length > 0) {
-        stylesheet.before(styleTag);
-    } else {
-        head.append(styleTag);
-    }
+  const stylesheet = document(`link[rel="stylesheet"][href="${appCssHref}"]`).first();
+  const styleTag = `<style data-critical="app">\n${APP_SHELL_CRITICAL_CSS}\n</style>`;
+  if (stylesheet.length > 0) {
+    stylesheet.before(styleTag);
+  } else {
+    head.append(styleTag);
+  }
 }
 
 export function ensureDocsShellCriticalCss(document: CheerioAPI): void {
-    const head = document('head').first();
-    if (head.length === 0) {
-        return;
-    }
+  const head = document('head').first();
+  if (head.length === 0) {
+    return;
+  }
 
-    const existing = head.find('style[data-critical="docs"]').first();
-    if (existing.length > 0) {
-        return;
-    }
+  const existing = head.find('style[data-critical="docs"]').first();
+  if (existing.length > 0) {
+    return;
+  }
 
-    const docsStylesheet = document('link[rel="stylesheet"]').filter((_, element) => {
-        const href = document(element).attr('href');
-        return typeof href === 'string' && href.includes('/docs/');
-    }).first();
+  const docsStylesheet = document('link[rel="stylesheet"]')
+    .filter((_, element) => {
+      const href = document(element).attr('href');
+      return typeof href === 'string' && href.includes('/docs/');
+    })
+    .first();
 
-    const styleTag = `<style data-critical="docs">\n${DOCS_SHELL_CRITICAL_CSS}\n</style>`;
-    if (docsStylesheet.length > 0) {
-        docsStylesheet.before(styleTag);
-    } else {
-        head.append(styleTag);
-    }
+  const styleTag = `<style data-critical="docs">\n${DOCS_SHELL_CRITICAL_CSS}\n</style>`;
+  if (docsStylesheet.length > 0) {
+    docsStylesheet.before(styleTag);
+  } else {
+    head.append(styleTag);
+  }
 }

@@ -55,7 +55,11 @@ test('CLI watch serves the API demo, restarts after a successful rebuild, and su
 
     const sourcePath = path.join(workspace, 'src', 'backend', 'index.ts');
     const originalSource = await readFile(sourcePath, 'utf8');
-    await writeFile(sourcePath, originalSource.replace('API server running', 'API server changed'), 'utf8');
+    await writeFile(
+      sourcePath,
+      originalSource.replace('API server running', 'API server changed'),
+      'utf8',
+    );
 
     await waitFor(async () => {
       expect(await fetchText(port)).toContain('API server changed');
@@ -63,7 +67,9 @@ test('CLI watch serves the API demo, restarts after a successful rebuild, and su
 
     await writeFile(sourcePath, "import http from 'node:http';\nconst broken = ;\n", 'utf8');
     await waitFor(async () => {
-      expect(stderrBuffer.text).toContain('backend rebuild failed; keeping the current runtime process');
+      expect(stderrBuffer.text).toContain(
+        'backend rebuild failed; keeping the current runtime process',
+      );
     }, 20_000);
 
     const exitState = await Promise.race([

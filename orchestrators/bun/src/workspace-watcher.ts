@@ -30,10 +30,7 @@ export class WorkspaceWatcher {
 
   public constructor(options: WorkspaceWatcherOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
-    this.treeRoots = [
-      path.join(this.workspaceRoot, 'src'),
-      path.join(this.workspaceRoot, 'types'),
-    ];
+    this.treeRoots = [path.join(this.workspaceRoot, 'src'), path.join(this.workspaceRoot, 'types')];
     this.onEvent = options.onEvent;
     this.debounceMs = options.debounceMs ?? 75;
   }
@@ -112,7 +109,11 @@ export class WorkspaceWatcher {
     }
 
     for (const watchedDirectory of Array.from(this.treeWatchers.keys())) {
-      if (watchedDirectory !== root && watchedDirectory.startsWith(`${root}${path.sep}`) && !current.has(watchedDirectory)) {
+      if (
+        watchedDirectory !== root &&
+        watchedDirectory.startsWith(`${root}${path.sep}`) &&
+        !current.has(watchedDirectory)
+      ) {
         this.treeWatchers.get(watchedDirectory)?.close();
         this.treeWatchers.delete(watchedDirectory);
       }
@@ -234,7 +235,10 @@ async function collectDirectories(root: string): Promise<readonly string[]> {
   const stack = [path.resolve(root)];
 
   while (stack.length > 0) {
-    const current = stack.pop()!;
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
     directories.push(current);
 
     const entries = await readdir(current, { withFileTypes: true });

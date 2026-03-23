@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
+import http from 'node:http';
 import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import net from 'node:net';
@@ -41,7 +42,6 @@ async function hydrateBackendScaffold(workspace) {
   }
 }
 
-
 function getLocalBinPath() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const pkgRoot = path.resolve(here, '..');
@@ -67,7 +67,7 @@ async function linkWorkspaceNodeModules(workspace) {
     await createSymlinkIfMissing(
       path.join(source, entry.name),
       path.join(target, entry.name),
-      entry.isDirectory() ? 'dir' : 'file'
+      entry.isDirectory() ? 'dir' : 'file',
     );
   }
 
@@ -79,7 +79,7 @@ async function linkWorkspaceNodeModules(workspace) {
     await createSymlinkIfMissing(
       path.join(scopeSource, entry.name),
       path.join(scopeTarget, entry.name),
-      entry.isDirectory() ? 'dir' : 'file'
+      entry.isDirectory() ? 'dir' : 'file',
     );
   }
 
@@ -148,20 +148,28 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
             ...process.env,
             PORT: String(port),
             NODE_ENV: 'test',
-            ...extraEnv
+            ...extraEnv,
           },
-          stdio: ['ignore', 'pipe', 'pipe']
+          stdio: ['ignore', 'pipe', 'pipe'],
         })
-      : spawn('node', ['--input-type=module', '--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`], {
-          cwd: options.cwd ?? workspace,
-          env: {
-            ...process.env,
-            PORT: String(port),
-            NODE_ENV: 'test',
-            ...extraEnv
+      : spawn(
+          'node',
+          [
+            '--input-type=module',
+            '--eval',
+            `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`,
+          ],
+          {
+            cwd: options.cwd ?? workspace,
+            env: {
+              ...process.env,
+              PORT: String(port),
+              NODE_ENV: 'test',
+              ...extraEnv,
+            },
+            stdio: ['ignore', 'pipe', 'pipe'],
           },
-          stdio: ['ignore', 'pipe', 'pipe']
-        });
+        );
 
   let stdout = '';
   let stderr = '';
@@ -179,11 +187,15 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
       waitFor(async () => await canConnectToPort(port), 10000, 50),
       new Promise((_, reject) => {
         child.once('exit', (code, signal) => {
-          reject(new Error(`Backend server exited before readiness (code=${code ?? 'null'} signal=${signal ?? 'null'}).`));
+          reject(
+            new Error(
+              `Backend server exited before readiness (code=${code ?? 'null'} signal=${signal ?? 'null'}).`,
+            ),
+          );
         });
-      })
+      }),
     ]);
-  } catch (error) {
+  } catch {
     child.kill('SIGTERM');
     await onceExit(child);
     throw new Error(`Backend server did not become ready.\nstdout:\n${stdout}\nstderr:\n${stderr}`);
@@ -196,21 +208,28 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
     async stop() {
       child.kill('SIGTERM');
       await onceExit(child);
-    }
+    },
   };
 }
 
-async function buildRuntimeWorkspace(workspace, { moduleSource, useFastify = false, mode = 'publish' } = {}) {
+async function buildRuntimeWorkspace(
+  workspace,
+  { moduleSource, useFastify = false, mode = 'publish' } = {},
+) {
   await hydrateBackendScaffold(workspace);
   await linkWorkspaceNodeModules(workspace);
-  await fs.writeFile(path.join(workspace, 'package.json'), JSON.stringify({ type: 'module' }, null, 2), 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify({ type: 'module' }, null, 2),
+    'utf8',
+  );
   await fs.writeFile(path.join(workspace, 'src', 'backend', 'module.ts'), moduleSource, 'utf8');
 
   if (useFastify) {
     await fs.writeFile(
       path.join(workspace, 'src', 'backend', 'index.ts'),
       "export { start } from './server/fastify.js';\n",
-      'utf8'
+      'utf8',
     );
   }
 
@@ -219,9 +238,9 @@ async function buildRuntimeWorkspace(workspace, { moduleSource, useFastify = fal
     env: {
       WEBSTIR_MODULE_MODE: mode,
       WEBSTIR_BACKEND_TYPECHECK: 'skip',
-      PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+      PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
     },
-    incremental: false
+    incremental: false,
   });
 }
 
@@ -606,53 +625,61 @@ export const module = {
 }
 
 async function assertRequestHookRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(useFastify ? 'webstir-backend-fastify-hooks-' : 'webstir-backend-hooks-');
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-hooks-' : 'webstir-backend-hooks-',
+  );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
-    useFastify
+    useFastify,
   });
 
   const port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
-    AUTH_SERVICE_TOKENS: 'service-secret'
+    AUTH_SERVICE_TOKENS: 'service-secret',
   });
 
   try {
     const normalResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(normalResponse.status, 200);
     assert.equal(normalResponse.headers.get('x-hook-after'), '1');
     assert.deepEqual(await normalResponse.json(), {
-      trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check', 'handler', 'afterHandler'],
+      trace: [
+        'beforeAuth',
+        'beforeHandler:service-token',
+        'beforeHandler:short-check',
+        'handler',
+        'afterHandler',
+      ],
       authSource: 'service-token',
-      sessionId: 'session-from-hook'
+      sessionId: 'session-from-hook',
     });
 
     const shortCircuitResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo?short=1`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(shortCircuitResponse.status, 202);
     assert.deepEqual(await shortCircuitResponse.json(), {
       trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check'],
       authSource: 'service-token',
       sessionId: 'session-from-hook',
-      shortCircuited: true
+      shortCircuited: true,
     });
 
     const failureResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo?fail=1`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(failureResponse.status, 500);
     assert.deepEqual(await failureResponse.json(), {
       error: 'internal_error',
-      message: 'request hook failed'
+      message: 'request hook failed',
     });
   } finally {
     await server.stop();
@@ -662,7 +689,7 @@ async function assertRequestHookRuntimeBehavior({ useFastify }) {
 async function assertBunRequestHookRuntimeBehavior() {
   const workspace = await createTempWorkspace('webstir-backend-bun-hooks-');
   await buildRuntimeWorkspace(workspace, {
-    moduleSource: createRequestHookRuntimeModuleSource()
+    moduleSource: createRequestHookRuntimeModuleSource(),
   });
 
   const port = await getOpenPort();
@@ -671,60 +698,78 @@ async function assertBunRequestHookRuntimeBehavior() {
     port,
     {
       AUTH_SERVICE_TOKENS: 'service-secret',
-      WEBSTIR_BACKEND_SERVER_RUNTIME: 'bun'
+      WEBSTIR_BACKEND_SERVER_RUNTIME: 'bun',
     },
     {
-      runtime: 'bun'
-    }
+      runtime: 'bun',
+    },
   );
 
   try {
     const normalResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(normalResponse.status, 200);
     assert.equal(normalResponse.headers.get('x-hook-after'), '1');
     assert.deepEqual(await normalResponse.json(), {
-      trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check', 'handler', 'afterHandler'],
+      trace: [
+        'beforeAuth',
+        'beforeHandler:service-token',
+        'beforeHandler:short-check',
+        'handler',
+        'afterHandler',
+      ],
       authSource: 'service-token',
-      sessionId: 'session-from-hook'
+      sessionId: 'session-from-hook',
     });
 
     const shortCircuitResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo?short=1`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(shortCircuitResponse.status, 202);
     assert.deepEqual(await shortCircuitResponse.json(), {
       trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check'],
       authSource: 'service-token',
       sessionId: 'session-from-hook',
-      shortCircuited: true
+      shortCircuited: true,
     });
 
     const failureResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo?fail=1`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(failureResponse.status, 500);
     assert.deepEqual(await failureResponse.json(), {
       error: 'internal_error',
-      message: 'request hook failed'
+      message: 'request hook failed',
     });
   } finally {
     await server.stop();
   }
 }
 
-function signJwtToken(payload, secret) {
-  const encodedHeader = encodeJwtSegment({ alg: 'HS256', typ: 'JWT' });
+function signJwtToken(payload, key, options = {}) {
+  const alg = options.alg ?? 'HS256';
+  const encodedHeader = encodeJwtSegment({
+    alg,
+    typ: 'JWT',
+    ...(options.kid ? { kid: options.kid } : {}),
+  });
   const encodedPayload = encodeJwtSegment(payload);
   const signedContent = `${encodedHeader}.${encodedPayload}`;
-  const signature = crypto.createHmac('sha256', secret).update(signedContent).digest('base64url');
+  const signature =
+    alg === 'HS256'
+      ? crypto.createHmac('sha256', key).update(signedContent).digest('base64url')
+      : alg === 'RS256'
+        ? crypto.sign('RSA-SHA256', Buffer.from(signedContent), key).toString('base64url')
+        : (() => {
+            throw new Error(`Unsupported test JWT alg '${alg}'.`);
+          })();
   return `${signedContent}.${signature}`;
 }
 
@@ -732,11 +777,49 @@ function encodeJwtSegment(value) {
   return Buffer.from(JSON.stringify(value)).toString('base64url');
 }
 
+async function startJwksServer(payload) {
+  const port = await getOpenPort();
+  const server = http.createServer((req, res) => {
+    if ((req.url ?? '/') !== '/.well-known/jwks.json') {
+      res.statusCode = 404;
+      res.end('not found');
+      return;
+    }
+
+    res.statusCode = 200;
+    res.setHeader('content-type', 'application/json');
+    res.setHeader('cache-control', 'public, max-age=60');
+    res.end(JSON.stringify(payload));
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => resolve());
+  });
+
+  return {
+    url: `http://127.0.0.1:${port}/.well-known/jwks.json`,
+    async stop() {
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    },
+  };
+}
+
 async function assertJwtTimeClaimBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(useFastify ? 'webstir-backend-fastify-auth-' : 'webstir-backend-auth-');
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-auth-' : 'webstir-backend-auth-',
+  );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createAuthRuntimeModuleSource(),
-    useFastify
+    useFastify,
   });
 
   const port = await getOpenPort();
@@ -746,39 +829,48 @@ async function assertJwtTimeClaimBehavior({ useFastify }) {
   const server = await startBuiltServer(workspace, port, {
     AUTH_JWT_SECRET: secret,
     AUTH_JWT_ISSUER: issuer,
-    AUTH_JWT_AUDIENCE: audience
+    AUTH_JWT_AUDIENCE: audience,
   });
 
   try {
     const now = Math.floor(Date.now() / 1000);
-    const validToken = signJwtToken({
-      sub: 'user-123',
-      email: 'ada@example.com',
-      scope: 'profile:read',
-      roles: ['admin'],
-      iss: issuer,
-      aud: audience,
-      nbf: now - 60,
-      exp: now + 60
-    }, secret);
-    const expiredToken = signJwtToken({
-      sub: 'user-123',
-      iss: issuer,
-      aud: audience,
-      exp: now - 30
-    }, secret);
-    const notYetValidToken = signJwtToken({
-      sub: 'user-123',
-      iss: issuer,
-      aud: audience,
-      nbf: now + 60,
-      exp: now + 120
-    }, secret);
+    const validToken = signJwtToken(
+      {
+        sub: 'user-123',
+        email: 'ada@example.com',
+        scope: 'profile:read',
+        roles: ['admin'],
+        iss: issuer,
+        aud: audience,
+        nbf: now - 60,
+        exp: now + 60,
+      },
+      secret,
+    );
+    const expiredToken = signJwtToken(
+      {
+        sub: 'user-123',
+        iss: issuer,
+        aud: audience,
+        exp: now - 30,
+      },
+      secret,
+    );
+    const notYetValidToken = signJwtToken(
+      {
+        sub: 'user-123',
+        iss: issuer,
+        aud: audience,
+        nbf: now + 60,
+        exp: now + 120,
+      },
+      secret,
+    );
 
     const successResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
       headers: {
-        authorization: `Bearer ${validToken}`
-      }
+        authorization: `Bearer ${validToken}`,
+      },
     });
     assert.equal(successResponse.status, 200);
     assert.deepEqual(await successResponse.json(), {
@@ -786,18 +878,18 @@ async function assertJwtTimeClaimBehavior({ useFastify }) {
       userId: 'user-123',
       email: 'ada@example.com',
       scopes: ['profile:read'],
-      roles: ['admin']
+      roles: ['admin'],
     });
 
     for (const token of [expiredToken, notYetValidToken]) {
       const invalidResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
         headers: {
-          authorization: `Bearer ${token}`
-        }
+          authorization: `Bearer ${token}`,
+        },
       });
       assert.equal(invalidResponse.status, 401);
       assert.deepEqual(await invalidResponse.json(), {
-        error: 'unauthorized'
+        error: 'unauthorized',
       });
     }
   } finally {
@@ -805,44 +897,164 @@ async function assertJwtTimeClaimBehavior({ useFastify }) {
   }
 }
 
-async function assertRequestBodyLimitBehavior({ useFastify }) {
+async function assertJwtAsymmetricBehavior({ useFastify }) {
   const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-body-limit-' : 'webstir-backend-body-limit-'
+    useFastify ? 'webstir-backend-fastify-auth-rsa-' : 'webstir-backend-auth-rsa-',
   );
   await buildRuntimeWorkspace(workspace, {
-    moduleSource: createBodyLimitRuntimeModuleSource(),
-    useFastify
+    moduleSource: createAuthRuntimeModuleSource(),
+    useFastify,
+  });
+
+  const publicKeyPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const jwksKeyPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const issuer = 'https://issuer.example.com/';
+  const audience = 'webstir-tests';
+  const now = Math.floor(Date.now() / 1000);
+
+  const jwks = await startJwksServer({
+    keys: [
+      {
+        ...jwksKeyPair.publicKey.export({ format: 'jwk' }),
+        kid: 'jwks-key',
+        alg: 'RS256',
+        use: 'sig',
+      },
+    ],
   });
 
   const port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
-    REQUEST_BODY_MAX_BYTES: '16'
+    AUTH_JWT_PUBLIC_KEY: publicKeyPair.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
+    AUTH_JWKS_URL: jwks.url,
+    AUTH_JWT_ISSUER: issuer,
+    AUTH_JWT_AUDIENCE: audience,
+  });
+
+  try {
+    const publicKeyToken = signJwtToken(
+      {
+        sub: 'user-public-key',
+        email: 'public@example.com',
+        scope: 'profile:read',
+        roles: ['editor'],
+        iss: issuer,
+        aud: audience,
+        nbf: now - 60,
+        exp: now + 60,
+      },
+      publicKeyPair.privateKey,
+      { alg: 'RS256' },
+    );
+
+    const publicKeyResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
+      headers: {
+        authorization: `Bearer ${publicKeyToken}`,
+      },
+    });
+    assert.equal(publicKeyResponse.status, 200);
+    assert.deepEqual(await publicKeyResponse.json(), {
+      source: 'jwt',
+      userId: 'user-public-key',
+      email: 'public@example.com',
+      scopes: ['profile:read'],
+      roles: ['editor'],
+    });
+
+    const jwksToken = signJwtToken(
+      {
+        sub: 'user-jwks',
+        email: 'jwks@example.com',
+        scope: 'profile:read',
+        roles: ['viewer'],
+        iss: issuer,
+        aud: audience,
+        nbf: now - 60,
+        exp: now + 60,
+      },
+      jwksKeyPair.privateKey,
+      { alg: 'RS256', kid: 'jwks-key' },
+    );
+
+    const jwksResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
+      headers: {
+        authorization: `Bearer ${jwksToken}`,
+      },
+    });
+    assert.equal(jwksResponse.status, 200);
+    assert.deepEqual(await jwksResponse.json(), {
+      source: 'jwt',
+      userId: 'user-jwks',
+      email: 'jwks@example.com',
+      scopes: ['profile:read'],
+      roles: ['viewer'],
+    });
+
+    const invalidKidToken = signJwtToken(
+      {
+        sub: 'user-invalid',
+        iss: issuer,
+        aud: audience,
+        nbf: now - 60,
+        exp: now + 60,
+      },
+      jwksKeyPair.privateKey,
+      { alg: 'RS256', kid: 'missing-key' },
+    );
+
+    const invalidResponse = await fetch(`http://127.0.0.1:${port}/auth/whoami`, {
+      headers: {
+        authorization: `Bearer ${invalidKidToken}`,
+      },
+    });
+    assert.equal(invalidResponse.status, 401);
+    assert.deepEqual(await invalidResponse.json(), {
+      error: 'unauthorized',
+    });
+  } finally {
+    await server.stop();
+    await jwks.stop();
+  }
+}
+
+async function assertRequestBodyLimitBehavior({ useFastify }) {
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-body-limit-' : 'webstir-backend-body-limit-',
+  );
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createBodyLimitRuntimeModuleSource(),
+    useFastify,
+  });
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port, {
+    REQUEST_BODY_MAX_BYTES: '16',
   });
 
   try {
     const acceptedResponse = await fetch(`http://127.0.0.1:${port}/echo`, {
       method: 'POST',
       headers: {
-        'content-type': 'text/plain'
+        'content-type': 'text/plain',
       },
-      body: 'small'
+      body: 'small',
     });
     assert.equal(acceptedResponse.status, 200);
     assert.deepEqual(await acceptedResponse.json(), {
-      echoed: 'small'
+      echoed: 'small',
     });
 
     const oversizedResponse = await fetch(`http://127.0.0.1:${port}/echo`, {
       method: 'POST',
       headers: {
-        'content-type': 'text/plain'
+        'content-type': 'text/plain',
       },
-      body: 'payload-that-is-too-large'
+      body: 'payload-that-is-too-large',
     });
     assert.equal(oversizedResponse.status, 413);
     assert.deepEqual(await oversizedResponse.json(), {
       error: 'payload_too_large',
-      message: 'Request body exceeded 16 bytes.'
+      message: 'Request body exceeded 16 bytes.',
     });
   } finally {
     await server.stop();
@@ -850,10 +1062,12 @@ async function assertRequestBodyLimitBehavior({ useFastify }) {
 }
 
 async function assertSessionRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(useFastify ? 'webstir-backend-fastify-session-' : 'webstir-backend-session-');
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-session-' : 'webstir-backend-session-',
+  );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createSessionRuntimeModuleSource(),
-    useFastify
+    useFastify,
   });
 
   const port = await getOpenPort();
@@ -863,10 +1077,10 @@ async function assertSessionRuntimeBehavior({ useFastify }) {
     const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
       method: 'POST',
       headers: {
-        'content-type': 'application/x-www-form-urlencoded'
+        'content-type': 'application/x-www-form-urlencoded',
       },
       body: 'email=ada%40example.com',
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(loginResponse.status, 303);
     assert.equal(loginResponse.headers.get('location'), '/session/account');
@@ -876,60 +1090,68 @@ async function assertSessionRuntimeBehavior({ useFastify }) {
 
     const accountResponse = await fetch(`http://127.0.0.1:${port}/session/account`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
     assert.equal(accountResponse.status, 200);
     assert.equal(accountResponse.headers.get('content-type'), 'text/html; charset=utf-8');
     assert.equal(
       await accountResponse.text(),
-      '<main data-user="ada@example.com" data-flash="signed-in:success">ada@example.com</main>'
+      '<main data-user="ada@example.com" data-flash="signed-in:success">ada@example.com</main>',
     );
 
     const secondAccountResponse = await fetch(`http://127.0.0.1:${port}/session/account`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
-    assert.equal(await secondAccountResponse.text(), '<main data-user="ada@example.com" data-flash="">ada@example.com</main>');
+    assert.equal(
+      await secondAccountResponse.text(),
+      '<main data-user="ada@example.com" data-flash="">ada@example.com</main>',
+    );
 
     const logoutResponse = await fetch(`http://127.0.0.1:${port}/session/logout`, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
-        cookie: cookieHeader
+        cookie: cookieHeader,
       },
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(logoutResponse.status, 303);
     assert.match(String(logoutResponse.headers.get('set-cookie')), /Max-Age=0/);
 
     const postLogoutAccountResponse = await fetch(`http://127.0.0.1:${port}/session/account`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
-    assert.equal(await postLogoutAccountResponse.text(), '<main data-user="guest" data-flash="">guest</main>');
+    assert.equal(
+      await postLogoutAccountResponse.text(),
+      '<main data-user="guest" data-flash="">guest</main>',
+    );
   } finally {
     await server.stop();
   }
 }
 
 async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(useFastify ? 'webstir-backend-fastify-forms-' : 'webstir-backend-forms-');
+  const workspace = await createTempWorkspace(
+    useFastify ? 'webstir-backend-fastify-forms-' : 'webstir-backend-forms-',
+  );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createFormWorkflowModuleSource(),
-    useFastify
+    useFastify,
   });
 
   const port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
-    AUTH_SERVICE_TOKENS: 'service-secret'
+    AUTH_SERVICE_TOKENS: 'service-secret',
   });
 
   try {
     const initialPageResponse = await fetch(`http://127.0.0.1:${port}/account/settings`, {
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(initialPageResponse.status, 200);
     const cookieHeader = extractCookieHeader(initialPageResponse.headers.get('set-cookie'));
@@ -943,21 +1165,24 @@ async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
-        cookie: cookieHeader
+        cookie: cookieHeader,
       },
       body: `_csrf=${encodeURIComponent(initialCsrfToken)}&email=ada%40example.com`,
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(authFailureResponse.status, 303);
     assert.equal(authFailureResponse.headers.get('location'), '/account/settings');
 
     const authFailurePage = await fetch(`http://127.0.0.1:${port}/account/settings`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
     const authFailureHtml = await authFailurePage.text();
-    assert.match(authFailureHtml, /data-form-errors="Sign-in required to update account settings\."/);
+    assert.match(
+      authFailureHtml,
+      /data-form-errors="Sign-in required to update account settings\."/,
+    );
     assert.match(authFailureHtml, /value="ada@example\.com"/);
     const validationCsrfToken = extractHiddenInputValue(authFailureHtml, '_csrf');
 
@@ -966,18 +1191,18 @@ async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
+        'x-service-token': 'service-secret',
       },
       body: `_csrf=${encodeURIComponent(validationCsrfToken)}&email=invalid-email`,
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(validationFailureResponse.status, 303);
     assert.equal(validationFailureResponse.headers.get('location'), '/account/settings');
 
     const validationFailurePage = await fetch(`http://127.0.0.1:${port}/account/settings`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
     const validationFailureHtml = await validationFailurePage.text();
     assert.match(validationFailureHtml, /data-field-errors="Enter a valid email address\."/);
@@ -989,39 +1214,42 @@ async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
+        'x-service-token': 'service-secret',
       },
       body: `_csrf=wrong-token&email=ada%40example.com`,
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(csrfFailureResponse.status, 303);
     assert.equal(csrfFailureResponse.headers.get('location'), '/account/settings');
 
     const csrfFailurePage = await fetch(`http://127.0.0.1:${port}/account/settings`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
     const csrfFailureHtml = await csrfFailurePage.text();
-    assert.match(csrfFailureHtml, /data-form-errors="Form session expired\. Reload the page and try again\."/);
+    assert.match(
+      csrfFailureHtml,
+      /data-form-errors="Form session expired\. Reload the page and try again\."/,
+    );
 
     const successResponse = await fetch(`http://127.0.0.1:${port}/account/settings`, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
+        'x-service-token': 'service-secret',
       },
       body: `_csrf=${encodeURIComponent(successCsrfToken)}&email=ada%40example.com`,
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(successResponse.status, 303);
     assert.equal(successResponse.headers.get('location'), '/account/settings');
 
     const successPage = await fetch(`http://127.0.0.1:${port}/account/settings`, {
       headers: {
-        cookie: cookieHeader
-      }
+        cookie: cookieHeader,
+      },
     });
     const successHtml = await successPage.text();
     assert.match(successHtml, /data-user="ada@example\.com"/);
@@ -1092,11 +1320,11 @@ export const module = {
 
 async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
   const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-views-' : 'webstir-backend-views-'
+    useFastify ? 'webstir-backend-fastify-views-' : 'webstir-backend-views-',
   );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createViewRuntimeModuleSource(),
-    useFastify
+    useFastify,
   });
   await writeFrontendDocument(
     workspace,
@@ -1106,23 +1334,23 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
       '<html lang="en">',
       '<head><title>Account shell</title></head>',
       '<body><main><h1>Account shell</h1></main></body>',
-      '</html>'
-    ].join('\n')
+      '</html>',
+    ].join('\n'),
   );
 
   const port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
-    AUTH_SERVICE_TOKENS: 'service-secret'
+    AUTH_SERVICE_TOKENS: 'service-secret',
   });
 
   try {
     const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
       method: 'POST',
       headers: {
-        'content-type': 'application/x-www-form-urlencoded'
+        'content-type': 'application/x-www-form-urlencoded',
       },
       body: 'email=viewer%40example.com',
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(loginResponse.status, 303);
     assert.equal(loginResponse.headers.get('location'), '/accounts/demo');
@@ -1133,8 +1361,8 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
     const accountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
       headers: {
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(accountResponse.status, 200);
     assert.equal(accountResponse.headers.get('cache-control'), 'no-store');
@@ -1154,7 +1382,7 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
         name: 'AccountView',
         path: '/accounts/:id',
         pathname: '/accounts/demo',
-        params: { id: 'demo' }
+        params: { id: 'demo' },
       },
       data: {
         accountId: 'demo',
@@ -1162,16 +1390,16 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
         sessionUser: 'viewer@example.com',
         requestId,
         pathname: '/accounts/demo',
-        host: `127.0.0.1:${port}`
+        host: `127.0.0.1:${port}`,
       },
-      requestId
+      requestId,
     });
 
     const cachedAccountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
       headers: {
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(cachedAccountResponse.status, 200);
     assert.equal(cachedAccountResponse.headers.get('x-webstir-document-cache'), 'hit');
@@ -1186,15 +1414,15 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
         '<html lang="en">',
         '<head><title>Account shell refreshed</title></head>',
         '<body><main><h1>Account shell refreshed</h1><p>Updated shell</p></main></body>',
-        '</html>'
-      ].join('\n')
+        '</html>',
+      ].join('\n'),
     );
 
     const refreshedAccountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
       headers: {
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(refreshedAccountResponse.status, 200);
     assert.equal(refreshedAccountResponse.headers.get('x-webstir-document-cache'), 'stale');
@@ -1205,8 +1433,8 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
     const warmAccountResponse = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
       headers: {
         cookie: cookieHeader,
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
     assert.equal(warmAccountResponse.status, 200);
     assert.equal(warmAccountResponse.headers.get('x-webstir-document-cache'), 'hit');
@@ -1215,7 +1443,7 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
     assert.equal(missingResponse.status, 404);
     assert.deepEqual(await missingResponse.json(), {
       error: 'not_found',
-      path: '/missing-page'
+      path: '/missing-page',
     });
   } finally {
     await server.stop();
@@ -1224,11 +1452,11 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
 
 async function assertRequestTimeViewWorkspaceRootBehavior({ useFastify }) {
   const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-view-root-' : 'webstir-backend-view-root-'
+    useFastify ? 'webstir-backend-fastify-view-root-' : 'webstir-backend-view-root-',
   );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createViewRuntimeModuleSource(),
-    useFastify
+    useFastify,
   });
   await writePublishedFrontendAliasDocument(
     workspace,
@@ -1238,8 +1466,8 @@ async function assertRequestTimeViewWorkspaceRootBehavior({ useFastify }) {
       '<html lang="en">',
       '<head><title>Published account shell</title></head>',
       '<body><main><h1>Published account shell</h1></main></body>',
-      '</html>'
-    ].join('\n')
+      '</html>',
+    ].join('\n'),
   );
 
   const port = await getOpenPort();
@@ -1249,18 +1477,18 @@ async function assertRequestTimeViewWorkspaceRootBehavior({ useFastify }) {
     port,
     {
       AUTH_SERVICE_TOKENS: 'service-secret',
-      WORKSPACE_ROOT: workspace
+      WORKSPACE_ROOT: workspace,
     },
     {
-      cwd: alternateCwd
-    }
+      cwd: alternateCwd,
+    },
   );
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
       headers: {
-        'x-service-token': 'service-secret'
-      }
+        'x-service-token': 'service-secret',
+      },
     });
 
     assert.equal(response.status, 200);
@@ -1394,11 +1622,11 @@ export const module = {
 
 async function assertFragmentRuntimeBehavior({ useFastify }) {
   const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-fragments-' : 'webstir-backend-fragments-'
+    useFastify ? 'webstir-backend-fastify-fragments-' : 'webstir-backend-fragments-',
   );
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createFragmentRuntimeModuleSource(),
-    useFastify
+    useFastify,
   });
 
   const port = await getOpenPort();
@@ -1408,10 +1636,10 @@ async function assertFragmentRuntimeBehavior({ useFastify }) {
     const redirectResponse = await fetch(`http://127.0.0.1:${port}/actions/redirect`, {
       method: 'POST',
       headers: {
-        'content-type': 'application/x-www-form-urlencoded'
+        'content-type': 'application/x-www-form-urlencoded',
       },
       body: 'name=Webstir',
-      redirect: 'manual'
+      redirect: 'manual',
     });
     assert.equal(redirectResponse.status, 303);
     assert.equal(redirectResponse.headers.get('location'), '/done?name=Webstir');
@@ -1419,9 +1647,9 @@ async function assertFragmentRuntimeBehavior({ useFastify }) {
     const fragmentResponse = await fetch(`http://127.0.0.1:${port}/actions/fragment`, {
       method: 'POST',
       headers: {
-        'content-type': 'application/x-www-form-urlencoded'
+        'content-type': 'application/x-www-form-urlencoded',
       },
-      body: 'name=Webstir'
+      body: 'name=Webstir',
     });
     assert.equal(fragmentResponse.status, 200);
     assert.equal(fragmentResponse.headers.get('cache-control'), 'no-store');
@@ -1435,14 +1663,14 @@ async function assertFragmentRuntimeBehavior({ useFastify }) {
       '/actions/fragment-missing-target',
       '/actions/fragment-invalid-mode',
       '/actions/fragment-invalid-selector',
-      '/actions/fragment-missing-body'
+      '/actions/fragment-missing-body',
     ]) {
       const invalidResponse = await fetch(`http://127.0.0.1:${port}${pathname}`, {
         method: 'POST',
         headers: {
-          'content-type': 'application/x-www-form-urlencoded'
+          'content-type': 'application/x-www-form-urlencoded',
         },
-        body: 'name=Webstir'
+        body: 'name=Webstir',
       });
       assert.equal(invalidResponse.status, 500);
       assert.equal(invalidResponse.headers.get('x-webstir-fragment-target'), null);
@@ -1459,9 +1687,9 @@ async function assertFragmentRuntimeBehavior({ useFastify }) {
                   ? ['mode']
                   : pathname === '/actions/fragment-invalid-selector'
                     ? ['selector']
-                  : ['body']
-          }
-        ]
+                    : ['body'],
+          },
+        ],
       });
     }
   } finally {
@@ -1473,7 +1701,7 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
   const workspace = await createTempWorkspace('webstir-backend-hook-helper-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
-    mode: 'build'
+    mode: 'build',
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'request-hooks.mjs');
@@ -1483,7 +1711,7 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
     format: 'esm',
     platform: 'node',
     outfile: helperBuildPath,
-    logLevel: 'silent'
+    logLevel: 'silent',
   });
   const helperUrl = pathToFileURL(helperBuildPath).href;
   const { executeRequestHookPhase, resolveRequestHooks } = await import(helperUrl);
@@ -1491,7 +1719,7 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
   const context = {
     trace: [],
     auth: undefined,
-    session: null
+    session: null,
   };
   const route = { name: 'hookRoute', path: '/hooks/demo' };
   const resolved = resolveRequestHooks({
@@ -1501,7 +1729,7 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
       { id: 'session', phase: 'beforeAuth', order: 10 },
       { id: 'short', phase: 'beforeHandler', order: 20 },
       { id: 'auth', phase: 'beforeHandler', order: 10 },
-      { id: 'after', phase: 'afterHandler', order: 10 }
+      { id: 'after', phase: 'afterHandler', order: 10 },
     ],
     registrations: [
       {
@@ -1509,14 +1737,14 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
         handler: async (ctx) => {
           ctx.trace.push('beforeAuth');
           ctx.session = { id: 'session-from-hook' };
-        }
+        },
       },
       {
         id: 'auth',
         handler: async (ctx) => {
           ctx.auth = { source: 'service-token' };
           ctx.trace.push(`beforeHandler:${ctx.auth.source}`);
-        }
+        },
       },
       {
         id: 'short',
@@ -1529,11 +1757,11 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
                   trace: [...ctx.trace],
                   authSource: ctx.auth?.source ?? null,
                   sessionId: ctx.session?.id ?? null,
-                  shortCircuited: true
-                }
+                  shortCircuited: true,
+                },
               }
             : undefined;
-        }
+        },
       },
       {
         id: 'after',
@@ -1541,35 +1769,35 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
           ...input.result,
           headers: {
             ...(input.result?.headers ?? {}),
-            'x-hook-after': '1'
+            'x-hook-after': '1',
           },
           body: {
             ...(input.result?.body ?? {}),
             trace: [...(input.result?.body?.trace ?? []), 'afterHandler'],
             authSource: input.result?.body?.authSource ?? ctx.auth?.source ?? null,
-            sessionId: input.result?.body?.sessionId ?? ctx.session?.id ?? null
-          }
-        })
-      }
-    ]
+            sessionId: input.result?.body?.sessionId ?? ctx.session?.id ?? null,
+          },
+        }),
+      },
+    ],
   });
 
   assert.deepEqual(
     resolved.hooks.map((hook) => `${hook.phase}:${hook.id}`),
-    ['beforeAuth:session', 'beforeHandler:auth', 'beforeHandler:short', 'afterHandler:after']
+    ['beforeAuth:session', 'beforeHandler:auth', 'beforeHandler:short', 'afterHandler:after'],
   );
 
   await executeRequestHookPhase({
     hooks: resolved.hooks,
     phase: 'beforeAuth',
     context,
-    route
+    route,
   });
   const beforeHandler = await executeRequestHookPhase({
     hooks: resolved.hooks,
     phase: 'beforeHandler',
     context,
-    route
+    route,
   });
 
   assert.equal(beforeHandler.shortCircuited, false);
@@ -1584,40 +1812,46 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
       body: {
         trace: [...context.trace, 'handler'],
         authSource: context.auth?.source ?? null,
-        sessionId: context.session?.id ?? null
-      }
-    }
+        sessionId: context.session?.id ?? null,
+      },
+    },
   });
 
   assert.deepEqual(afterHandler.result, {
     status: 200,
     headers: {
-      'x-hook-after': '1'
+      'x-hook-after': '1',
     },
     body: {
-      trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check', 'handler', 'afterHandler'],
+      trace: [
+        'beforeAuth',
+        'beforeHandler:service-token',
+        'beforeHandler:short-check',
+        'handler',
+        'afterHandler',
+      ],
       authSource: 'service-token',
-      sessionId: 'session-from-hook'
-    }
+      sessionId: 'session-from-hook',
+    },
   });
 
   const shortContext = {
     trace: [],
     auth: undefined,
     session: null,
-    shortCircuit: true
+    shortCircuit: true,
   };
   await executeRequestHookPhase({
     hooks: resolved.hooks,
     phase: 'beforeAuth',
     context: shortContext,
-    route
+    route,
   });
   const shortCircuitResult = await executeRequestHookPhase({
     hooks: resolved.hooks,
     phase: 'beforeHandler',
     context: shortContext,
-    route
+    route,
   });
 
   assert.equal(shortCircuitResult.shortCircuited, true);
@@ -1627,8 +1861,8 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
       trace: ['beforeAuth', 'beforeHandler:service-token', 'beforeHandler:short-check'],
       authSource: 'service-token',
       sessionId: 'session-from-hook',
-      shortCircuited: true
-    }
+      shortCircuited: true,
+    },
   });
 });
 
@@ -1636,7 +1870,7 @@ test('node-http scaffold helper loads module runtime and preserves response sema
   const workspace = await createTempWorkspace('webstir-backend-node-http-helper-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
-    mode: 'build'
+    mode: 'build',
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'node-http.mjs');
@@ -1646,7 +1880,7 @@ test('node-http scaffold helper loads module runtime and preserves response sema
     format: 'esm',
     platform: 'node',
     outfile: helperBuildPath,
-    logLevel: 'silent'
+    logLevel: 'silent',
   });
   const helperUrl = pathToFileURL(helperBuildPath).href;
   const {
@@ -1654,25 +1888,25 @@ test('node-http scaffold helper loads module runtime and preserves response sema
     loadModuleRuntime,
     matchRoute,
     normalizeRouteHandlerResult,
-    summarizeManifest
+    summarizeManifest,
   } = await import(helperUrl);
 
   const runtime = await loadModuleRuntime({
-    importMetaUrl: pathToFileURL(path.join(workspace, 'build', 'backend', 'index.js')).href
+    importMetaUrl: pathToFileURL(path.join(workspace, 'build', 'backend', 'index.js')).href,
   });
 
   assert.equal(runtime.source, 'module.js');
   assert.deepEqual(runtime.warnings, []);
   assert.deepEqual(
     runtime.routes.map((route) => `${route.method} ${route.definition?.path ?? ''}`),
-    ['GET /hooks/demo']
+    ['GET /hooks/demo'],
   );
   assert.deepEqual(summarizeManifest(runtime.manifest), {
     name: '@demo/runtime-hooks',
     version: '0.1.0',
     routes: 1,
     views: 0,
-    capabilities: ['http', 'auth']
+    capabilities: ['http', 'auth'],
   });
 
   const matched = matchRoute(runtime.routes, 'get', '/hooks/demo');
@@ -1691,16 +1925,16 @@ test('node-http scaffold helper loads module runtime and preserves response sema
     status: 200,
     fragment: {
       target: ' ',
-      body: '<main>bad</main>'
-    }
+      body: '<main>bad</main>',
+    },
   });
   assert.equal(invalidFragmentResult.status, 500);
   assert.deepEqual(invalidFragmentResult.errors, [
     {
       code: 'invalid_fragment_response',
       message: 'Fragment responses require a non-empty target, supported mode, and body.',
-      details: ['target']
-    }
+      details: ['target'],
+    },
   ]);
 });
 
@@ -1708,7 +1942,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   const workspace = await createTempWorkspace('webstir-backend-session-helper-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createSessionRuntimeModuleSource(),
-    mode: 'build'
+    mode: 'build',
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'session.mjs');
@@ -1718,7 +1952,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
     format: 'esm',
     platform: 'node',
     outfile: helperBuildPath,
-    logLevel: 'silent'
+    logLevel: 'silent',
   });
   const helperUrl = pathToFileURL(helperBuildPath).href;
   const { prepareSessionState, resetInMemorySessionStore } = await import(helperUrl);
@@ -1728,25 +1962,25 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
     secret: 'test-session-secret',
     cookieName: 'webstir_session',
     secure: false,
-    maxAgeSeconds: 60
+    maxAgeSeconds: 60,
   };
   const loginRoute = {
     form: {
       session: { write: true },
       flash: {
-        publish: [{ key: 'signed-in', level: 'success', when: 'success' }]
-      }
-    }
+        publish: [{ key: 'signed-in', level: 'success', when: 'success' }],
+      },
+    },
   };
   const accountRoute = {
     session: { mode: 'optional' },
-    flash: { consume: ['signed-in'] }
+    flash: { consume: ['signed-in'] },
   };
 
   const created = prepareSessionState({
     cookies: '',
     route: loginRoute,
-    config
+    config,
   });
   assert.equal(created.session, null);
   assert.deepEqual(created.flash, []);
@@ -1754,13 +1988,13 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   const createdCommit = created.commit({
     session: {
       userId: 'ada@example.com',
-      data: { email: 'ada@example.com' }
+      data: { email: 'ada@example.com' },
     },
     route: loginRoute,
     result: {
       status: 303,
-      redirect: { location: '/session/account' }
-    }
+      redirect: { location: '/session/account' },
+    },
   });
   const cookieHeader = extractCookieHeader(createdCommit.setCookie);
   assert.match(cookieHeader, /^webstir_session=/);
@@ -1768,27 +2002,27 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   const firstRead = prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
-    config
+    config,
   });
   assert.equal(firstRead.session.userId, 'ada@example.com');
   assert.deepEqual(
     firstRead.flash.map((message) => ({ key: message.key, level: message.level })),
-    [{ key: 'signed-in', level: 'success' }]
+    [{ key: 'signed-in', level: 'success' }],
   );
   const firstReadCommit = firstRead.commit({
     session: firstRead.session,
     route: accountRoute,
     result: {
       status: 200,
-      body: '<main>ok</main>'
-    }
+      body: '<main>ok</main>',
+    },
   });
   assert.equal(firstReadCommit.setCookie, undefined);
 
   const secondRead = prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
-    config
+    config,
   });
   assert.equal(secondRead.session.userId, 'ada@example.com');
   assert.deepEqual(secondRead.flash, []);
@@ -1798,15 +2032,15 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
     route: accountRoute,
     result: {
       status: 303,
-      redirect: { location: '/signed-out' }
-    }
+      redirect: { location: '/signed-out' },
+    },
   });
   assert.match(String(invalidated.setCookie), /Max-Age=0/);
 
   const afterInvalidation = prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
-    config
+    config,
   });
   assert.equal(afterInvalidation.session, null);
   assert.deepEqual(afterInvalidation.flash, []);
@@ -1816,7 +2050,7 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
   const workspace = await createTempWorkspace('webstir-backend-form-helper-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createFormWorkflowModuleSource(),
-    mode: 'build'
+    mode: 'build',
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'forms.mjs');
@@ -1826,25 +2060,27 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
     format: 'esm',
     platform: 'node',
     outfile: helperBuildPath,
-    logLevel: 'silent'
+    logLevel: 'silent',
   });
   const helperUrl = pathToFileURL(helperBuildPath).href;
-  const { groupFormIssuesByField, prepareFormState, processFormSubmission } = await import(helperUrl);
+  const { groupFormIssuesByField, prepareFormState, processFormSubmission } = await import(
+    helperUrl
+  );
 
   const pageRoute = {
-    path: '/account/settings'
+    path: '/account/settings',
   };
   const submitRoute = {
     path: '/account/settings',
     form: {
-      csrf: true
-    }
+      csrf: true,
+    },
   };
 
   const initialPage = prepareFormState({
     session: null,
     formId: 'account-settings',
-    route: submitRoute
+    route: submitRoute,
   });
   assert.match(String(initialPage.csrfToken), /^[a-f0-9-]+$/i);
   assert.deepEqual(initialPage.values, {});
@@ -1854,7 +2090,7 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
     session: initialPage.session,
     body: {
       _csrf: initialPage.csrfToken,
-      email: 'ada@example.com'
+      email: 'ada@example.com',
     },
     auth: undefined,
     formId: 'account-settings',
@@ -1862,25 +2098,25 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
     redirectTo: pageRoute.path,
     requireAuth: {
       redirectTo: pageRoute.path,
-      message: 'Sign-in required to update account settings.'
-    }
+      message: 'Sign-in required to update account settings.',
+    },
   });
   assert.equal(authFailure.ok, false);
   assert.deepEqual(authFailure.result, {
     status: 303,
     redirect: {
-      location: '/account/settings'
-    }
+      location: '/account/settings',
+    },
   });
 
   const authFailurePage = prepareFormState({
     session: authFailure.session,
     formId: 'account-settings',
-    route: submitRoute
+    route: submitRoute,
   });
   assert.deepEqual(groupFormIssuesByField(authFailurePage.issues), {
     form: ['Sign-in required to update account settings.'],
-    fields: {}
+    fields: {},
   });
   assert.equal(authFailurePage.values.email, 'ada@example.com');
 
@@ -1888,7 +2124,7 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
     session: authFailurePage.session,
     body: {
       _csrf: authFailurePage.csrfToken,
-      email: 'invalid-email'
+      email: 'invalid-email',
     },
     auth: { source: 'service-token' },
     formId: 'account-settings',
@@ -1898,20 +2134,20 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
       return typeof values.email === 'string' && values.email.includes('@')
         ? []
         : [{ field: 'email', message: 'Enter a valid email address.' }];
-    }
+    },
   });
   assert.equal(validationFailure.ok, false);
 
   const validationFailurePage = prepareFormState({
     session: validationFailure.session,
     formId: 'account-settings',
-    route: submitRoute
+    route: submitRoute,
   });
   assert.deepEqual(groupFormIssuesByField(validationFailurePage.issues), {
     form: [],
     fields: {
-      email: ['Enter a valid email address.']
-    }
+      email: ['Enter a valid email address.'],
+    },
   });
   assert.equal(validationFailurePage.values.email, 'invalid-email');
 
@@ -1919,30 +2155,30 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
     session: validationFailurePage.session,
     body: {
       _csrf: 'wrong-token',
-      email: 'ada@example.com'
+      email: 'ada@example.com',
     },
     auth: { source: 'service-token' },
     formId: 'account-settings',
     route: submitRoute,
-    redirectTo: pageRoute.path
+    redirectTo: pageRoute.path,
   });
   assert.equal(csrfFailure.ok, false);
 
   const csrfFailurePage = prepareFormState({
     session: csrfFailure.session,
     formId: 'account-settings',
-    route: submitRoute
+    route: submitRoute,
   });
   assert.deepEqual(groupFormIssuesByField(csrfFailurePage.issues), {
     form: ['Form session expired. Reload the page and try again.'],
-    fields: {}
+    fields: {},
   });
 
   const success = processFormSubmission({
     session: csrfFailurePage.session,
     body: {
       _csrf: csrfFailurePage.csrfToken,
-      email: 'ada@example.com'
+      email: 'ada@example.com',
     },
     auth: { source: 'service-token' },
     formId: 'account-settings',
@@ -1952,7 +2188,7 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
       return typeof values.email === 'string' && values.email.includes('@')
         ? []
         : [{ field: 'email', message: 'Enter a valid email address.' }];
-    }
+    },
   });
   assert.equal(success.ok, true);
   assert.equal(success.values.email, 'ada@example.com');
@@ -1960,7 +2196,7 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
   const successPage = prepareFormState({
     session: success.session,
     formId: 'account-settings',
-    route: submitRoute
+    route: submitRoute,
   });
   assert.deepEqual(successPage.issues, []);
   assert.deepEqual(successPage.values, {});
@@ -1970,31 +2206,79 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   const defaultWorkspace = await createTempWorkspace('webstir-backend-default-hooks-build-');
   await buildRuntimeWorkspace(defaultWorkspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
-    mode: 'build'
+    mode: 'build',
   });
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'fastify.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'forms.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'views.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'server', 'bun.ts')), true);
-  assert.equal(fssync.existsSync(path.join(defaultWorkspace, 'build', 'backend', 'index.js')), true);
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'fastify.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'forms.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'session.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'views.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'server', 'bun.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(defaultWorkspace, 'build', 'backend', 'index.js')),
+    true,
+  );
 
   const fastifyWorkspace = await createTempWorkspace('webstir-backend-fastify-hooks-build-');
   await buildRuntimeWorkspace(fastifyWorkspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
     useFastify: true,
-    mode: 'build'
+    mode: 'build',
   });
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'fastify.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'forms.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'session.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'views.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'server', 'bun.ts')), true);
-  assert.equal(fssync.existsSync(path.join(fastifyWorkspace, 'build', 'backend', 'index.js')), true);
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'fastify.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'forms.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'session.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'views.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'server', 'bun.ts')),
+    true,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(fastifyWorkspace, 'build', 'backend', 'index.js')),
+    true,
+  );
 });
 
 function extractCookieHeader(setCookie) {
@@ -2009,7 +2293,10 @@ function extractHiddenInputValue(html, name) {
 }
 
 function extractViewState(html) {
-  const match = /<script type="application\/json" id="webstir-view-state">([\s\S]*?)<\/script>/i.exec(String(html));
+  const match =
+    /<script type="application\/json" id="webstir-view-state">([\s\S]*?)<\/script>/i.exec(
+      String(html),
+    );
   assert.ok(match, 'Expected request-time view payload to be injected.');
   return JSON.parse(match[1]);
 }
@@ -2075,7 +2362,7 @@ test('build mode resolves WORKSPACE_ROOT from env overrides outside the workspac
   await fs.writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify({ name: '@demo/env-root-build', version: '7.8.9', type: 'module' }, null, 2),
-    'utf8'
+    'utf8',
   );
 
   const bin = getLocalBinPath();
@@ -2090,14 +2377,17 @@ test('build mode resolves WORKSPACE_ROOT from env overrides outside the workspac
         WORKSPACE_ROOT: workspace,
         PATH: `${bin}${path.delimiter}${process.env.PATH ?? ''}`,
       },
-      incremental: false
+      incremental: false,
     });
 
     assert.equal(result.manifest.module?.name, '@demo/env-root-build');
     assert.equal(result.manifest.module?.version, '7.8.9');
     assert.equal(fssync.existsSync(path.join(workspace, 'build', 'backend', 'index.js')), true);
     assert.equal(fssync.existsSync(path.join(workspace, '.webstir', 'backend-outputs.json')), true);
-    assert.equal(fssync.existsSync(path.join(workspace, '.webstir', 'backend-manifest-digest.json')), true);
+    assert.equal(
+      fssync.existsSync(path.join(workspace, '.webstir', 'backend-manifest-digest.json')),
+      true,
+    );
   } finally {
     process.chdir(previousCwd);
   }
@@ -2141,8 +2431,10 @@ test('publish mode emits sourcemaps when opt-in flag is set', async () => {
   const mapFile = path.join(buildRoot, 'index.js.map');
   assert.equal(fssync.existsSync(mapFile), true, 'expected build/backend/index.js.map to exist');
   assert.ok(
-    result.artifacts.some((artifact) => artifact.path.endsWith('index.js.map') && artifact.type === 'asset'),
-    'expected index.js.map to be included as an asset artifact'
+    result.artifacts.some(
+      (artifact) => artifact.path.endsWith('index.js.map') && artifact.type === 'asset',
+    ),
+    'expected index.js.map to be included as an asset artifact',
   );
 });
 
@@ -2207,6 +2499,24 @@ test('fastify backend scaffold enforces jwt exp and nbf claims', async (t) => {
   }
 
   await assertJwtTimeClaimBehavior({ useFastify: true });
+});
+
+test('built backend server accepts rsa public-key and jwks bearer tokens', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertJwtAsymmetricBehavior({ useFastify: false });
+});
+
+test('fastify backend scaffold accepts rsa public-key and jwks bearer tokens', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertJwtAsymmetricBehavior({ useFastify: true });
 });
 
 test('built backend server resolves session state and flash transport', async (t) => {

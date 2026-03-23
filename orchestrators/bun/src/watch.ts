@@ -63,6 +63,6 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
 
 function throwUnsupportedWatchMode(workspace: WorkspaceDescriptor): never {
   throw new Error(
-    `Watch currently supports spa, ssg, api, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`
+    `Watch currently supports spa, ssg, api, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`,
   );
 }

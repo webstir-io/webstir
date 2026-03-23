@@ -30,8 +30,17 @@ async function runCli(args: readonly string[]): Promise<{
   };
 }
 
-async function readJson(filePath: string): Promise<any> {
-  return JSON.parse(await readFile(filePath, 'utf8'));
+type BackendWorkspacePackageJson = {
+  webstir: {
+    moduleManifest: {
+      routes: unknown;
+      jobs: unknown;
+    };
+  };
+};
+
+async function readJson(filePath: string): Promise<BackendWorkspacePackageJson> {
+  return JSON.parse(await readFile(filePath, 'utf8')) as BackendWorkspacePackageJson;
 }
 
 test('CLI add-route writes backend route manifest metadata end to end', async () => {
@@ -117,7 +126,11 @@ test('CLI add-job scaffolds a backend job end to end', async () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toContain('[webstir] add-job complete');
-    expect(existsSync(path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'jobs', 'nightly', 'index.ts'))).toBe(true);
+    expect(
+      existsSync(
+        path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'jobs', 'nightly', 'index.ts'),
+      ),
+    ).toBe(true);
 
     const packageJson = await readJson(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
     expect(packageJson.webstir.moduleManifest.jobs).toEqual([

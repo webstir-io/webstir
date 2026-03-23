@@ -3,10 +3,12 @@ import { describe, expect, test } from 'bun:test';
 import { buildCheckPlan } from '../run-checks.mjs';
 
 describe('buildCheckPlan', () => {
-  test('required gate stays deterministic and excludes watch browser coverage', () => {
+  test('required gate stays deterministic and adds testing smoke coverage', () => {
     const plan = buildCheckPlan('required');
 
     expect(plan.map((step) => step.label)).toEqual([
+      'repo biome check',
+      'repo biome lint',
       'repo tool contracts',
       'module contract',
       'testing contract',
@@ -14,6 +16,7 @@ describe('buildCheckPlan', () => {
       'backend tooling smoke',
       'frontend tooling tests',
       'testing tooling',
+      'testing tooling smoke',
       'bun asset sources',
       'bun orchestrator required suite',
       'bun package install smoke',

@@ -16,10 +16,14 @@ export interface BackendInspectResult {
   readonly manifest: ModuleManifest;
 }
 
-export async function runBackendInspect(options: RunBackendInspectOptions): Promise<BackendInspectResult> {
+export async function runBackendInspect(
+  options: RunBackendInspectOptions,
+): Promise<BackendInspectResult> {
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   if (workspace.mode !== 'api' && workspace.mode !== 'full') {
-    throw new Error(`backend-inspect only supports api and full workspaces. Received mode "${workspace.mode}".`);
+    throw new Error(
+      `backend-inspect only supports api and full workspaces. Received mode "${workspace.mode}".`,
+    );
   }
 
   const provider = await loadProvider('backend');

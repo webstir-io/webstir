@@ -78,16 +78,23 @@ export async function runAddTestCommand(options: RunAddTestOptions): Promise<Add
     subject: 'test',
     target: result.normalizedName,
     changes: result.created ? [result.relativePath.replaceAll(path.sep, '/')] : [],
-    note: result.created ? undefined : `File already exists: ${result.relativePath.replaceAll(path.sep, '/')}`,
+    note: result.created
+      ? undefined
+      : `File already exists: ${result.relativePath.replaceAll(path.sep, '/')}`,
   };
 }
 
-async function loadAddTestRunner(): Promise<(options: {
-  readonly workspaceRoot: string;
-  readonly name: string;
-}) => Promise<AddTestInvocationResult>> {
-  const mod = await import('@webstir-io/webstir-testing') as {
-    runAddTest?: (options: { readonly workspaceRoot: string; readonly name: string }) => Promise<AddTestInvocationResult>;
+async function loadAddTestRunner(): Promise<
+  (options: {
+    readonly workspaceRoot: string;
+    readonly name: string;
+  }) => Promise<AddTestInvocationResult>
+> {
+  const mod = (await import('@webstir-io/webstir-testing')) as {
+    runAddTest?: (options: {
+      readonly workspaceRoot: string;
+      readonly name: string;
+    }) => Promise<AddTestInvocationResult>;
   };
   if (typeof mod.runAddTest === 'function') {
     return mod.runAddTest;
@@ -101,10 +108,19 @@ async function loadAddTestRunner(): Promise<(options: {
   return async (options) => await runPublishedAddTestCli(options.workspaceRoot, options.name);
 }
 
-async function runPublishedAddTestCli(workspaceRoot: string, name: string): Promise<AddTestInvocationResult> {
+async function runPublishedAddTestCli(
+  workspaceRoot: string,
+  name: string,
+): Promise<AddTestInvocationResult> {
   const target = resolveAddTestTarget(workspaceRoot, name);
   const existedBefore = existsSync(target.absolutePath);
-  const binaryPath = path.join(packageRoot, '..', '..', '.bin', process.platform === 'win32' ? 'webstir-testing-add.cmd' : 'webstir-testing-add');
+  const binaryPath = path.join(
+    packageRoot,
+    '..',
+    '..',
+    '.bin',
+    process.platform === 'win32' ? 'webstir-testing-add.cmd' : 'webstir-testing-add',
+  );
   const result = spawnSync(process.execPath, [binaryPath, name, '--workspace', workspaceRoot], {
     cwd: workspaceRoot,
     env: process.env,
@@ -117,7 +133,9 @@ async function runPublishedAddTestCli(workspaceRoot: string, name: string): Prom
 
   if (result.status !== 0) {
     const detail = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n');
-    throw new Error(`Command failed (${result.status}): ${process.execPath} ${binaryPath} ${name} --workspace ${workspaceRoot}${detail ? `\n${detail}` : ''}`);
+    throw new Error(
+      `Command failed (${result.status}): ${process.execPath} ${binaryPath} ${name} --workspace ${workspaceRoot}${detail ? `\n${detail}` : ''}`,
+    );
   }
 
   if (!existsSync(target.absolutePath)) {
@@ -131,16 +149,27 @@ async function runPublishedAddTestCli(workspaceRoot: string, name: string): Prom
   };
 }
 
-function resolveAddTestTarget(workspaceRoot: string, rawName: string): {
+function resolveAddTestTarget(
+  workspaceRoot: string,
+  rawName: string,
+): {
   readonly normalizedName: string;
   readonly relativePath: string;
   readonly absolutePath: string;
 } {
-  const normalizedName = rawName.trim().replace(/\\/g, '/').replace(/(\.test\.ts)$/i, '');
+  const normalizedName = rawName
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/(\.test\.ts)$/i, '');
   const hasSlash = normalizedName.includes('/');
 
   const relativePath = hasSlash
-    ? path.join('src', path.posix.dirname(normalizedName), 'tests', `${path.posix.basename(normalizedName)}.test.ts`)
+    ? path.join(
+        'src',
+        path.posix.dirname(normalizedName),
+        'tests',
+        `${path.posix.basename(normalizedName)}.test.ts`,
+      )
     : path.join('src', 'tests', `${normalizedName}.test.ts`);
 
   return {
@@ -153,7 +182,7 @@ function resolveAddTestTarget(workspaceRoot: string, rawName: string): {
 async function collectChangedFiles(
   workspaceRoot: string,
   absolutePaths: readonly string[],
-  before: ReadonlyMap<string, string | null>
+  before: ReadonlyMap<string, string | null>,
 ): Promise<string[]> {
   const changes: string[] = [];
   for (const absolutePath of absolutePaths) {
@@ -166,7 +195,9 @@ async function collectChangedFiles(
   return changes;
 }
 
-async function captureFileState(absolutePaths: readonly string[]): Promise<Map<string, string | null>> {
+async function captureFileState(
+  absolutePaths: readonly string[],
+): Promise<Map<string, string | null>> {
   const state = new Map<string, string | null>();
   for (const absolutePath of absolutePaths) {
     state.set(absolutePath, await readFileIfExists(absolutePath));

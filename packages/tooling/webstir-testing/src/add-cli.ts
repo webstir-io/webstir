@@ -10,7 +10,10 @@ async function main(): Promise<void> {
   }
 
   const workspaceRoot = path.resolve(args[workspaceIndex + 1]);
-  const nameArg = args.find((arg, index) => index !== workspaceIndex && index !== workspaceIndex + 1 && !arg.startsWith('-'));
+  const nameArg = args.find(
+    (arg, index) =>
+      index !== workspaceIndex && index !== workspaceIndex + 1 && !arg.startsWith('-'),
+  );
 
   if (!nameArg) {
     throw new Error('Missing test name. Usage: webstir-testing-add <name> --workspace <path>');

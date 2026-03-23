@@ -11,7 +11,10 @@ const outputRoot = path.join(packageRoot, 'artifacts');
 
 const internalPackages = [
   ['@webstir-io/module-contract', path.join(repoRoot, 'packages', 'contracts', 'module-contract')],
-  ['@webstir-io/testing-contract', path.join(repoRoot, 'packages', 'contracts', 'testing-contract')],
+  [
+    '@webstir-io/testing-contract',
+    path.join(repoRoot, 'packages', 'contracts', 'testing-contract'),
+  ],
   ['@webstir-io/webstir-frontend', path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend')],
   ['@webstir-io/webstir-backend', path.join(repoRoot, 'packages', 'tooling', 'webstir-backend')],
   ['@webstir-io/webstir-testing', path.join(repoRoot, 'packages', 'tooling', 'webstir-testing')],
@@ -49,18 +52,26 @@ async function main() {
         }
 
         return [name, `file:${path.relative(stageRoot, tarballPath).split(path.sep).join('/')}`];
-      })
+      }),
     );
     packageJson.bundledDependencies = Object.keys(packageJson.dependencies);
     packageJson.files = ['assets', 'src', 'README.md'];
     delete packageJson.scripts;
     delete packageJson.devDependencies;
 
-    await writeFile(path.join(stageRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+    await writeFile(
+      path.join(stageRoot, 'package.json'),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+      'utf8',
+    );
 
     await run(['bun', 'install'], stageRoot);
     packageJson.dependencies = originalDependencies;
-    await writeFile(path.join(stageRoot, 'package.json'), `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+    await writeFile(
+      path.join(stageRoot, 'package.json'),
+      `${JSON.stringify(packageJson, null, 2)}\n`,
+      'utf8',
+    );
     const tarballName = (await run(['bun', 'pm', 'pack'], stageRoot))
       .split(/\r?\n/)
       .map((line) => line.trim())

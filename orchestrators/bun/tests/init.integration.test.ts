@@ -26,8 +26,17 @@ async function runCli(args: readonly string[]) {
   };
 }
 
-async function readJson(filePath: string): Promise<any> {
-  return JSON.parse(await readFile(filePath, 'utf8'));
+type InitWorkspacePackageJson = {
+  name: string;
+  description?: string;
+  dependencies: Record<string, string>;
+  webstir: {
+    mode: string;
+  };
+};
+
+async function readJson(filePath: string): Promise<InitWorkspacePackageJson> {
+  return JSON.parse(await readFile(filePath, 'utf8')) as InitWorkspacePackageJson;
 }
 
 async function readPackageVersion(relativePath: string): Promise<string> {
@@ -40,8 +49,12 @@ test('CLI init scaffolds an external SSG workspace with published package versio
   const workspaceRoot = path.join(tempRoot, 'docs-site');
 
   try {
-    const frontendVersion = await readPackageVersion(path.join('packages', 'tooling', 'webstir-frontend', 'package.json'));
-    const testingVersion = await readPackageVersion(path.join('packages', 'tooling', 'webstir-testing', 'package.json'));
+    const frontendVersion = await readPackageVersion(
+      path.join('packages', 'tooling', 'webstir-frontend', 'package.json'),
+    );
+    const testingVersion = await readPackageVersion(
+      path.join('packages', 'tooling', 'webstir-testing', 'package.json'),
+    );
     const result = await runCli(['init', 'ssg', workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
@@ -56,7 +69,9 @@ test('CLI init scaffolds an external SSG workspace with published package versio
     expect(packageJson.dependencies['@webstir-io/webstir-frontend']).toBe(`^${frontendVersion}`);
     expect(packageJson.dependencies['@webstir-io/webstir-testing']).toBe(`^${testingVersion}`);
     expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBeUndefined();
-    expect(existsSync(path.join(workspaceRoot, 'src', 'frontend', 'pages', 'home', 'index.html'))).toBe(true);
+    expect(
+      existsSync(path.join(workspaceRoot, 'src', 'frontend', 'pages', 'home', 'index.html')),
+    ).toBe(true);
     expect(existsSync(path.join(workspaceRoot, 'src', 'backend'))).toBe(false);
     expect(baseTsconfig.references).toEqual([{ path: 'src/frontend' }]);
   } finally {

@@ -2,7 +2,12 @@ import path from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
-import type { HttpMethod, JobDefinition, RouteDefinition, SchemaReference } from '@webstir-io/module-contract';
+import type {
+  HttpMethod,
+  JobDefinition,
+  RouteDefinition,
+  SchemaReference,
+} from '@webstir-io/module-contract';
 
 const ALLOWED_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 const ALLOWED_SCHEMA_KINDS = ['zod', 'json-schema', 'ts-rest'] as const;
@@ -79,7 +84,10 @@ export async function runAddRoute(options: AddRouteOptions): Promise<BackendAddR
   const bodySchema = parseSchemaReference(options.bodySchema, '--body-schema');
   const headersSchema = parseSchemaReference(options.headersSchema, '--headers-schema');
   const responseSchema = parseSchemaReference(options.responseSchema, '--response-schema');
-  const responseHeadersSchema = parseSchemaReference(options.responseHeadersSchema, '--response-headers-schema');
+  const responseHeadersSchema = parseSchemaReference(
+    options.responseHeadersSchema,
+    '--response-headers-schema',
+  );
   const responseStatus = parseResponseStatus(options.responseStatus);
 
   if ((responseHeadersSchema || responseStatus !== undefined) && !responseSchema) {
@@ -87,16 +95,33 @@ export async function runAddRoute(options: AddRouteOptions): Promise<BackendAddR
   }
 
   const packageJsonPath = path.join(options.workspaceRoot, 'package.json');
-  const routeFilePath = path.join(options.workspaceRoot, 'src', 'backend', 'server', 'routes', `${name}.ts`);
-  const fastifyFilePath = path.join(options.workspaceRoot, 'src', 'backend', 'server', 'fastify.ts');
-  const trackedPaths = fastify ? [packageJsonPath, routeFilePath, fastifyFilePath] : [packageJsonPath];
+  const routeFilePath = path.join(
+    options.workspaceRoot,
+    'src',
+    'backend',
+    'server',
+    'routes',
+    `${name}.ts`,
+  );
+  const fastifyFilePath = path.join(
+    options.workspaceRoot,
+    'src',
+    'backend',
+    'server',
+    'fastify.ts',
+  );
+  const trackedPaths = fastify
+    ? [packageJsonPath, routeFilePath, fastifyFilePath]
+    : [packageJsonPath];
   const before = await captureFileState(trackedPaths);
 
   const pkg = await readWorkspacePackageJson(packageJsonPath);
   const webstir = asObject(pkg.webstir);
   const moduleManifest = asObject(webstir.moduleManifest);
   const routes = Array.isArray(moduleManifest.routes) ? [...moduleManifest.routes] : [];
-  const routeIndex = routes.findIndex((entry) => entry?.method === method && entry?.path === routePath);
+  const routeIndex = routes.findIndex(
+    (entry) => entry?.method === method && entry?.path === routePath,
+  );
 
   const nextRoute: RouteDefinition = {
     name,
@@ -105,8 +130,8 @@ export async function runAddRoute(options: AddRouteOptions): Promise<BackendAddR
     ...(summary ? { summary } : {}),
     ...(description ? { description } : {}),
     ...(tags.length > 0 ? { tags } : {}),
-    ...(buildRouteInput(paramsSchema, querySchema, bodySchema, headersSchema)),
-    ...(buildRouteOutput(responseSchema, responseHeadersSchema, responseStatus)),
+    ...buildRouteInput(paramsSchema, querySchema, bodySchema, headersSchema),
+    ...buildRouteOutput(responseSchema, responseHeadersSchema, responseStatus),
   };
 
   if (routeIndex >= 0) {
@@ -164,7 +189,7 @@ export async function runAddJob(options: AddJobOptions): Promise<BackendAddResul
     name,
     ...(schedule ? { schedule } : {}),
     ...(description ? { description } : {}),
-    ...(parsePriority(priority)),
+    ...parsePriority(priority),
   };
 
   if (jobIndex >= 0) {
@@ -189,7 +214,7 @@ function buildRouteInput(
   paramsSchema?: SchemaReference,
   querySchema?: SchemaReference,
   bodySchema?: SchemaReference,
-  headersSchema?: SchemaReference
+  headersSchema?: SchemaReference,
 ): { input?: RouteDefinition['input'] } {
   const input = {
     ...(paramsSchema ? { params: paramsSchema } : {}),
@@ -204,7 +229,7 @@ function buildRouteInput(
 function buildRouteOutput(
   responseSchema?: SchemaReference,
   responseHeadersSchema?: SchemaReference,
-  responseStatus?: number
+  responseStatus?: number,
 ): { output?: RouteDefinition['output'] } {
   if (!responseSchema) {
     return {};
@@ -223,7 +248,7 @@ async function scaffoldFastifyRoute(
   workspaceRoot: string,
   name: string,
   method: HttpMethod,
-  routePath: string
+  routePath: string,
 ): Promise<void> {
   const routeDirectory = path.join(workspaceRoot, 'src', 'backend', 'server', 'routes');
   await mkdir(routeDirectory, { recursive: true });
@@ -331,13 +356,15 @@ function normalizeRequiredName(name: string, subject: 'route' | 'job'): string {
 function normalizeMethod(value?: string): HttpMethod {
   const candidate = (value ?? 'GET').trim().toUpperCase();
   if (!ALLOWED_METHODS.includes(candidate as HttpMethod)) {
-    throw new Error(`Invalid --method value '${candidate}'. Allowed values: ${ALLOWED_METHODS.join(', ')}.`);
+    throw new Error(
+      `Invalid --method value '${candidate}'. Allowed values: ${ALLOWED_METHODS.join(', ')}.`,
+    );
   }
   return candidate as HttpMethod;
 }
 
 function normalizeRoutePath(value: string | undefined, name: string): string {
-  const routePath = (value?.trim() || `/api/${name}`);
+  const routePath = value?.trim() || `/api/${name}`;
   return routePath.startsWith('/') ? routePath : `/${routePath}`;
 }
 
@@ -371,7 +398,10 @@ function normalizeTags(tags: readonly string[] | undefined): string[] {
   return normalized;
 }
 
-function parseSchemaReference(value: string | undefined, flag: string): SchemaReference | undefined {
+function parseSchemaReference(
+  value: string | undefined,
+  flag: string,
+): SchemaReference | undefined {
   if (!value) {
     return undefined;
   }
@@ -401,7 +431,9 @@ function parseSchemaReference(value: string | undefined, flag: string): SchemaRe
   }
 
   if (!ALLOWED_SCHEMA_KINDS.includes(kind as (typeof ALLOWED_SCHEMA_KINDS)[number])) {
-    throw new Error(`Invalid schema kind '${kind}' in ${flag}. Allowed kinds: ${ALLOWED_SCHEMA_KINDS.join(', ')}.`);
+    throw new Error(
+      `Invalid schema kind '${kind}' in ${flag}. Allowed kinds: ${ALLOWED_SCHEMA_KINDS.join(', ')}.`,
+    );
   }
 
   return {
@@ -423,7 +455,9 @@ function parseResponseStatus(value: string | number | undefined): number | undef
 
   const status = Number.parseInt(raw, 10);
   if (!Number.isInteger(status) || status < 100 || status > 599) {
-    throw new Error(`Invalid --response-status value '${raw}'. Status must be between 100 and 599.`);
+    throw new Error(
+      `Invalid --response-status value '${raw}'. Status must be between 100 and 599.`,
+    );
   }
 
   return status;
@@ -450,15 +484,23 @@ function validateSchedule(schedule: string): void {
 
   if (trimmed.startsWith('@')) {
     const macro = trimmed.slice(1);
-    if (!ALLOWED_SCHEDULE_MACROS.includes(macro.toLowerCase() as (typeof ALLOWED_SCHEDULE_MACROS)[number])) {
-      throw new Error(`Invalid --schedule value '${schedule}'. Allowed macros: ${ALLOWED_SCHEDULE_MACROS.map((value) => `@${value}`).join(', ')}.`);
+    if (
+      !ALLOWED_SCHEDULE_MACROS.includes(
+        macro.toLowerCase() as (typeof ALLOWED_SCHEDULE_MACROS)[number],
+      )
+    ) {
+      throw new Error(
+        `Invalid --schedule value '${schedule}'. Allowed macros: ${ALLOWED_SCHEDULE_MACROS.map((value) => `@${value}`).join(', ')}.`,
+      );
     }
     return;
   }
 
   const parts = trimmed.split(/\s+/);
   if (parts.length < 5 || parts.length > 7) {
-    throw new Error(`Invalid --schedule value '${schedule}'. Expected 5-7 space-separated fields or @macro.`);
+    throw new Error(
+      `Invalid --schedule value '${schedule}'. Expected 5-7 space-separated fields or @macro.`,
+    );
   }
 
   for (const part of parts) {
@@ -484,7 +526,9 @@ function isValidCronField(field: string): boolean {
   return true;
 }
 
-async function readWorkspacePackageJson(packageJsonPath: string): Promise<MutableWorkspacePackageJson> {
+async function readWorkspacePackageJson(
+  packageJsonPath: string,
+): Promise<MutableWorkspacePackageJson> {
   if (!existsSync(packageJsonPath)) {
     throw new Error('package.json not found in workspace root.');
   }
@@ -492,15 +536,22 @@ async function readWorkspacePackageJson(packageJsonPath: string): Promise<Mutabl
   return JSON.parse(await readTextFile(packageJsonPath)) as MutableWorkspacePackageJson;
 }
 
-async function writeWorkspacePackageJson(packageJsonPath: string, pkg: Record<string, unknown>): Promise<void> {
+async function writeWorkspacePackageJson(
+  packageJsonPath: string,
+  pkg: Record<string, unknown>,
+): Promise<void> {
   await writeTextFile(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
-function asObject(value: unknown): Record<string, any> {
-  return typeof value === 'object' && value !== null ? { ...(value as Record<string, unknown>) } : {};
+function asObject(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+    ? { ...(value as Record<string, unknown>) }
+    : {};
 }
 
-async function captureFileState(absolutePaths: readonly string[]): Promise<Map<string, string | null>> {
+async function captureFileState(
+  absolutePaths: readonly string[],
+): Promise<Map<string, string | null>> {
   const state = new Map<string, string | null>();
   for (const absolutePath of absolutePaths) {
     state.set(absolutePath, await readFileIfExists(absolutePath));
@@ -511,7 +562,7 @@ async function captureFileState(absolutePaths: readonly string[]): Promise<Map<s
 async function collectChangedFiles(
   workspaceRoot: string,
   absolutePaths: readonly string[],
-  before: ReadonlyMap<string, string | null>
+  before: ReadonlyMap<string, string | null>,
 ): Promise<string[]> {
   const changes: string[] = [];
   for (const absolutePath of absolutePaths) {

@@ -1,18 +1,3 @@
-import type {
-  RunnerErrorEvent,
-  RunnerEvent,
-  RunnerLogEvent,
-  RunnerResultEvent,
-  RunnerStartEvent,
-  RunnerSummary,
-  RunnerSummaryEvent,
-  RunnerWatchIterationEvent,
-  TestManifest,
-  TestModule,
-  TestRunResult,
-  TestRuntime,
-} from '@webstir-io/testing-contract';
-
 export type {
   RunnerErrorEvent,
   RunnerEvent,

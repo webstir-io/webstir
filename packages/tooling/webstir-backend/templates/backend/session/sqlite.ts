@@ -3,11 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { resolveWorkspaceRoot } from '../env.js';
-import type {
-  SessionFlashMessage,
-  SessionStore,
-  SessionStoreRecord
-} from '../runtime/session.js';
+import type { SessionFlashMessage, SessionStore, SessionStoreRecord } from '../runtime/session.js';
 
 interface SqliteSessionStoreOptions {
   url?: string;
@@ -32,9 +28,9 @@ const DEFAULT_SQLITE_SESSION_STORE_URL = 'file:./data/sessions.sqlite';
 const SESSION_TABLE_NAME = 'webstir_sessions';
 const require = createRequire(import.meta.url);
 
-export function createSqliteSessionStore<TSession extends Record<string, unknown> = Record<string, unknown>>(
-  options: SqliteSessionStoreOptions = {}
-): SessionStore<TSession> {
+export function createSqliteSessionStore<
+  TSession extends Record<string, unknown> = Record<string, unknown>,
+>(options: SqliteSessionStoreOptions = {}): SessionStore<TSession> {
   const Database = loadBunSqlite();
   const target = normalizeSqlitePath(options.url ?? DEFAULT_SQLITE_SESSION_STORE_URL);
   mkdirSync(path.dirname(target), { recursive: true });
@@ -55,7 +51,7 @@ export function createSqliteSessionStore<TSession extends Record<string, unknown
   `).run();
 
   const deleteExpiredStatement = db.prepare(
-    `DELETE FROM ${SESSION_TABLE_NAME} WHERE expires_at <= ?`
+    `DELETE FROM ${SESSION_TABLE_NAME} WHERE expires_at <= ?`,
   );
   const getStatement = db.prepare(`
     SELECT id, value, flash, created_at AS createdAt, expires_at AS expiresAt
@@ -85,12 +81,12 @@ export function createSqliteSessionStore<TSession extends Record<string, unknown
         JSON.stringify(record.value),
         JSON.stringify(record.flash),
         record.createdAt,
-        record.expiresAt
+        record.expiresAt,
       );
     },
     delete(sessionId) {
       deleteStatement.run(sessionId);
-    }
+    },
   };
 }
 
@@ -100,7 +96,7 @@ function loadBunSqlite(): new (filename: string) => SqliteDatabase {
     return sqliteModule.Database ?? sqliteModule.default ?? sqliteModule;
   } catch (error) {
     throw new Error(
-      `[session] Failed to load bun:sqlite. Run the SQLite session store with Bun or switch SESSION_STORE_DRIVER to "memory". (${(error as Error).message})`
+      `[session] Failed to load bun:sqlite. Run the SQLite session store with Bun or switch SESSION_STORE_DRIVER to "memory". (${(error as Error).message})`,
     );
   }
 }
@@ -111,12 +107,14 @@ function normalizeSqlitePath(url: string): string {
   return path.isAbsolute(target) ? path.resolve(target) : path.resolve(workspaceRoot, target);
 }
 
-function deserializeSessionRecord<TSession extends Record<string, unknown>>(row: SqliteSessionRow): SessionStoreRecord<TSession> {
+function deserializeSessionRecord<TSession extends Record<string, unknown>>(
+  row: SqliteSessionRow,
+): SessionStoreRecord<TSession> {
   return {
     id: row.id,
     value: JSON.parse(row.value) as TSession,
     flash: JSON.parse(row.flash) as SessionFlashMessage[],
     createdAt: row.createdAt,
-    expiresAt: row.expiresAt
+    expiresAt: row.expiresAt,
   };
 }

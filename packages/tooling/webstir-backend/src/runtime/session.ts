@@ -60,7 +60,9 @@ export interface PreparedSessionState<TSession, TResult> {
   }): SessionCommitResult<TSession>;
 }
 
-export interface SessionStoreRecord<TSession extends Record<string, unknown> = Record<string, unknown>> {
+export interface SessionStoreRecord<
+  TSession extends Record<string, unknown> = Record<string, unknown>,
+> {
   id: string;
   value: TSession;
   flash: SessionFlashMessage[];
@@ -74,22 +76,24 @@ export interface SessionStore<TSession extends Record<string, unknown> = Record<
   delete(sessionId: string): void;
 }
 
-export interface InMemorySessionStore<TSession extends Record<string, unknown> = Record<string, unknown>>
-  extends SessionStore<TSession> {
+export interface InMemorySessionStore<
+  TSession extends Record<string, unknown> = Record<string, unknown>,
+> extends SessionStore<TSession> {
   clear(): void;
 }
 
 const SESSION_STORE_KEY = Symbol.for('webstir.webstir-backend.session-store');
 
-export function prepareSessionState<TSession extends Record<string, unknown>, TResult extends { status?: number; errors?: unknown }>(
-  options: {
-    cookies?: Record<string, string> | string | string[];
-    route?: SessionAwareRouteDefinitionLike;
-    config: SessionCookieConfig;
-    store?: SessionStore<TSession>;
-    now?: () => Date;
-  }
-): PreparedSessionState<TSession, TResult> {
+export function prepareSessionState<
+  TSession extends Record<string, unknown>,
+  TResult extends { status?: number; errors?: unknown },
+>(options: {
+  cookies?: Record<string, string> | string | string[];
+  route?: SessionAwareRouteDefinitionLike;
+  config: SessionCookieConfig;
+  store?: SessionStore<TSession>;
+  now?: () => Date;
+}): PreparedSessionState<TSession, TResult> {
   const now = options.now ?? (() => new Date());
   const cookies = normalizeCookies(options.cookies);
   const store = options.store ?? getDefaultSessionStore<TSession>();
@@ -122,17 +126,22 @@ export function prepareSessionState<TSession extends Record<string, unknown>, TR
       if (!shouldPersist) {
         return {
           session: null,
-          setCookie: initialRecord || invalidCookie || staleCookie ? serializeExpiredCookie(options.config) : undefined
+          setCookie:
+            initialRecord || invalidCookie || staleCookie
+              ? serializeExpiredCookie(options.config)
+              : undefined,
         };
       }
 
       const record = createStoredSessionRecord({
         session: nextSession,
-        fallbackId: normalizeText(nextSession?.id) ?? (publishFlash.length > 0 ? undefined : initialRecord?.id),
+        fallbackId:
+          normalizeText(nextSession?.id) ??
+          (publishFlash.length > 0 ? undefined : initialRecord?.id),
         initialRecord,
         flash: [...delivered.remaining, ...publishFlash],
         config: options.config,
-        now
+        now,
       });
 
       store.set(record);
@@ -142,9 +151,9 @@ export function prepareSessionState<TSession extends Record<string, unknown>, TR
         setCookie:
           initialRecord?.id === record.id && !invalidCookie && !staleCookie
             ? undefined
-            : serializeSessionCookie(record.id, options.config)
+            : serializeSessionCookie(record.id, options.config),
       };
-    }
+    },
   };
 }
 
@@ -152,7 +161,9 @@ export function parseCookieHeader(header: string | string[] | undefined): Record
   return normalizeCookies(header);
 }
 
-export function createInMemorySessionStore<TSession extends Record<string, unknown> = Record<string, unknown>>(): InMemorySessionStore<TSession> {
+export function createInMemorySessionStore<
+  TSession extends Record<string, unknown> = Record<string, unknown>,
+>(): InMemorySessionStore<TSession> {
   const records = new Map<string, SessionStoreRecord<TSession>>();
   return {
     get(sessionId) {
@@ -167,15 +178,19 @@ export function createInMemorySessionStore<TSession extends Record<string, unkno
     },
     clear() {
       records.clear();
-    }
+    },
   };
 }
 
-export function resetInMemorySessionStore(store: InMemorySessionStore<any> = getDefaultInMemorySessionStore()): void {
+export function resetInMemorySessionStore(
+  store: InMemorySessionStore<Record<string, unknown>> = getDefaultInMemorySessionStore(),
+): void {
   store.clear();
 }
 
-function getDefaultSessionStore<TSession extends Record<string, unknown>>(): SessionStore<TSession> {
+function getDefaultSessionStore<
+  TSession extends Record<string, unknown>,
+>(): SessionStore<TSession> {
   return getDefaultInMemorySessionStore() as SessionStore<TSession>;
 }
 
@@ -190,7 +205,9 @@ function getDefaultInMemorySessionStore(): InMemorySessionStore<Record<string, u
   return store;
 }
 
-function normalizeCookies(input: Record<string, string> | string | string[] | undefined): Record<string, string> {
+function normalizeCookies(
+  input: Record<string, string> | string | string[] | undefined,
+): Record<string, string> {
   if (!input) {
     return {};
   }
@@ -226,7 +243,10 @@ function decodeCookieValue(value: string): string {
   }
 }
 
-function verifySignedSessionCookie(cookieValue: string | undefined, secret: string): string | undefined {
+function verifySignedSessionCookie(
+  cookieValue: string | undefined,
+  secret: string,
+): string | undefined {
   if (!cookieValue) {
     return undefined;
   }
@@ -252,7 +272,7 @@ function signSessionId(sessionId: string, secret: string): string {
 function loadSessionRecord<TSession extends Record<string, unknown>>(
   store: SessionStore<TSession>,
   sessionId: string,
-  now: () => Date
+  now: () => Date,
 ): SessionStoreRecord<TSession> | undefined {
   const record = store.get(sessionId);
   if (!record) {
@@ -268,16 +288,16 @@ function loadSessionRecord<TSession extends Record<string, unknown>>(
 
 function resolveConsumedFlash(
   flash: readonly SessionFlashMessage[],
-  route: SessionAwareRouteDefinitionLike | undefined
+  route: SessionAwareRouteDefinitionLike | undefined,
 ): { flash: SessionFlashMessage[]; remaining: SessionFlashMessage[] } {
   const consume = new Set<string>([
     ...(route?.flash?.consume ?? []),
-    ...(route?.form?.flash?.consume ?? [])
+    ...(route?.form?.flash?.consume ?? []),
   ]);
   if (consume.size === 0) {
     return {
       flash: [],
-      remaining: flash.map((message) => ({ ...message }))
+      remaining: flash.map((message) => ({ ...message })),
     };
   }
 
@@ -296,7 +316,7 @@ function resolveConsumedFlash(
 function resolvePublishedFlash<TResult extends { status?: number; errors?: unknown }>(
   route: SessionAwareRouteDefinitionLike | undefined,
   result: TResult | undefined,
-  now: () => Date
+  now: () => Date,
 ): SessionFlashMessage[] {
   const definitions = [...(route?.flash?.publish ?? []), ...(route?.form?.flash?.publish ?? [])];
   if (definitions.length === 0) {
@@ -306,15 +326,20 @@ function resolvePublishedFlash<TResult extends { status?: number; errors?: unkno
   const condition = resolveFlashCondition(result);
   return definitions
     .filter((definition) => shouldPublishFlash(definition.when, condition))
-    .filter((definition): definition is RouteFlashMessageDefinitionLike & { key: string } => typeof definition.key === 'string' && definition.key.length > 0)
+    .filter(
+      (definition): definition is RouteFlashMessageDefinitionLike & { key: string } =>
+        typeof definition.key === 'string' && definition.key.length > 0,
+    )
     .map((definition) => ({
       key: definition.key,
       level: definition.level ?? (condition === 'error' ? 'error' : 'info'),
-      createdAt: now().toISOString()
+      createdAt: now().toISOString(),
     }));
 }
 
-function resolveFlashCondition(result: { status?: number; errors?: unknown } | undefined): FlashPublishCondition {
+function resolveFlashCondition(
+  result: { status?: number; errors?: unknown } | undefined,
+): FlashPublishCondition {
   if (result?.errors) {
     return 'error';
   }
@@ -324,14 +349,19 @@ function resolveFlashCondition(result: { status?: number; errors?: unknown } | u
   return 'success';
 }
 
-function shouldPublishFlash(when: FlashPublishCondition | undefined, condition: FlashPublishCondition): boolean {
+function shouldPublishFlash(
+  when: FlashPublishCondition | undefined,
+  condition: FlashPublishCondition,
+): boolean {
   if (!when || when === 'always') {
     return true;
   }
   return when === condition;
 }
 
-function normalizeSessionValue<TSession extends Record<string, unknown>>(session: TSession | null): TSession | null {
+function normalizeSessionValue<TSession extends Record<string, unknown>>(
+  session: TSession | null,
+): TSession | null {
   if (session === null) {
     return null;
   }
@@ -363,11 +393,11 @@ function createStoredSessionRecord<TSession extends Record<string, unknown>>(opt
       ...sessionValue,
       id: sessionId,
       createdAt,
-      expiresAt
+      expiresAt,
     } as unknown as TSession,
     flash: options.flash.map((message) => ({ ...message })),
     createdAt,
-    expiresAt
+    expiresAt,
   };
 }
 
@@ -380,7 +410,11 @@ function serializeExpiredCookie(config: SessionCookieConfig): string {
   return serializeCookie(config, '', 0);
 }
 
-function serializeCookie(config: SessionCookieConfig, value: string, maxAgeSeconds: number): string {
+function serializeCookie(
+  config: SessionCookieConfig,
+  value: string,
+  maxAgeSeconds: number,
+): string {
   const parts = [`${config.cookieName}=${value}`];
   parts.push(`Path=${config.path ?? '/'}`);
   parts.push(`Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`);
@@ -416,23 +450,27 @@ function cloneValue<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function cloneStoredSessionRecord<TSession extends Record<string, unknown>>(record: SessionStoreRecord<TSession>): SessionStoreRecord<TSession> {
+function cloneStoredSessionRecord<TSession extends Record<string, unknown>>(
+  record: SessionStoreRecord<TSession>,
+): SessionStoreRecord<TSession> {
   return {
     id: record.id,
     value: cloneValue(record.value),
     flash: record.flash.map((message) => ({ ...message })),
     createdAt: record.createdAt,
-    expiresAt: record.expiresAt
+    expiresAt: record.expiresAt,
   };
 }
 
-function isInMemorySessionStore(value: unknown): value is InMemorySessionStore<Record<string, unknown>> {
+function isInMemorySessionStore(
+  value: unknown,
+): value is InMemorySessionStore<Record<string, unknown>> {
   return Boolean(
     value &&
       typeof value === 'object' &&
       typeof (value as InMemorySessionStore<Record<string, unknown>>).get === 'function' &&
       typeof (value as InMemorySessionStore<Record<string, unknown>>).set === 'function' &&
       typeof (value as InMemorySessionStore<Record<string, unknown>>).delete === 'function' &&
-      typeof (value as InMemorySessionStore<Record<string, unknown>>).clear === 'function'
+      typeof (value as InMemorySessionStore<Record<string, unknown>>).clear === 'function',
   );
 }

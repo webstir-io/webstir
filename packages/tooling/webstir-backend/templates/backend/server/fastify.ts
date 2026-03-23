@@ -5,13 +5,11 @@ import Fastify from 'fastify';
 import { loadEnv, resolveWorkspaceRoot } from '../env.js';
 import { resolveRequestAuth } from '../auth/adapter.js';
 import { sessionStore } from '../session/store.js';
-import {
-  executeRequestHookPhase
-} from '../runtime/request-hooks.js';
+import { executeRequestHookPhase } from '../runtime/request-hooks.js';
 import {
   parseCookieHeader,
   prepareSessionState,
-  type SessionFlashMessage
+  type SessionFlashMessage,
 } from '../runtime/session.js';
 import {
   createProcessEnvAccessor,
@@ -26,13 +24,13 @@ import {
   type FastifyModuleRuntime,
   type FastifyRouteDefinitionLike,
   type ManifestSummary,
-  type RouteHandlerResult
+  type RouteHandlerResult,
 } from '../runtime/fastify.js';
 import {
   matchView,
   renderRequestTimeView,
   toHeaderRecord,
-  type CompiledView
+  type CompiledView,
 } from '../runtime/views.js';
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
@@ -48,6 +46,11 @@ interface Logger {
 }
 
 type ModuleRouteDefinition = FastifyRouteDefinitionLike;
+type FastifyRequestShape = import('fastify').FastifyRequest<{
+  Params: Record<string, unknown>;
+  Querystring: Record<string, unknown>;
+  Body: unknown;
+}>;
 
 interface RouteContext extends Record<string, unknown> {
   request: import('fastify').FastifyRequest;
@@ -65,7 +68,11 @@ interface RouteContext extends Record<string, unknown> {
   body: unknown;
 }
 
-type BackendModuleRuntime = FastifyModuleRuntime<RouteContext, RouteHandlerResult, ModuleRouteDefinition>;
+type BackendModuleRuntime = FastifyModuleRuntime<
+  RouteContext,
+  RouteHandlerResult,
+  ModuleRouteDefinition
+>;
 
 export async function start(): Promise<void> {
   const env = loadEnv();
@@ -78,15 +85,19 @@ export async function start(): Promise<void> {
 
   const app = Fastify({
     logger: false,
-    bodyLimit: env.http.bodyLimitBytes
+    bodyLimit: env.http.bodyLimitBytes,
   });
-  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
-    try {
-      done(null, parseFormEncodedBody(body));
-    } catch (error) {
-      done(error as Error);
-    }
-  });
+  app.addContentTypeParser(
+    'application/x-www-form-urlencoded',
+    { parseAs: 'string' },
+    (_req, body, done) => {
+      try {
+        done(null, parseFormEncodedBody(body));
+      } catch (error) {
+        done(error as Error);
+      }
+    },
+  );
   app.addContentTypeParser('text/plain', { parseAs: 'string' }, (_req, body, done) => {
     done(null, body);
   });
@@ -95,10 +106,13 @@ export async function start(): Promise<void> {
       return;
     }
     if (isFastifyRequestBodyTooLargeError(error)) {
-      reply.code(413).type('application/json').send({
-        error: 'payload_too_large',
-        message: `Request body exceeded ${env.http.bodyLimitBytes} bytes.`
-      });
+      reply
+        .code(413)
+        .type('application/json')
+        .send({
+          error: 'payload_too_large',
+          message: `Request body exceeded ${env.http.bodyLimitBytes} bytes.`,
+        });
       return;
     }
     reply.send(error);
@@ -117,8 +131,12 @@ export async function start(): Promise<void> {
   });
 
   try {
-    runtime = await loadFastifyModuleRuntime<RouteContext, RouteHandlerResult, ModuleRouteDefinition>({
-      importMetaUrl: import.meta.url
+    runtime = await loadFastifyModuleRuntime<
+      RouteContext,
+      RouteHandlerResult,
+      ModuleRouteDefinition
+    >({
+      importMetaUrl: import.meta.url,
     });
   } catch (error) {
     loadError = (error as Error).message ?? 'module load failed';
@@ -155,18 +173,20 @@ function mountRoutes(
   app: import('fastify').FastifyInstance,
   runtime: BackendModuleRuntime,
   authSecrets: ReturnType<typeof loadEnv>['auth'],
-  sessionConfig: ReturnType<typeof loadEnv>['sessions']
+  sessionConfig: ReturnType<typeof loadEnv>['sessions'],
 ) {
   for (const route of runtime.routes) {
     try {
       const method = route.method;
       const url = String(route.definition?.path ?? '/');
       const routeName = route.name;
+      const fastifyMethod = method as import('fastify').HTTPMethods;
 
       app.route({
-        method: method as any,
+        method: fastifyMethod,
         url,
         handler: async (req, reply) => {
+          const typedRequest = req as FastifyRequestShape;
           const requestId = extractFastifyRequestId(req);
           reply.header('x-request-id', requestId);
           const envAccessor = createProcessEnvAccessor();
@@ -177,7 +197,7 @@ function mountRoutes(
             route: route.definition,
             config: sessionConfig,
             store: sessionStore,
-            now
+            now,
           });
           const ctx: RouteContext = {
             request: req,
@@ -190,9 +210,9 @@ function mountRoutes(
             logger: requestLogger,
             requestId,
             now,
-            params: (req as any).params ?? {},
-            query: (req as any).query ?? {},
-            body: (req as any).body ?? {}
+            params: typedRequest.params ?? {},
+            query: typedRequest.query ?? {},
+            body: typedRequest.body ?? {},
           };
           try {
             const routeDefinition = route.definition ?? { name: routeName, method, path: url };
@@ -201,19 +221,19 @@ function mountRoutes(
               phase: 'beforeAuth',
               context: ctx,
               route: routeDefinition,
-              logger: requestLogger
+              logger: requestLogger,
             });
             if (beforeAuth.shortCircuited && beforeAuth.result) {
               sendCommittedFastifyRouteResponse(reply, beforeAuth.result, {
                 sessionState,
                 session: ctx.session,
-                route: routeDefinition
+                route: routeDefinition,
               });
               return;
             }
 
             if (ctx.auth === undefined) {
-              ctx.auth = resolveRequestAuth(req.raw, authSecrets, requestLogger);
+              ctx.auth = await resolveRequestAuth(req.raw, authSecrets, requestLogger);
             }
 
             const beforeHandler = await executeRequestHookPhase({
@@ -221,13 +241,13 @@ function mountRoutes(
               phase: 'beforeHandler',
               context: ctx,
               route: routeDefinition,
-              logger: requestLogger
+              logger: requestLogger,
             });
             if (beforeHandler.shortCircuited && beforeHandler.result) {
               sendCommittedFastifyRouteResponse(reply, beforeHandler.result, {
                 sessionState,
                 session: ctx.session,
-                route: routeDefinition
+                route: routeDefinition,
               });
               return;
             }
@@ -239,23 +259,26 @@ function mountRoutes(
               context: ctx,
               route: routeDefinition,
               logger: requestLogger,
-              result: handlerResult
+              result: handlerResult,
             });
             sendCommittedFastifyRouteResponse(reply, afterHandler.result ?? handlerResult, {
               sessionState,
               session: ctx.session,
-              route: routeDefinition
+              route: routeDefinition,
             });
           } catch (error) {
             requestLogger.error('request handler failed', { err: error });
             if (!reply.sent) {
-              reply.code(500).type('application/json').send({
-                error: 'internal_error',
-                message: (error as Error).message
-              });
+              reply
+                .code(500)
+                .type('application/json')
+                .send({
+                  error: 'internal_error',
+                  message: (error as Error).message,
+                });
             }
           }
-        }
+        },
       });
       console.info(`[fastify] mounted ${method} ${url}`);
     } catch (error) {
@@ -268,20 +291,18 @@ function configureViewNotFoundHandler(
   app: import('fastify').FastifyInstance,
   views: readonly CompiledView[],
   authSecrets: ReturnType<typeof loadEnv>['auth'],
-  sessionConfig: ReturnType<typeof loadEnv>['sessions']
+  sessionConfig: ReturnType<typeof loadEnv>['sessions'],
 ): void {
   app.setNotFoundHandler(async (req, reply) => {
     const requestUrl = new URL(req.raw.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const method = String(req.method ?? 'GET').toUpperCase();
     const matchedView =
-      method === 'GET' || method === 'HEAD'
-        ? matchView(views, requestUrl.pathname)
-        : undefined;
+      method === 'GET' || method === 'HEAD' ? matchView(views, requestUrl.pathname) : undefined;
 
     if (!matchedView) {
       reply.code(404).type('application/json').send({
         error: 'not_found',
-        path: requestUrl.pathname
+        path: requestUrl.pathname,
       });
       return;
     }
@@ -296,7 +317,7 @@ function configureViewNotFoundHandler(
       cookies,
       config: sessionConfig,
       store: sessionStore,
-      now
+      now,
     });
 
     try {
@@ -307,16 +328,16 @@ function configureViewNotFoundHandler(
         params: matchedView.params,
         cookies,
         headers: toHeaderRecord(req.headers as Record<string, string | string[] | undefined>),
-        auth: resolveRequestAuth(req.raw, authSecrets, requestLogger),
+        auth: await resolveRequestAuth(req.raw, authSecrets, requestLogger),
         session: sessionState.session,
         env: envAccessor,
         logger: requestLogger,
         requestId,
-        now
+        now,
       });
       const commit = sessionState.commit({
         session: sessionState.session,
-        result: { status: 200 }
+        result: { status: 200 },
       });
 
       if (commit.setCookie) {
@@ -332,10 +353,13 @@ function configureViewNotFoundHandler(
     } catch (error) {
       requestLogger.error('request handler failed', { err: error });
       if (!reply.sent) {
-        reply.code(500).type('application/json').send({
-          error: 'internal_error',
-          message: (error as Error).message
-        });
+        reply
+          .code(500)
+          .type('application/json')
+          .send({
+            error: 'internal_error',
+            message: (error as Error).message,
+          });
       }
     }
   });
@@ -344,8 +368,11 @@ function configureViewNotFoundHandler(
 function createRequestLogger(requestId: string, bindings: Record<string, unknown> = {}): Logger {
   const logWithLevel = (level: LogLevel, message: string, metadata?: Record<string, unknown>) => {
     const bindingKeys = Object.keys(bindings);
-    const suffix = bindingKeys.length ? ` ${bindingKeys.map((k) => `${k}=${JSON.stringify(bindings[k])}`).join(' ')}` : '';
-    const writer = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+    const suffix = bindingKeys.length
+      ? ` ${bindingKeys.map((k) => `${k}=${JSON.stringify(bindings[k])}`).join(' ')}`
+      : '';
+    const writer =
+      level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
     if (metadata) {
       writer(`[${level}] [request ${requestId}] ${message}${suffix}`, metadata);
     } else {
@@ -362,7 +389,7 @@ function createRequestLogger(requestId: string, bindings: Record<string, unknown
     error: (message, metadata) => logWithLevel('error', message, metadata),
     with(extra) {
       return createRequestLogger(requestId, { ...bindings, ...extra });
-    }
+    },
   };
 }
 

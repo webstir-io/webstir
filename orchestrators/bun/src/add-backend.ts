@@ -30,11 +30,12 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
   const name = parsed.positionals[0];
   if (!name) {
     throw new Error(
-      'Usage: webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify].'
+      'Usage: webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify].',
     );
   }
 
-  const tags = parsed.values.get('--tags')
+  const tags = parsed.values
+    .get('--tags')
     ?.split(',')
     .map((tag) => tag.trim())
     .filter(Boolean);
@@ -145,7 +146,9 @@ async function loadBackendAddModule(): Promise<BackendAddModule> {
     }
 
     if (monorepoRoot) {
-      throw new Error('Installed @webstir-io/webstir-backend package does not export runAddRoute/runAddJob.');
+      throw new Error(
+        'Installed @webstir-io/webstir-backend package does not export runAddRoute/runAddJob.',
+      );
     }
 
     return await import('./add-backend-compat.ts');
@@ -154,7 +157,10 @@ async function loadBackendAddModule(): Promise<BackendAddModule> {
   return await backendAddModulePromise;
 }
 
-function parseBackendCommandArgs(rawArgs: readonly string[], spec: ParseSpec): ParsedBackendCommandArgs {
+function parseBackendCommandArgs(
+  rawArgs: readonly string[],
+  spec: ParseSpec,
+): ParsedBackendCommandArgs {
   const positionals: string[] = [];
   const values = new Map<string, string>();
   const booleans = new Set<string>();

@@ -35,7 +35,9 @@ async function installPackages(workspace, packages, options = { dev: false }) {
   await new Promise((resolve, reject) => {
     const child = spawn('bun', args, { cwd: workspace, stdio: 'ignore' });
     child.on('error', reject);
-    child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`bun add failed (${code})`))));
+    child.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`bun add failed (${code})`)),
+    );
   });
 }
 
@@ -54,9 +56,9 @@ async function runBunProbe(script, { cwd, env }) {
       cwd,
       env: {
         ...process.env,
-        ...env
+        ...env,
       },
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
@@ -100,7 +102,7 @@ async function linkWorkspaceNodeModules(workspace) {
     await createSymlinkIfMissing(
       path.join(source, entry.name),
       path.join(target, entry.name),
-      entry.isDirectory() ? 'dir' : 'file'
+      entry.isDirectory() ? 'dir' : 'file',
     );
   }
 
@@ -112,7 +114,7 @@ async function linkWorkspaceNodeModules(workspace) {
     await createSymlinkIfMissing(
       path.join(scopeSource, entry.name),
       path.join(scopeTarget, entry.name),
-      entry.isDirectory() ? 'dir' : 'file'
+      entry.isDirectory() ? 'dir' : 'file',
     );
   }
 
@@ -131,10 +133,18 @@ async function createSymlinkIfMissing(source, target, type) {
 }
 
 async function runTemplateSqliteProbes(workspace) {
-  const alternateCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-backend-smoke-sqlite-cwd-'));
-  const sessionStoreUrl = JSON.stringify(pathToFileURL(path.join(workspace, 'src', 'backend', 'session', 'store.ts')).href);
-  const runtimeSessionUrl = JSON.stringify(pathToFileURL(path.join(workspace, 'src', 'backend', 'runtime', 'session.ts')).href);
-  const dbConnectionUrl = JSON.stringify(pathToFileURL(path.join(workspace, 'src', 'backend', 'db', 'connection.ts')).href);
+  const alternateCwd = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'webstir-backend-smoke-sqlite-cwd-'),
+  );
+  const sessionStoreUrl = JSON.stringify(
+    pathToFileURL(path.join(workspace, 'src', 'backend', 'session', 'store.ts')).href,
+  );
+  const runtimeSessionUrl = JSON.stringify(
+    pathToFileURL(path.join(workspace, 'src', 'backend', 'runtime', 'session.ts')).href,
+  );
+  const dbConnectionUrl = JSON.stringify(
+    pathToFileURL(path.join(workspace, 'src', 'backend', 'db', 'connection.ts')).href,
+  );
 
   const sessionProbe = `
     const [{ sessionStore }, { prepareSessionState }] = await Promise.all([
@@ -208,18 +218,24 @@ async function runTemplateSqliteProbes(workspace) {
       WORKSPACE_ROOT: '   ',
       WEBSTIR_WORKSPACE_ROOT: workspace,
       SESSION_STORE_DRIVER: 'sqlite',
-      SESSION_STORE_URL: 'file:./data/smoke-session.sqlite'
-    }
+      SESSION_STORE_URL: 'file:./data/smoke-session.sqlite',
+    },
   });
   console.info('[smoke] sqlite session probe:', sessionResult);
   if (sessionResult.userId !== 'ada@example.com') {
-    throw new Error(`[smoke] sqlite session probe returned unexpected userId ${sessionResult.userId}`);
+    throw new Error(
+      `[smoke] sqlite session probe returned unexpected userId ${sessionResult.userId}`,
+    );
   }
-  if (!await pathExists(path.join(workspace, 'data', 'smoke-session.sqlite'))) {
-    throw new Error('[smoke] sqlite session probe did not create the workspace-root session database');
+  if (!(await pathExists(path.join(workspace, 'data', 'smoke-session.sqlite')))) {
+    throw new Error(
+      '[smoke] sqlite session probe did not create the workspace-root session database',
+    );
   }
   if (await pathExists(path.join(alternateCwd, 'data', 'smoke-session.sqlite'))) {
-    throw new Error('[smoke] sqlite session probe wrote to the probe cwd instead of the workspace root');
+    throw new Error(
+      '[smoke] sqlite session probe wrote to the probe cwd instead of the workspace root',
+    );
   }
 
   const dbResult = await runBunProbe(dbProbe, {
@@ -227,14 +243,14 @@ async function runTemplateSqliteProbes(workspace) {
     env: {
       WORKSPACE_ROOT: '   ',
       WEBSTIR_WORKSPACE_ROOT: workspace,
-      DATABASE_URL: 'file:./data/smoke-db.sqlite'
-    }
+      DATABASE_URL: 'file:./data/smoke-db.sqlite',
+    },
   });
   console.info('[smoke] sqlite db probe:', dbResult);
   if (dbResult.value !== 'Ada') {
     throw new Error(`[smoke] sqlite db probe returned unexpected value ${dbResult.value}`);
   }
-  if (!await pathExists(path.join(workspace, 'data', 'smoke-db.sqlite'))) {
+  if (!(await pathExists(path.join(workspace, 'data', 'smoke-db.sqlite')))) {
     throw new Error('[smoke] sqlite db probe did not create the workspace-root database');
   }
   if (await pathExists(path.join(alternateCwd, 'data', 'smoke-db.sqlite'))) {
@@ -249,7 +265,7 @@ async function main() {
     assets.map(async (asset) => {
       const target = path.join(workspace, asset.targetPath);
       await copyFile(asset.sourcePath, target);
-    })
+    }),
   );
 
   const backendTsconfigPath = path.join(workspace, 'src', 'backend', 'tsconfig.json');
@@ -259,7 +275,11 @@ async function main() {
     if (backendTsconfig?.compilerOptions) {
       delete backendTsconfig.compilerOptions.types;
     }
-    await fs.writeFile(backendTsconfigPath, `${JSON.stringify(backendTsconfig, null, 2)}\n`, 'utf8');
+    await fs.writeFile(
+      backendTsconfigPath,
+      `${JSON.stringify(backendTsconfig, null, 2)}\n`,
+      'utf8',
+    );
   } catch (error) {
     console.warn('[smoke] failed to adjust backend tsconfig:', error);
   }
@@ -278,9 +298,9 @@ async function main() {
         kind: 'backend',
         capabilities: [],
         routes: [],
-        views: []
-      }
-    }
+        views: [],
+      },
+    },
   };
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
@@ -309,8 +329,8 @@ async function main() {
       strict: true,
       isolatedModules: true,
       esModuleInterop: true,
-      skipLibCheck: true
-    }
+      skipLibCheck: true,
+    },
   };
   await fs.writeFile(rootTsconfigPath, `${JSON.stringify(rootTsconfig, null, 2)}\n`, 'utf8');
 
@@ -318,30 +338,41 @@ async function main() {
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
     // Exercise provider diagnostic filtering: suppress info by default
-    WEBSTIR_BACKEND_LOG_LEVEL: 'warn'
+    WEBSTIR_BACKEND_LOG_LEVEL: 'warn',
   };
 
   console.info('[smoke] build mode');
   const buildResult = await backendProvider.build({
     workspaceRoot: workspace,
     env: { ...envBase, WEBSTIR_MODULE_MODE: 'build' },
-    incremental: false
+    incremental: false,
   });
   const buildEntries = buildResult.manifest.entryPoints;
   const buildFunctions = buildEntries.filter((p) => p.startsWith('functions/')).length;
   const buildJobs = buildEntries.filter((p) => p.startsWith('jobs/')).length;
-  const buildServer = buildEntries.filter((p) => p === 'index.js' || /(^|\/)index\.js$/.test(p) && !/^(functions|jobs)\//.test(p)).length;
+  const buildServer = buildEntries.filter(
+    (p) => p === 'index.js' || (/(^|\/)index\.js$/.test(p) && !/^(functions|jobs)\//.test(p)),
+  ).length;
   console.info('[smoke] build entryPoints:', buildEntries);
-  console.info('[smoke] build entry counts:', { server: buildServer, functions: buildFunctions, jobs: buildJobs });
+  console.info('[smoke] build entry counts:', {
+    server: buildServer,
+    functions: buildFunctions,
+    jobs: buildJobs,
+  });
   if (buildFunctions < 1 || buildJobs < 1) {
-    throw new Error(`[smoke] expected scaffold to include functions and jobs (got functions=${buildFunctions}, jobs=${buildJobs})`);
+    throw new Error(
+      `[smoke] expected scaffold to include functions and jobs (got functions=${buildFunctions}, jobs=${buildJobs})`,
+    );
   }
   const buildModule = buildResult.manifest.module ?? {};
   console.info('[smoke] build routes/views summary:', {
     routes: Array.isArray(buildModule.routes) ? buildModule.routes.length : 0,
-    views: Array.isArray(buildModule.views) ? buildModule.views.length : 0
+    views: Array.isArray(buildModule.views) ? buildModule.views.length : 0,
   });
-  console.info('[smoke] build diagnostics (>=warn):', buildResult.manifest.diagnostics.map((d) => d.message));
+  console.info(
+    '[smoke] build diagnostics (>=warn):',
+    buildResult.manifest.diagnostics.map((d) => d.message),
+  );
   console.info('[smoke] sqlite template probes');
   await runTemplateSqliteProbes(workspace);
 
@@ -350,28 +381,41 @@ async function main() {
     workspaceRoot: workspace,
     // Intentionally clear PATH so `tsc` is not found; provider will warn and continue
     env: { ...envBase, WEBSTIR_MODULE_MODE: 'publish', PATH: '' },
-    incremental: false
+    incremental: false,
   });
   const publishEntries = publishResult.manifest.entryPoints;
   const publishFunctions = publishEntries.filter((p) => p.startsWith('functions/')).length;
   const publishJobs = publishEntries.filter((p) => p.startsWith('jobs/')).length;
-  const publishServer = publishEntries.filter((p) => p === 'index.js' || /(^|\/)index\.js$/.test(p) && !/^(functions|jobs)\//.test(p)).length;
+  const publishServer = publishEntries.filter(
+    (p) => p === 'index.js' || (/(^|\/)index\.js$/.test(p) && !/^(functions|jobs)\//.test(p)),
+  ).length;
   console.info('[smoke] publish entryPoints:', publishEntries);
-  console.info('[smoke] publish entry counts:', { server: publishServer, functions: publishFunctions, jobs: publishJobs });
+  console.info('[smoke] publish entry counts:', {
+    server: publishServer,
+    functions: publishFunctions,
+    jobs: publishJobs,
+  });
   if (publishFunctions < 1 || publishJobs < 1) {
-    throw new Error(`[smoke] expected scaffold to include functions and jobs after publish (got functions=${publishFunctions}, jobs=${publishJobs})`);
+    throw new Error(
+      `[smoke] expected scaffold to include functions and jobs after publish (got functions=${publishFunctions}, jobs=${publishJobs})`,
+    );
   }
   const publishModule = publishResult.manifest.module ?? {};
   console.info('[smoke] publish routes/views summary:', {
     routes: Array.isArray(publishModule.routes) ? publishModule.routes.length : 0,
-    views: Array.isArray(publishModule.views) ? publishModule.views.length : 0
+    views: Array.isArray(publishModule.views) ? publishModule.views.length : 0,
   });
   const publishDiagnostics = publishResult.manifest.diagnostics
     .map((d) => ({ ...d, message: d.message.trim() }))
     .filter((d) => d.severity !== 'info');
-  const unexpectedPublishDiagnostics = publishDiagnostics.filter((d) => !/TypeScript compiler \(tsc\) not found|Type checking failed/.test(d.message));
+  const unexpectedPublishDiagnostics = publishDiagnostics.filter(
+    (d) => !/TypeScript compiler \(tsc\) not found|Type checking failed/.test(d.message),
+  );
   if (unexpectedPublishDiagnostics.length > 0) {
-    console.info('[smoke] publish diagnostics (non-info):', unexpectedPublishDiagnostics.map((d) => d.message));
+    console.info(
+      '[smoke] publish diagnostics (non-info):',
+      unexpectedPublishDiagnostics.map((d) => d.message),
+    );
   }
 
   if (process.env.WEBSTIR_BACKEND_SMOKE_FASTIFY !== 'skip') {
@@ -379,12 +423,21 @@ async function main() {
     console.info('[smoke] fastify type-check');
     const typecheckResult = await backendProvider.build({
       workspaceRoot: workspace,
-      env: { PATH: envBase.PATH, WEBSTIR_BACKEND_LOG_LEVEL: 'warn', WEBSTIR_MODULE_MODE: 'build', WEBSTIR_BACKEND_TYPECHECK: 'skip' },
-      incremental: false
+      env: {
+        PATH: envBase.PATH,
+        WEBSTIR_BACKEND_LOG_LEVEL: 'warn',
+        WEBSTIR_MODULE_MODE: 'build',
+        WEBSTIR_BACKEND_TYPECHECK: 'skip',
+      },
+      incremental: false,
     });
-    const typecheckErrors = typecheckResult.manifest.diagnostics.filter((d) => d.severity === 'error');
+    const typecheckErrors = typecheckResult.manifest.diagnostics.filter(
+      (d) => d.severity === 'error',
+    );
     if (typecheckErrors.length > 0) {
-      throw new Error(`[smoke] fastify type-check reported errors: ${typecheckErrors.map((d) => d.message).join('; ')}`);
+      throw new Error(
+        `[smoke] fastify type-check reported errors: ${typecheckErrors.map((d) => d.message).join('; ')}`,
+      );
     }
 
     // Optionally run server and hit /api/health
@@ -394,7 +447,7 @@ async function main() {
       const child = spawn(process.execPath, ['build/backend/server/fastify.js'], {
         cwd: workspace,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PORT: String(port) }
+        env: { ...process.env, PORT: String(port) },
       });
 
       let ready = false;

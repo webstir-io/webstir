@@ -5,12 +5,14 @@ import fssync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-async function loadProviderOrSkip(t) {
+async function loadFrontendModuleOrSkip(t) {
   try {
-    const mod = await import('../dist/index.js');
-    return mod.frontendProvider;
+    return await import('../dist/index.js');
   } catch (err) {
-    console.warn('[frontend-tests] Skipping provider integration: optional dependency unavailable:', err?.message ?? err);
+    console.warn(
+      '[frontend-tests] Skipping provider integration: optional dependency unavailable:',
+      err?.message ?? err,
+    );
     t?.diagnostic?.('skip: missing optional dependency');
     return null;
   }
@@ -28,10 +30,29 @@ async function createWorkspaceWithContent() {
   await fs.writeFile(
     path.join(appDir, 'app.html'),
     '<!DOCTYPE html><html><head><title>My Site</title></head><body><main></main></body></html>',
-    'utf8'
+    'utf8',
   );
   await fs.writeFile(path.join(appDir, 'app.css'), 'body{font-family:sans-serif;}', 'utf8');
-  await fs.writeFile(path.join(pageDir, 'index.html'), '<head></head><main><section>Home</section></main>', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head></head><main><section>Home</section></main>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'content-test',
+        private: true,
+        webstir: {
+          mode: 'ssg',
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
 
   await fs.writeFile(
     path.join(contentDir, 'readme.md'),
@@ -44,23 +65,53 @@ async function createWorkspaceWithContent() {
       '',
       '# Content pipeline',
       '',
-      'Hello from markdown.'
+      'Hello from markdown.',
     ].join('\n'),
-    'utf8'
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(contentDir, '_sidebar.json'),
+    JSON.stringify(
+      {
+        pages: [
+          {
+            path: '/docs/readme/',
+            title: 'Guide v1',
+            order: 1,
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+    'utf8',
   );
 
   return root;
 }
 
 test('content builder strips frontmatter and injects app styles', async (t) => {
-  const frontendProvider = await loadProviderOrSkip(t);
-  if (!frontendProvider) return;
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { frontendProvider } = frontend;
   const workspace = await createWorkspaceWithContent();
 
   try {
-    await frontendProvider.build({ workspaceRoot: workspace, env: { WEBSTIR_MODULE_MODE: 'build' }, incremental: false });
+    await frontendProvider.build({
+      workspaceRoot: workspace,
+      env: { WEBSTIR_MODULE_MODE: 'build' },
+      incremental: false,
+    });
 
-    const htmlPath = path.join(workspace, 'build', 'frontend', 'pages', 'docs', 'readme', 'index.html');
+    const htmlPath = path.join(
+      workspace,
+      'build',
+      'frontend',
+      'pages',
+      'docs',
+      'readme',
+      'index.html',
+    );
     assert.equal(fssync.existsSync(htmlPath), true, `expected ${htmlPath}`);
 
     const html = await fs.readFile(htmlPath, 'utf8');
@@ -74,7 +125,51 @@ test('content builder strips frontmatter and injects app styles', async (t) => {
 
     const nav = JSON.parse(await fs.readFile(navPath, 'utf8'));
     assert.ok(Array.isArray(nav) && nav.length > 0, 'expected docs-nav.json to contain entries');
-    assert.ok(nav.some((entry) => entry.path === '/docs/readme/'), 'expected docs-nav.json to include /docs/readme/');
+    assert.ok(
+      nav.some((entry) => entry.path === '/docs/readme/'),
+      'expected docs-nav.json to include /docs/readme/',
+    );
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('content rebuild updates docs-nav when _sidebar.json changes', async (t) => {
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { runBuild, runRebuild } = frontend;
+  const workspace = await createWorkspaceWithContent();
+
+  try {
+    await runBuild({ workspaceRoot: workspace });
+
+    const navPath = path.join(workspace, 'build', 'frontend', 'docs-nav.json');
+    let nav = JSON.parse(await fs.readFile(navPath, 'utf8'));
+    assert.equal(nav[0]?.title, 'Guide v1');
+
+    const sidebarPath = path.join(workspace, 'src', 'frontend', 'content', '_sidebar.json');
+    await fs.writeFile(
+      sidebarPath,
+      JSON.stringify(
+        {
+          pages: [
+            {
+              path: '/docs/readme/',
+              title: 'Guide v2',
+              order: 1,
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    await runRebuild({ workspaceRoot: workspace, changedFile: sidebarPath });
+
+    nav = JSON.parse(await fs.readFile(navPath, 'utf8'));
+    assert.equal(nav[0]?.title, 'Guide v2');
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

@@ -62,14 +62,12 @@ export async function waitFor(assertion: () => Promise<void>, timeoutMs: number)
     }
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`Timed out after ${timeoutMs}ms.`);
+  throw lastError instanceof Error ? lastError : new Error(`Timed out after ${timeoutMs}ms.`);
 }
 
 export async function collectOutput(
   stream: ReadableStream<Uint8Array>,
-  target: { text: string }
+  target: { text: string },
 ): Promise<void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -93,7 +91,7 @@ export async function collectOutput(
 export function appendWatchLogs(error: unknown, stdout: string, stderr: string): Error {
   const message = error instanceof Error ? error.message : String(error);
   return new Error(
-    `${message}\n\nstdout:\n${tailOutput(stdout)}\n\nstderr:\n${tailOutput(stderr)}`
+    `${message}\n\nstdout:\n${tailOutput(stdout)}\n\nstderr:\n${tailOutput(stderr)}`,
   );
 }
 

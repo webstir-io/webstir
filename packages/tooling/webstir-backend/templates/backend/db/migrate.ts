@@ -55,7 +55,11 @@ async function main() {
   }
 }
 
-async function runUp(client: DatabaseClient, migrations: MigrationModule[], steps: number | undefined) {
+async function runUp(
+  client: DatabaseClient,
+  migrations: MigrationModule[],
+  steps: number | undefined,
+) {
   const applied = await getAppliedMigrations(client);
   const pending = migrations.filter((migration) => !applied.includes(migration.id));
   if (pending.length === 0) {
@@ -71,7 +75,11 @@ async function runUp(client: DatabaseClient, migrations: MigrationModule[], step
   }
 }
 
-async function runDown(client: DatabaseClient, migrations: MigrationModule[], steps: number | undefined) {
+async function runDown(
+  client: DatabaseClient,
+  migrations: MigrationModule[],
+  steps: number | undefined,
+) {
   const applied = await getAppliedMigrations(client);
   if (applied.length === 0) {
     console.info('[migrate] No applied migrations to roll back.');
@@ -99,7 +107,7 @@ async function ensureMigrationsTable(client: DatabaseClient) {
     `CREATE TABLE IF NOT EXISTS ${table} (
       id TEXT PRIMARY KEY,
       applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )`
+    )`,
   );
 }
 
@@ -122,19 +130,17 @@ async function deleteMigrationRecord(client: DatabaseClient, id: string) {
 function createMigrationContext(client: DatabaseClient): MigrationContext {
   return {
     sql: (query, params) => client.execute(query, params),
-    query: (query, params) => client.query(query, params)
+    query: (query, params) => client.query(query, params),
   };
 }
 
 async function loadMigrations(): Promise<MigrationModule[]> {
   try {
     const files = await fs.readdir(MIGRATIONS_DIR);
-    const scriptFiles = files
-      .filter((file) => /\.[cm]?[jt]s$/.test(file))
-      .sort();
+    const scriptFiles = files.filter((file) => /\.[cm]?[jt]s$/.test(file)).sort();
     const modules: MigrationModule[] = [];
     for (const file of scriptFiles) {
-      const moduleUrl = pathToFileURL(path.join(MIGRATIONS_DIR, file)).href + `?t=${Date.now()}`;
+      const moduleUrl = `${pathToFileURL(path.join(MIGRATIONS_DIR, file)).href}?t=${Date.now()}`;
       const imported = (await import(moduleUrl)) as Record<string, unknown>;
       const migration = normalizeMigrationModule(imported, file);
       if (migration) {
@@ -148,18 +154,25 @@ async function loadMigrations(): Promise<MigrationModule[]> {
   }
 }
 
-function normalizeMigrationModule(exports: Record<string, unknown>, file: string): MigrationModule | undefined {
+function normalizeMigrationModule(
+  exports: Record<string, unknown>,
+  file: string,
+): MigrationModule | undefined {
+  const defaultExport =
+    typeof exports.default === 'object' && exports.default !== null
+      ? (exports.default as Record<string, unknown>)
+      : undefined;
   const id =
     typeof exports.id === 'string'
       ? exports.id
-      : typeof exports.default === 'object' && exports.default && typeof (exports.default as any).id === 'string'
-        ? (exports.default as any).id
+      : typeof defaultExport?.id === 'string'
+        ? defaultExport.id
         : path.basename(file).replace(/\.[cm]?[jt]s$/, '');
   const up: MigrationFn | undefined =
     typeof exports.up === 'function'
       ? (exports.up as MigrationFn)
-      : exports.default && typeof (exports.default as any).up === 'function'
-        ? ((exports.default as any).up as MigrationFn)
+      : typeof defaultExport?.up === 'function'
+        ? (defaultExport.up as MigrationFn)
         : undefined;
   if (!up) {
     console.warn(`[migrate] ${file} does not export an up() function. Skipping.`);
@@ -168,8 +181,8 @@ function normalizeMigrationModule(exports: Record<string, unknown>, file: string
   const down: MigrationFn | undefined =
     typeof exports.down === 'function'
       ? (exports.down as MigrationFn)
-      : exports.default && typeof (exports.default as any).down === 'function'
-        ? ((exports.default as any).down as MigrationFn)
+      : typeof defaultExport?.down === 'function'
+        ? (defaultExport.down as MigrationFn)
         : undefined;
   return { id, up, down };
 }

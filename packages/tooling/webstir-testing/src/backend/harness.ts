@@ -15,15 +15,20 @@ export { getBackendTestContext, setBackendTestContext };
 
 export async function createBackendTestHarness(): Promise<BackendTestHarness> {
   const workspaceRoot = process.env.WEBSTIR_WORKSPACE_ROOT ?? process.cwd();
-  const buildRoot = process.env.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
+  const buildRoot =
+    process.env.WEBSTIR_BACKEND_BUILD_ROOT ?? path.join(workspaceRoot, 'build', 'backend');
   const entry = process.env.WEBSTIR_BACKEND_TEST_ENTRY ?? path.join(buildRoot, 'index.js');
-  const manifestPath = process.env.WEBSTIR_BACKEND_TEST_MANIFEST ?? path.join(workspaceRoot, '.webstir', 'backend-manifest.json');
+  const manifestPath =
+    process.env.WEBSTIR_BACKEND_TEST_MANIFEST ??
+    path.join(workspaceRoot, '.webstir', 'backend-manifest.json');
   const readyText = process.env.WEBSTIR_BACKEND_TEST_READY ?? DEFAULT_READY_TEXT;
   const timeoutMs = readInt(process.env.WEBSTIR_BACKEND_TEST_READY_TIMEOUT, DEFAULT_TIMEOUT_MS);
   const port = await findOpenPort(readInt(process.env.WEBSTIR_BACKEND_TEST_PORT, 4100));
 
   if (!existsSync(entry)) {
-    throw new Error(`Backend test entry not found at ${entry}. Run a backend build before executing backend tests.`);
+    throw new Error(
+      `Backend test entry not found at ${entry}. Run a backend build before executing backend tests.`,
+    );
   }
 
   const env = createRuntimeEnv(workspaceRoot, port);
@@ -103,13 +108,18 @@ function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
-async function waitForReady(child: ChildProcess, readyText: string, timeoutMs: number): Promise<void> {
+async function waitForReady(
+  child: ChildProcess,
+  readyText: string,
+  timeoutMs: number,
+): Promise<void> {
   const markers = readyText
     .split('|')
     .map((token) => token.trim())
     .filter(Boolean);
 
-  const matches = (line: string) => (markers.length === 0 ? line.length > 0 : markers.some((token) => line.includes(token)));
+  const matches = (line: string) =>
+    markers.length === 0 ? line.length > 0 : markers.some((token) => line.includes(token));
 
   await new Promise<void>((resolve, reject) => {
     const cleanup = () => {

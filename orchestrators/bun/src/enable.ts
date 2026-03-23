@@ -42,7 +42,7 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   const [featureToken, ...rest] = options.args;
   if (!featureToken) {
     throw new Error(
-      'Missing enable feature. Usage: webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy> --workspace <path>.'
+      'Missing enable feature. Usage: webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy> --workspace <path>.',
     );
   }
 
@@ -80,10 +80,22 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       break;
     case 'github-pages':
     case 'gh-pages':
-      await enableGithubPages(workspace.root, path.basename(workspace.root), rest[0], false, changes);
+      await enableGithubPages(
+        workspace.root,
+        path.basename(workspace.root),
+        rest[0],
+        false,
+        changes,
+      );
       break;
     case 'gh-deploy':
-      await enableGithubPages(workspace.root, path.basename(workspace.root), rest[0], true, changes);
+      await enableGithubPages(
+        workspace.root,
+        path.basename(workspace.root),
+        rest[0],
+        true,
+        changes,
+      );
       break;
   }
 
@@ -109,12 +121,16 @@ function parseEnableFeature(value: string): EnableFeature {
       return normalized;
     default:
       throw new Error(
-        `Unknown feature "${value}". Expected scripts, spa, client-nav, search, content-nav, backend, github-pages, or gh-deploy.`
+        `Unknown feature "${value}". Expected scripts, spa, client-nav, search, content-nav, backend, github-pages, or gh-deploy.`,
       );
   }
 }
 
-async function enableScripts(workspaceRoot: string, args: readonly string[], changes: string[]): Promise<void> {
+async function enableScripts(
+  workspaceRoot: string,
+  args: readonly string[],
+  changes: string[],
+): Promise<void> {
   const pageName = args[0];
   if (!pageName) {
     throw new Error('Usage: webstir enable scripts <page> --workspace <path>.');
@@ -137,7 +153,7 @@ async function enableScripts(workspaceRoot: string, args: readonly string[], cha
 async function copyStaticAssets(
   workspaceRoot: string,
   assets: readonly StaticFeatureAsset[],
-  changes: string[]
+  changes: string[],
 ): Promise<void> {
   for (const asset of assets) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
@@ -180,7 +196,7 @@ async function enableGithubPages(
   workspaceName: string,
   basePathArg: string | undefined,
   includeWorkflow: boolean,
-  changes: string[]
+  changes: string[],
 ): Promise<void> {
   const resolvedBasePath = resolveGithubPagesBasePath(basePathArg, workspaceName);
   const deployScriptPath = path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh');
@@ -196,13 +212,17 @@ async function enableGithubPages(
   }
 
   await updateFrontendConfig(workspaceRoot, resolvedBasePath, changes);
-  await updatePackageJson(workspaceRoot, { enableGithubPages: true, ensureDeployScript: true }, changes);
+  await updatePackageJson(
+    workspaceRoot,
+    { enableGithubPages: true, ensureDeployScript: true },
+    changes,
+  );
 }
 
 async function ensureAppScriptImport(
   workspaceRoot: string,
   importPath: string,
-  changes: string[]
+  changes: string[],
 ): Promise<void> {
   const appTsPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
   if (!existsSync(appTsPath)) {
@@ -222,7 +242,7 @@ async function ensureAppScriptImport(
 async function ensureAppCssImport(
   workspaceRoot: string,
   importPath: string,
-  changes: string[]
+  changes: string[],
 ): Promise<void> {
   const appCssPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.css');
   if (!existsSync(appCssPath)) {
@@ -254,7 +274,7 @@ async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[]): P
 
   const updated = source.replace(
     /<html\b(?![^>]*\bdata-webstir-search-styles=)/i,
-    '<html data-webstir-search-styles="css"'
+    '<html data-webstir-search-styles="css"',
   );
   if (updated === source) {
     return;
@@ -276,7 +296,7 @@ async function updatePackageJson(
     readonly mode?: string;
     readonly ensureDeployScript?: boolean;
   },
-  changes: string[]
+  changes: string[],
 ): Promise<void> {
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
   const source = await readTextFile(packageJsonPath);
@@ -326,7 +346,11 @@ async function updatePackageJson(
   changes.push(relativeWorkspacePath(workspaceRoot, packageJsonPath));
 }
 
-async function updateFrontendConfig(workspaceRoot: string, basePath: string, changes: string[]): Promise<void> {
+async function updateFrontendConfig(
+  workspaceRoot: string,
+  basePath: string,
+  changes: string[],
+): Promise<void> {
   const configPath = path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json');
   let root: Record<string, unknown> = {};
 
@@ -352,7 +376,11 @@ async function updateFrontendConfig(workspaceRoot: string, basePath: string, cha
   changes.push(relativeWorkspacePath(workspaceRoot, configPath));
 }
 
-async function ensureTsReference(workspaceRoot: string, referencePath: string, changes: string[]): Promise<void> {
+async function ensureTsReference(
+  workspaceRoot: string,
+  referencePath: string,
+  changes: string[],
+): Promise<void> {
   const tsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
   if (!existsSync(tsconfigPath)) {
     return;
@@ -361,10 +389,11 @@ async function ensureTsReference(workspaceRoot: string, referencePath: string, c
   const source = await readTextFile(tsconfigPath);
   const root = JSON.parse(source) as Record<string, unknown>;
   const references = Array.isArray(root.references) ? [...root.references] : [];
-  const exists = references.some((entry) =>
-    typeof entry === 'object'
-    && entry !== null
-    && (entry as Record<string, unknown>).path === referencePath
+  const exists = references.some(
+    (entry) =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      (entry as Record<string, unknown>).path === referencePath,
   );
   if (!exists) {
     references.push({ path: referencePath });
@@ -380,7 +409,10 @@ async function ensureTsReference(workspaceRoot: string, referencePath: string, c
   changes.push(relativeWorkspacePath(workspaceRoot, tsconfigPath));
 }
 
-function resolveGithubPagesBasePath(basePathArg: string | undefined, workspaceName: string): string {
+function resolveGithubPagesBasePath(
+  basePathArg: string | undefined,
+  workspaceName: string,
+): string {
   const candidate = (basePathArg ?? workspaceName).trim();
   if (!candidate || candidate === '/') {
     return '/';
@@ -409,7 +441,10 @@ function ensureLayerIncludes(css: string, layerName: string): string {
     return css;
   }
 
-  const layers = match[1].split(',').map((layer) => layer.trim()).filter(Boolean);
+  const layers = match[1]
+    .split(',')
+    .map((layer) => layer.trim())
+    .filter(Boolean);
   if (layers.includes(layerName)) {
     return css;
   }
@@ -417,13 +452,18 @@ function ensureLayerIncludes(css: string, layerName: string): string {
   const updated = [...layers];
   const utilitiesIndex = updated.indexOf('utilities');
   const overridesIndex = updated.indexOf('overrides');
-  const insertIndex = utilitiesIndex >= 0 ? utilitiesIndex : overridesIndex >= 0 ? overridesIndex : updated.length;
+  const insertIndex =
+    utilitiesIndex >= 0 ? utilitiesIndex : overridesIndex >= 0 ? overridesIndex : updated.length;
   updated.splice(insertIndex, 0, layerName);
   const replacement = `@layer ${updated.join(', ')};`;
   return `${css.slice(0, match.index)}${replacement}${css.slice(match.index + match[0].length)}`;
 }
 
-function ensureImportIncludes(css: string, importPath: string, insertAfterImportPath: string): string {
+function ensureImportIncludes(
+  css: string,
+  importPath: string,
+  insertAfterImportPath: string,
+): string {
   if (css.includes(`@import "${importPath}"`) || css.includes(`@import '${importPath}'`)) {
     return css;
   }
@@ -431,10 +471,8 @@ function ensureImportIncludes(css: string, importPath: string, insertAfterImport
   const doubleNeedle = `@import "${insertAfterImportPath}"`;
   const singleNeedle = `@import '${insertAfterImportPath}'`;
   let insertAfterIndex = css.indexOf(doubleNeedle);
-  let needle = doubleNeedle;
   if (insertAfterIndex < 0) {
     insertAfterIndex = css.indexOf(singleNeedle);
-    needle = singleNeedle;
   }
 
   if (insertAfterIndex >= 0) {

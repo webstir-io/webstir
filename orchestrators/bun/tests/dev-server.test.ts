@@ -8,8 +8,16 @@ import { DevServer, getApiProxyPath, getStaticCandidatePaths } from '../src/dev-
 test('getStaticCandidatePaths rewrites root assets and page routes for SPA development', () => {
   expect(getStaticCandidatePaths('/')).toEqual(['pages/home/index.html']);
   expect(getStaticCandidatePaths('/index.css')).toEqual(['index.css', 'pages/home/index.css']);
-  expect(getStaticCandidatePaths('/home')).toEqual(['home', 'home.html', 'home/index.html', 'pages/home/index.html']);
-  expect(getStaticCandidatePaths('/home/index.js')).toEqual(['home/index.js', 'pages/home/index.js']);
+  expect(getStaticCandidatePaths('/home')).toEqual([
+    'home',
+    'home.html',
+    'home/index.html',
+    'pages/home/index.html',
+  ]);
+  expect(getStaticCandidatePaths('/home/index.js')).toEqual([
+    'home/index.js',
+    'pages/home/index.js',
+  ]);
   expect(getStaticCandidatePaths('/refresh.js')).toEqual(['refresh.js']);
 });
 
@@ -47,7 +55,9 @@ test('DevServer serves static files with the expected cache headers', async () =
 
     const refreshResponse = await fetch(`${address.origin}/refresh.js`);
     expect(refreshResponse.status).toBe(200);
-    expect(refreshResponse.headers.get('cache-control')).toBe('no-cache, no-store, must-revalidate');
+    expect(refreshResponse.headers.get('cache-control')).toBe(
+      'no-cache, no-store, must-revalidate',
+    );
     expect(refreshResponse.headers.get('pragma')).toBe('no-cache');
     expect(refreshResponse.headers.get('expires')).toBe('0');
 
@@ -55,7 +65,9 @@ test('DevServer serves static files with the expected cache headers', async () =
       method: 'HEAD',
     });
     expect(assetHeadResponse.status).toBe(200);
-    expect(assetHeadResponse.headers.get('cache-control')).toBe('public, max-age=31536000, immutable');
+    expect(assetHeadResponse.headers.get('cache-control')).toBe(
+      'public, max-age=31536000, immutable',
+    );
     expect(await assetHeadResponse.text()).toBe('');
   } finally {
     await server.stop();
@@ -133,8 +145,11 @@ test('DevServer streams SSE updates and closes clients on shutdown', async () =>
     expect(response.headers.get('content-type')).toBe('text/event-stream');
 
     const reader = response.body?.getReader();
-    expect(reader).toBeDefined();
-    const textPromise = readStream(reader!);
+    if (!reader) {
+      throw new Error('Expected an SSE response body.');
+    }
+
+    const textPromise = readStream(reader);
 
     await server.publishStatus('idle');
     await server.publishHotUpdate({
@@ -148,7 +163,9 @@ test('DevServer streams SSE updates and closes clients on shutdown', async () =>
     const text = await textPromise;
     expect(text).toContain('data: shutdown\n\n');
     expect(text).toContain('event: status\ndata: idle\n\n');
-    expect(text).toContain('event: hmr\ndata: {"requiresReload":false,"modules":[],"styles":[]}\n\n');
+    expect(text).toContain(
+      'event: hmr\ndata: {"requiresReload":false,"modules":[],"styles":[]}\n\n',
+    );
     expect(text).toContain('data: reload\n\n');
   } finally {
     await rm(buildRoot, { recursive: true, force: true });

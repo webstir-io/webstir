@@ -37,7 +37,7 @@ const HELP_TEXT = `Usage:
   webstir test --workspace <path> [--runtime <frontend|backend|all>]
   webstir smoke [--workspace <path>]
   webstir build --workspace <path>
-  webstir publish --workspace <path>
+  webstir publish --workspace <path> [--frontend-mode <bundle|ssg>]
   webstir enable <feature> [feature-args...] --workspace <path>
   webstir repair --workspace <path> [--dry-run]
   webstir refresh <mode> --workspace <path>
@@ -63,6 +63,7 @@ Options:
   -w, --workspace <path>   Workspace root to operate on.
   --host <host>            Dev host or bind address (default: 127.0.0.1).
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
+  --frontend-mode <mode>   Frontend publish mode for publish (defaults to bundle; bundle or ssg).
   --dry-run                Report repair changes without writing files.
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
@@ -77,20 +78,20 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
   const [command, ...rest] = argv;
   if (
-    command !== 'init'
-    && command !== 'add-page'
-    && command !== 'add-test'
-    && command !== 'add-route'
-    && command !== 'add-job'
-    && command !== 'backend-inspect'
-    && command !== 'test'
-    && command !== 'smoke'
-    && command !== 'build'
-    && command !== 'publish'
-    && command !== 'enable'
-    && command !== 'repair'
-    && command !== 'refresh'
-    && command !== 'watch'
+    command !== 'init' &&
+    command !== 'add-page' &&
+    command !== 'add-test' &&
+    command !== 'add-route' &&
+    command !== 'add-job' &&
+    command !== 'backend-inspect' &&
+    command !== 'test' &&
+    command !== 'smoke' &&
+    command !== 'build' &&
+    command !== 'publish' &&
+    command !== 'enable' &&
+    command !== 'repair' &&
+    command !== 'refresh' &&
+    command !== 'watch'
   ) {
     io.stderr.write(`Unknown command "${command}".\n\n${HELP_TEXT}`);
     return 1;
@@ -111,6 +112,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
   if (command !== 'repair' && options.dryRun) {
     io.stderr.write(`Only repair accepts --dry-run.\n\n${HELP_TEXT}`);
+    return 1;
+  }
+
+  if (options.frontendMode && command !== 'publish') {
+    io.stderr.write(`Only publish accepts --frontend-mode.\n\n${HELP_TEXT}`);
     return 1;
   }
 
@@ -137,6 +143,13 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     const resolvedWorkspaceRoot = workspaceRoot ? path.resolve(workspaceRoot) : undefined;
+    const requireWorkspaceRoot = (): string => {
+      if (!resolvedWorkspaceRoot) {
+        throw new Error('Missing required --workspace <path>.');
+      }
+
+      return resolvedWorkspaceRoot;
+    };
     if (command === 'add-page') {
       if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);
@@ -145,11 +158,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runAddPageCommand } = await import('./add.ts');
       const result = await runAddPageCommand({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         args: options.positionals,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir] add-page complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-page complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
       );
       return 0;
     }
@@ -162,11 +175,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runAddTestCommand } = await import('./add.ts');
       const result = await runAddTestCommand({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         args: options.positionals,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir] add-test complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-test complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
       );
       return 0;
     }
@@ -179,11 +192,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runAddRouteCommand } = await import('./add-backend.ts');
       const result = await runAddRouteCommand({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         rawArgs: options.rawArgs,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir] add-route complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-route complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
       );
       return 0;
     }
@@ -196,11 +209,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runAddJobCommand } = await import('./add-backend.ts');
       const result = await runAddJobCommand({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         rawArgs: options.rawArgs,
       });
       io.stdout.write(
-        `${formatAddSummary('[webstir] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`
+        `${formatAddSummary('[webstir] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
       );
       return 0;
     }
@@ -218,7 +231,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runBackendInspect } = await import('./backend-inspect.ts');
       const result = await runBackendInspect({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
       });
       io.stdout.write(`${formatBackendInspectSummary(result)}\n`);
       return 0;
@@ -232,7 +245,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runTest } = await import('./test.ts');
       const result = await runTest({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         rawArgs: options.rawArgs,
       });
       io.stdout.write(`${formatTestSummary(result)}\n`);
@@ -266,7 +279,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runBuild } = await import('./build.ts');
       const result = await runBuild({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
       });
       io.stdout.write(`${formatBuildSummary(result)}\n`);
       return 0;
@@ -280,7 +293,8 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runPublish } = await import('./publish.ts');
       const result = await runPublish({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
+        env: options.frontendMode ? { WEBSTIR_FRONTEND_MODE: options.frontendMode } : undefined,
       });
       io.stdout.write(`${formatPublishSummary(result)}\n`);
       return 0;
@@ -289,7 +303,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     if (command === 'enable') {
       const { runEnable } = await import('./enable.ts');
       const result = await runEnable({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         args: options.positionals,
       });
       io.stdout.write(`${formatEnableSummary(result)}\n`);
@@ -309,7 +323,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runRepair } = await import('./repair.ts');
       const result = await runRepair({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         rawArgs: options.rawArgs,
       });
       io.stdout.write(`${formatRepairSummary(result)}\n`);
@@ -324,7 +338,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       const { runRefresh } = await import('./refresh.ts');
       const result = await runRefresh({
-        workspaceRoot: resolvedWorkspaceRoot!,
+        workspaceRoot: requireWorkspaceRoot(),
         args: options.positionals,
       });
       io.stdout.write(`${formatRefreshSummary(result)}\n`);
@@ -338,7 +352,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
     const { runWatch } = await import('./watch.ts');
     await runWatch({
-      workspaceRoot: resolvedWorkspaceRoot!,
+      workspaceRoot: requireWorkspaceRoot(),
       host: options.host,
       port: options.port,
       verbose: options.verbose,
@@ -357,6 +371,7 @@ interface ParsedCommandOptions {
   readonly workspaceRoot?: string;
   readonly host?: string;
   readonly port?: number;
+  readonly frontendMode?: 'bundle' | 'ssg';
   readonly dryRun: boolean;
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
@@ -368,11 +383,12 @@ interface ParsedCommandOptions {
 
 function parseCommandOptions(
   args: readonly string[],
-  options: { readonly allowUnknownOptions?: boolean } = {}
+  options: { readonly allowUnknownOptions?: boolean } = {},
 ): ParsedCommandOptions {
   let workspaceRoot: string | undefined;
   let host: string | undefined;
   let port: number | undefined;
+  let frontendMode: 'bundle' | 'ssg' | undefined;
   let dryRun = false;
   let verbose = false;
   let hmrVerbose = false;
@@ -392,6 +408,7 @@ function parseCommandOptions(
           workspaceRoot,
           host,
           port,
+          frontendMode,
           dryRun,
           verbose,
           hmrVerbose,
@@ -404,6 +421,85 @@ function parseCommandOptions(
 
       workspaceRoot = next;
       index += 1;
+      continue;
+    }
+
+    if (arg === '--frontend-mode') {
+      const next = args[index + 1];
+      if (!next || next.startsWith('-')) {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          frontendMode,
+          dryRun,
+          verbose,
+          hmrVerbose,
+          positionals,
+          rawArgs: args,
+          help: false,
+          error: 'Missing value for --frontend-mode.',
+        };
+      }
+
+      const normalizedMode = next.toLowerCase();
+      if (normalizedMode !== 'bundle' && normalizedMode !== 'ssg') {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          frontendMode,
+          dryRun,
+          verbose,
+          hmrVerbose,
+          positionals,
+          rawArgs: args,
+          help: false,
+          error: `Invalid --frontend-mode value "${next}". Expected bundle or ssg.`,
+        };
+      }
+
+      frontendMode = normalizedMode;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--frontend-mode=')) {
+      const rawMode = arg.slice('--frontend-mode='.length);
+      if (rawMode.length === 0) {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          frontendMode,
+          dryRun,
+          verbose,
+          hmrVerbose,
+          positionals,
+          rawArgs: args,
+          help: false,
+          error: 'Missing value for --frontend-mode.',
+        };
+      }
+
+      const normalizedMode = rawMode.toLowerCase();
+      if (normalizedMode !== 'bundle' && normalizedMode !== 'ssg') {
+        return {
+          workspaceRoot,
+          host,
+          port,
+          frontendMode,
+          dryRun,
+          verbose,
+          hmrVerbose,
+          positionals,
+          rawArgs: args,
+          help: false,
+          error: `Invalid --frontend-mode value "${rawMode}". Expected bundle or ssg.`,
+        };
+      }
+
+      frontendMode = normalizedMode;
       continue;
     }
 
@@ -528,6 +624,7 @@ function parseCommandOptions(
     workspaceRoot,
     host,
     port,
+    frontendMode,
     dryRun,
     verbose,
     hmrVerbose,

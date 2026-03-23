@@ -7,6 +7,8 @@ export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 
 export interface AuthSecrets {
   jwtSecret?: string;
+  jwtPublicKey?: string;
+  jwksUrl?: string;
   jwtIssuer?: string;
   jwtAudience?: string;
   serviceTokens: string[];
@@ -63,35 +65,40 @@ export function loadEnv(): AppEnv {
     envLoaded = true;
   }
 
-  const NODE_ENV = process.env.NODE_ENV ?? 'development';
+  const NODE_ENV = readNodeEnv();
   const PORT = parsePort(process.env.PORT ?? '4000');
   const API_BASE_URL = requireEnv('API_BASE_URL', 'http://localhost:4000');
   const auth: AuthSecrets = {
     jwtSecret: process.env.AUTH_JWT_SECRET,
+    jwtPublicKey: resolveJwtPublicKey(),
+    jwksUrl: normalizeOptionalText(process.env.AUTH_JWKS_URL),
     jwtIssuer: process.env.AUTH_JWT_ISSUER,
     jwtAudience: process.env.AUTH_JWT_AUDIENCE,
-    serviceTokens: parseList(process.env.AUTH_SERVICE_TOKENS)
+    serviceTokens: parseList(process.env.AUTH_SERVICE_TOKENS),
   };
   const logging: LoggingConfig = {
     level: parseLogLevel(process.env.LOG_LEVEL),
-    serviceName: process.env.LOG_SERVICE_NAME ?? 'backend-template'
+    serviceName: process.env.LOG_SERVICE_NAME ?? 'backend-template',
   };
   const metrics: MetricsConfig = {
     enabled: parseBoolean(process.env.METRICS_ENABLED, true),
-    windowSize: parsePositiveInt(process.env.METRICS_WINDOW, 200)
+    windowSize: parsePositiveInt(process.env.METRICS_WINDOW, 200),
   };
   const database: DatabaseConfig = {
     url: process.env.DATABASE_URL ?? 'file:./data/dev.sqlite',
-    migrationsTable: process.env.DATABASE_MIGRATIONS_TABLE ?? '_webstir_migrations'
+    migrationsTable: process.env.DATABASE_MIGRATIONS_TABLE ?? '_webstir_migrations',
   };
   const http: HttpConfig = {
-    bodyLimitBytes: parsePositiveInt(process.env.REQUEST_BODY_MAX_BYTES, DEFAULT_REQUEST_BODY_MAX_BYTES)
+    bodyLimitBytes: parsePositiveInt(
+      process.env.REQUEST_BODY_MAX_BYTES,
+      DEFAULT_REQUEST_BODY_MAX_BYTES,
+    ),
   };
   const sessions: SessionConfig = {
-    secret: resolveSessionSecret(),
+    secret: resolveSessionSecret(NODE_ENV),
     cookieName: process.env.SESSION_COOKIE_NAME ?? 'webstir_session',
     secure: parseBoolean(process.env.SESSION_COOKIE_SECURE, NODE_ENV === 'production'),
-    maxAgeSeconds: parsePositiveInt(process.env.SESSION_MAX_AGE, 60 * 60 * 24)
+    maxAgeSeconds: parsePositiveInt(process.env.SESSION_MAX_AGE, 60 * 60 * 24),
   };
 
   return {
@@ -103,12 +110,49 @@ export function loadEnv(): AppEnv {
     metrics,
     database,
     http,
-    sessions
+    sessions,
   };
 }
 
-function resolveSessionSecret(): string {
-  return process.env.SESSION_SECRET ?? process.env.AUTH_JWT_SECRET ?? GENERATED_SESSION_SECRET;
+function resolveSessionSecret(nodeEnv: string): string {
+  const explicitSecret = normalizeOptionalText(process.env.SESSION_SECRET);
+  if (explicitSecret) {
+    return explicitSecret;
+  }
+
+  if (nodeEnv.trim().toLowerCase() === 'production') {
+    throw new Error('SESSION_SECRET is required when NODE_ENV=production.');
+  }
+
+  return process.env.AUTH_JWT_SECRET ?? GENERATED_SESSION_SECRET;
+}
+
+function readNodeEnv(): string {
+  const value = Reflect.get(process.env, 'NODE_ENV');
+  return typeof value === 'string' && value.length > 0 ? value : 'development';
+}
+
+function resolveJwtPublicKey(): string | undefined {
+  const inline = normalizeOptionalText(process.env.AUTH_JWT_PUBLIC_KEY);
+  if (inline) {
+    return inline;
+  }
+
+  const filePath = normalizeOptionalText(process.env.AUTH_JWT_PUBLIC_KEY_FILE);
+  if (!filePath) {
+    return undefined;
+  }
+
+  const resolvedPath = path.isAbsolute(filePath)
+    ? path.resolve(filePath)
+    : path.resolve(WORKSPACE_ROOT, filePath);
+  try {
+    return readFileSync(resolvedPath, 'utf8');
+  } catch (error) {
+    throw new Error(
+      `Failed to read AUTH_JWT_PUBLIC_KEY_FILE at ${resolvedPath}: ${(error as Error).message}`,
+    );
+  }
 }
 
 function loadEnvFiles(): void {
@@ -132,7 +176,10 @@ function applyEnvFile(filePath: string): void {
     const key = line.slice(0, idx).trim();
     if (!key || process.env[key] !== undefined) continue;
     let value = line.slice(idx + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('\'') && value.endsWith('\''))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     process.env[key] = value;
@@ -163,9 +210,21 @@ function parseList(value: string | undefined): string[] {
     .filter((item) => item.length > 0);
 }
 
+function normalizeOptionalText(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
 function parseLogLevel(value: string | undefined): LogLevel {
   const normalized = (value ?? 'info').toLowerCase();
-  if (normalized === 'trace' || normalized === 'debug' || normalized === 'info' || normalized === 'warn' || normalized === 'error' || normalized === 'fatal') {
+  if (
+    normalized === 'trace' ||
+    normalized === 'debug' ||
+    normalized === 'info' ||
+    normalized === 'warn' ||
+    normalized === 'error' ||
+    normalized === 'fatal'
+  ) {
     return normalized;
   }
   return 'info';

@@ -16,7 +16,7 @@ let cleanupRegistered = false;
 export async function copyDemoWorkspace(
   fixtureName: string,
   tempPrefix: string,
-  options: { readonly workspaceName?: string } = {}
+  options: { readonly workspaceName?: string } = {},
 ): Promise<DemoWorkspaceCopy> {
   registerCleanupHook();
 

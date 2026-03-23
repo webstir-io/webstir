@@ -10,7 +10,7 @@ function decodeOutput(buffer: Uint8Array | undefined): string {
 
 async function runCli(
   args: readonly string[],
-  envOverrides: Record<string, string | undefined> = {}
+  envOverrides: Record<string, string | undefined> = {},
 ): Promise<{
   readonly stdout: string;
   readonly stderr: string;
@@ -38,10 +38,9 @@ test('CLI test runs the full demo workspace end to end', async () => {
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-');
 
   try {
-    const result = await runCli(
-      ['test', '--workspace', copiedWorkspace.workspaceRoot],
-      { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
-    );
+    const result = await runCli(['test', '--workspace', copiedWorkspace.workspaceRoot], {
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
+    });
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir] test complete');
@@ -79,12 +78,17 @@ test('CLI test honors --runtime backend for the full demo workspace', async () =
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-runtime-');
 
   try {
-    const addTestResult = await runCli(['add-test', 'backend/ping', '--workspace', copiedWorkspace.workspaceRoot]);
+    const addTestResult = await runCli([
+      'add-test',
+      'backend/ping',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
     expect(addTestResult.exitCode).toBe(0);
 
     const result = await runCli(
       ['test', '--runtime', 'backend', '--workspace', copiedWorkspace.workspaceRoot],
-      { WEBSTIR_BACKEND_TYPECHECK: 'skip' }
+      { WEBSTIR_BACKEND_TYPECHECK: 'skip' },
     );
 
     expect(result.exitCode).toBe(0);
@@ -92,7 +96,9 @@ test('CLI test honors --runtime backend for the full demo workspace', async () =
     expect(result.stdout).toContain('mode: full');
     expect(result.stdout).toContain('runtime: backend');
     expect(result.stdout).toContain('build-targets: backend');
-    expect(result.stdout).toMatch(/filter: Runtime filter 'backend' matched \d+ tests \(1 skipped\)\./);
+    expect(result.stdout).toMatch(
+      /filter: Runtime filter 'backend' matched \d+ tests \(1 skipped\)\./,
+    );
     expect(result.stdout).toMatch(/tests: \d+/);
     expect(result.stdout).toMatch(/passed: \d+/);
     expect(result.stdout).toContain('failed: 0');

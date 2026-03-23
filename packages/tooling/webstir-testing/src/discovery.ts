@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { access, constants, readdir } from 'node:fs/promises';
 
-import { TestManifest, TestModule, TestRuntime } from './types.js';
+import type { TestManifest, TestModule, TestRuntime } from './types.js';
 
 const SRC_FOLDER = 'src';
 const TEST_FOLDER = 'tests';
@@ -39,7 +39,7 @@ export async function discoverTestManifest(workspaceRoot: string): Promise<TestM
     }
 
     const runtime = inferRuntime(relativeToSrc);
-    const compiledPath = computeCompiledPath(absoluteRoot, relativeToSrc, runtime);
+    const compiledPath = computeCompiledPath(absoluteRoot, relativeToSrc);
 
     modules.push({
       id: normalizeModuleId(relativeToSrc),
@@ -58,25 +58,30 @@ export async function discoverTestManifest(workspaceRoot: string): Promise<TestM
   } satisfies TestManifest;
 }
 
-async function walkDirectory(root: string, onFile: (filePath: string) => Promise<void>): Promise<void> {
+async function walkDirectory(
+  root: string,
+  onFile: (filePath: string) => Promise<void>,
+): Promise<void> {
   const entries = await readdir(root, { withFileTypes: true });
 
-  await Promise.all(entries.map(async (entry) => {
-    const entryPath = path.join(root, entry.name);
+  await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(root, entry.name);
 
-    if (entry.isDirectory()) {
-      if (EXCLUDED_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) {
+      if (entry.isDirectory()) {
+        if (EXCLUDED_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) {
+          return;
+        }
+
+        await walkDirectory(entryPath, onFile);
         return;
       }
 
-      await walkDirectory(entryPath, onFile);
-      return;
-    }
-
-    if (entry.isFile()) {
-      await onFile(entryPath);
-    }
-  }));
+      if (entry.isFile()) {
+        await onFile(entryPath);
+      }
+    }),
+  );
 }
 
 async function pathExists(targetPath: string): Promise<boolean> {
@@ -110,7 +115,7 @@ function inferRuntime(relativePath: string): TestRuntime {
   return segments[0] === BACKEND_FOLDER ? 'backend' : 'frontend';
 }
 
-function computeCompiledPath(workspaceRoot: string, relativeToSrc: string, runtime: TestRuntime): string | null {
+function computeCompiledPath(workspaceRoot: string, relativeToSrc: string): string | null {
   const buildRoot = path.join(workspaceRoot, BUILD_FOLDER);
   const compiledRelative = replaceExtension(relativeToSrc, '.js');
   return path.join(buildRoot, compiledRelative);

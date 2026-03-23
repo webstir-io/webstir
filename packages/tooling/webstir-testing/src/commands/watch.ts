@@ -4,7 +4,11 @@ import chokidar from 'chokidar';
 import { discoverTestManifest } from '../discovery.js';
 import { emitEvent, createRunId } from '../events.js';
 import { executeRun } from '../execution.js';
-import { applyRuntimeFilter, describeRuntimeFilter, normalizeRuntimeFilter } from '../runtime-filter.js';
+import {
+  applyRuntimeFilter,
+  describeRuntimeFilter,
+  normalizeRuntimeFilter,
+} from '../runtime-filter.js';
 import type { RunnerSummary, RunnerSummaryEvent, RunnerWatchIterationEvent } from '../types.js';
 
 export interface WatchCommandOptions {
@@ -32,7 +36,11 @@ export async function runWatchCommand(options: WatchCommandOptions): Promise<voi
     try {
       const manifest = await discoverTestManifest(workspaceRoot);
       const filteredManifest = applyRuntimeFilter(manifest, runtimeFilter);
-      const filterMessage = describeRuntimeFilter(runtimeFilter, manifest.modules.length, filteredManifest.modules.length);
+      const filterMessage = describeRuntimeFilter(
+        runtimeFilter,
+        manifest.modules.length,
+        filteredManifest.modules.length,
+      );
       if (filterMessage) {
         emitEvent({
           type: 'log',
@@ -72,7 +80,7 @@ export async function runWatchCommand(options: WatchCommandOptions): Promise<voi
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const stack = error instanceof Error ? error.stack ?? undefined : undefined;
+      const stack = error instanceof Error ? (error.stack ?? undefined) : undefined;
       emitEvent({
         type: 'error',
         runId: iterationId,
@@ -88,17 +96,19 @@ export async function runWatchCommand(options: WatchCommandOptions): Promise<voi
     const files = queuedPaths;
     queuedPaths = [];
     scheduled = null;
-    pending = pending.then(async () => {
-      await runIteration(files);
-    }).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      emitEvent({
-        type: 'error',
-        runId: sessionId,
-        message,
+    pending = pending
+      .then(async () => {
+        await runIteration(files);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        emitEvent({
+          type: 'error',
+          runId: sessionId,
+          message,
+        });
+        exitCode = 1;
       });
-      exitCode = 1;
-    });
   };
 
   const scheduleRun = (): void => {

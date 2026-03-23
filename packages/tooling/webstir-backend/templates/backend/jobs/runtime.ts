@@ -22,7 +22,7 @@ export async function loadJobs(): Promise<RegisteredJob[]> {
     async run() {
       const runner = await loadJobRunner(job.name);
       await runner();
-    }
+    },
   }));
 }
 
@@ -39,8 +39,10 @@ async function readManifestJobs(): Promise<ManifestJobMetadata[]> {
   const pkgPath = path.join(root, 'package.json');
   try {
     const raw = await readFile(pkgPath, 'utf8');
-    const pkg = JSON.parse(raw) as Record<string, any>;
-    const jobs = pkg?.webstir?.moduleManifest?.jobs;
+    const pkg = JSON.parse(raw) as Record<string, unknown>;
+    const webstir = asRecord(pkg.webstir);
+    const moduleManifest = asRecord(webstir?.moduleManifest);
+    const jobs = moduleManifest?.jobs;
     if (!Array.isArray(jobs)) {
       return [];
     }
@@ -61,8 +63,16 @@ function normalizeManifestJob(job: unknown): ManifestJobMetadata | undefined {
   const schedule = typeof record.schedule === 'string' ? record.schedule : undefined;
   const description = typeof record.description === 'string' ? record.description : undefined;
   const priority =
-    typeof record.priority === 'number' || typeof record.priority === 'string' ? record.priority : undefined;
+    typeof record.priority === 'number' || typeof record.priority === 'string'
+      ? record.priority
+      : undefined;
   return { name, schedule, description, priority };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 async function loadJobRunner(jobName: string): Promise<() => Promise<void>> {
@@ -89,15 +99,11 @@ function buildJobModuleCandidates(jobName: string): string[] {
     `./${normalized}/index.js`,
     `./${normalized}/index.mjs`,
     `./${normalized}/index.ts`,
-    `./${normalized}/index.mts`
+    `./${normalized}/index.mts`,
   ];
-  return relPaths.map((rel) => new URL(rel, import.meta.url).href + `?t=${Date.now()}`);
+  return relPaths.map((rel) => `${new URL(rel, import.meta.url).href}?t=${Date.now()}`);
 }
 
 function normalizeJobSpecifier(name: string): string {
-  return name
-    .replace(/\\/g, '/')
-    .replace(/\.\./g, '')
-    .replace(/^\//, '')
-    .replace(/\/$/, '');
+  return name.replace(/\\/g, '/').replace(/\.\./g, '').replace(/^\//, '').replace(/\/$/, '');
 }

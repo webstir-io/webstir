@@ -87,7 +87,7 @@ export function prepareFormState<TSession extends Record<string, unknown>>(optio
     session,
     csrfToken,
     values: cloneFormValues(stored?.values),
-    issues: cloneIssues(stored?.issues)
+    issues: cloneIssues(stored?.issues),
   };
 }
 
@@ -106,7 +106,7 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
         redirectTo?: string;
         message?: string;
       };
-  validate?: (values: FormValues) => readonly FormIssue[] | FormIssue[] | void;
+  validate?: (values: FormValues) => readonly FormIssue[] | FormIssue[] | undefined;
   now?: () => Date;
 }): FormSubmissionResult<TSession, TAuth> {
   const now = options.now ?? (() => new Date());
@@ -130,9 +130,9 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
           message:
             typeof options.requireAuth === 'object' && options.requireAuth.message
               ? options.requireAuth.message
-              : 'Sign-in required to submit this form.'
-        }
-      ]
+              : 'Sign-in required to submit this form.',
+        },
+      ],
     });
   }
 
@@ -150,15 +150,17 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
         issues: [
           {
             code: 'csrf',
-            message: 'Form session expired. Reload the page and try again.'
-          }
-        ]
+            message: 'Form session expired. Reload the page and try again.',
+          },
+        ],
       });
     }
   }
 
   const validationResult = options.validate?.(values);
-  const validationIssues = cloneIssues(Array.isArray(validationResult) ? validationResult : undefined);
+  const validationIssues = cloneIssues(
+    Array.isArray(validationResult) ? validationResult : undefined,
+  );
   if (validationIssues.length > 0) {
     return failSubmission({
       session,
@@ -169,8 +171,8 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
       now,
       issues: validationIssues.map((issue) => ({
         ...issue,
-        code: issue.code ?? 'validation'
-      }))
+        code: issue.code ?? 'validation',
+      })),
     });
   }
 
@@ -180,7 +182,7 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
     ok: true,
     session,
     values,
-    auth: options.auth
+    auth: options.auth,
   };
 }
 
@@ -190,7 +192,7 @@ export function groupFormIssuesByField(issues: readonly FormIssue[] | undefined)
 } {
   const grouped = {
     form: [] as string[],
-    fields: {} as Record<string, string[]>
+    fields: {} as Record<string, string[]>,
   };
   for (const issue of issues ?? []) {
     if (!issue?.message) {
@@ -218,7 +220,7 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
   options.store.states[options.formId] = {
     values: cloneFormValues(options.values),
     issues: cloneIssues(options.issues),
-    createdAt: options.now().toISOString()
+    createdAt: options.now().toISOString(),
   };
   cleanupFormRuntimeStore(options.session);
 
@@ -231,9 +233,9 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
       result: {
         status: 303,
         redirect: {
-          location: options.redirectTo
-        }
-      }
+          location: options.redirectTo,
+        },
+      },
     };
   }
 
@@ -253,13 +255,17 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
       errors: options.issues.map((issue) => ({
         code: issue.code === 'auth' ? 'auth' : 'validation',
         message: issue.message,
-        details: issue.field ? { field: issue.field, reason: issue.code ?? 'validation' } : { reason: issue.code ?? 'validation' }
-      }))
-    }
+        details: issue.field
+          ? { field: issue.field, reason: issue.code ?? 'validation' }
+          : { reason: issue.code ?? 'validation' },
+      })),
+    },
   };
 }
 
-function ensureSession<TSession extends Record<string, unknown>>(session: TSession | null): TSession {
+function ensureSession<TSession extends Record<string, unknown>>(
+  session: TSession | null,
+): TSession {
   if (session && typeof session === 'object' && !Array.isArray(session)) {
     return session;
   }
@@ -278,7 +284,7 @@ function getFormRuntimeStore(session: Record<string, unknown>): FormRuntimeStore
 
   const created: FormRuntimeStore = {
     csrf: {},
-    states: {}
+    states: {},
   };
   session[FORM_RUNTIME_KEY] = created;
   return created;
@@ -346,7 +352,7 @@ function cloneFormValues(values: FormValues | undefined): FormValues {
     return {};
   }
   return Object.fromEntries(
-    Object.entries(values).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value])
+    Object.entries(values).map(([key, value]) => [key, Array.isArray(value) ? [...value] : value]),
   );
 }
 
@@ -367,13 +373,15 @@ function isCsrfEnabled(options: { route?: FormRouteDefinitionLike; csrf?: boolea
   return options.csrf ?? options.route?.form?.csrf ?? false;
 }
 
-function requiresAuth(option: { redirectTo?: string; message?: string } | boolean | undefined): boolean {
+function requiresAuth(
+  option: { redirectTo?: string; message?: string } | boolean | undefined,
+): boolean {
   return option === true || typeof option === 'object';
 }
 
 function resolveAuthRedirect(
   option: { redirectTo?: string; message?: string } | boolean | undefined,
-  fallback: string | undefined
+  fallback: string | undefined,
 ): string | undefined {
   if (typeof option === 'object' && option.redirectTo) {
     return option.redirectTo;

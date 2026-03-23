@@ -76,7 +76,7 @@ export function compileViews(views: readonly ModuleViewLike[]): CompiledView[] {
       pathPattern,
       definition: view.definition,
       load: view.load,
-      match: createPathMatcher(pathPattern)
+      match: createPathMatcher(pathPattern),
     });
   }
   return compiled;
@@ -84,14 +84,14 @@ export function compileViews(views: readonly ModuleViewLike[]): CompiledView[] {
 
 export function matchView(
   views: readonly CompiledView[],
-  pathname: string
+  pathname: string,
 ): { view: CompiledView; params: Record<string, string> } | undefined {
   for (const view of views) {
     const matched = view.match(pathname);
     if (matched.matched) {
       return {
         view,
-        params: matched.params
+        params: matched.params,
       };
     }
   }
@@ -112,7 +112,19 @@ export async function renderRequestTimeView(options: {
   requestId?: string;
   now?: () => Date;
 }): Promise<RenderedRequestTimeView> {
-  const { workspaceRoot, url, view, params, cookies, headers, auth, session, env, logger, requestId } = options;
+  const {
+    workspaceRoot,
+    url,
+    view,
+    params,
+    cookies,
+    headers,
+    auth,
+    session,
+    env,
+    logger,
+    requestId,
+  } = options;
   const now = options.now ?? (() => new Date());
   const document = await loadFrontendDocument(resolveWorkspaceRoot(workspaceRoot), url.pathname);
 
@@ -127,7 +139,7 @@ export async function renderRequestTimeView(options: {
         env,
         logger,
         requestId,
-        now
+        now,
       })
     : null;
 
@@ -138,16 +150,18 @@ export async function renderRequestTimeView(options: {
       pathname: normalizePath(url.pathname),
       params,
       data: viewData ?? null,
-      requestId
+      requestId,
     }),
     documentCache: {
       status: document.cacheStatus,
-      documentPath: document.path
-    }
+      documentPath: document.path,
+    },
   };
 }
 
-export function toHeaderRecord(headers: Record<string, string | string[] | undefined>): Record<string, string> {
+export function toHeaderRecord(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string> {
   const normalized: Record<string, string> = {};
   for (const [key, value] of Object.entries(headers)) {
     if (typeof value === 'string') {
@@ -169,7 +183,7 @@ function createPathMatcher(pattern: string) {
       normalized
         .replace(/\//g, '\\/')
         .replace(paramRegex, (_segment, name) => `(?<${name}>[^/]+)`) +
-      '$'
+      '$',
   );
 
   return (pathname: string) => {
@@ -180,7 +194,7 @@ function createPathMatcher(pattern: string) {
     }
     return {
       matched: true,
-      params: (match.groups ?? {}) as Record<string, string>
+      params: (match.groups ?? {}) as Record<string, string>,
     };
   };
 }
@@ -214,7 +228,7 @@ const documentTemplateCache = new Map<
 
 async function loadFrontendDocument(
   workspaceRoot: string,
-  pathname: string
+  pathname: string,
 ): Promise<{
   path: string;
   html: string;
@@ -233,7 +247,7 @@ async function loadFrontendDocument(
     return {
       path: documentPath,
       html: cached.html,
-      cacheStatus: 'hit'
+      cacheStatus: 'hit',
     };
   }
 
@@ -242,17 +256,20 @@ async function loadFrontendDocument(
     html,
     ctimeMs: documentStats.ctimeMs,
     mtimeMs: documentStats.mtimeMs,
-    size: documentStats.size
+    size: documentStats.size,
   });
 
   return {
     path: documentPath,
     html,
-    cacheStatus: cached ? 'stale' : 'miss'
+    cacheStatus: cached ? 'stale' : 'miss',
   };
 }
 
-async function resolveFrontendDocumentPath(workspaceRoot: string, pathname: string): Promise<string> {
+async function resolveFrontendDocumentPath(
+  workspaceRoot: string,
+  pathname: string,
+): Promise<string> {
   const candidates = getFrontendDocumentCandidates(workspaceRoot, pathname);
 
   for (const candidate of candidates) {
@@ -262,28 +279,33 @@ async function resolveFrontendDocumentPath(workspaceRoot: string, pathname: stri
   }
 
   throw new Error(
-    `Frontend document for ${normalizePath(pathname)} was not found. Checked ${candidates.join(', ')}.`
+    `Frontend document for ${normalizePath(pathname)} was not found. Checked ${candidates.join(', ')}.`,
   );
 }
 
 function getFrontendDocumentCandidates(workspaceRoot: string, pathname: string): string[] {
   const pageName = firstPathSegment(pathname) ?? 'home';
-  const relativeCandidates = pageName === 'home'
-    ? [
-        path.join('pages', 'home', 'index.html'),
-        path.join('home', 'index.html'),
-        'home.html',
-        'index.html'
-      ]
-    : [
-        path.join('pages', pageName, 'index.html'),
-        path.join(pageName, 'index.html'),
-        `${pageName}.html`
-      ];
+  const relativeCandidates =
+    pageName === 'home'
+      ? [
+          path.join('pages', 'home', 'index.html'),
+          path.join('home', 'index.html'),
+          'home.html',
+          'index.html',
+        ]
+      : [
+          path.join('pages', pageName, 'index.html'),
+          path.join(pageName, 'index.html'),
+          `${pageName}.html`,
+        ];
 
   const candidates = [
-    ...relativeCandidates.map((relativePath) => path.join(workspaceRoot, 'build', 'frontend', relativePath)),
-    ...relativeCandidates.map((relativePath) => path.join(workspaceRoot, 'dist', 'frontend', relativePath))
+    ...relativeCandidates.map((relativePath) =>
+      path.join(workspaceRoot, 'build', 'frontend', relativePath),
+    ),
+    ...relativeCandidates.map((relativePath) =>
+      path.join(workspaceRoot, 'dist', 'frontend', relativePath),
+    ),
   ];
 
   return Array.from(new Set(candidates));
@@ -307,28 +329,31 @@ function injectViewState(
     params: Record<string, string>;
     data: unknown;
     requestId?: string;
-  }
+  },
 ): string {
   const payload = serializeJsonForHtml({
     view: {
       name: state.name,
       path: state.templatePath,
       pathname: state.pathname,
-      params: state.params
+      params: state.params,
     },
     data: state.data,
-    requestId: state.requestId ?? null
+    requestId: state.requestId ?? null,
   });
 
   const scriptTag = `<script type="application/json" id="webstir-view-state">${payload}</script>`;
-  const htmlWithBodyAttributes = documentHtml.replace(/<body\b([^>]*)>/i, (_match, existingAttributes) => {
-    const attrs = [
-      `data-webstir-view-name="${escapeHtmlAttribute(state.name)}"`,
-      `data-webstir-view-pathname="${escapeHtmlAttribute(state.pathname)}"`,
-      `data-webstir-view-template="${escapeHtmlAttribute(state.templatePath)}"`
-    ];
-    return `<body${existingAttributes} ${attrs.join(' ')}>`;
-  });
+  const htmlWithBodyAttributes = documentHtml.replace(
+    /<body\b([^>]*)>/i,
+    (_match, existingAttributes) => {
+      const attrs = [
+        `data-webstir-view-name="${escapeHtmlAttribute(state.name)}"`,
+        `data-webstir-view-pathname="${escapeHtmlAttribute(state.pathname)}"`,
+        `data-webstir-view-template="${escapeHtmlAttribute(state.templatePath)}"`,
+      ];
+      return `<body${existingAttributes} ${attrs.join(' ')}>`;
+    },
+  );
 
   if (/<\/body>/i.test(htmlWithBodyAttributes)) {
     return htmlWithBodyAttributes.replace(/<\/body>/i, `${scriptTag}\n</body>`);

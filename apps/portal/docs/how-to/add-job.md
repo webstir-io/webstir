@@ -17,10 +17,11 @@ Scaffold a job stub and record it in the module manifest.
    - Priority: `--priority 5` (accepts numbers or free-form labels)
 3. Iterate on the job implementation, then rebuild or watch the workspace.
 4. Run jobs locally:
-   - List metadata: `node build/backend/jobs/scheduler.js --list`
-   - Run once: `node build/backend/jobs/scheduler.js --job nightly`
-   - Simple watcher: `node build/backend/jobs/scheduler.js --watch`
-   - Direct execution: `node build/backend/jobs/<name>/index.js`
+   - List metadata: `bun build/backend/jobs/scheduler.js --list`
+   - Export metadata for an external scheduler: `bun build/backend/jobs/scheduler.js --json`
+   - Run once: `bun build/backend/jobs/scheduler.js --job nightly`
+   - Simple watcher: `bun build/backend/jobs/scheduler.js --watch`
+   - Direct execution: `bun build/backend/jobs/<name>/index.js`
 5. Inspect the manifest to confirm the job metadata:
    - `webstir backend-inspect --workspace "$PWD"`
 
@@ -47,11 +48,11 @@ export async function run() {
 ```
 
 - `.env` values are loaded automatically; use `process.env.NAME` or the helper exported from the template.
-- The scheduler prints job names, schedules, and manifest metadata so you can verify exactly what will run in CI or production.
+- The scheduler prints job names, schedules, and manifest metadata so you can verify exactly what will run locally, and `--json` emits the same metadata in a machine-friendly format for external schedulers.
 
 ## Notes
 - The CLI validates `--schedule` strings (`@hourly`, `@daily`, or cron-style fields) but stores them exactly as provided so your production scheduler can interpret them.
-- The built-in watcher understands `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n unit)` syntax. Cron expressions are surfaced in the manifest so you can wire them into Temporal, Cloud Scheduler, etc.
+- The built-in watcher understands `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n unit)` syntax. Cron expressions are surfaced unchanged in the manifest so you can wire them into Temporal, Cloud Scheduler, etc., and `--json` gives you a direct export path instead of scraping CLI text.
 - Jobs run through the scheduler automatically load `.env` values, reuse the backend logger, and emit structured logs just like HTTP handlers.
 - Use `webstir backend-inspect --workspace "$PWD"` after adding jobs to confirm the manifest entry (name, schedule, description, priority) before committing changes.
 

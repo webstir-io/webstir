@@ -67,7 +67,9 @@ export interface ModuleAsset {
 
 export interface ModuleProvider {
   readonly metadata: ModuleProviderMetadata;
-  resolveWorkspace(options: ResolveWorkspaceOptions): Promise<ResolvedModuleWorkspace> | ResolvedModuleWorkspace;
+  resolveWorkspace(
+    options: ResolveWorkspaceOptions,
+  ): Promise<ResolvedModuleWorkspace> | ResolvedModuleWorkspace;
   build(options: ModuleBuildOptions): Promise<ModuleBuildResult> | ModuleBuildResult;
   getScaffoldAssets?(): Promise<readonly ModuleAsset[]> | readonly ModuleAsset[];
 }
@@ -101,7 +103,7 @@ export interface RequestContext<
   TSession = unknown,
   TDatabase = unknown,
   TEnv extends EnvAccessor = EnvAccessor,
-  TLogger extends Logger = Logger
+  TLogger extends Logger = Logger,
 > {
   readonly request: TRequest;
   readonly reply: TReply;
@@ -119,7 +121,7 @@ export interface SSRContext<
   TAuth = unknown,
   TSession = unknown,
   TEnv extends EnvAccessor = EnvAccessor,
-  TLogger extends Logger = Logger
+  TLogger extends Logger = Logger,
 > {
   readonly url: URL;
   readonly params: TParams;
@@ -153,14 +155,22 @@ export type PermissionCheckResult =
 
 export interface AuthProvider<TSession extends AuthSession = AuthSession> {
   getSession(context: RequestContext | SSRContext): Promise<TSession | null> | TSession | null;
-  createSession(input: CreateSessionInput<TSession['data']>, context: RequestContext | SSRContext): Promise<TSession> | TSession;
+  createSession(
+    input: CreateSessionInput<TSession['data']>,
+    context: RequestContext | SSRContext,
+  ): Promise<TSession> | TSession;
   invalidateSession(sessionId: string, context: RequestContext | SSRContext): Promise<void> | void;
   getCsrfToken?(context: RequestContext | SSRContext): Promise<string> | string;
-  verifyPermissions?(context: RequestContext | SSRContext, permissions: readonly string[]): Promise<PermissionCheckResult> | PermissionCheckResult;
+  verifyPermissions?(
+    context: RequestContext | SSRContext,
+    permissions: readonly string[],
+  ): Promise<PermissionCheckResult> | PermissionCheckResult;
 }
 
 export interface DatabaseTransaction<TDatabase = unknown> {
-  readonly run: <TResult>(callback: (client: TDatabase) => Promise<TResult> | TResult) => Promise<TResult>;
+  readonly run: <TResult>(
+    callback: (client: TDatabase) => Promise<TResult> | TResult,
+  ) => Promise<TResult>;
 }
 
 export interface DatabaseProvider<TDatabase = unknown> {
@@ -182,7 +192,10 @@ export interface QueueMessage<TPayload = unknown> {
 }
 
 export interface QueueProvider<TPayload = unknown> {
-  enqueue(payload: TPayload, options?: { readonly delaySeconds?: number }): Promise<string> | string;
+  enqueue(
+    payload: TPayload,
+    options?: { readonly delaySeconds?: number },
+  ): Promise<string> | string;
   process(handler: (message: QueueMessage<TPayload>) => Promise<void> | void): Promise<void> | void;
 }
 
@@ -194,10 +207,20 @@ export interface TestingManifest {
 
 export interface TestingProvider {
   readonly manifest: TestingManifest;
-  run(options: { readonly workspaceRoot: string; readonly env: Record<string, string | undefined> }): Promise<void> | void;
+  run(options: {
+    readonly workspaceRoot: string;
+    readonly env: Record<string, string | undefined>;
+  }): Promise<void> | void;
 }
 
-export const moduleErrorCodeSchema = z.enum(['validation', 'auth', 'not_found', 'domain', 'conflict', 'internal']);
+export const moduleErrorCodeSchema = z.enum([
+  'validation',
+  'auth',
+  'not_found',
+  'domain',
+  'conflict',
+  'internal',
+]);
 
 export type ModuleErrorCode = z.infer<typeof moduleErrorCodeSchema>;
 
@@ -206,12 +229,20 @@ export const moduleErrorSchema = z.object({
   message: z.string(),
   details: z.unknown().optional(),
   cause: z.unknown().optional(),
-  correlationId: z.string().optional()
+  correlationId: z.string().optional(),
 });
 
 export type ModuleError = z.infer<typeof moduleErrorSchema>;
 
-export const httpMethodSchema = z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+export const httpMethodSchema = z.enum([
+  'GET',
+  'HEAD',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+]);
 
 export type HttpMethod = z.infer<typeof httpMethodSchema>;
 
@@ -219,7 +250,11 @@ export const routeInteractionKindSchema = z.enum(['navigation', 'mutation']);
 
 export type RouteInteractionKind = z.infer<typeof routeInteractionKindSchema>;
 
-export const formEncodingSchema = z.enum(['application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain']);
+export const formEncodingSchema = z.enum([
+  'application/x-www-form-urlencoded',
+  'multipart/form-data',
+  'text/plain',
+]);
 
 export type FormEncoding = z.infer<typeof formEncodingSchema>;
 
@@ -236,7 +271,7 @@ export const redirectStatusSchema = z.union([
   z.literal(302),
   z.literal(303),
   z.literal(307),
-  z.literal(308)
+  z.literal(308),
 ]);
 
 export type RedirectStatus = z.infer<typeof redirectStatusSchema>;
@@ -244,14 +279,14 @@ export type RedirectStatus = z.infer<typeof redirectStatusSchema>;
 export const schemaReferenceSchema = z.object({
   kind: z.enum(['zod', 'json-schema', 'ts-rest']).default('zod'),
   name: z.string(),
-  source: z.string().optional()
+  source: z.string().optional(),
 });
 
 export type SchemaReference = z.infer<typeof schemaReferenceSchema>;
 
 export const requestHookReferenceSchema = z
   .object({
-    id: z.string().min(1)
+    id: z.string().min(1),
   })
   .strict();
 
@@ -263,7 +298,7 @@ export const requestHookDefinitionSchema = z
     phase: requestHookPhaseSchema,
     order: z.number().int(),
     summary: z.string().optional(),
-    description: z.string().optional()
+    description: z.string().optional(),
   })
   .strict();
 
@@ -274,7 +309,7 @@ export const routeInputSchema = z
     params: schemaReferenceSchema.optional(),
     query: schemaReferenceSchema.optional(),
     body: schemaReferenceSchema.optional(),
-    headers: schemaReferenceSchema.optional()
+    headers: schemaReferenceSchema.optional(),
   })
   .partial()
   .strict();
@@ -288,7 +323,7 @@ export type SessionAccessMode = z.infer<typeof sessionAccessModeSchema>;
 export const routeSessionSchema = z
   .object({
     mode: sessionAccessModeSchema.optional(),
-    write: z.boolean().optional()
+    write: z.boolean().optional(),
   })
   .strict();
 
@@ -306,7 +341,7 @@ export const routeFlashMessageSchema = z
   .object({
     key: z.string().min(1),
     level: flashLevelSchema.optional(),
-    when: flashPublishConditionSchema.optional()
+    when: flashPublishConditionSchema.optional(),
   })
   .strict();
 
@@ -315,7 +350,7 @@ export type RouteFlashMessageDefinition = z.infer<typeof routeFlashMessageSchema
 export const routeFlashSchema = z
   .object({
     consume: z.array(z.string().min(1)).optional(),
-    publish: z.array(routeFlashMessageSchema).optional()
+    publish: z.array(routeFlashMessageSchema).optional(),
   })
   .strict();
 
@@ -326,7 +361,7 @@ export const routeFormSchema = z
     contentType: formEncodingSchema.optional(),
     csrf: z.boolean().optional(),
     session: routeSessionSchema.optional(),
-    flash: routeFlashSchema.optional()
+    flash: routeFlashSchema.optional(),
   })
   .strict();
 
@@ -336,7 +371,7 @@ export const routeFragmentSchema = z
   .object({
     target: z.string().min(1),
     selector: z.string().min(1).optional(),
-    mode: fragmentUpdateModeSchema.optional()
+    mode: fragmentUpdateModeSchema.optional(),
   })
   .strict();
 
@@ -345,7 +380,7 @@ export type RouteFragmentDefinition = z.infer<typeof routeFragmentSchema>;
 export const routeRedirectSchema = z
   .object({
     status: redirectStatusSchema.optional(),
-    location: z.string().min(1).optional()
+    location: z.string().min(1).optional(),
   })
   .strict();
 
@@ -353,13 +388,13 @@ export type RouteRedirectDefinition = z.infer<typeof routeRedirectSchema>;
 
 const routeOutputBaseShape = {
   status: z.number().int().min(100).max(599).optional(),
-  headers: schemaReferenceSchema.optional()
+  headers: schemaReferenceSchema.optional(),
 } as const;
 
 export const routeBodyOutputSchema = z
   .object({
     ...routeOutputBaseShape,
-    body: schemaReferenceSchema
+    body: schemaReferenceSchema,
   })
   .strict();
 
@@ -368,7 +403,7 @@ export type RouteBodyOutputDefinition = z.infer<typeof routeBodyOutputSchema>;
 export const routeRedirectOutputSchema = z
   .object({
     ...routeOutputBaseShape,
-    redirect: routeRedirectSchema
+    redirect: routeRedirectSchema,
   })
   .strict();
 
@@ -378,7 +413,7 @@ export const routeFragmentOutputSchema = z
   .object({
     ...routeOutputBaseShape,
     body: schemaReferenceSchema,
-    fragment: routeFragmentSchema
+    fragment: routeFragmentSchema,
   })
   .strict();
 
@@ -387,14 +422,14 @@ export type RouteFragmentOutputDefinition = z.infer<typeof routeFragmentOutputSc
 export const routeOutputVariantSchema = z.union([
   routeBodyOutputSchema,
   routeRedirectOutputSchema,
-  routeFragmentOutputSchema
+  routeFragmentOutputSchema,
 ]);
 
 export type RouteOutputVariantDefinition = z.infer<typeof routeOutputVariantSchema>;
 
 export const routeOutputResponsesSchema = z
   .object({
-    responses: z.array(routeOutputVariantSchema).min(1)
+    responses: z.array(routeOutputVariantSchema).min(1),
   })
   .strict();
 
@@ -424,20 +459,22 @@ export const routeDefinitionSchema = z.object({
   staticPaths: z.array(z.string().min(1)).optional(),
   ssg: z
     .object({
-      revalidateSeconds: z.number().int().positive().optional()
+      revalidateSeconds: z.number().int().positive().optional(),
     })
-    .optional()
+    .optional(),
 });
 
 export type RouteDefinition = z.infer<typeof routeDefinitionSchema>;
 
-export type InferOrNever<TSchema extends z.ZodTypeAny | undefined> = TSchema extends z.ZodTypeAny ? z.infer<TSchema> : Record<string, never>;
+export type InferOrNever<TSchema extends z.ZodTypeAny | undefined> = TSchema extends z.ZodTypeAny
+  ? z.infer<TSchema>
+  : Record<string, never>;
 
 export interface RouteSchemas<
   TParams extends z.ZodTypeAny | undefined,
   TQuery extends z.ZodTypeAny | undefined,
   TBody extends z.ZodTypeAny | undefined,
-  TResponse extends z.ZodTypeAny
+  TResponse extends z.ZodTypeAny,
 > {
   readonly params?: TParams;
   readonly query?: TQuery;
@@ -451,7 +488,7 @@ export type RouteHandlerContext<
   TContext extends RequestContext,
   TParams extends z.ZodTypeAny | undefined,
   TQuery extends z.ZodTypeAny | undefined,
-  TBody extends z.ZodTypeAny | undefined
+  TBody extends z.ZodTypeAny | undefined,
 > = TContext & {
   readonly params: InferOrNever<TParams>;
   readonly query: InferOrNever<TQuery>;
@@ -513,9 +550,9 @@ export type RouteHandler<
   TParams extends z.ZodTypeAny | undefined,
   TQuery extends z.ZodTypeAny | undefined,
   TBody extends z.ZodTypeAny | undefined,
-  TResponse extends z.ZodTypeAny
+  TResponse extends z.ZodTypeAny,
 > = (
-  context: RouteHandlerContext<TContext, TParams, TQuery, TBody>
+  context: RouteHandlerContext<TContext, TParams, TQuery, TBody>,
 ) => Promise<RouteHandlerResult<TResponse>> | RouteHandlerResult<TResponse>;
 
 export interface RouteSpec<
@@ -523,12 +560,20 @@ export interface RouteSpec<
   TParams extends z.ZodTypeAny | undefined = undefined,
   TQuery extends z.ZodTypeAny | undefined = undefined,
   TBody extends z.ZodTypeAny | undefined = undefined,
-  TResponse extends z.ZodTypeAny = z.ZodTypeAny
+  TResponse extends z.ZodTypeAny = z.ZodTypeAny,
 > {
   readonly definition: RouteDefinition;
   readonly schemas: RouteSchemas<TParams, TQuery, TBody, TResponse>;
   readonly handler: RouteHandler<TContext, TParams, TQuery, TBody, TResponse>;
 }
+
+export type LooseRouteSpec<TContext extends RequestContext = RequestContext> = RouteSpec<
+  TContext,
+  z.ZodTypeAny | undefined,
+  z.ZodTypeAny | undefined,
+  z.ZodTypeAny | undefined,
+  z.ZodTypeAny
+>;
 
 export const viewDefinitionSchema = z.object({
   name: z.string().min(1),
@@ -542,16 +587,16 @@ export const viewDefinitionSchema = z.object({
   staticPaths: z.array(z.string().min(1)).optional(),
   ssg: z
     .object({
-      revalidateSeconds: z.number().int().positive().optional()
+      revalidateSeconds: z.number().int().positive().optional(),
     })
-    .optional()
+    .optional(),
 });
 
 export type ViewDefinition = z.infer<typeof viewDefinitionSchema>;
 
 export type ViewLoaderContext<
   TContext extends SSRContext,
-  TParams extends z.ZodTypeAny | undefined
+  TParams extends z.ZodTypeAny | undefined,
 > = TContext & {
   readonly params: InferOrNever<TParams>;
 };
@@ -559,13 +604,13 @@ export type ViewLoaderContext<
 export type ViewLoader<
   TContext extends SSRContext,
   TParams extends z.ZodTypeAny | undefined,
-  TData extends z.ZodTypeAny
+  TData extends z.ZodTypeAny,
 > = (context: ViewLoaderContext<TContext, TParams>) => Promise<z.infer<TData>> | z.infer<TData>;
 
 export interface ViewSpec<
   TContext extends SSRContext = SSRContext,
   TParams extends z.ZodTypeAny | undefined = undefined,
-  TData extends z.ZodTypeAny = z.ZodTypeAny
+  TData extends z.ZodTypeAny = z.ZodTypeAny,
 > {
   readonly definition: ViewDefinition;
   readonly params?: TParams;
@@ -573,11 +618,17 @@ export interface ViewSpec<
   readonly load: ViewLoader<TContext, TParams, TData>;
 }
 
+export type LooseViewSpec<TContext extends SSRContext = SSRContext> = ViewSpec<
+  TContext,
+  z.ZodTypeAny | undefined,
+  z.ZodTypeAny
+>;
+
 export const jobDefinitionSchema = z.object({
   name: z.string().min(1),
   schedule: z.string().optional(),
   description: z.string().optional(),
-  priority: z.union([z.number().int(), z.string()]).optional()
+  priority: z.union([z.number().int(), z.string()]).optional(),
 });
 
 export type JobDefinition = z.infer<typeof jobDefinitionSchema>;
@@ -585,14 +636,14 @@ export type JobDefinition = z.infer<typeof jobDefinitionSchema>;
 export const eventDefinitionSchema = z.object({
   name: z.string().min(1),
   payload: schemaReferenceSchema.optional(),
-  description: z.string().optional()
+  description: z.string().optional(),
 });
 
 export type EventDefinition = z.infer<typeof eventDefinitionSchema>;
 
 export const serviceDefinitionSchema = z.object({
   name: z.string().min(1),
-  description: z.string().optional()
+  description: z.string().optional(),
 });
 
 export type ServiceDefinition = z.infer<typeof serviceDefinitionSchema>;
@@ -612,7 +663,7 @@ export const moduleManifestSchema = z.object({
   events: z.array(eventDefinitionSchema).optional(),
   services: z.array(serviceDefinitionSchema).optional(),
   init: z.string().optional(),
-  dispose: z.string().optional()
+  dispose: z.string().optional(),
 });
 
 export type ModuleManifest = z.infer<typeof moduleManifestSchema>;
@@ -627,8 +678,9 @@ export type ModuleLifecycleHook = (context: ModuleLifecycleContext) => Promise<v
 export interface ModuleDefinition<
   TRequestContext extends RequestContext = RequestContext,
   TSSRContext extends SSRContext = SSRContext,
-  TRoutes extends readonly RouteSpec<TRequestContext, any, any, any, any>[] = readonly RouteSpec<TRequestContext, any, any, any, any>[],
-  TViews extends readonly ViewSpec<TSSRContext, any, any>[] = readonly ViewSpec<TSSRContext, any, any>[]
+  TRoutes extends
+    readonly LooseRouteSpec<TRequestContext>[] = readonly LooseRouteSpec<TRequestContext>[],
+  TViews extends readonly LooseViewSpec<TSSRContext>[] = readonly LooseViewSpec<TSSRContext>[],
 > {
   readonly manifest: ModuleManifest;
   readonly routes?: TRoutes;
@@ -637,7 +689,8 @@ export interface ModuleDefinition<
   readonly dispose?: ModuleLifecycleHook;
 }
 
-export interface BackendProvider<TDefinition extends ModuleDefinition = ModuleDefinition> extends ModuleProvider {
+export interface BackendProvider<TDefinition extends ModuleDefinition = ModuleDefinition>
+  extends ModuleProvider {
   readonly module: TDefinition;
 }
 
@@ -662,15 +715,17 @@ export function defineRoute<
   TParams extends z.ZodTypeAny | undefined = undefined,
   TQuery extends z.ZodTypeAny | undefined = undefined,
   TBody extends z.ZodTypeAny | undefined = undefined,
-  TResponse extends z.ZodTypeAny = z.ZodTypeAny
->(spec: RouteSpec<TContext, TParams, TQuery, TBody, TResponse>): RouteSpec<TContext, TParams, TQuery, TBody, TResponse> {
+  TResponse extends z.ZodTypeAny = z.ZodTypeAny,
+>(
+  spec: RouteSpec<TContext, TParams, TQuery, TBody, TResponse>,
+): RouteSpec<TContext, TParams, TQuery, TBody, TResponse> {
   return spec;
 }
 
 export function defineView<
   TContext extends SSRContext,
   TParams extends z.ZodTypeAny | undefined = undefined,
-  TData extends z.ZodTypeAny = z.ZodTypeAny
+  TData extends z.ZodTypeAny = z.ZodTypeAny,
 >(spec: ViewSpec<TContext, TParams, TData>): ViewSpec<TContext, TParams, TData> {
   return spec;
 }
@@ -678,11 +733,18 @@ export function defineView<
 export function createModule<
   TRequestContext extends RequestContext,
   TSSRContext extends SSRContext,
-  TRoutes extends readonly RouteSpec<TRequestContext, any, any, any, any>[] = readonly RouteSpec<TRequestContext, any, any, any, any>[],
-  TViews extends readonly ViewSpec<TSSRContext, any, any>[] = readonly ViewSpec<TSSRContext, any, any>[]
->(definition: ModuleDefinition<TRequestContext, TSSRContext, TRoutes, TViews>): ModuleDefinition<TRequestContext, TSSRContext, TRoutes, TViews> {
+  TRoutes extends
+    readonly LooseRouteSpec<TRequestContext>[] = readonly LooseRouteSpec<TRequestContext>[],
+  TViews extends readonly LooseViewSpec<TSSRContext>[] = readonly LooseViewSpec<TSSRContext>[],
+>(
+  definition: ModuleDefinition<TRequestContext, TSSRContext, TRoutes, TViews>,
+): ModuleDefinition<TRequestContext, TSSRContext, TRoutes, TViews> {
   return definition;
 }
 
 export { fromTsRestRoute, fromTsRestRouter } from './adapters/ts-rest.js';
-export type { FromTsRestRouteOptions, FromTsRestRouterOptions, RouterRouteConfig } from './adapters/ts-rest.js';
+export type {
+  FromTsRestRouteOptions,
+  FromTsRestRouterOptions,
+  RouterRouteConfig,
+} from './adapters/ts-rest.js';

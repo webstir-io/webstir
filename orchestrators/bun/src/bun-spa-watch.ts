@@ -23,7 +23,7 @@ export interface BunSpaFrontendWatchSession {
  *   route-level reload behavior instead of the legacy daemon protocol.
  */
 export async function startBunSpaFrontendWatch(
-  options: BunSpaFrontendWatchOptions
+  options: BunSpaFrontendWatchOptions,
 ): Promise<BunSpaFrontendWatchSession> {
   return await startBunGeneratedFrontendWatch(options);
 }

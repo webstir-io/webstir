@@ -10,7 +10,6 @@ import type {
   RunnerSummaryEvent,
   TestManifest,
   TestModule,
-  TestRunResult,
   TestRuntime,
 } from './types.js';
 
@@ -125,7 +124,11 @@ function mergeSummaries(left: RunnerSummary, right: RunnerSummary): RunnerSummar
   } satisfies RunnerSummary;
 }
 
-function makeSummaryEvent(runId: string, runtime: TestRuntime, summary: RunnerSummary): RunnerSummaryEvent {
+function makeSummaryEvent(
+  runId: string,
+  runtime: TestRuntime,
+  summary: RunnerSummary,
+): RunnerSummaryEvent {
   return {
     type: 'summary',
     runId,

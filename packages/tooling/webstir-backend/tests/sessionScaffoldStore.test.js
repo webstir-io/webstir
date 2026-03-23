@@ -13,21 +13,21 @@ const config = {
   secret: 'test-session-secret',
   cookieName: 'webstir_session',
   secure: false,
-  maxAgeSeconds: 60
+  maxAgeSeconds: 60,
 };
 
 const loginRoute = {
   form: {
     session: { write: true },
     flash: {
-      publish: [{ key: 'signed-in', level: 'success', when: 'success' }]
-    }
-  }
+      publish: [{ key: 'signed-in', level: 'success', when: 'success' }],
+    },
+  },
 };
 
 const accountRoute = {
   session: { mode: 'optional' },
-  flash: { consume: ['signed-in'] }
+  flash: { consume: ['signed-in'] },
 };
 
 async function createTempWorkspace(prefix = 'webstir-backend-session-store-') {
@@ -51,12 +51,12 @@ async function seedBackendWorkspace(workspace, name) {
       {
         name,
         version: '0.0.0',
-        type: 'module'
+        type: 'module',
       },
       null,
-      2
+      2,
     ),
-    'utf8'
+    'utf8',
   );
 }
 
@@ -73,7 +73,7 @@ async function compileTemplateSessionFiles(workspace) {
       path.join(workspace, 'src', 'backend', 'env.ts'),
       path.join(workspace, 'src', 'backend', 'session', 'sqlite.ts'),
       path.join(workspace, 'src', 'backend', 'session', 'store.ts'),
-      path.join(workspace, 'src', 'backend', 'runtime', 'session.ts')
+      path.join(workspace, 'src', 'backend', 'runtime', 'session.ts'),
     ],
     bundle: false,
     format: 'esm',
@@ -81,7 +81,7 @@ async function compileTemplateSessionFiles(workspace) {
     target: 'node20',
     outdir: path.join(workspace, 'build', 'backend'),
     outbase: path.join(workspace, 'src', 'backend'),
-    logLevel: 'silent'
+    logLevel: 'silent',
   });
 }
 
@@ -109,8 +109,12 @@ async function importCompiledModule(filePath) {
 }
 
 async function runSqliteSessionProbe(workspace, { cwd = workspace, env = {} } = {}) {
-  const sessionStoreUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'session', 'store.js')).href;
-  const runtimeSessionUrl = pathToFileURL(path.join(workspace, 'build', 'backend', 'runtime', 'session.js')).href;
+  const sessionStoreUrl = pathToFileURL(
+    path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+  ).href;
+  const runtimeSessionUrl = pathToFileURL(
+    path.join(workspace, 'build', 'backend', 'runtime', 'session.js'),
+  ).href;
   const script = `
     const [{ sessionStore }, { prepareSessionState }] = await Promise.all([
       import(${JSON.stringify(sessionStoreUrl)}),
@@ -168,9 +172,9 @@ async function runSqliteSessionProbe(workspace, { cwd = workspace, env = {} } = 
     cwd,
     env: {
       ...process.env,
-      ...env
+      ...env,
     },
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
   let stdout = '';
@@ -187,7 +191,9 @@ async function runSqliteSessionProbe(workspace, { cwd = workspace, env = {} } = 
   });
 
   if (exitCode !== 0) {
-    throw new Error(`Session probe failed (exit ${exitCode}).\nstdout:\n${stdout}\nstderr:\n${stderr}`);
+    throw new Error(
+      `Session probe failed (exit ${exitCode}).\nstdout:\n${stdout}\nstderr:\n${stderr}`,
+    );
   }
 
   const line = stdout
@@ -201,52 +207,58 @@ async function runSqliteSessionProbe(workspace, { cwd = workspace, env = {} } = 
   return JSON.parse(line);
 }
 
-test('scaffold session store defaults to in-memory storage', async () => {
+test('scaffold session store defaults to in-memory storage outside production', async () => {
   const workspace = await createTempWorkspace('webstir-backend-session-memory-');
   await seedBackendWorkspace(workspace, '@demo/session-memory');
   await linkWorkspacePackage(workspace);
   await compileTemplateSessionFiles(workspace);
 
   const previousEnv = snapshotEnv([
+    'NODE_ENV',
     'WORKSPACE_ROOT',
     'WEBSTIR_WORKSPACE_ROOT',
     'SESSION_STORE_DRIVER',
-    'SESSION_STORE_URL'
+    'SESSION_STORE_URL',
   ]);
   const previousSqliteTarget = globalThis.__webstirSqliteTarget;
 
   try {
+    delete process.env.NODE_ENV;
     delete process.env.WORKSPACE_ROOT;
     delete process.env.WEBSTIR_WORKSPACE_ROOT;
     delete process.env.SESSION_STORE_DRIVER;
     delete process.env.SESSION_STORE_URL;
     delete globalThis.__webstirSqliteTarget;
 
-    const { sessionStore } = await importCompiledModule(path.join(workspace, 'build', 'backend', 'session', 'store.js'));
-    const { prepareSessionState } = await importCompiledModule(path.join(workspace, 'build', 'backend', 'runtime', 'session.js'));
+    const { sessionStore } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+    );
+    const { prepareSessionState } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'runtime', 'session.js'),
+    );
 
     const created = prepareSessionState({
       cookies: '',
       route: loginRoute,
       config,
-      store: sessionStore
+      store: sessionStore,
     });
     const createdCommit = created.commit({
       session: {
-        userId: 'ada@example.com'
+        userId: 'ada@example.com',
       },
       route: loginRoute,
       result: {
         status: 303,
-        redirect: { location: '/session/account' }
-      }
+        redirect: { location: '/session/account' },
+      },
     });
 
     const read = prepareSessionState({
       cookies: extractCookieHeader(createdCommit.setCookie),
       route: accountRoute,
       config,
-      store: sessionStore
+      store: sessionStore,
     });
 
     assert.equal(read.session?.userId, 'ada@example.com');
@@ -259,6 +271,40 @@ test('scaffold session store defaults to in-memory storage', async () => {
       globalThis.__webstirSqliteTarget = previousSqliteTarget;
     }
   }
+});
+
+test('scaffold session store defaults to sqlite storage in production', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-prod-sqlite-');
+  const alternateCwd = await createTempWorkspace('webstir-backend-session-prod-sqlite-cwd-');
+  await seedBackendWorkspace(workspace, '@demo/session-prod-sqlite');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const result = await runSqliteSessionProbe(workspace, {
+    cwd: alternateCwd,
+    env: {
+      NODE_ENV: 'production',
+      WORKSPACE_ROOT: '   ',
+      WEBSTIR_WORKSPACE_ROOT: workspace,
+    },
+  });
+
+  assert.equal(result.userId, 'ada@example.com');
+  assert.deepEqual(result.flash, [{ key: 'signed-in', level: 'success' }]);
+  assert.equal(
+    await fs
+      .access(path.join(workspace, 'data', 'sessions.sqlite'))
+      .then(() => true)
+      .catch(() => false),
+    true,
+  );
+  assert.equal(
+    await fs
+      .access(path.join(alternateCwd, 'data', 'sessions.sqlite'))
+      .then(() => true)
+      .catch(() => false),
+    false,
+  );
 });
 
 test('scaffold session store resolves sqlite paths from the workspace root outside the workspace cwd', async () => {
@@ -274,8 +320,8 @@ test('scaffold session store resolves sqlite paths from the workspace root outsi
       WORKSPACE_ROOT: '   ',
       WEBSTIR_WORKSPACE_ROOT: workspace,
       SESSION_STORE_DRIVER: 'sqlite',
-      SESSION_STORE_URL: 'file:./data/session-store.sqlite'
-    }
+      SESSION_STORE_URL: 'file:./data/session-store.sqlite',
+    },
   });
 
   assert.equal(result.userId, 'ada@example.com');
@@ -285,13 +331,113 @@ test('scaffold session store resolves sqlite paths from the workspace root outsi
       .access(path.join(workspace, 'data', 'session-store.sqlite'))
       .then(() => true)
       .catch(() => false),
-    true
+    true,
   );
   assert.equal(
     await fs
       .access(path.join(alternateCwd, 'data', 'session-store.sqlite'))
       .then(() => true)
       .catch(() => false),
-    false
+    false,
   );
+});
+
+test('scaffold session store infers sqlite when SESSION_STORE_URL is configured', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-sqlite-url-');
+  const alternateCwd = await createTempWorkspace('webstir-backend-session-sqlite-url-cwd-');
+  await seedBackendWorkspace(workspace, '@demo/session-sqlite-url');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const result = await runSqliteSessionProbe(workspace, {
+    cwd: alternateCwd,
+    env: {
+      WORKSPACE_ROOT: '   ',
+      WEBSTIR_WORKSPACE_ROOT: workspace,
+      SESSION_STORE_URL: 'file:./data/session-store-from-url.sqlite',
+    },
+  });
+
+  assert.equal(result.userId, 'ada@example.com');
+  assert.deepEqual(result.flash, [{ key: 'signed-in', level: 'success' }]);
+  assert.equal(
+    await fs
+      .access(path.join(workspace, 'data', 'session-store-from-url.sqlite'))
+      .then(() => true)
+      .catch(() => false),
+    true,
+  );
+  assert.equal(
+    await fs
+      .access(path.join(alternateCwd, 'data', 'session-store-from-url.sqlite'))
+      .then(() => true)
+      .catch(() => false),
+    false,
+  );
+});
+
+test('scaffold session store allows an explicit memory override in production', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-prod-memory-');
+  await seedBackendWorkspace(workspace, '@demo/session-prod-memory');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const previousEnv = snapshotEnv([
+    'NODE_ENV',
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'SESSION_STORE_DRIVER',
+    'SESSION_STORE_URL',
+  ]);
+  const previousSqliteTarget = globalThis.__webstirSqliteTarget;
+
+  try {
+    process.env.NODE_ENV = 'production';
+    delete process.env.WORKSPACE_ROOT;
+    delete process.env.WEBSTIR_WORKSPACE_ROOT;
+    process.env.SESSION_STORE_DRIVER = 'memory';
+    delete process.env.SESSION_STORE_URL;
+    delete globalThis.__webstirSqliteTarget;
+
+    const { sessionStore } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+    );
+    const { prepareSessionState } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'runtime', 'session.js'),
+    );
+
+    const created = prepareSessionState({
+      cookies: '',
+      route: loginRoute,
+      config,
+      store: sessionStore,
+    });
+    const createdCommit = created.commit({
+      session: {
+        userId: 'ada@example.com',
+      },
+      route: loginRoute,
+      result: {
+        status: 303,
+        redirect: { location: '/session/account' },
+      },
+    });
+
+    const read = prepareSessionState({
+      cookies: extractCookieHeader(createdCommit.setCookie),
+      route: accountRoute,
+      config,
+      store: sessionStore,
+    });
+
+    assert.equal(read.session?.userId, 'ada@example.com');
+    assert.equal(globalThis.__webstirSqliteTarget, undefined);
+  } finally {
+    restoreEnv(previousEnv);
+    if (previousSqliteTarget === undefined) {
+      delete globalThis.__webstirSqliteTarget;
+    } else {
+      globalThis.__webstirSqliteTarget = previousSqliteTarget;
+    }
+  }
 });

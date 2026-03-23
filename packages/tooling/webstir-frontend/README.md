@@ -34,12 +34,13 @@ Webstir watch mode follows a narrow fallback policy:
 
 - CSS edits hot-swap in the browser.
 - JS edits remount only when the module or boundary explicitly opts in.
-- Content, HTML, and route-shape changes fall back to rebuild + reload.
+- Most content, HTML, and route-shape changes fall back to rebuild + reload.
+- Current exception: the SSG docs-sidebar pilot also remounts on `src/frontend/content/_sidebar.json` edits.
 - Any cleanup failure or declined boundary update falls back to reload.
 
 ## Fragment Ownership Decision
 
-The current SSG runtime has a working fragment-ownership pilot on the docs sidebar boundary, but owned-fragment HTML replacement is not justified yet as a general mechanism.
+The current SSG runtime has a working fragment-ownership pilot on the docs sidebar boundary. It now covers the sidebar manifest input (`src/frontend/content/_sidebar.json`) in addition to direct docs page module edits, but owned-fragment HTML replacement is still not justified yet as a general mechanism.
 
 Keep reload/remount as the default until the runtime has:
 

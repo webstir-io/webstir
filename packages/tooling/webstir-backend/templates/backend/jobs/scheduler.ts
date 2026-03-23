@@ -17,8 +17,9 @@ async function main() {
     return;
   }
 
-  if (args.includes('--list')) {
-    listJobs(jobs);
+  const asJson = args.includes('--json');
+  if (args.includes('--list') || asJson) {
+    listJobs(jobs, { asJson });
     return;
   }
 
@@ -47,14 +48,18 @@ async function main() {
 async function startWatch(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName?: string) {
   const filtered = jobName ? jobs.filter((job) => job.name === jobName) : jobs;
   if (filtered.length === 0) {
-    console.error(jobName ? `[jobs] job '${jobName}' not found` : '[jobs] no jobs available to watch');
+    console.error(
+      jobName ? `[jobs] job '${jobName}' not found` : '[jobs] no jobs available to watch',
+    );
     process.exitCode = 1;
     return;
   }
 
   const timers = filtered.map((job) => scheduleJob(job));
   if (timers.every((timer) => timer === undefined)) {
-    console.warn('[jobs] no jobs have schedules compatible with the built-in watcher. Use an external scheduler.');
+    console.warn(
+      '[jobs] no jobs have schedules compatible with the built-in watcher. Use --json to export job metadata for an external scheduler.',
+    );
     return;
   }
 
@@ -66,7 +71,7 @@ function scheduleJob(job: Awaited<ReturnType<typeof loadJobs>>[number]) {
   const intervalMs = toInterval(job.schedule);
   if (intervalMs === null) {
     console.info(
-      `[jobs] schedule '${job.schedule ?? 'unspecified'}' is not supported by the built-in watcher. Run manually or use an external scheduler.`
+      `[jobs] schedule '${job.schedule ?? 'unspecified'}' is not supported by the built-in watcher. Run manually or use --json with an external scheduler.`,
     );
     return undefined;
   }
@@ -97,21 +102,36 @@ async function runJob(job: Awaited<ReturnType<typeof loadJobs>>[number]) {
   console.info(`[jobs] running ${job.name} (schedule: ${job.schedule ?? 'manual'})`);
   try {
     await job.run();
-    console.info(`[jobs] ${job.name} completed in ${(Date.now() - startedAt.getTime()).toFixed(0)}ms`);
+    console.info(
+      `[jobs] ${job.name} completed in ${(Date.now() - startedAt.getTime()).toFixed(0)}ms`,
+    );
   } catch (error) {
     console.error(`[jobs] ${job.name} failed: ${(error as Error).message}`);
     process.exitCode = 1;
   }
 }
 
-function listJobs(jobs: Awaited<ReturnType<typeof loadJobs>>) {
+function listJobs(jobs: Awaited<ReturnType<typeof loadJobs>>, options: { asJson?: boolean } = {}) {
+  if (options.asJson) {
+    console.info(
+      JSON.stringify(
+        jobs.map(({ run: _run, ...job }) => job),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
   for (const job of jobs) {
-    console.info(`- ${job.name}${job.schedule ? ` (${job.schedule})` : ''}${job.description ? ` — ${job.description}` : ''}`);
+    console.info(
+      `- ${job.name}${job.schedule ? ` (${job.schedule})` : ''}${job.description ? ` — ${job.description}` : ''}`,
+    );
   }
 }
 
 function parseOption(flag: string): string | undefined {
-  const index = args.findIndex((arg) => arg === flag);
+  const index = args.indexOf(flag);
   if (index !== -1 && args[index + 1] && !args[index + 1].startsWith('-')) {
     return args[index + 1];
   }
@@ -150,8 +170,13 @@ function toInterval(schedule: string | undefined): number | null {
   if (rateMatch) {
     const value = Number(rateMatch[1]);
     const unit = rateMatch[2];
-    const multiplier =
-      unit.startsWith('second') ? 1000 : unit.startsWith('minute') ? 60 * 1000 : unit.startsWith('hour') ? 60 * 60 * 1000 : 0;
+    const multiplier = unit.startsWith('second')
+      ? 1000
+      : unit.startsWith('minute')
+        ? 60 * 1000
+        : unit.startsWith('hour')
+          ? 60 * 60 * 1000
+          : 0;
     return value > 0 && multiplier > 0 ? value * multiplier : null;
   }
 
@@ -166,6 +191,7 @@ function printHelp() {
 
 Options:
   --list            Show registered jobs and exit
+  --json            Print registered job metadata as JSON for external schedulers
   --job <name>      Run a specific job immediately (or watch a single job)
   --all             Run all jobs once (default when no options are provided)
   --watch           Run supported jobs on an interval (supports @hourly/@daily/@weekly/@reboot and rate(...) syntax)

@@ -1,6 +1,4 @@
-import type {
-  CommandExecutionResult,
-} from './types.ts';
+import type { CommandExecutionResult } from './types.ts';
 import { runCommand, type RunCommandOptions } from './execute.ts';
 
 export type RunBuildOptions = RunCommandOptions;

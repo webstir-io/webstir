@@ -1,13 +1,21 @@
-import { ContractNoBody, isAppRoute, isAppRouteMutation, isAppRouteNoBody, isAppRouteOtherResponse, isZodType } from '@ts-rest/core';
+import {
+  ContractNoBody,
+  isAppRoute,
+  isAppRouteMutation,
+  isAppRouteNoBody,
+  isAppRouteOtherResponse,
+  isZodType,
+} from '@ts-rest/core';
 import type { AppRoute, AppRouteResponse, AppRouter } from '@ts-rest/core';
 import { z } from 'zod';
 
 import type {
+  LooseRouteSpec,
   ModuleError,
   RequestContext,
   RouteHandler,
   RouteSpec,
-  SchemaReference
+  SchemaReference,
 } from '../index.js';
 
 interface SchemaNames {
@@ -43,7 +51,7 @@ export interface FromTsRestRouteOptions<
   TParams extends z.ZodTypeAny | undefined,
   TQuery extends z.ZodTypeAny | undefined,
   TBody extends z.ZodTypeAny | undefined,
-  TResponse extends z.ZodTypeAny
+  TResponse extends z.ZodTypeAny,
 > extends BaseFromTsRestRouteOptions {
   readonly handler: RouteHandler<TContext, TParams, TQuery, TBody, TResponse>;
   readonly paramsSchema?: TParams;
@@ -61,7 +69,8 @@ type AnyRouteOptions<TContext extends RequestContext> = FromTsRestRouteOptions<
   z.ZodTypeAny
 >;
 
-export interface RouterRouteConfig<TContext extends RequestContext> extends Omit<AnyRouteOptions<TContext>, 'appRoute' | 'name'> {
+export interface RouterRouteConfig<TContext extends RequestContext>
+  extends Omit<AnyRouteOptions<TContext>, 'appRoute' | 'name'> {
   readonly name?: string;
 }
 
@@ -87,13 +96,16 @@ const sanitizeSchemaBase = (raw: string): string => raw.replace(/[^A-Za-z0-9]+/g
 const capitalize = (value: string): string =>
   value.length === 0 ? value : value[0].toUpperCase() + value.slice(1);
 
-const buildSchemaNames = (baseName: string, schemas: {
-  readonly params?: z.ZodTypeAny;
-  readonly query?: z.ZodTypeAny;
-  readonly body?: z.ZodTypeAny;
-  readonly headers?: z.ZodTypeAny;
-  readonly response?: z.ZodTypeAny;
-}): SchemaNames => {
+const buildSchemaNames = (
+  baseName: string,
+  schemas: {
+    readonly params?: z.ZodTypeAny;
+    readonly query?: z.ZodTypeAny;
+    readonly body?: z.ZodTypeAny;
+    readonly headers?: z.ZodTypeAny;
+    readonly response?: z.ZodTypeAny;
+  },
+): SchemaNames => {
   const names: MutableSchemaNames = {};
   const safeBase = sanitizeSchemaBase(baseName);
 
@@ -116,7 +128,10 @@ const buildSchemaNames = (baseName: string, schemas: {
   return names;
 };
 
-const selectResponse = (route: AppRoute, preferred?: number): { status?: number; response?: AppRouteResponse } => {
+const selectResponse = (
+  route: AppRoute,
+  preferred?: number,
+): { status?: number; response?: AppRouteResponse } => {
   const statusCodes = Object.keys(route.responses).map((status) => Number.parseInt(status, 10));
   if (statusCodes.length === 0) {
     return { response: undefined };
@@ -147,7 +162,9 @@ const toZod = (value: unknown): z.ZodTypeAny | undefined => {
   return undefined;
 };
 
-const extractResponseSchema = (response: AppRouteResponse | undefined): z.ZodTypeAny | undefined => {
+const extractResponseSchema = (
+  response: AppRouteResponse | undefined,
+): z.ZodTypeAny | undefined => {
   if (!response) {
     return undefined;
   }
@@ -165,9 +182,9 @@ export function fromTsRestRoute<
   TParams extends z.ZodTypeAny | undefined = undefined,
   TQuery extends z.ZodTypeAny | undefined = undefined,
   TBody extends z.ZodTypeAny | undefined = undefined,
-  TResponse extends z.ZodTypeAny = z.ZodTypeAny
+  TResponse extends z.ZodTypeAny = z.ZodTypeAny,
 >(
-  options: FromTsRestRouteOptions<TContext, TParams, TQuery, TBody, TResponse>
+  options: FromTsRestRouteOptions<TContext, TParams, TQuery, TBody, TResponse>,
 ): RouteSpec<TContext, TParams, TQuery, TBody, TResponse> {
   const {
     appRoute,
@@ -184,7 +201,7 @@ export function fromTsRestRoute<
     responseSchema,
     handler,
     errors,
-    errorSchemas
+    errorSchemas,
   } = options;
 
   const resolvedParamsSchema = (paramsSchema ?? toZod(appRoute.pathParams)) as TParams;
@@ -193,23 +210,28 @@ export function fromTsRestRoute<
   const mutationBodySchema = isAppRouteMutation(appRoute) ? toZod(appRoute.body) : undefined;
   const resolvedBodySchema = (bodySchema ?? mutationBodySchema) as TBody;
 
-  const { status: derivedStatus, response: routeResponse } = selectResponse(appRoute, successStatus);
+  const { status: derivedStatus, response: routeResponse } = selectResponse(
+    appRoute,
+    successStatus,
+  );
   const baseResponseSchema = extractResponseSchema(routeResponse);
-  const resolvedResponseSchema = (responseSchema ?? baseResponseSchema ?? noopResponseSchema) as TResponse;
+  const resolvedResponseSchema = (responseSchema ??
+    baseResponseSchema ??
+    noopResponseSchema) as TResponse;
 
   const schemaNames = buildSchemaNames(schemaBaseName ?? name, {
     params: resolvedParamsSchema,
     query: resolvedQuerySchema,
     body: resolvedBodySchema,
     headers: resolvedHeadersSchema,
-    response: resolvedResponseSchema
+    response: resolvedResponseSchema,
   });
 
   const definitionInput: Record<string, SchemaReference | undefined> = {
     params: schemaNames.params,
     query: schemaNames.query,
     body: schemaNames.body,
-    headers: schemaNames.headers
+    headers: schemaNames.headers,
   };
 
   const hasInput = Object.values(definitionInput).some((value) => value !== undefined);
@@ -227,16 +249,16 @@ export function fromTsRestRoute<
             params: schemaNames.params,
             query: schemaNames.query,
             body: schemaNames.body,
-            headers: schemaNames.headers
+            headers: schemaNames.headers,
           }
         : undefined,
       output: schemaNames.response
         ? {
             body: schemaNames.response,
-            status: derivedStatus
+            status: derivedStatus,
           }
         : undefined,
-      errors: isNonEmpty(errors) ? [...errors] : undefined
+      errors: isNonEmpty(errors) ? [...errors] : undefined,
     },
     schemas: {
       params: resolvedParamsSchema,
@@ -244,17 +266,17 @@ export function fromTsRestRoute<
       body: resolvedBodySchema,
       headers: resolvedHeadersSchema,
       response: resolvedResponseSchema,
-      errors: errorSchemas
+      errors: errorSchemas,
     },
-    handler
+    handler,
   };
 }
 
 export function fromTsRestRouter<TContext extends RequestContext>(
-  options: FromTsRestRouterOptions<TContext>
-): RouteSpec<TContext, any, any, any, any>[] {
+  options: FromTsRestRouterOptions<TContext>,
+): LooseRouteSpec<TContext>[] {
   const { router, createRoute, baseName } = options;
-  const specs: RouteSpec<TContext, any, any, any, any>[] = [];
+  const specs: LooseRouteSpec<TContext>[] = [];
 
   const visit = (node: AppRouter, path: readonly string[]) => {
     for (const [key, value] of Object.entries(node)) {
@@ -268,8 +290,8 @@ export function fromTsRestRouter<TContext extends RequestContext>(
           fromTsRestRoute({
             appRoute: value,
             name: routeName,
-            ...routeConfig
-          })
+            ...routeConfig,
+          }),
         );
       } else {
         visit(value as AppRouter, [...path, key]);

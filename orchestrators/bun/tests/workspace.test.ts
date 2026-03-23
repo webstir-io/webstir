@@ -29,8 +29,8 @@ test('readWorkspaceDescriptor resolves workspace name and mode', async () => {
         },
       },
       null,
-      2
-    )
+      2,
+    ),
   );
 
   const descriptor = await readWorkspaceDescriptor(workspace);

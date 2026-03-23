@@ -10,7 +10,7 @@ import { createMetricsTracker, type MetricsTracker } from '../observability/metr
 import { sessionStore } from '../session/store.js';
 import {
   executeRequestHookPhase,
-  type RequestHookReferenceLike
+  type RequestHookReferenceLike,
 } from '../runtime/request-hooks.js';
 import {
   createProcessEnvAccessor,
@@ -29,18 +29,14 @@ import {
   type NodeHttpRouteDefinitionLike,
   type ReadinessTracker,
   type RouteHandler,
-  type RouteHandlerResult
+  type RouteHandlerResult,
 } from '../runtime/node-http.js';
 import {
   parseCookieHeader,
   prepareSessionState,
-  type SessionFlashMessage
+  type SessionFlashMessage,
 } from '../runtime/session.js';
-import {
-  matchView,
-  renderRequestTimeView,
-  type CompiledView
-} from '../runtime/views.js';
+import { matchView, renderRequestTimeView, type CompiledView } from '../runtime/views.js';
 
 interface BunServerLike {
   stop(closeActiveConnections?: boolean): void;
@@ -91,7 +87,7 @@ export async function start(): Promise<void> {
 
   try {
     runtime = await loadModuleRuntime<RouteContext, RouteHandlerResult, ModuleRouteDefinition>({
-      importMetaUrl: import.meta.url
+      importMetaUrl: import.meta.url,
     });
   } catch (error) {
     loadError = (error as Error).message ?? 'Failed to load module definition';
@@ -103,7 +99,9 @@ export async function start(): Promise<void> {
   if (runtime.source) {
     logger.info(`[webstir-backend] loaded module definition from ${runtime.source}`);
   } else {
-    logger.warn('[webstir-backend] no module definition found. Add src/backend/module.ts to describe routes.');
+    logger.warn(
+      '[webstir-backend] no module definition found. Add src/backend/module.ts to describe routes.',
+    );
   }
 
   logManifestSummary(logger, runtime.manifest, runtime.routes.length, runtime.views.length);
@@ -123,13 +121,13 @@ export async function start(): Promise<void> {
         manifestSummary,
         env,
         logger,
-        metrics
+        metrics,
       });
     },
     error: (error) => {
       logger.error({ err: error }, '[webstir-backend] Bun server request failed');
       return jsonResponse(500, { error: 'internal_error', message: error.message });
-    }
+    },
   });
 
   if (!loadError) {
@@ -165,7 +163,7 @@ async function handleRequest(options: {
         status: snapshot.status,
         message: snapshot.message,
         manifest: manifestSummary,
-        metrics: metrics.snapshot()
+        metrics: metrics.snapshot(),
       });
     }
 
@@ -183,8 +181,9 @@ async function handleRequest(options: {
         headers: {
           ...(allowOrigin ? { 'Access-Control-Allow-Origin': allowOrigin } : {}),
           'Access-Control-Allow-Methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
-          'Access-Control-Allow-Headers': request.headers.get('access-control-request-headers') ?? 'content-type'
-        }
+          'Access-Control-Allow-Headers':
+            request.headers.get('access-control-request-headers') ?? 'content-type',
+        },
       });
     }
 
@@ -200,8 +199,8 @@ async function handleRequest(options: {
     }
 
     const routeName = matchedRoute
-      ? matchedRoute.route.name ?? matchedRoute.route.definition?.path ?? pathname
-      : matchedView?.view.name ?? pathname;
+      ? (matchedRoute.route.name ?? matchedRoute.route.definition?.path ?? pathname)
+      : (matchedView?.view.name ?? pathname);
     const startTime = performance.now();
     const requestId = extractRequestId(request);
     const requestLogger = createBunRequestLogger(logger, request, routeName, requestId);
@@ -220,7 +219,7 @@ async function handleRequest(options: {
           envAccessor,
           requestLogger,
           requestId,
-          now
+          now,
         });
         responseStatus = response.status;
         return response;
@@ -232,7 +231,7 @@ async function handleRequest(options: {
         route: matchedRoute.route.definition,
         config: env.sessions,
         store: sessionStore,
-        now
+        now,
       });
       const ctx: RouteContext = {
         request,
@@ -247,13 +246,13 @@ async function handleRequest(options: {
         env: envAccessor,
         logger: requestLogger,
         requestId,
-        now
+        now,
       };
 
       const routeDefinition = matchedRoute.route.definition ?? {
         name: matchedRoute.route.name,
         path: pathname,
-        method
+        method,
       };
 
       const beforeAuth = await executeRequestHookPhase({
@@ -261,7 +260,7 @@ async function handleRequest(options: {
         phase: 'beforeAuth',
         context: ctx,
         route: routeDefinition,
-        logger: requestLogger
+        logger: requestLogger,
       });
       if (beforeAuth.shortCircuited && beforeAuth.result) {
         const response = createCommittedResponse(beforeAuth.result, {
@@ -269,14 +268,14 @@ async function handleRequest(options: {
           sessionState,
           session: ctx.session,
           route: matchedRoute.route.definition,
-          requestId
+          requestId,
         });
         responseStatus = response.status;
         return response;
       }
 
       if (ctx.auth === undefined) {
-        ctx.auth = resolveRequestAuth(toNodeLikeRequest(request), env.auth, requestLogger);
+        ctx.auth = await resolveRequestAuth(toNodeLikeRequest(request), env.auth, requestLogger);
       }
 
       const beforeHandler = await executeRequestHookPhase({
@@ -284,7 +283,7 @@ async function handleRequest(options: {
         phase: 'beforeHandler',
         context: ctx,
         route: routeDefinition,
-        logger: requestLogger
+        logger: requestLogger,
       });
       if (beforeHandler.shortCircuited && beforeHandler.result) {
         const response = createCommittedResponse(beforeHandler.result, {
@@ -292,20 +291,22 @@ async function handleRequest(options: {
           sessionState,
           session: ctx.session,
           route: matchedRoute.route.definition,
-          requestId
+          requestId,
         });
         responseStatus = response.status;
         return response;
       }
 
-      const handlerResult = await matchedRoute.route.handler(ctx as Parameters<BackendRouteHandler>[0]);
+      const handlerResult = await matchedRoute.route.handler(
+        ctx as Parameters<BackendRouteHandler>[0],
+      );
       const afterHandler = await executeRequestHookPhase({
         hooks: matchedRoute.route.requestHooks,
         phase: 'afterHandler',
         context: ctx,
         route: routeDefinition,
         logger: requestLogger,
-        result: handlerResult
+        result: handlerResult,
       });
 
       const response = createCommittedResponse(afterHandler.result ?? handlerResult, {
@@ -313,7 +314,7 @@ async function handleRequest(options: {
         sessionState,
         session: ctx.session,
         route: matchedRoute.route.definition,
-        requestId
+        requestId,
       });
       responseStatus = response.status;
       return response;
@@ -321,16 +322,20 @@ async function handleRequest(options: {
       requestLogger.error({ err: error }, 'request handler failed');
       if (error instanceof RequestBodyTooLargeError) {
         responseStatus = error.statusCode;
-        return jsonResponse(error.statusCode, { error: error.code, message: error.message }, requestId);
+        return jsonResponse(
+          error.statusCode,
+          { error: error.code, message: error.message },
+          requestId,
+        );
       }
       responseStatus = 500;
       return jsonResponse(
         500,
         {
           error: 'internal_error',
-          message: (error as Error).message
+          message: (error as Error).message,
         },
-        requestId
+        requestId,
       );
     } finally {
       const durationMs = performance.now() - startTime;
@@ -338,7 +343,7 @@ async function handleRequest(options: {
         method,
         route: routeName,
         status: responseStatus,
-        durationMs
+        durationMs,
       });
       requestLogger.info({ status: responseStatus, durationMs }, 'request.completed');
     }
@@ -362,12 +367,13 @@ async function handleViewRequest(options: {
   requestId: string;
   now: () => Date;
 }): Promise<Response> {
-  const { request, method, url, matchedView, env, envAccessor, requestLogger, requestId, now } = options;
+  const { request, method, url, matchedView, env, envAccessor, requestLogger, requestId, now } =
+    options;
   const sessionState = prepareSessionState<Record<string, unknown>, RouteHandlerResult>({
     cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
     config: env.sessions,
     store: sessionStore,
-    now
+    now,
   });
   const rendered = await renderRequestTimeView({
     workspaceRoot: resolveWorkspaceRoot(),
@@ -376,23 +382,23 @@ async function handleViewRequest(options: {
     params: matchedView.params,
     cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
     headers: toRequestHeadersRecord(request.headers),
-    auth: resolveRequestAuth(toNodeLikeRequest(request), env.auth, requestLogger),
+    auth: await resolveRequestAuth(toNodeLikeRequest(request), env.auth, requestLogger),
     session: sessionState.session,
     env: envAccessor,
     logger: requestLogger,
     requestId,
-    now
+    now,
   });
   const commit = sessionState.commit({
     session: sessionState.session,
-    result: { status: 200 }
+    result: { status: 200 },
   });
 
   const headers = new Headers({
     'cache-control': 'no-store',
     'content-type': 'text/html; charset=utf-8',
     'x-request-id': requestId,
-    'x-webstir-document-cache': rendered.documentCache.status
+    'x-webstir-document-cache': rendered.documentCache.status,
   });
   if (commit.setCookie) {
     headers.append('set-cookie', commit.setCookie);
@@ -400,14 +406,14 @@ async function handleViewRequest(options: {
 
   return new Response(method === 'HEAD' ? null : rendered.html, {
     status: 200,
-    headers
+    headers,
   });
 }
 
 function createCommittedResponse<
   TSession extends Record<string, unknown>,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike
+  TRouteDefinition extends NodeHttpRouteDefinitionLike,
 >(
   result: TResult,
   options: {
@@ -416,13 +422,13 @@ function createCommittedResponse<
     session: TSession | null;
     route?: TRouteDefinition;
     requestId: string;
-  }
+  },
 ): Response {
   const normalizedResult = normalizeRouteHandlerResult(result);
   const commit = options.sessionState.commit({
     session: options.session,
     route: options.route,
-    result: normalizedResult as TResult
+    result: normalizedResult as TResult,
   });
 
   const status = resolveResponseStatus(normalizedResult);
@@ -439,11 +445,17 @@ function createCommittedResponse<
     return new Response(null, { status, headers });
   }
 
-  const payload = normalizedResult.fragment ? normalizedResult.fragment.body : normalizedResult.body;
+  const payload = normalizedResult.fragment
+    ? normalizedResult.fragment.body
+    : normalizedResult.body;
   if (payload === undefined || payload === null || options.method === 'HEAD') {
     return new Response(null, { status, headers });
   }
-  if (typeof payload === 'string' || payload instanceof Uint8Array || payload instanceof ArrayBuffer) {
+  if (
+    typeof payload === 'string' ||
+    payload instanceof Uint8Array ||
+    payload instanceof ArrayBuffer
+  ) {
     return new Response(payload, { status, headers });
   }
   return jsonResponse(status, payload, options.requestId, headers);
@@ -486,13 +498,18 @@ async function readRequestBody(request: Request, maxBodyBytes: number): Promise<
   return bodyText;
 }
 
-function createBunRequestLogger(baseLogger: Logger, request: Request, route: string, requestId: string): Logger {
+function createBunRequestLogger(
+  baseLogger: Logger,
+  request: Request,
+  route: string,
+  requestId: string,
+): Logger {
   const url = new URL(request.url);
   return baseLogger.child({
     requestId,
     method: request.method ?? 'GET',
     path: url.pathname,
-    route
+    route,
   });
 }
 
@@ -510,7 +527,7 @@ function extractRequestId(request: Request): string {
 
 function toNodeLikeRequest(request: Request): http.IncomingMessage {
   return {
-    headers: toIncomingHeaders(request.headers)
+    headers: toIncomingHeaders(request.headers),
   } as http.IncomingMessage;
 }
 
@@ -537,7 +554,7 @@ function jsonResponse(
   status: number,
   payload: unknown,
   requestId?: string,
-  headers?: Headers
+  headers?: Headers,
 ): Response {
   const responseHeaders = new Headers(headers);
   if (!responseHeaders.has('content-type')) {
@@ -548,7 +565,7 @@ function jsonResponse(
   }
   return new Response(JSON.stringify(payload), {
     status,
-    headers: responseHeaders
+    headers: responseHeaders,
   });
 }
 
@@ -556,7 +573,7 @@ function requireBunRuntime(): BunLike {
   const bun = (globalThis as typeof globalThis & { Bun?: BunLike }).Bun;
   if (!bun?.serve) {
     throw new Error(
-      'The Bun server scaffold requires Bun at runtime. Run the backend with Bun or leave WEBSTIR_BACKEND_SERVER_RUNTIME unset.'
+      'The Bun server scaffold requires Bun at runtime. Run the backend with Bun or leave WEBSTIR_BACKEND_SERVER_RUNTIME unset.',
     );
   }
   return bun;

@@ -56,6 +56,11 @@ declare global {
 let navCache: DocsNavEntry[] | null | undefined;
 let navPromise: Promise<DocsNavEntry[] | null> | null = null;
 
+function invalidateNavCache(): void {
+  navCache = undefined;
+  navPromise = null;
+}
+
 function normalizePath(value: string): string {
   const trimmed = value.trim();
   if (!trimmed.startsWith('/')) {
@@ -94,6 +99,15 @@ function parseDocsSegments(urlPath: string): string[] {
 
 function joinPath(segments: readonly string[]): string {
   return segments.join('/');
+}
+
+function isSidebarManifestHotUpdate(context: unknown): boolean {
+  if (!context || typeof context !== 'object') {
+    return false;
+  }
+
+  const changedFile = (context as { changedFile?: unknown }).changedFile;
+  return typeof changedFile === 'string' && /(?:^|\/)_sidebar\.json$/i.test(changedFile);
 }
 
 async function loadJson<T>(path: string, signal?: AbortSignal): Promise<T | null | undefined> {
@@ -668,8 +682,11 @@ export const docsBoundary = defineBoundary<DocsRuntimeState>({
 });
 
 const docsBoundaryHotController = {
-  async accept(): Promise<boolean> {
+  async accept(context?: unknown): Promise<boolean> {
     console.info('[webstir-hmr] Docs boundary hot accept received.');
+    if (isSidebarManifestHotUpdate(context)) {
+      invalidateNavCache();
+    }
     const previousBoundary = window.__webstirDocsBoundary;
     if (previousBoundary) {
       await previousBoundary.unmount();
@@ -689,8 +706,11 @@ const docsBoundaryHotController = {
 };
 
 const docsSidebarBoundaryHotController = {
-  async accept(): Promise<boolean> {
+  async accept(context?: unknown): Promise<boolean> {
     console.info('[webstir-hmr] Docs sidebar hot accept received.');
+    if (isSidebarManifestHotUpdate(context)) {
+      invalidateNavCache();
+    }
     const previousBoundary = window.__webstirDocsSidebarBoundary;
     if (previousBoundary) {
       await previousBoundary.unmount();

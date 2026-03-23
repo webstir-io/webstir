@@ -44,9 +44,9 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
     expect(result.stdout).toContain('workspace-source: explicit workspace');
     expect(result.stdout).toContain('phases: 4');
     expect(result.stdout).toContain('  - build: frontend:');
-    expect(result.stdout).toMatch(/  - test: \d+ passed, 0 failed/);
+    expect(result.stdout).toMatch(/ {2}- test: \d+ passed, 0 failed/);
     expect(result.stdout).toContain('  - publish: frontend:');
-    expect(result.stdout).toMatch(/  - backend-inspect: \d+ routes, 0 jobs/);
+    expect(result.stdout).toMatch(/ {2}- backend-inspect: \d+ routes, 0 jobs/);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
@@ -63,7 +63,7 @@ test('CLI smoke defaults to a temporary full workspace built from Bun-owned temp
   expect(result.stdout).toContain('source: built-in full template + client-nav');
   expect(result.stdout).toContain('phases: 4');
   expect(result.stdout).toContain('  - build: frontend:');
-  expect(result.stdout).toMatch(/  - test: \d+ passed, 0 failed/);
+  expect(result.stdout).toMatch(/ {2}- test: \d+ passed, 0 failed/);
   expect(result.stdout).toContain('  - publish: frontend:');
-  expect(result.stdout).toMatch(/  - backend-inspect: \d+ routes, 0 jobs/);
+  expect(result.stdout).toMatch(/ {2}- backend-inspect: \d+ routes, 0 jobs/);
 });

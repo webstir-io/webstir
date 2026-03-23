@@ -6,62 +6,65 @@ import type { ModuleArtifact, ModuleDiagnostic, ModuleManifest } from '@webstir-
 
 import { pushEntryBucketSummary } from '../diagnostics/summary.js';
 
-export async function collectArtifacts(buildRoot: string, includeSourceMaps: boolean): Promise<ModuleArtifact[]> {
-    const patterns = ['**/*.js'];
-    if (includeSourceMaps) {
-        patterns.push('**/*.js.map');
+export async function collectArtifacts(
+  buildRoot: string,
+  includeSourceMaps: boolean,
+): Promise<ModuleArtifact[]> {
+  const patterns = ['**/*.js'];
+  if (includeSourceMaps) {
+    patterns.push('**/*.js.map');
+  }
+  const matches = new Set<string>();
+  for (const pattern of patterns) {
+    const files = await glob(pattern, {
+      cwd: buildRoot,
+      nodir: true,
+      dot: false,
+    });
+    for (const relativePath of files) {
+      matches.add(relativePath);
     }
-    const matches = new Set<string>();
-    for (const pattern of patterns) {
-        const files = await glob(pattern, {
-            cwd: buildRoot,
-            nodir: true,
-            dot: false
-        });
-        for (const relativePath of files) {
-            matches.add(relativePath);
-        }
-    }
+  }
 
-    return Array.from(matches).map<ModuleArtifact>((relativePath) => ({
-        path: path.join(buildRoot, relativePath),
-        type: relativePath.endsWith('.map') ? 'asset' : 'bundle'
-    }));
+  return Array.from(matches).map<ModuleArtifact>((relativePath) => ({
+    path: path.join(buildRoot, relativePath),
+    type: relativePath.endsWith('.map') ? 'asset' : 'bundle',
+  }));
 }
 
 export function createBuildManifest(
-    buildRoot: string,
-    artifacts: readonly ModuleArtifact[],
-    diagnostics: ModuleDiagnostic[],
-    moduleManifest: ModuleManifest
+  buildRoot: string,
+  artifacts: readonly ModuleArtifact[],
+  diagnostics: ModuleDiagnostic[],
+  moduleManifest: ModuleManifest,
 ) {
-    const entryPoints: string[] = [];
+  const entryPoints: string[] = [];
 
-    for (const artifact of artifacts) {
-        const relative = path.relative(buildRoot, artifact.path);
-        if (relative.endsWith('index.js')) {
-            entryPoints.push(relative);
-        }
+  for (const artifact of artifacts) {
+    const relative = path.relative(buildRoot, artifact.path);
+    if (relative.endsWith('index.js')) {
+      entryPoints.push(relative);
     }
+  }
 
-    if (entryPoints.length === 0) {
-        const defaultEntry = path.join(buildRoot, 'index.js');
-        if (existsSync(defaultEntry)) {
-            entryPoints.push(path.relative(buildRoot, defaultEntry));
-        } else {
-            diagnostics.push({
-                severity: 'warn',
-                message: 'No backend entry point found (expected index.js).'
-            });
-        }
+  if (entryPoints.length === 0) {
+    const defaultEntry = path.join(buildRoot, 'index.js');
+    if (existsSync(defaultEntry)) {
+      entryPoints.push(path.relative(buildRoot, defaultEntry));
+    } else {
+      diagnostics.push({
+        severity: 'warn',
+        message: 'No backend entry point found (expected index.js).',
+      });
     }
+  }
 
-    pushEntryBucketSummary(diagnostics, entryPoints);
+  pushEntryBucketSummary(diagnostics, entryPoints);
 
-    return {
-        entryPoints,
-        staticAssets: [],
-        diagnostics,
-        module: moduleManifest
-    };
+  return {
+    entryPoints,
+    staticAssets: [],
+    diagnostics,
+    module: moduleManifest,
+  };
 }

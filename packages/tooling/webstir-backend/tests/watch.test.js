@@ -62,7 +62,7 @@ test('startBackendWatch updates cache files after rebuild', async () => {
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   try {
@@ -119,7 +119,7 @@ test('startBackendWatch emits build outcome events for successful and failed reb
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const events = [];
@@ -129,20 +129,28 @@ test('startBackendWatch emits build outcome events for successful and failed reb
       env,
       onEvent(event) {
         events.push(event);
-      }
+      },
     });
 
     try {
-      await waitFor(async () => events.some((event) => event.type === 'build-complete' && event.succeeded === true));
+      await waitFor(async () =>
+        events.some((event) => event.type === 'build-complete' && event.succeeded === true),
+      );
 
       const indexPath = path.join(workspace, 'src', 'backend', 'index.ts');
       await fs.writeFile(indexPath, 'export default () => {\n', 'utf8');
 
-      await waitFor(async () => events.some((event) => event.type === 'build-complete' && event.succeeded === false));
+      await waitFor(async () =>
+        events.some((event) => event.type === 'build-complete' && event.succeeded === false),
+      );
 
       assert.ok(events.some((event) => event.type === 'build-start'));
-      assert.ok(events.some((event) => event.type === 'build-complete' && event.succeeded === true));
-      assert.ok(events.some((event) => event.type === 'build-complete' && event.succeeded === false));
+      assert.ok(
+        events.some((event) => event.type === 'build-complete' && event.succeeded === true),
+      );
+      assert.ok(
+        events.some((event) => event.type === 'build-complete' && event.succeeded === false),
+      );
     } finally {
       await handle.stop();
     }
@@ -159,7 +167,7 @@ test('startBackendWatch reports Bun benchmark timings when enabled', async () =>
     WEBSTIR_MODULE_MODE: 'build',
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
     WEBSTIR_BACKEND_WATCH_BUN_BENCHMARK: '1',
-    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
   const events = [];
@@ -169,7 +177,7 @@ test('startBackendWatch reports Bun benchmark timings when enabled', async () =>
       env,
       onEvent(event) {
         events.push(event);
-      }
+      },
     });
 
     try {
@@ -179,15 +187,15 @@ test('startBackendWatch reports Bun benchmark timings when enabled', async () =>
             event.type === 'build-complete' &&
             event.succeeded === true &&
             typeof event.bunBenchmarkDurationMs === 'number' &&
-            event.bunBenchmarkDurationMs > 0
-        )
+            event.bunBenchmarkDurationMs > 0,
+        ),
       );
 
       const completedEvent = events.find(
         (event) =>
           event.type === 'build-complete' &&
           event.succeeded === true &&
-          typeof event.bunBenchmarkDurationMs === 'number'
+          typeof event.bunBenchmarkDurationMs === 'number',
       );
 
       assert.equal(completedEvent?.bunBenchmarkSucceeded, true);
@@ -214,8 +222,8 @@ test('startBackendWatch resolves WEBSTIR_WORKSPACE_ROOT outside the workspace cw
       env: {
         WEBSTIR_MODULE_MODE: 'build',
         WEBSTIR_BACKEND_TYPECHECK: 'skip',
-        WEBSTIR_WORKSPACE_ROOT: workspace
-      }
+        WEBSTIR_WORKSPACE_ROOT: workspace,
+      },
     });
 
     try {

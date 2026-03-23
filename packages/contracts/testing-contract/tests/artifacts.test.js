@@ -9,10 +9,10 @@ test('emits dist output', () => {
 
 test('schema artifacts are valid JSON', () => {
   const runnerSchema = JSON.parse(
-    fs.readFileSync(new URL('../schema/RunnerEvent.schema.json', import.meta.url), 'utf8')
+    fs.readFileSync(new URL('../schema/RunnerEvent.schema.json', import.meta.url), 'utf8'),
   );
   const manifestSchema = JSON.parse(
-    fs.readFileSync(new URL('../schema/TestManifest.schema.json', import.meta.url), 'utf8')
+    fs.readFileSync(new URL('../schema/TestManifest.schema.json', import.meta.url), 'utf8'),
   );
 
   assert.equal(typeof runnerSchema, 'object');

@@ -24,7 +24,8 @@ export function equal<T>(expected: T, actual: T, message?: string): void {
     return;
   }
 
-  const errorMessage = message ?? `Expected ${stringify(expected)} but received ${stringify(actual)}`;
+  const errorMessage =
+    message ?? `Expected ${stringify(expected)} but received ${stringify(actual)}`;
   fail(errorMessage);
 }
 

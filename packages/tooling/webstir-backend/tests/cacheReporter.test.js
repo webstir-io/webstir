@@ -22,7 +22,7 @@ function makeManifest(overrides = {}) {
     jobs: [],
     events: [],
     services: [],
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -33,13 +33,13 @@ test('cache reporter emits diagnostics for output and manifest diffs', async () 
     workspaceRoot,
     buildRoot: path.join(workspaceRoot, 'build', 'backend'),
     env: {},
-    diagnostics
+    diagnostics,
   });
 
   await reporter.diffOutputs({ 'index.js': 128 }, 'build');
   assert.ok(
     diagnostics.some((d) => d.message.includes('changed 1 file')),
-    'expected first diff to report changed files'
+    'expected first diff to report changed files',
   );
 
   diagnostics.length = 0;
@@ -47,7 +47,7 @@ test('cache reporter emits diagnostics for output and manifest diffs', async () 
   await reporter.diffOutputs({ 'index.js': 256 }, 'build');
   assert.ok(
     diagnostics.some((d) => d.message.includes('changed 1 file')),
-    'expected subsequent diffs to report changed files'
+    'expected subsequent diffs to report changed files',
   );
 
   diagnostics.length = 0;
@@ -57,12 +57,12 @@ test('cache reporter emits diagnostics for output and manifest diffs', async () 
 
   await reporter.diffManifest(
     makeManifest({
-      routes: [{ method: 'GET', path: '/accounts' }]
-    })
+      routes: [{ method: 'GET', path: '/accounts' }],
+    }),
   );
   assert.ok(
     diagnostics.some((d) => d.message.includes('manifest changed')),
-    'expected manifest changes to produce diagnostics'
+    'expected manifest changes to produce diagnostics',
   );
 });
 
@@ -73,7 +73,7 @@ test('cache reporter can silence diagnostics via env', async () => {
     workspaceRoot,
     buildRoot: path.join(workspaceRoot, 'build', 'backend'),
     env: { WEBSTIR_BACKEND_CACHE_LOG: 'off' },
-    diagnostics
+    diagnostics,
   });
 
   await reporter.diffOutputs({ 'index.js': 128 }, 'build');
@@ -81,8 +81,8 @@ test('cache reporter can silence diagnostics via env', async () => {
   await reporter.diffManifest(makeManifest());
   await reporter.diffManifest(
     makeManifest({
-      routes: [{ method: 'POST', path: '/silent' }]
-    })
+      routes: [{ method: 'POST', path: '/silent' }],
+    }),
   );
 
   assert.equal(diagnostics.length, 0, 'expected diagnostics to stay empty when logging disabled');

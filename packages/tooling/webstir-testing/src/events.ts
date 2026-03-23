@@ -1,4 +1,4 @@
-import { RunnerEvent } from './types.js';
+import type { RunnerEvent } from './types.js';
 
 export const EVENT_PREFIX = 'WEBSTIR_TEST ';
 

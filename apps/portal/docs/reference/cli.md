@@ -86,12 +86,13 @@ What it does:
 - Produces `build/frontend/**` and/or `build/backend/**` depending on workspace mode
 
 ### publish
-Usage: `webstir publish --workspace <path>`
+Usage: `webstir publish --workspace <path> [--frontend-mode <bundle|ssg>]`
 
 What it does:
 - Produces publish artifacts in `dist/**`
 - Reuses the same provider seams as `build`
 - Handles the required frontend prebuild for `ssg` and `full` before publish output is finalized
+- Accepts `--frontend-mode ssg` to force static-site publish behavior from the top-level Bun CLI
 
 ### watch
 Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--verbose] [--hmr-verbose]`

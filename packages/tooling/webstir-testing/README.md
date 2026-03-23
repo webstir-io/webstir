@@ -4,8 +4,8 @@ Unified test runner, runtime helpers, and CLI for Webstir TypeScript workspaces.
 
 ## Status
 
-- Experimental test host and CLI — event shapes, flags, and discovery rules may change as the ecosystem evolves.
-- Intended for Webstir workspaces and experimentation, not yet as a general-purpose, production-stable test runner.
+- Active test host and CLI for Webstir workspaces.
+- Scope remains intentionally narrow: event shapes, flags, and discovery rules are optimized for Webstir projects rather than a general-purpose cross-framework runner.
 
 ## Quick Start
 

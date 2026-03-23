@@ -1,5 +1,6 @@
 import { createBackendTestHarness, setBackendTestContext } from '../backend/harness.js';
 import { run as runVmRuntime } from '../runtime.js';
+import type { BackendTestHarness } from '../backend/types.js';
 import type { TestProvider } from '../providers.js';
 import type { RunnerSummary, TestRunResult } from '../types.js';
 
@@ -11,7 +12,7 @@ export function createBackendProvider(): TestProvider {
         return await runVmRuntime(files);
       }
 
-      let harness;
+      let harness: BackendTestHarness;
       try {
         harness = await createBackendTestHarness();
       } catch (error) {

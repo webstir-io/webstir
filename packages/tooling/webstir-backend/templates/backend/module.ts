@@ -7,7 +7,7 @@ import {
   prepareFormState,
   processFormSubmission,
   type FormIssue,
-  type FormValues
+  type FormValues,
 } from './runtime/forms.js';
 
 interface RouteHandlerResult {
@@ -19,8 +19,6 @@ interface RouteHandlerResult {
   };
   errors?: { code: string; message: string; details?: unknown }[];
 }
-
-type RouteHandler = (ctx: RouteContext) => Promise<RouteHandlerResult> | RouteHandlerResult;
 
 interface RouteContext {
   params: Record<string, string>;
@@ -55,7 +53,9 @@ interface RouteContext {
 
 type RequestHook = {
   id: string;
-  handler: (ctx: RouteContext) => Promise<RouteHandlerResult | void> | RouteHandlerResult | void;
+  handler:
+    | ((ctx: RouteContext) => Promise<RouteHandlerResult | undefined>)
+    | ((ctx: RouteContext) => RouteHandlerResult | undefined);
 };
 
 const accountSettingsPageDefinition = {
@@ -66,7 +66,8 @@ const accountSettingsPageDefinition = {
   session: { mode: 'optional' },
   flash: { consume: ['settings-saved'] },
   summary: 'Account settings form',
-  description: 'Demonstrates HTML-first form rendering with CSRF, redirect-after-post, and inline validation.'
+  description:
+    'Demonstrates HTML-first form rendering with CSRF, redirect-after-post, and inline validation.',
 } as const;
 
 const updateAccountSettingsDefinition = {
@@ -79,11 +80,11 @@ const updateAccountSettingsDefinition = {
     csrf: true,
     session: { write: true },
     flash: {
-      publish: [{ key: 'settings-saved', level: 'success', when: 'success' }]
-    }
+      publish: [{ key: 'settings-saved', level: 'success', when: 'success' }],
+    },
   },
   summary: 'Update account settings',
-  description: 'Demonstrates auth-aware mutations and redirect-after-post ergonomics.'
+  description: 'Demonstrates auth-aware mutations and redirect-after-post ergonomics.',
 } as const;
 
 const routes = [
@@ -94,26 +95,30 @@ const routes = [
       path: '/hello/:name',
       requestHooks: [{ id: 'audit-hello' }],
       summary: 'Simple hello route',
-      description: 'Demonstrates manifest wiring + request context metadata.'
+      description: 'Demonstrates manifest wiring + request context metadata.',
     },
     handler: async (ctx: RouteContext) => {
       if (!ctx.auth) {
         return {
           status: 401,
-          errors: [{ code: 'auth', message: 'Sign-in required to access /hello' }]
+          errors: [{ code: 'auth', message: 'Sign-in required to access /hello' }],
         };
       }
       const name = ctx.params.name ?? 'world';
-      ctx.logger.info('hello route invoked', { name, requestId: ctx.requestId, userId: ctx.auth.userId });
+      ctx.logger.info('hello route invoked', {
+        name,
+        requestId: ctx.requestId,
+        userId: ctx.auth.userId,
+      });
       return {
         status: 200,
         body: {
           message: `Hello ${name}`,
           greetedAt: ctx.now().toISOString(),
-          user: ctx.auth.userId ?? 'anonymous'
-        }
+          user: ctx.auth.userId ?? 'anonymous',
+        },
       };
-    }
+    },
   },
   {
     definition: accountSettingsPageDefinition,
@@ -122,7 +127,7 @@ const routes = [
         session: ctx.session,
         formId: 'account-settings',
         route: updateAccountSettingsDefinition,
-        now: ctx.now
+        now: ctx.now,
       });
       ctx.session = form.session;
 
@@ -137,10 +142,10 @@ const routes = [
             getFormValue(form.values, 'email') ??
             getSessionProfileEmail(ctx.session) ??
             ctx.auth?.email ??
-            'guest@example.com'
-        })
+            'guest@example.com',
+        }),
       };
-    }
+    },
   },
   {
     definition: updateAccountSettingsDefinition,
@@ -154,7 +159,7 @@ const routes = [
         redirectTo: accountSettingsPageDefinition.path,
         requireAuth: {
           redirectTo: accountSettingsPageDefinition.path,
-          message: 'Sign-in required to update account settings.'
+          message: 'Sign-in required to update account settings.',
         },
         validate(values) {
           const email = getFormValue(values, 'email')?.trim() ?? '';
@@ -166,7 +171,7 @@ const routes = [
           }
           return issues;
         },
-        now: ctx.now
+        now: ctx.now,
       });
       ctx.session = submission.session;
       if (!submission.ok) {
@@ -174,17 +179,17 @@ const routes = [
       }
 
       ctx.session.profile = {
-        email: getFormValue(submission.values, 'email')?.trim() ?? 'guest@example.com'
+        email: getFormValue(submission.values, 'email')?.trim() ?? 'guest@example.com',
       };
 
       return {
         status: 303,
         redirect: {
-          location: accountSettingsPageDefinition.path
-        }
+          location: accountSettingsPageDefinition.path,
+        },
       };
-    }
-  }
+    },
+  },
 ];
 
 const requestHooks: RequestHook[] = [
@@ -192,17 +197,20 @@ const requestHooks: RequestHook[] = [
     id: 'audit-hello',
     handler: async (ctx) => {
       ctx.db.lastHelloRequestId = ctx.requestId;
-      ctx.logger.info('hello route request received', { requestId: ctx.requestId, session: ctx.session });
-    }
-  }
+      ctx.logger.info('hello route request received', {
+        requestId: ctx.requestId,
+        session: ctx.session,
+      });
+    },
+  },
 ];
 
 const jobs = [
   {
     name: 'nightly',
     schedule: '0 0 * * *',
-    description: 'Example nightly maintenance job metadata surfaced in the manifest.'
-  }
+    description: 'Example nightly maintenance job metadata surfaced in the manifest.',
+  },
 ];
 
 export const module = {
@@ -216,14 +224,14 @@ export const module = {
       {
         id: 'audit-hello',
         phase: 'beforeHandler',
-        order: 10
-      }
+        order: 10,
+      },
     ],
     routes: routes.map((route) => route.definition),
-    jobs
+    jobs,
   },
   routes,
-  requestHooks
+  requestHooks,
 };
 
 function renderAccountSettingsPage(options: {
@@ -256,7 +264,7 @@ function renderAccountSettingsPage(options: {
     `    <p data-field="email">${escapeHtml(inlineErrors)}</p>`,
     '    <button type="submit">Save Settings</button>',
     '  </form>',
-    '</main>'
+    '</main>',
   ].join('\n');
 }
 
@@ -276,7 +284,9 @@ function getSessionProfileEmail(session: Record<string, unknown> | null): string
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
     return undefined;
   }
-  return typeof (profile as { email?: unknown }).email === 'string' ? (profile as { email: string }).email : undefined;
+  return typeof (profile as { email?: unknown }).email === 'string'
+    ? (profile as { email: string }).email
+    : undefined;
 }
 
 function escapeHtml(value: string): string {

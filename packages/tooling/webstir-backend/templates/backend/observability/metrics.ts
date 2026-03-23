@@ -30,7 +30,7 @@ export function createMetricsTracker(config: MetricsConfig): MetricsTracker {
       },
       snapshot() {
         return undefined;
-      }
+      },
     };
   }
 
@@ -53,9 +53,12 @@ export function createMetricsTracker(config: MetricsConfig): MetricsTracker {
     },
     snapshot() {
       const counts = Object.fromEntries(
-        [...byStatus.entries()].map(([status, count]) => [String(status), count])
+        [...byStatus.entries()].map(([status, count]) => [String(status), count]),
       );
-      const averageDurationMs = durations.length > 0 ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0;
+      const averageDurationMs =
+        durations.length > 0
+          ? durations.reduce((sum, value) => sum + value, 0) / durations.length
+          : 0;
       const p95DurationMs = durations.length > 0 ? percentile(durations, 0.95) : 0;
       return {
         enabled: true,
@@ -64,9 +67,9 @@ export function createMetricsTracker(config: MetricsConfig): MetricsTracker {
         averageDurationMs,
         p95DurationMs,
         byStatus: counts,
-        windowSize: config.windowSize
+        windowSize: config.windowSize,
       };
-    }
+    },
   };
 }
 
