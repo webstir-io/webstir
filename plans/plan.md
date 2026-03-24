@@ -56,11 +56,12 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - External copied/temp workspaces used by orchestrator `smoke` and `test` now materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
 - Plan-source consolidation is done: `plans/plan.md` is the sole active execution plan.
 - The non-default Fastify request-time path-hardening slice is done locally: request-time document rendering now threads an explicit workspace root and package-local build/test/smoke coverage is green, including alternate-cwd `WEBSTIR_WORKSPACE_ROOT` regression coverage.
-- Workstream 4 is active again with a bounded session/form/CSRF storage-boundary slice in `packages/tooling/webstir-backend`.
+- Workstream 4 Slice A is done on `main`: session/form/CSRF transport state now persists through a package-owned runtime envelope instead of leaking into app-owned session payloads.
+- Workstream 4 now advances to the next bounded durable-state slice in `packages/tooling/webstir-backend`: session metadata ownership.
 
 ### Queued
 
-- Durable state follow-ups beyond the bounded session/form/CSRF storage-boundary slice.
+- Durable state follow-ups beyond the session metadata ownership slice.
 - Any residual request-time path-resolution cleanup in legacy compatibility layouts that still bypass the shared workspace-root seam.
 
 ## Workstreams
@@ -154,11 +155,9 @@ Success criteria:
 
 ### Workstream 4 Slice A: Session/Form/CSRF Storage Boundary
 
-This is the current active implementation track.
-
 Status:
 
-- Done locally.
+- Done on `main`.
 
 Objective:
 
@@ -178,15 +177,54 @@ Acceptance:
 - legacy stored sessions that still embed form runtime state remain readable
 - in-memory and SQLite-backed stores preserve current redirect/flash/form semantics
 
+Merged state:
+
+- package-local `build`, `test`, and `smoke` were green for the landed slice
+- targeted `sessionStore` and `sessionScaffoldStore` coverage landed with the change
+- PR #138 merged the slice onto `main`
+
+Out of scope:
+
+- new durable adapters beyond the current in-memory and SQLite stores
+- broader auth/session API redesign
+- residual request-time path cleanup
+
+### Workstream 4 Slice B: Session Metadata Boundary
+
+This is the current active implementation track.
+
+Status:
+
+- Done locally.
+
+Objective:
+
+Move framework-owned session identity and lifecycle metadata out of the app-owned session payload while keeping the current request/runtime session ergonomics stable.
+
+Primary targets:
+
+- `packages/tooling/webstir-backend/src/runtime/session.ts`
+- `packages/tooling/webstir-backend/src/runtime/session-runtime.ts` or a package-owned helper beside it
+- `packages/tooling/webstir-backend/templates/backend/session/sqlite.ts`
+- `packages/tooling/webstir-backend/tests/sessionStore.test.js`
+- `packages/tooling/webstir-backend/tests/sessionScaffoldStore.test.js`
+
+Acceptance:
+
+- stored session payloads no longer embed framework-owned `id`, `createdAt`, or `expiresAt` fields
+- prepared and committed runtime sessions still expose compatible session metadata access for current call sites
+- legacy stored sessions that still embed session metadata in the payload remain readable
+- in-memory and SQLite-backed stores preserve current session/flash/form semantics
+
 Local status:
 
 - package-local `build`, `test`, and `smoke` are green
 - targeted `sessionStore` and `sessionScaffoldStore` coverage is green
 - diff-local slop/review pass is clean and ready for PR
-- PR #138 is open for the slice on `codex/session-runtime-boundary`
 
 Out of scope:
 
+- flash storage redesign
 - new durable adapters beyond the current in-memory and SQLite stores
 - broader auth/session API redesign
 - residual request-time path cleanup

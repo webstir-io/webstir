@@ -188,6 +188,49 @@ test('prepareSessionState migrates legacy embedded form runtime without leaking 
   assert.equal(Object.hasOwn(page.session, '__webstir_form_runtime'), false);
 });
 
+test('prepareSessionState keeps session metadata accessible without persisting it inside the app payload', () => {
+  const store = createInMemorySessionStore();
+  const created = prepareSessionState({
+    cookies: '',
+    route: loginRoute,
+    config,
+    store,
+  });
+  const createdCommit = created.commit({
+    session: {
+      userId: 'ada@example.com',
+    },
+    route: loginRoute,
+    result: {
+      status: 303,
+      redirect: { location: '/session/account' },
+    },
+  });
+  const cookieHeader = extractCookieHeader(createdCommit.setCookie);
+  const sessionId = extractSessionId(cookieHeader, config.cookieName);
+  const stored = store.get(sessionId);
+
+  assert.ok(stored, 'expected stored session record');
+  assert.equal(Object.hasOwn(stored.value, 'id'), false);
+  assert.equal(Object.hasOwn(stored.value, 'createdAt'), false);
+  assert.equal(Object.hasOwn(stored.value, 'expiresAt'), false);
+  assert.equal(stored.id, sessionId);
+
+  const read = prepareSessionState({
+    cookies: cookieHeader,
+    route: accountRoute,
+    config,
+    store,
+  });
+  assert.equal(read.session?.id, sessionId);
+  assert.match(String(read.session?.createdAt), /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(String(read.session?.expiresAt), /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(Object.hasOwn(read.session ?? {}, 'id'), true);
+  assert.equal(Object.keys(read.session ?? {}).includes('id'), false);
+  assert.equal(Object.keys(read.session ?? {}).includes('createdAt'), false);
+  assert.equal(Object.keys(read.session ?? {}).includes('expiresAt'), false);
+});
+
 function extractCookieHeader(setCookie) {
   assert.ok(setCookie, 'expected a session cookie');
   return String(setCookie).split(';')[0];

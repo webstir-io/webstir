@@ -109,6 +109,16 @@ function extractCookieHeader(setCookie) {
   return String(setCookie).split(';')[0];
 }
 
+function extractSessionId(cookieHeader, cookieName) {
+  const [nameValue] = String(cookieHeader).split(';');
+  const prefix = `${cookieName}=`;
+  assert.ok(nameValue.startsWith(prefix), `expected ${cookieName} cookie`);
+  const encodedValue = nameValue.slice(prefix.length);
+  const separatorIndex = encodedValue.indexOf('.');
+  assert.notEqual(separatorIndex, -1, 'expected signed session cookie');
+  return decodeURIComponent(encodedValue.slice(0, separatorIndex));
+}
+
 async function importCompiledModule(filePath) {
   return await import(`${pathToFileURL(filePath).href}?t=${Date.now()}-${Math.random()}`);
 }
@@ -550,6 +560,72 @@ test('scaffold sqlite session store preserves form and csrf transport without em
         .catch(() => false),
       true,
     );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
+
+test('scaffold sqlite session store keeps session metadata outside the persisted app payload', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-metadata-sqlite-');
+  await seedBackendWorkspace(workspace, '@demo/session-metadata-sqlite');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'SESSION_STORE_DRIVER',
+    'SESSION_STORE_URL',
+  ]);
+
+  try {
+    process.env.WORKSPACE_ROOT = '   ';
+    process.env.WEBSTIR_WORKSPACE_ROOT = workspace;
+    process.env.SESSION_STORE_DRIVER = 'sqlite';
+    process.env.SESSION_STORE_URL = 'file:./data/session-metadata.sqlite';
+
+    const { sessionStore } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+    );
+    const created = prepareSessionState({
+      cookies: '',
+      route: loginRoute,
+      config,
+      store: sessionStore,
+    });
+    const createdCommit = created.commit({
+      session: {
+        userId: 'ada@example.com',
+      },
+      route: loginRoute,
+      result: {
+        status: 303,
+        redirect: { location: '/session/account' },
+      },
+    });
+    const cookieHeader = extractCookieHeader(createdCommit.setCookie);
+    const sessionId = extractSessionId(cookieHeader, config.cookieName);
+    const stored = sessionStore.get(sessionId);
+
+    assert.ok(stored, 'expected stored session record');
+    assert.equal(Object.hasOwn(stored.value, 'id'), false);
+    assert.equal(Object.hasOwn(stored.value, 'createdAt'), false);
+    assert.equal(Object.hasOwn(stored.value, 'expiresAt'), false);
+    assert.equal(stored.id, sessionId);
+
+    const read = prepareSessionState({
+      cookies: cookieHeader,
+      route: accountRoute,
+      config,
+      store: sessionStore,
+    });
+    assert.equal(read.session?.userId, 'ada@example.com');
+    assert.equal(read.session?.id, sessionId);
+    assert.match(String(read.session?.createdAt), /^\d{4}-\d{2}-\d{2}T/);
+    assert.match(String(read.session?.expiresAt), /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(Object.keys(read.session ?? {}).includes('id'), false);
+    assert.equal(Object.keys(read.session ?? {}).includes('createdAt'), false);
+    assert.equal(Object.keys(read.session ?? {}).includes('expiresAt'), false);
   } finally {
     restoreEnv(previousEnv);
   }
