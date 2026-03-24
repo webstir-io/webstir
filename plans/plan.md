@@ -57,7 +57,8 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - Plan-source consolidation is done: `plans/plan.md` is the sole active execution plan.
 - The non-default Fastify request-time path-hardening slice is done locally: request-time document rendering now threads an explicit workspace root and package-local build/test/smoke coverage is green, including alternate-cwd `WEBSTIR_WORKSPACE_ROOT` regression coverage.
 - Workstream 4 Slice A is done on `main`: session/form/CSRF transport state now persists through a package-owned runtime envelope instead of leaking into app-owned session payloads.
-- Workstream 4 now advances to the next bounded durable-state slice in `packages/tooling/webstir-backend`: session metadata ownership.
+- Workstream 4 Slice B is done on `main`: session metadata now lives in package-owned runtime metadata instead of the persisted app session payload, while compatibility reads remain intact.
+- Workstream 4 now advances to the next bounded durable-state slice in `packages/tooling/webstir-backend`: flash-state ownership.
 
 ### Queued
 
@@ -191,11 +192,9 @@ Out of scope:
 
 ### Workstream 4 Slice B: Session Metadata Boundary
 
-This is the current active implementation track.
-
 Status:
 
-- Done locally.
+- Done on `main`.
 
 Objective:
 
@@ -216,6 +215,47 @@ Acceptance:
 - legacy stored sessions that still embed session metadata in the payload remain readable
 - in-memory and SQLite-backed stores preserve current session/flash/form semantics
 
+Merged state:
+
+- package-local `build`, `test`, and `smoke` were green for the landed slice
+- targeted `sessionStore` and `sessionScaffoldStore` coverage landed with the change
+- PR #139 merged the slice onto `main`
+
+Out of scope:
+
+- flash storage redesign
+- new durable adapters beyond the current in-memory and SQLite stores
+- broader auth/session API redesign
+- residual request-time path cleanup
+
+### Workstream 4 Slice C: Flash State Boundary
+
+This is the current active implementation track.
+
+Status:
+
+- In progress.
+
+Objective:
+
+Move framework-owned flash transport state behind a package-owned runtime seam while keeping current request/runtime flash ergonomics stable.
+
+Primary targets:
+
+- `packages/tooling/webstir-backend/src/runtime/session.ts`
+- `packages/tooling/webstir-backend/src/runtime/session-runtime.ts` or a package-owned helper beside it
+- `packages/tooling/webstir-backend/templates/backend/session/sqlite.ts`
+- `packages/tooling/webstir-backend/tests/sessionStore.test.js`
+- `packages/tooling/webstir-backend/tests/sessionScaffoldStore.test.js`
+- `packages/tooling/webstir-backend/tests/integration.test.js`
+
+Acceptance:
+
+- stored session records no longer rely on top-level framework-owned flash transport fields for newly persisted state
+- prepared and committed runtime sessions still deliver and consume flash with current route ergonomics
+- legacy stored sessions that still persist top-level flash state remain readable
+- in-memory and SQLite-backed stores preserve current session/flash/form semantics
+
 Local status:
 
 - package-local `build`, `test`, and `smoke` are green
@@ -224,9 +264,9 @@ Local status:
 
 Out of scope:
 
-- flash storage redesign
 - new durable adapters beyond the current in-memory and SQLite stores
 - broader auth/session API redesign
+- broader route flash API redesign
 - residual request-time path cleanup
 
 ### Milestone C: Upgradeable Bun-Default Backend Runtime

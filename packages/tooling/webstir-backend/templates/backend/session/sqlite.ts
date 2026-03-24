@@ -89,7 +89,7 @@ export function createSqliteSessionStore<
       setStatement.run(
         record.id,
         JSON.stringify(record.value),
-        JSON.stringify(record.flash),
+        JSON.stringify(record.flash ?? []),
         JSON.stringify(record.runtime ?? {}),
         record.createdAt,
         record.expiresAt,
@@ -132,11 +132,14 @@ function normalizeSqlitePath(url: string): string {
 function deserializeSessionRecord<TSession extends Record<string, unknown>>(
   row: SqliteSessionRow,
 ): SessionStoreRecord<TSession> {
+  const flash = JSON.parse(row.flash) as SessionFlashMessage[];
+  const runtime = JSON.parse(row.runtime) as SessionStoreRecord<TSession>['runtime'];
+  const legacyFlash = Array.isArray(runtime?.flash) || flash.length === 0 ? undefined : flash;
   return {
     id: row.id,
     value: JSON.parse(row.value) as TSession,
-    flash: JSON.parse(row.flash) as SessionFlashMessage[],
-    runtime: JSON.parse(row.runtime),
+    ...(legacyFlash ? { flash: legacyFlash } : {}),
+    ...(runtime ? { runtime } : {}),
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
   };

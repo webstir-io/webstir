@@ -630,3 +630,74 @@ test('scaffold sqlite session store keeps session metadata outside the persisted
     restoreEnv(previousEnv);
   }
 });
+
+test('scaffold sqlite session store keeps flash in runtime metadata while reading legacy top-level flash rows', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-flash-sqlite-');
+  await seedBackendWorkspace(workspace, '@demo/session-flash-sqlite');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'SESSION_STORE_DRIVER',
+    'SESSION_STORE_URL',
+  ]);
+
+  try {
+    process.env.WORKSPACE_ROOT = '   ';
+    process.env.WEBSTIR_WORKSPACE_ROOT = workspace;
+    process.env.SESSION_STORE_DRIVER = 'sqlite';
+    process.env.SESSION_STORE_URL = 'file:./data/session-flash.sqlite';
+
+    const { sessionStore } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+    );
+    const created = prepareSessionState({
+      cookies: '',
+      route: loginRoute,
+      config,
+      store: sessionStore,
+    });
+    const createdCommit = created.commit({
+      session: {
+        userId: 'ada@example.com',
+      },
+      route: loginRoute,
+      result: {
+        status: 303,
+        redirect: { location: '/session/account' },
+      },
+    });
+    const cookieHeader = extractCookieHeader(createdCommit.setCookie);
+    const sessionId = extractSessionId(cookieHeader, config.cookieName);
+    const stored = sessionStore.get(sessionId);
+
+    assert.ok(stored, 'expected stored session record');
+    assert.equal(Object.hasOwn(stored, 'flash'), false);
+    assert.deepEqual(
+      (stored.runtime?.flash ?? []).map((message) => ({ key: message.key, level: message.level })),
+      [{ key: 'signed-in', level: 'success' }],
+    );
+
+    sessionStore.set({
+      ...stored,
+      flash: stored.runtime?.flash ?? [],
+      runtime: undefined,
+    });
+
+    const read = prepareSessionState({
+      cookies: cookieHeader,
+      route: accountRoute,
+      config,
+      store: sessionStore,
+    });
+    assert.equal(read.session?.userId, 'ada@example.com');
+    assert.deepEqual(
+      read.flash.map((message) => ({ key: message.key, level: message.level })),
+      [{ key: 'signed-in', level: 'success' }],
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});
