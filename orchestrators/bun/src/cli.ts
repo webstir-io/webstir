@@ -31,7 +31,7 @@ const HELP_TEXT = `Usage:
   webstir init <directory>
   webstir add-page <name> --workspace <path>
   webstir add-test <name-or-path> --workspace <path>
-  webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify]
+  webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>]
   webstir add-job <name> --workspace <path> [--schedule <expression>]
   webstir backend-inspect --workspace <path>
   webstir test --workspace <path> [--runtime <frontend|backend|all>]

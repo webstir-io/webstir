@@ -24,13 +24,13 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
       '--response-status',
       '--response-headers-schema',
     ]),
-    booleanFlags: new Set(['--fastify']),
+    booleanFlags: new Set(),
   });
 
   const name = parsed.positionals[0];
   if (!name) {
     throw new Error(
-      'Usage: webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify].',
+      'Usage: webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>].',
     );
   }
 
@@ -45,7 +45,6 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
     name,
     method: parsed.values.get('--method'),
     path: parsed.values.get('--path'),
-    fastify: parsed.booleans.has('--fastify'),
     summary: parsed.values.get('--summary'),
     description: parsed.values.get('--description'),
     tags,
@@ -116,7 +115,6 @@ interface BackendAddModule {
     readonly name: string;
     readonly method?: string;
     readonly path?: string;
-    readonly fastify?: boolean;
     readonly summary?: string;
     readonly description?: string;
     readonly tags?: readonly string[];

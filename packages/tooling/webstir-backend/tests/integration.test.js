@@ -234,10 +234,7 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
   };
 }
 
-async function buildRuntimeWorkspace(
-  workspace,
-  { moduleSource, useFastify = false, mode = 'publish' } = {},
-) {
+async function buildRuntimeWorkspace(workspace, { moduleSource, mode = 'publish' } = {}) {
   await hydrateBackendScaffold(workspace);
   await linkWorkspaceNodeModules(workspace);
   await fs.writeFile(
@@ -246,14 +243,6 @@ async function buildRuntimeWorkspace(
     'utf8',
   );
   await fs.writeFile(path.join(workspace, 'src', 'backend', 'module.ts'), moduleSource, 'utf8');
-
-  if (useFastify) {
-    await fs.writeFile(
-      path.join(workspace, 'src', 'backend', 'index.ts'),
-      "export { start } from './server/fastify.js';\n",
-      'utf8',
-    );
-  }
 
   await backendProvider.build({
     workspaceRoot: workspace,
@@ -646,13 +635,10 @@ export const module = {
 `;
 }
 
-async function assertRequestHookRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-hooks-' : 'webstir-backend-hooks-',
-  );
+async function assertRequestHookRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-hooks-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
-    useFastify,
   });
 
   const port = await getOpenPort();
@@ -835,13 +821,10 @@ async function startJwksServer(payload) {
   };
 }
 
-async function assertJwtTimeClaimBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-auth-' : 'webstir-backend-auth-',
-  );
+async function assertJwtTimeClaimBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-auth-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createAuthRuntimeModuleSource(),
-    useFastify,
   });
 
   const port = await getOpenPort();
@@ -919,13 +902,10 @@ async function assertJwtTimeClaimBehavior({ useFastify }) {
   }
 }
 
-async function assertJwtAsymmetricBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-auth-rsa-' : 'webstir-backend-auth-rsa-',
-  );
+async function assertJwtAsymmetricBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-auth-rsa-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createAuthRuntimeModuleSource(),
-    useFastify,
   });
 
   const publicKeyPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -1039,13 +1019,10 @@ async function assertJwtAsymmetricBehavior({ useFastify }) {
   }
 }
 
-async function assertRequestBodyLimitBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-body-limit-' : 'webstir-backend-body-limit-',
-  );
+async function assertRequestBodyLimitBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-body-limit-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createBodyLimitRuntimeModuleSource(),
-    useFastify,
   });
 
   const port = await getOpenPort();
@@ -1083,13 +1060,10 @@ async function assertRequestBodyLimitBehavior({ useFastify }) {
   }
 }
 
-async function assertSessionRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-session-' : 'webstir-backend-session-',
-  );
+async function assertSessionRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-session-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createSessionRuntimeModuleSource(),
-    useFastify,
   });
 
   const port = await getOpenPort();
@@ -1157,13 +1131,10 @@ async function assertSessionRuntimeBehavior({ useFastify }) {
   }
 }
 
-async function assertFormWorkflowRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-forms-' : 'webstir-backend-forms-',
-  );
+async function assertFormWorkflowRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-forms-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createFormWorkflowModuleSource(),
-    useFastify,
   });
 
   const port = await getOpenPort();
@@ -1340,13 +1311,10 @@ export const module = {
 `;
 }
 
-async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-views-' : 'webstir-backend-views-',
-  );
+async function assertRequestTimeViewRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-views-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createViewRuntimeModuleSource(),
-    useFastify,
   });
   await writeFrontendDocument(
     workspace,
@@ -1473,15 +1441,11 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
 }
 
 async function assertRequestTimeViewWorkspaceRootBehavior({
-  useFastify,
   extraEnv = (workspace) => ({ WORKSPACE_ROOT: workspace }),
-}) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-view-root-' : 'webstir-backend-view-root-',
-  );
+} = {}) {
+  const workspace = await createTempWorkspace('webstir-backend-view-root-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createViewRuntimeModuleSource(),
-    useFastify,
   });
   await writePublishedFrontendAliasDocument(
     workspace,
@@ -1645,13 +1609,10 @@ export const module = {
 `;
 }
 
-async function assertFragmentRuntimeBehavior({ useFastify }) {
-  const workspace = await createTempWorkspace(
-    useFastify ? 'webstir-backend-fastify-fragments-' : 'webstir-backend-fragments-',
-  );
+async function assertFragmentRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-fragments-');
   await buildRuntimeWorkspace(workspace, {
     moduleSource: createFragmentRuntimeModuleSource(),
-    useFastify,
   });
 
   const port = await getOpenPort();
@@ -2247,7 +2208,7 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
   assert.deepEqual(successPage.values, {});
 });
 
-test('request hook scaffold builds for default and fastify entries', async () => {
+test('request hook scaffold builds for the default Bun entry', async () => {
   const defaultWorkspace = await createTempWorkspace('webstir-backend-default-hooks-build-');
   await buildRuntimeWorkspace(defaultWorkspace, {
     moduleSource: createRequestHookRuntimeModuleSource(),
@@ -2255,25 +2216,10 @@ test('request hook scaffold builds for default and fastify entries', async () =>
   });
   assert.equal(
     fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'server', 'fastify.ts')),
-    true,
+    false,
   );
   assert.equal(
     fssync.existsSync(path.join(defaultWorkspace, 'build', 'backend', 'index.js')),
-    true,
-  );
-
-  const fastifyWorkspace = await createTempWorkspace('webstir-backend-fastify-hooks-build-');
-  await buildRuntimeWorkspace(fastifyWorkspace, {
-    moduleSource: createRequestHookRuntimeModuleSource(),
-    useFastify: true,
-    mode: 'build',
-  });
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'server', 'fastify.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'build', 'backend', 'index.js')),
     true,
   );
 });
@@ -2464,16 +2410,7 @@ test('built backend server validates fragment route responses', async (t) => {
     return;
   }
 
-  await assertFragmentRuntimeBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold validates fragment route responses', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertFragmentRuntimeBehavior({ useFastify: true });
+  await assertFragmentRuntimeBehavior();
 });
 
 test('built backend server executes request hooks with ordered context handoff', async (t) => {
@@ -2482,7 +2419,7 @@ test('built backend server executes request hooks with ordered context handoff',
     return;
   }
 
-  await assertRequestHookRuntimeBehavior({ useFastify: false });
+  await assertRequestHookRuntimeBehavior();
 });
 
 test('bun backend scaffold executes request hooks with ordered context handoff', async (t) => {
@@ -2494,31 +2431,13 @@ test('bun backend scaffold executes request hooks with ordered context handoff',
   await assertBunRequestHookRuntimeBehavior();
 });
 
-test('fastify backend scaffold executes request hooks with ordered context handoff', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestHookRuntimeBehavior({ useFastify: true });
-});
-
 test('built backend server enforces jwt exp and nbf claims', async (t) => {
   if (!(await canListenOnTcp())) {
     t.skip('TCP listen is not permitted in this environment.');
     return;
   }
 
-  await assertJwtTimeClaimBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold enforces jwt exp and nbf claims', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertJwtTimeClaimBehavior({ useFastify: true });
+  await assertJwtTimeClaimBehavior();
 });
 
 test('built backend server accepts rsa public-key and jwks bearer tokens', async (t) => {
@@ -2527,16 +2446,7 @@ test('built backend server accepts rsa public-key and jwks bearer tokens', async
     return;
   }
 
-  await assertJwtAsymmetricBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold accepts rsa public-key and jwks bearer tokens', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertJwtAsymmetricBehavior({ useFastify: true });
+  await assertJwtAsymmetricBehavior();
 });
 
 test('built backend server resolves session state and flash transport', async (t) => {
@@ -2545,16 +2455,7 @@ test('built backend server resolves session state and flash transport', async (t
     return;
   }
 
-  await assertSessionRuntimeBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold resolves session state and flash transport', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertSessionRuntimeBehavior({ useFastify: true });
+  await assertSessionRuntimeBehavior();
 });
 
 test('built backend server rejects oversized request bodies with 413', async (t) => {
@@ -2563,16 +2464,7 @@ test('built backend server rejects oversized request bodies with 413', async (t)
     return;
   }
 
-  await assertRequestBodyLimitBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold rejects oversized request bodies with 413', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestBodyLimitBehavior({ useFastify: true });
+  await assertRequestBodyLimitBehavior();
 });
 
 test('built backend server handles auth-aware form workflows with csrf and validation', async (t) => {
@@ -2581,16 +2473,7 @@ test('built backend server handles auth-aware form workflows with csrf and valid
     return;
   }
 
-  await assertFormWorkflowRuntimeBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold handles auth-aware form workflows with csrf and validation', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertFormWorkflowRuntimeBehavior({ useFastify: true });
+  await assertFormWorkflowRuntimeBehavior();
 });
 
 test('built backend server renders request-time views with live SSR context', async (t) => {
@@ -2599,16 +2482,7 @@ test('built backend server renders request-time views with live SSR context', as
     return;
   }
 
-  await assertRequestTimeViewRuntimeBehavior({ useFastify: false });
-});
-
-test('fastify backend scaffold renders request-time views with live SSR context', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestTimeViewRuntimeBehavior({ useFastify: true });
+  await assertRequestTimeViewRuntimeBehavior();
 });
 
 test('built backend server resolves request-time view documents from WORKSPACE_ROOT outside the workspace cwd', async (t) => {
@@ -2617,29 +2491,16 @@ test('built backend server resolves request-time view documents from WORKSPACE_R
     return;
   }
 
-  await assertRequestTimeViewWorkspaceRootBehavior({ useFastify: false });
+  await assertRequestTimeViewWorkspaceRootBehavior();
 });
 
-test('fastify backend scaffold resolves request-time view documents from WORKSPACE_ROOT outside the workspace cwd', async (t) => {
+test('built backend server resolves request-time view documents from WEBSTIR_WORKSPACE_ROOT outside the workspace cwd', async (t) => {
   if (!(await canListenOnTcp())) {
     t.skip('TCP listen is not permitted in this environment.');
     return;
   }
 
   await assertRequestTimeViewWorkspaceRootBehavior({
-    useFastify: true,
-    extraEnv: (workspace) => ({ WORKSPACE_ROOT: workspace }),
-  });
-});
-
-test('fastify backend scaffold resolves request-time view documents from WEBSTIR_WORKSPACE_ROOT outside the workspace cwd', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestTimeViewWorkspaceRootBehavior({
-    useFastify: true,
     extraEnv: (workspace) => ({
       WORKSPACE_ROOT: '   ',
       WEBSTIR_WORKSPACE_ROOT: workspace,

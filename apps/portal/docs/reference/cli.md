@@ -169,11 +169,10 @@ What it does:
 - Reuses the canonical testing package scaffold helper
 
 ### add-route
-Usage: `webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--fastify] [...schema/metadata flags]`
+Usage: `webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [...schema/metadata flags]`
 
 What it does:
 - Adds a backend route entry to `webstir.moduleManifest.routes` in `package.json`
-- Can also scaffold and register a Fastify handler with `--fastify`
 - Supports route metadata and schema reference flags already documented by the module contract
 
 ### add-job
