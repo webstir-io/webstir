@@ -231,6 +231,54 @@ test('prepareSessionState keeps session metadata accessible without persisting i
   assert.equal(Object.keys(read.session ?? {}).includes('expiresAt'), false);
 });
 
+test('prepareSessionState stores flash in runtime metadata while preserving legacy top-level flash reads', () => {
+  const store = createInMemorySessionStore();
+  const created = prepareSessionState({
+    cookies: '',
+    route: loginRoute,
+    config,
+    store,
+  });
+  const createdCommit = created.commit({
+    session: {
+      userId: 'ada@example.com',
+    },
+    route: loginRoute,
+    result: {
+      status: 303,
+      redirect: { location: '/session/account' },
+    },
+  });
+  const cookieHeader = extractCookieHeader(createdCommit.setCookie);
+  const sessionId = extractSessionId(cookieHeader, config.cookieName);
+  const stored = store.get(sessionId);
+
+  assert.ok(stored, 'expected stored session record');
+  assert.equal(Object.hasOwn(stored, 'flash'), false);
+  assert.deepEqual(
+    (stored.runtime?.flash ?? []).map((message) => ({ key: message.key, level: message.level })),
+    [{ key: 'signed-in', level: 'success' }],
+  );
+
+  store.set({
+    ...stored,
+    flash: stored.runtime?.flash ?? [],
+    runtime: undefined,
+  });
+
+  const read = prepareSessionState({
+    cookies: cookieHeader,
+    route: accountRoute,
+    config,
+    store,
+  });
+  assert.equal(read.session?.userId, 'ada@example.com');
+  assert.deepEqual(
+    read.flash.map((message) => ({ key: message.key, level: message.level })),
+    [{ key: 'signed-in', level: 'success' }],
+  );
+});
+
 function extractCookieHeader(setCookie) {
   assert.ok(setCookie, 'expected a session cookie');
   return String(setCookie).split(';')[0];

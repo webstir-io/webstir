@@ -77,13 +77,17 @@ export interface PreparedSessionState<TSession, TResult> {
   }): SessionCommitResult<TSession>;
 }
 
+export interface SessionStoreRuntimeState extends SessionRuntimeState {
+  flash?: SessionFlashMessage[];
+}
+
 export interface SessionStoreRecord<
   TSession extends Record<string, unknown> = Record<string, unknown>,
 > {
   id: string;
   value: TSession;
-  flash: SessionFlashMessage[];
-  runtime?: SessionRuntimeState;
+  flash?: SessionFlashMessage[];
+  runtime?: SessionStoreRuntimeState;
   createdAt: string;
   expiresAt: string;
 }
@@ -121,7 +125,7 @@ export function prepareSessionState<
   const invalidCookie = Boolean(sessionCookie) && !initialId;
   const initialRecord = initialId ? loadSessionRecord(store, initialId, now) : undefined;
   const staleCookie = Boolean(initialId) && !initialRecord;
-  const delivered = resolveConsumedFlash(initialRecord?.flash ?? [], options.route);
+  const delivered = resolveConsumedFlash(readStoredFlash(initialRecord), options.route);
   const initialState = initialRecord ? restoreStoredSessionState(initialRecord) : undefined;
   const initialSession = initialState?.session
     ? attachSessionRuntimeState(
@@ -434,8 +438,7 @@ function createStoredSessionRecord<TSession extends Record<string, unknown>>(opt
   return {
     id: sessionId,
     value: { ...sessionValue } as unknown as TSession,
-    flash: options.flash.map((message) => ({ ...message })),
-    runtime: cloneSessionRuntimeState(options.runtime),
+    runtime: createSessionStoreRuntime(options.runtime, options.flash),
     createdAt,
     expiresAt,
   };
@@ -493,11 +496,13 @@ function cloneValue<T>(value: T): T {
 function cloneStoredSessionRecord<TSession extends Record<string, unknown>>(
   record: SessionStoreRecord<TSession>,
 ): SessionStoreRecord<TSession> {
+  const flash = cloneFlashMessages(record.flash);
+  const runtime = cloneSessionStoreRuntime(record.runtime);
   return {
     id: record.id,
     value: cloneValue(record.value),
-    flash: record.flash.map((message) => ({ ...message })),
-    runtime: cloneSessionRuntimeState(record.runtime),
+    ...(flash.length > 0 ? { flash } : {}),
+    ...(runtime ? { runtime } : {}),
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
   };
@@ -520,7 +525,7 @@ function restoreStoredSessionState<TSession extends Record<string, unknown>>(
       expiresAt:
         normalizeDate(record.expiresAt) ?? legacyMetadata?.expiresAt ?? new Date(0).toISOString(),
     },
-    runtime: mergeSessionRuntimeState(record.runtime, legacyRuntime),
+    runtime: mergeSessionRuntimeState(readStoredRuntimeState(record), legacyRuntime),
   };
 }
 
@@ -543,4 +548,95 @@ function isInMemorySessionStore(
       typeof (value as InMemorySessionStore<Record<string, unknown>>).delete === 'function' &&
       typeof (value as InMemorySessionStore<Record<string, unknown>>).clear === 'function',
   );
+}
+
+function readStoredFlash<TSession extends Record<string, unknown>>(
+  record: SessionStoreRecord<TSession> | undefined,
+): SessionFlashMessage[] {
+  if (!record) {
+    return [];
+  }
+  return cloneFlashMessages(record.runtime?.flash ?? record.flash);
+}
+
+function readStoredRuntimeState<TSession extends Record<string, unknown>>(
+  record: SessionStoreRecord<TSession>,
+): SessionRuntimeState | undefined {
+  return cloneSessionRuntimeState(record.runtime);
+}
+
+function createSessionStoreRuntime(
+  runtime: SessionRuntimeState | undefined,
+  flash: readonly SessionFlashMessage[],
+): SessionStoreRuntimeState | undefined {
+  const form = cloneSessionRuntimeState(runtime)?.form;
+  const storedFlash = cloneFlashMessages(flash);
+  if (!form && storedFlash.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...(form ? { form } : {}),
+    ...(storedFlash.length > 0 ? { flash: storedFlash } : {}),
+  };
+}
+
+function cloneSessionStoreRuntime(
+  runtime: SessionStoreRuntimeState | undefined,
+): SessionStoreRuntimeState | undefined {
+  if (!runtime) {
+    return undefined;
+  }
+
+  const form = cloneSessionRuntimeState(runtime)?.form;
+  const flash = cloneFlashMessages(runtime.flash);
+  if (!form && flash.length === 0) {
+    return undefined;
+  }
+
+  return {
+    ...(form ? { form } : {}),
+    ...(flash.length > 0 ? { flash } : {}),
+  };
+}
+
+function cloneFlashMessages(
+  flash: readonly SessionFlashMessage[] | undefined,
+): SessionFlashMessage[] {
+  if (!Array.isArray(flash)) {
+    return [];
+  }
+
+  return flash.flatMap((message) => {
+    if (
+      !isRecord(message) ||
+      typeof message.key !== 'string' ||
+      typeof message.createdAt !== 'string'
+    ) {
+      return [];
+    }
+
+    const level = normalizeFlashLevel(message.level);
+    if (!level) {
+      return [];
+    }
+
+    return [
+      {
+        key: message.key,
+        level,
+        createdAt: message.createdAt,
+      },
+    ];
+  });
+}
+
+function normalizeFlashLevel(value: unknown): FlashLevel | undefined {
+  return value === 'info' || value === 'success' || value === 'warning' || value === 'error'
+    ? value
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
