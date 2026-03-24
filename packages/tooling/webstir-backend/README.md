@@ -98,13 +98,8 @@ Fresh scaffolds now boot through the package-managed Bun runtime by default:
   ```bash
   bun build/backend/index.js
   ```
-- Older/custom layouts can still point `src/backend/index.ts` at an existing Bun shim:
-  ```ts
-  // src/backend/index.ts
-  export { start } from './server/bun.js';
-  ```
 
-Fresh scaffolds no longer copy `src/backend/server/bun.ts` or `src/backend/runtime/*` re-export files. The operational runtime lives in upgradeable package exports instead.
+Fresh scaffolds do not copy `src/backend/server/bun.ts` or `src/backend/runtime/*` re-export files. The operational runtime lives in upgradeable package exports instead.
 
 ### Fastify Scaffold (optional)
 
@@ -131,7 +126,7 @@ When present, the Fastify scaffold will also attempt to auto‑mount any compile
 
 ### Server runtime baseline
 
-The default `src/backend/index.ts` entry and the optional Fastify scaffold share the same runtime guarantees. Older workspaces that already route through `src/backend/server/bun.ts` or `src/backend/runtime/*` remain compatible:
+The default `src/backend/index.ts` entry and the optional Fastify scaffold share the same runtime guarantees:
 
 - Route auto-mounting: any `module.ts` routes are compiled, logged, and attached on startup with manifest summaries (name, version, route count, capabilities).
 - Health probes: `/api/health` (for the orchestrator), `/healthz` (generic health), and `/readyz` (status + manifest summary). The CLI still waits for `API server running` before proxying requests.

@@ -58,12 +58,13 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - The non-default Fastify request-time path-hardening slice is done locally: request-time document rendering now threads an explicit workspace root and package-local build/test/smoke coverage is green, including alternate-cwd `WEBSTIR_WORKSPACE_ROOT` regression coverage.
 - Workstream 4 Slice A is done on `main`: session/form/CSRF transport state now persists through a package-owned runtime envelope instead of leaking into app-owned session payloads.
 - Workstream 4 Slice B is done on `main`: session metadata now lives in package-owned runtime metadata instead of the persisted app session payload, while compatibility reads remain intact.
-- Workstream 4 now advances to the next bounded durable-state slice in `packages/tooling/webstir-backend`: flash-state ownership.
+- Workstream 4 Slice C is done on `main`: flash transport state now lives in package-owned runtime metadata for new writes in `packages/tooling/webstir-backend`, while legacy top-level flash rows remain readable for compatibility.
+- The next likely track is Workstream 5, but not as legacy-layout hardening: no external legacy wrapper usage is known, so the justified follow-up is removing unsupported wrapper-compat residue or fixing only current-path launch-directory bugs.
 
 ### Queued
 
-- Durable state follow-ups beyond the session metadata ownership slice.
-- Any residual request-time path-resolution cleanup in legacy compatibility layouts that still bypass the shared workspace-root seam.
+- Durable-state follow-ups only if new storage-boundary bugs or adapter requirements justify reopening Workstream 4.
+- Removal of unsupported wrapper-preservation proofs or dead compatibility residue if they are not tied to real users.
 
 ## Workstreams
 
@@ -230,11 +231,9 @@ Out of scope:
 
 ### Workstream 4 Slice C: Flash State Boundary
 
-This is the current active implementation track.
-
 Status:
 
-- In progress.
+- Done on `main`.
 
 Objective:
 
@@ -256,11 +255,11 @@ Acceptance:
 - legacy stored sessions that still persist top-level flash state remain readable
 - in-memory and SQLite-backed stores preserve current session/flash/form semantics
 
-Local status:
+Merged state:
 
 - package-local `build`, `test`, and `smoke` are green
 - targeted `sessionStore` and `sessionScaffoldStore` coverage is green
-- diff-local slop/review pass is clean and ready for PR
+- PR #140 merged the slice onto `main`
 
 Out of scope:
 
@@ -312,7 +311,7 @@ Current focus:
 
 - remove the fresh-scaffold Bun shim once `src/backend/index.ts` is the only default Bun entrypoint
 - stop copying runtime wrapper files that only forward to package-managed behavior
-- keep app-owned scaffold surfaces intact while preserving explicit compatibility paths for older layouts
+- keep app-owned scaffold surfaces intact without turning unpublished older layouts into a support contract
 
 Acceptance:
 
@@ -321,7 +320,7 @@ Acceptance:
 
 #### Slice C: Compatibility coverage
 
-Prove both the new scaffold shape and the old compatibility path.
+Prove the new scaffold shape and only compatibility paths backed by actual support requirements.
 
 Status:
 
@@ -338,7 +337,6 @@ Primary tests:
 Acceptance:
 
 - fresh scaffold uses package runtime and passes package/orchestrator/install proofs
-- existing copied-runtime workspaces still build/run
 
 #### Slice D: Follow-up runtime parity
 
@@ -351,7 +349,7 @@ Later work:
 
 ## Validation
 
-Required checks for the active durable-state slice:
+Baseline checks for backend-runtime slices:
 
 - `bun run --filter @webstir-io/webstir-backend build`
 - `bun run --filter @webstir-io/webstir-backend test`
@@ -381,4 +379,40 @@ Recommended targeted checks during implementation:
 
 ## Immediate Next Step
 
-Return to the remaining durable-state boundary work, unless review or merge follow-up exposes another legacy request-time path-resolution seam that still depends on launch-directory behavior.
+Select and land the first bounded Workstream 5 slice: remove unsupported legacy-wrapper preservation/proof work from the active support story, then patch only the current canonical runtime path if a real launch-directory bug still exists there.
+
+### Workstream 5 Slice A: Remove Unsupported Legacy Wrapper Compatibility Surface
+
+Status:
+
+- Done locally.
+
+Objective:
+
+Remove the publish-mode legacy-wrapper support assumption from tests/docs and keep only runtime paths backed by an actual support requirement.
+
+Primary targets:
+
+- `packages/tooling/webstir-backend/tests/integration.test.js`
+- `packages/tooling/webstir-backend/src/scaffold/assets.ts` if any wrapper-preservation behavior is still scaffolded
+- `packages/tooling/webstir-backend/src/build/**` only if publish output still intentionally preserves unsupported wrappers
+- `plans/plan.md`
+
+Acceptance:
+
+- the active plan and package tests no longer imply support for unpublished legacy local runtime wrapper layouts
+- any wrapper-preservation proof with no real user backing is removed or replaced with current canonical-path coverage
+- supported runtime paths remain green after the unsupported compatibility surface is cut
+
+Local status:
+
+- the plan and backend package docs no longer describe unpublished wrapper layouts as supported
+- the publish-mode package integration proof for local wrapper preservation is removed
+- package-local `build`, `test`, and `smoke` are green
+- diff-local slop/review pass is clean and ready for PR
+
+Out of scope:
+
+- persisted session/flash read compatibility
+- `node:http` as the explicit compatibility path that is still intentionally supported
+- speculative request-time hardening for layouts that are not part of the supported product surface
