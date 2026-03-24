@@ -9,6 +9,13 @@ import {
   readSessionRuntimeState,
   type SessionRuntimeState,
 } from './session-runtime.js';
+import {
+  attachSessionMetadata,
+  readSessionMetadata,
+  stripSessionMetadataFields,
+  type SessionMetadata,
+  type SessionMetadataInput,
+} from './session-metadata.js';
 
 export type FlashLevel = 'info' | 'success' | 'warning' | 'error';
 export type FlashPublishCondition = 'always' | 'success' | 'error';
@@ -117,7 +124,10 @@ export function prepareSessionState<
   const delivered = resolveConsumedFlash(initialRecord?.flash ?? [], options.route);
   const initialState = initialRecord ? restoreStoredSessionState(initialRecord) : undefined;
   const initialSession = initialState?.session
-    ? attachSessionRuntimeState(initialState.session, initialState.runtime)
+    ? attachSessionRuntimeState(
+        attachSessionMetadata(initialState.session, initialState.metadata),
+        initialState.runtime,
+      )
     : null;
   const hasPendingConsumption = delivered.flash.length > 0;
 
@@ -152,9 +162,9 @@ export function prepareSessionState<
       const record = createStoredSessionRecord({
         session: normalized.session,
         runtime: normalized.runtime,
+        metadata: normalized.metadata,
         fallbackId:
-          normalizeText(normalized.session?.id) ??
-          (publishFlash.length > 0 ? undefined : initialRecord?.id),
+          normalized.metadata?.id ?? (publishFlash.length > 0 ? undefined : initialRecord?.id),
         initialRecord,
         flash: [...delivered.remaining, ...publishFlash],
         config: options.config,
@@ -164,7 +174,14 @@ export function prepareSessionState<
       store.set(record);
 
       return {
-        session: attachSessionRuntimeState(cloneValue(record.value) as TSession, record.runtime),
+        session: attachSessionRuntimeState(
+          attachSessionMetadata(cloneValue(record.value) as TSession, {
+            id: record.id,
+            createdAt: record.createdAt,
+            expiresAt: record.expiresAt,
+          }),
+          record.runtime,
+        ),
         setCookie:
           initialRecord?.id === record.id && !invalidCookie && !staleCookie
             ? undefined
@@ -378,16 +395,19 @@ function shouldPublishFlash(
 
 function normalizeSessionValue<TSession extends Record<string, unknown>>(
   session: TSession | null,
-): { session: TSession | null; runtime?: SessionRuntimeState } {
+): { session: TSession | null; runtime?: SessionRuntimeState; metadata?: SessionMetadataInput } {
   if (session === null) {
     return { session: null };
   }
 
+  const metadata = readSessionMetadata(session);
   const cloned = cloneValue(session) as Record<string, unknown>;
+  stripSessionMetadataFields(cloned);
   delete cloned[LEGACY_FORM_RUNTIME_KEY];
 
   return {
     session: cloned as TSession,
+    metadata,
     runtime: readSessionRuntimeState(session),
   };
 }
@@ -395,6 +415,7 @@ function normalizeSessionValue<TSession extends Record<string, unknown>>(
 function createStoredSessionRecord<TSession extends Record<string, unknown>>(options: {
   session: TSession | null;
   runtime?: SessionRuntimeState;
+  metadata?: SessionMetadataInput;
   fallbackId?: string;
   initialRecord?: SessionStoreRecord<TSession>;
   flash: SessionFlashMessage[];
@@ -402,24 +423,16 @@ function createStoredSessionRecord<TSession extends Record<string, unknown>>(opt
   now: () => Date;
 }): SessionStoreRecord<TSession> {
   const sessionValue = (options.session ?? {}) as Record<string, unknown>;
-  const sessionId = normalizeText(sessionValue.id) ?? options.fallbackId ?? randomUUID();
-  const createdAt =
-    normalizeDate(sessionValue.createdAt) ??
-    options.initialRecord?.createdAt ??
-    options.now().toISOString();
+  const sessionId = options.metadata?.id ?? options.fallbackId ?? randomUUID();
+  const createdAt = options.metadata?.createdAt ?? options.initialRecord?.createdAt ?? options.now().toISOString();
   const expiresAt =
-    normalizeDate(sessionValue.expiresAt) ??
+    options.metadata?.expiresAt ??
     options.initialRecord?.expiresAt ??
     new Date(options.now().getTime() + options.config.maxAgeSeconds * 1000).toISOString();
 
   return {
     id: sessionId,
-    value: {
-      ...sessionValue,
-      id: sessionId,
-      createdAt,
-      expiresAt,
-    } as unknown as TSession,
+    value: { ...sessionValue } as unknown as TSession,
     flash: options.flash.map((message) => ({ ...message })),
     runtime: cloneSessionRuntimeState(options.runtime),
     createdAt,
@@ -491,12 +504,19 @@ function cloneStoredSessionRecord<TSession extends Record<string, unknown>>(
 
 function restoreStoredSessionState<TSession extends Record<string, unknown>>(
   record: SessionStoreRecord<TSession>,
-): { session: TSession; runtime?: SessionRuntimeState } {
+): { session: TSession; runtime?: SessionRuntimeState; metadata?: SessionMetadata } {
   const session = cloneValue(record.value) as Record<string, unknown>;
   const legacyRuntime = restoreLegacyFormRuntime(session);
+  const legacyMetadata = readSessionMetadata(session);
+  stripSessionMetadataFields(session);
 
   return {
     session: session as TSession,
+    metadata: {
+      id: normalizeText(record.id) ?? legacyMetadata?.id ?? randomUUID(),
+      createdAt: normalizeDate(record.createdAt) ?? legacyMetadata?.createdAt ?? new Date(0).toISOString(),
+      expiresAt: normalizeDate(record.expiresAt) ?? legacyMetadata?.expiresAt ?? new Date(0).toISOString(),
+    },
     runtime: mergeSessionRuntimeState(record.runtime, legacyRuntime),
   };
 }
