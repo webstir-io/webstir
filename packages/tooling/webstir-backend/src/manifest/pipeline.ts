@@ -98,7 +98,10 @@ export async function loadBackendModuleManifest(
       ...manifestCandidate,
       ...definitionManifest,
       capabilities: mergedCapabilities,
-      routes: routesFromDefinition ?? definitionManifest.routes ?? manifestCandidate.routes ?? [],
+      routes: mergeRouteDefinitions(
+        routesFromDefinition ?? definitionManifest.routes,
+        manifestCandidate.routes,
+      ),
       views: viewsFromDefinition ?? definitionManifest.views ?? manifestCandidate.views ?? [],
       jobs: definitionManifest.jobs ?? manifestCandidate.jobs ?? [],
       events: definitionManifest.events ?? manifestCandidate.events ?? [],
@@ -299,6 +302,46 @@ function deriveModuleVersion(pkg: WorkspacePackageJson | undefined): string {
     return pkg.version;
   }
   return '0.0.0';
+}
+
+function mergeRouteDefinitions(
+  definitionRoutes: ModuleManifest['routes'] | undefined,
+  packageRoutes: ModuleManifest['routes'] | undefined,
+): ModuleManifest['routes'] {
+  const merged = Array.isArray(definitionRoutes) ? [...definitionRoutes] : [];
+  const seen = new Set(merged.map((route) => getRouteKey(route)).filter(Boolean));
+
+  for (const route of packageRoutes ?? []) {
+    const key = getRouteKey(route);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    merged.push(route);
+    seen.add(key);
+  }
+
+  return merged;
+}
+
+function getRouteKey(route: ManifestRouteLike | undefined): string | undefined {
+  const method = typeof route?.method === 'string' ? route.method.toUpperCase() : '';
+  const routePath = normalizeRoutePath(route?.path);
+  if (!method || !routePath) {
+    return undefined;
+  }
+  return `${method} ${routePath}`;
+}
+
+function normalizeRoutePath(routePath: unknown): string | undefined {
+  if (typeof routePath !== 'string' || routePath.length === 0) {
+    return undefined;
+  }
+
+  let normalized = routePath;
+  if (!normalized.startsWith('/')) normalized = `/${normalized}`;
+  normalized = normalized.replace(/\/+/g, '/');
+  if (normalized.length > 1 && normalized.endsWith('/')) normalized = normalized.slice(0, -1);
+  return normalized;
 }
 
 export async function summarizeBuiltManifest(

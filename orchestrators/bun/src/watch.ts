@@ -1,4 +1,5 @@
 import { runApiWatch } from './api-watch.ts';
+import { materializeRepoLocalWorkspaceDependencies } from './external-workspace.ts';
 import { runFrontendWatch } from './frontend-watch.ts';
 import { runFullWatch } from './full-watch.ts';
 import type { WorkspaceDescriptor } from './types.ts';
@@ -41,6 +42,7 @@ const defaultIo: WatchIo = {
 
 export async function runWatch(options: RunWatchOptions): Promise<void> {
   const io = options.io ?? defaultIo;
+  await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
 
   switch (workspace.mode) {

@@ -127,6 +127,37 @@ test('enhanced session sign-in returns a fragment and persists on the next docum
   assert.isTrue(documentHtml.includes('Reload the page to confirm the session persists.'));
 });
 
+test('enhanced session sign-out returns a fragment and clears the session cookie', async () => {
+  const ctx = requireBackendTestContext();
+  const signInResponse = await ctx.request('/demo/progressive-enhancement/session/sign-in', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: 'sessionName=Casey+Proxy'
+  });
+  const cookie = requireCookie(signInResponse.headers.get('set-cookie'));
+
+  const response = await ctx.request('/demo/progressive-enhancement/session/sign-out', {
+    method: 'POST',
+    headers: {
+      'x-webstir-client-nav': '1',
+      cookie
+    }
+  });
+
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('x-webstir-fragment-target'), 'session-panel');
+  assert.equal(response.headers.get('x-webstir-fragment-selector'), '#session-panel');
+  assert.equal(response.headers.get('x-webstir-fragment-mode'), 'replace');
+  assert.isTrue(String(response.headers.get('set-cookie')).includes('Max-Age=0'));
+  assert.isTrue(html.includes('Signed out without a full page reload.'));
+  assert.isTrue(html.includes('id="demo-sign-in"'));
+});
+
 interface BackendTestContext {
   request(pathOrUrl?: string | URL, init?: RequestInit): Promise<Response>;
 }

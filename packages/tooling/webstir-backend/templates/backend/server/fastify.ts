@@ -2,15 +2,12 @@
 // Rename or import into your backend index to use.
 import Fastify from 'fastify';
 
-import { loadEnv, resolveWorkspaceRoot } from '../env.js';
-import { resolveRequestAuth } from '../auth/adapter.js';
-import { sessionStore } from '../session/store.js';
-import { executeRequestHookPhase } from '../runtime/request-hooks.js';
+import { executeRequestHookPhase } from '@webstir-io/webstir-backend/runtime/request-hooks';
 import {
   parseCookieHeader,
   prepareSessionState,
   type SessionFlashMessage,
-} from '../runtime/session.js';
+} from '@webstir-io/webstir-backend/runtime/session';
 import {
   createProcessEnvAccessor,
   createReadinessTracker,
@@ -25,13 +22,17 @@ import {
   type FastifyRouteDefinitionLike,
   type ManifestSummary,
   type RouteHandlerResult,
-} from '../runtime/fastify.js';
+} from '@webstir-io/webstir-backend/runtime/fastify';
 import {
   matchView,
   renderRequestTimeView,
   toHeaderRecord,
   type CompiledView,
-} from '../runtime/views.js';
+} from '@webstir-io/webstir-backend/runtime/views';
+
+import { loadEnv, resolveWorkspaceRoot } from '../env.js';
+import { resolveRequestAuth } from '../auth/adapter.js';
+import { sessionStore } from '../session/store.js';
 
 type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
 

@@ -44,6 +44,22 @@ async function readPackageVersion(relativePath: string): Promise<string> {
   return packageJson.version;
 }
 
+async function assertPackageManagedBackendScaffold(
+  workspaceRoot: string,
+  options: { expectModule?: boolean } = {},
+): Promise<void> {
+  const backendRoot = path.join(workspaceRoot, 'src', 'backend');
+  const backendIndex = await readFile(path.join(backendRoot, 'index.ts'), 'utf8');
+
+  expect(backendIndex).toContain('@webstir-io/webstir-backend/runtime/bun');
+  expect(backendIndex).not.toContain('http.createServer');
+  expect(existsSync(path.join(backendRoot, 'server', 'bun.ts'))).toBe(false);
+  expect(existsSync(path.join(backendRoot, 'runtime'))).toBe(false);
+  if (options.expectModule) {
+    expect(existsSync(path.join(backendRoot, 'module.ts'))).toBe(true);
+  }
+}
+
 test('CLI init scaffolds an external SSG workspace with published package versions', async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-init-ssg-'));
   const workspaceRoot = path.join(tempRoot, 'docs-site');
@@ -121,7 +137,7 @@ test('CLI refresh clears and re-scaffolds an existing workspace', async () => {
     expect(refreshResult.stdout).toContain('[webstir] refresh complete');
     expect(await readFile(appHtmlPath, 'utf8')).toBe(originalHtml);
     expect(existsSync(path.join(workspaceRoot, 'junk.txt'))).toBe(false);
-    expect(existsSync(path.join(workspaceRoot, 'src', 'backend', 'index.ts'))).toBe(true);
+    await assertPackageManagedBackendScaffold(workspaceRoot, { expectModule: true });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -166,13 +182,39 @@ test('CLI enable backend scaffolds the package-managed Bun entrypoint', async ()
     expect(enableResult.exitCode).toBe(0);
     expect(enableResult.stderr).toBe('');
     expect(enableResult.stdout).toContain('[webstir] enable complete');
+    await assertPackageManagedBackendScaffold(workspaceRoot);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
 
-    const backendIndex = await readFile(
-      path.join(workspaceRoot, 'src', 'backend', 'index.ts'),
-      'utf8',
-    );
-    expect(backendIndex).toContain('@webstir-io/webstir-backend/runtime/bun');
-    expect(backendIndex).not.toContain('http.createServer');
+test('CLI init scaffolds an external API workspace with the package-managed backend shape', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-init-api-'));
+  const workspaceRoot = path.join(tempRoot, 'api-site');
+
+  try {
+    const result = await runCli(['init', 'api', workspaceRoot]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('[webstir] init complete');
+    await assertPackageManagedBackendScaffold(workspaceRoot);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI init scaffolds an external full workspace with the package-managed backend shape', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-init-full-'));
+  const workspaceRoot = path.join(tempRoot, 'full-site');
+
+  try {
+    const result = await runCli(['init', 'full', workspaceRoot]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('[webstir] init complete');
+    await assertPackageManagedBackendScaffold(workspaceRoot, { expectModule: true });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

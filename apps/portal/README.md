@@ -1,6 +1,6 @@
 # Webstir Portal
 
-Docs hub for the Webstir ecosystem, built with Docusaurus and deployed to GitHub Pages (custom domain `webstir.io`). Content covers tutorials, how-to guides, reference material, explanations, and product plans.
+Docs hub for the Webstir ecosystem, built with Docusaurus and deployed to GitHub Pages (custom domain `webstir.io`). Content covers tutorials, how-to guides, reference material, and explanations. Active execution planning lives in `plans/plan.md`.
 
 ## Run locally
 

@@ -51,9 +51,11 @@ This plan stays focused on the issues that most directly affect correctness, upg
 
 ### Active
 
-- Milestone C: move the backend runtime into package-managed code and make Bun the default fresh-scaffold server path.
-- Plan-doc consolidation: stop treating roadmap docs as parallel execution plans.
-- Next slice inside Milestone C is Slice B: stop copying framework-owned runtime files from fresh backend scaffolds.
+- Milestone C slices A-C are done: the fresh-scaffold backend now defaults to the package-managed Bun runtime and no longer copies framework-owned runtime wrappers.
+- The remaining `full` scaffold now uses the same thin package-managed Bun entry shape as `api`, while keeping the progressive-enhancement demo module and install/add-route coverage intact.
+- External copied/temp workspaces used by orchestrator `smoke` and `test` now materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
+- Plan-source consolidation is done: `plans/plan.md` is the sole active execution plan.
+- Next implementation choice is the next queued platform hardening slice.
 
 ### Queued
 
@@ -86,7 +88,7 @@ Tasks:
 Success criteria:
 
 - A contributor can answer "what are we actually doing next?" from one file.
-- Portal product-plan pages no longer present themselves as the current execution source of truth.
+- Repo docs no longer imply a competing active execution-plan surface outside this file.
 
 ### Workstream 3: Extract backend runtime from copied scaffolds and make Bun the default
 
@@ -178,9 +180,19 @@ Acceptance:
 
 After the Bun-first bootstrap works, remove scaffold-copied runtime files that only mirror package exports or package-owned behavior.
 
+Status:
+
+- Done.
+
 Primary target:
 
 - `packages/tooling/webstir-backend/src/scaffold/assets.ts`
+
+Current focus:
+
+- remove the fresh-scaffold Bun shim once `src/backend/index.ts` is the only default Bun entrypoint
+- stop copying runtime wrapper files that only forward to package-managed behavior
+- keep app-owned scaffold surfaces intact while preserving explicit compatibility paths for older layouts
 
 Acceptance:
 
@@ -190,6 +202,10 @@ Acceptance:
 #### Slice C: Compatibility coverage
 
 Prove both the new scaffold shape and the old compatibility path.
+
+Status:
+
+- Done.
 
 Primary tests:
 
@@ -248,9 +264,7 @@ Recommended targeted checks during implementation:
 
 ## Immediate Next Step
 
-Execute Slice A:
+Pick and execute the next queued hardening slice:
 
-- add the package-managed Bun bootstrap export
-- thin `templates/backend/index.ts` to Bun-first composition
-- preserve an explicit `node:http` compatibility path instead of keeping it as the default scaffold
-- lock the new default with package and orchestrator tests
+- durable state boundaries beyond the current SQLite-backed session baseline, or
+- remaining request-time path-resolution hardening after runtime ownership centralization

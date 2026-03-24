@@ -140,7 +140,7 @@ async function runTemplateSqliteProbes(workspace) {
     pathToFileURL(path.join(workspace, 'src', 'backend', 'session', 'store.ts')).href,
   );
   const runtimeSessionUrl = JSON.stringify(
-    pathToFileURL(path.join(workspace, 'src', 'backend', 'runtime', 'session.ts')).href,
+    pathToFileURL(path.join(getPackageRoot(), 'dist', 'runtime', 'session.js')).href,
   );
   const dbConnectionUrl = JSON.stringify(
     pathToFileURL(path.join(workspace, 'src', 'backend', 'db', 'connection.ts')).href,

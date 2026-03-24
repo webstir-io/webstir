@@ -40,6 +40,13 @@ async function seedBackendScaffold(workspace) {
   }
 }
 
+async function linkWorkspacePackage(workspace) {
+  const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const scopeRoot = path.join(workspace, 'node_modules', '@webstir-io');
+  await fs.mkdir(scopeRoot, { recursive: true });
+  await fs.symlink(packageRoot, path.join(scopeRoot, 'webstir-backend'), 'dir');
+}
+
 function getLocalBinPath() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const pkgRoot = path.resolve(here, '..');
@@ -162,6 +169,7 @@ test('startBackendWatch emits build outcome events for successful and failed reb
 test('startBackendWatch reports Bun benchmark timings when enabled', async () => {
   const workspace = await createTempWorkspace('webstir-backend-watch-benchmark-');
   await seedBackendScaffold(workspace);
+  await linkWorkspacePackage(workspace);
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',

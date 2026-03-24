@@ -11,6 +11,7 @@ import type {
 import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
 import { compileTestModules } from './compile-tests.ts';
+import { materializeRepoLocalWorkspaceDependencies } from './external-workspace.ts';
 import { loadProvider } from './providers.ts';
 import {
   applyRuntimeFilter,
@@ -41,6 +42,7 @@ export interface TestCommandResult {
 }
 
 export async function runTest(options: RunTestOptions): Promise<TestCommandResult> {
+  await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot);
   const runtime = parseRuntimeFlag(options.rawArgs, options.env);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   const builtTargets = selectBuildTargets(workspace.mode, runtime);
