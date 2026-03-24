@@ -6,6 +6,7 @@ import {
   prepareSessionState,
   resetInMemorySessionStore,
 } from '../dist/runtime/session.js';
+import { prepareFormState } from '../dist/runtime/forms.js';
 
 const config = {
   secret: 'test-session-secret',
@@ -105,7 +106,99 @@ test('resetInMemorySessionStore clears an injected in-memory store', () => {
   assert.deepEqual(afterReset.flash, []);
 });
 
+test('prepareSessionState migrates legacy embedded form runtime without leaking the old payload key', () => {
+  const store = createInMemorySessionStore();
+  const created = prepareSessionState({
+    cookies: '',
+    route: loginRoute,
+    config,
+    store,
+  });
+  const createdCommit = created.commit({
+    session: {
+      userId: 'ada@example.com',
+    },
+    route: loginRoute,
+    result: {
+      status: 303,
+      redirect: { location: '/session/account' },
+    },
+  });
+  const cookieHeader = extractCookieHeader(createdCommit.setCookie);
+  const sessionId = extractSessionId(cookieHeader, config.cookieName);
+  const existing = store.get(sessionId);
+
+  assert.ok(existing, 'expected stored session record');
+
+  store.set({
+    ...existing,
+    value: {
+      ...existing.value,
+      __webstir_form_runtime: {
+        csrf: {
+          profile: 'csrf-token-123',
+        },
+        states: {
+          profile: {
+            values: {
+              email: 'ada@example.com',
+            },
+            issues: [
+              {
+                code: 'validation',
+                field: 'email',
+                message: 'Enter a valid email address.',
+              },
+            ],
+            createdAt: existing.createdAt,
+          },
+        },
+      },
+    },
+    runtime: undefined,
+    flash: [],
+  });
+
+  const read = prepareSessionState({
+    cookies: cookieHeader,
+    config,
+    store,
+  });
+  assert.equal(read.session?.userId, 'ada@example.com');
+  assert.equal(Object.hasOwn(read.session ?? {}, '__webstir_form_runtime'), false);
+
+  const page = prepareFormState({
+    session: read.session,
+    formId: 'profile',
+    route: {
+      path: '/account/settings',
+      form: { csrf: true },
+    },
+  });
+
+  assert.equal(page.values.email, 'ada@example.com');
+  assert.deepEqual(page.issues, [
+    {
+      code: 'validation',
+      field: 'email',
+      message: 'Enter a valid email address.',
+    },
+  ]);
+  assert.equal(page.csrfToken, 'csrf-token-123');
+  assert.equal(Object.hasOwn(page.session, '__webstir_form_runtime'), false);
+});
+
 function extractCookieHeader(setCookie) {
   assert.ok(setCookie, 'expected a session cookie');
   return String(setCookie).split(';')[0];
+}
+
+function extractSessionId(cookieHeader, cookieName) {
+  const [nameValue] = String(cookieHeader).split(';');
+  const prefix = `${cookieName}=`;
+  assert.ok(nameValue.startsWith(prefix), `expected ${cookieName} cookie`);
+  const encodedValue = nameValue.slice(prefix.length);
+  const separatorIndex = encodedValue.indexOf('.');
+  assert.notEqual(separatorIndex, -1, 'expected signed session cookie');
+  return decodeURIComponent(encodedValue.slice(0, separatorIndex));
 }

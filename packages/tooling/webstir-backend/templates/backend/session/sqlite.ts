@@ -18,6 +18,7 @@ interface SqliteSessionRow {
   id: string;
   value: string;
   flash: string;
+  runtime: string;
   createdAt: string;
   expiresAt: string;
 }
@@ -26,6 +27,7 @@ type SqliteDatabase = {
   prepare(sql: string): {
     run(...params: unknown[]): void;
     get(...params: unknown[]): SqliteSessionRow | undefined;
+    all(...params: unknown[]): { name: string }[];
   };
 };
 
@@ -46,10 +48,12 @@ export function createSqliteSessionStore<
       id TEXT PRIMARY KEY,
       value TEXT NOT NULL,
       flash TEXT NOT NULL,
+      runtime TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     )
   `).run();
+  ensureRuntimeColumn(db);
   db.prepare(`
     CREATE INDEX IF NOT EXISTS ${SESSION_TABLE_NAME}_expires_at_idx
     ON ${SESSION_TABLE_NAME} (expires_at)
@@ -59,16 +63,17 @@ export function createSqliteSessionStore<
     `DELETE FROM ${SESSION_TABLE_NAME} WHERE expires_at <= ?`,
   );
   const getStatement = db.prepare(`
-    SELECT id, value, flash, created_at AS createdAt, expires_at AS expiresAt
+    SELECT id, value, flash, runtime, created_at AS createdAt, expires_at AS expiresAt
     FROM ${SESSION_TABLE_NAME}
     WHERE id = ?
   `);
   const setStatement = db.prepare(`
-    INSERT INTO ${SESSION_TABLE_NAME} (id, value, flash, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO ${SESSION_TABLE_NAME} (id, value, flash, runtime, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       value = excluded.value,
       flash = excluded.flash,
+      runtime = excluded.runtime,
       created_at = excluded.created_at,
       expires_at = excluded.expires_at
   `);
@@ -85,6 +90,7 @@ export function createSqliteSessionStore<
         record.id,
         JSON.stringify(record.value),
         JSON.stringify(record.flash),
+        JSON.stringify(record.runtime ?? {}),
         record.createdAt,
         record.expiresAt,
       );
@@ -93,6 +99,17 @@ export function createSqliteSessionStore<
       deleteStatement.run(sessionId);
     },
   };
+}
+
+function ensureRuntimeColumn(db: SqliteDatabase): void {
+  const columns = db.prepare(`PRAGMA table_info(${SESSION_TABLE_NAME})`).all();
+  if (columns.some((column) => column.name === 'runtime')) {
+    return;
+  }
+
+  db.prepare(
+    `ALTER TABLE ${SESSION_TABLE_NAME} ADD COLUMN runtime TEXT NOT NULL DEFAULT '{}'`,
+  ).run();
 }
 
 function loadBunSqlite(): new (filename: string) => SqliteDatabase {
@@ -119,6 +136,7 @@ function deserializeSessionRecord<TSession extends Record<string, unknown>>(
     id: row.id,
     value: JSON.parse(row.value) as TSession,
     flash: JSON.parse(row.flash) as SessionFlashMessage[],
+    runtime: JSON.parse(row.runtime),
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
   };

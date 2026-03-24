@@ -1,5 +1,15 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
+import {
+  attachSessionRuntimeState,
+  cloneSessionRuntimeState,
+  coerceSessionRuntimeFormState,
+  hasSessionRuntimeState,
+  mergeSessionRuntimeState,
+  readSessionRuntimeState,
+  type SessionRuntimeState,
+} from './session-runtime.js';
+
 export type FlashLevel = 'info' | 'success' | 'warning' | 'error';
 export type FlashPublishCondition = 'always' | 'success' | 'error';
 
@@ -66,6 +76,7 @@ export interface SessionStoreRecord<
   id: string;
   value: TSession;
   flash: SessionFlashMessage[];
+  runtime?: SessionRuntimeState;
   createdAt: string;
   expiresAt: string;
 }
@@ -83,6 +94,7 @@ export interface InMemorySessionStore<
 }
 
 const SESSION_STORE_KEY = Symbol.for('webstir.webstir-backend.session-store');
+const LEGACY_FORM_RUNTIME_KEY = '__webstir_form_runtime';
 
 export function prepareSessionState<
   TSession extends Record<string, unknown>,
@@ -103,7 +115,10 @@ export function prepareSessionState<
   const initialRecord = initialId ? loadSessionRecord(store, initialId, now) : undefined;
   const staleCookie = Boolean(initialId) && !initialRecord;
   const delivered = resolveConsumedFlash(initialRecord?.flash ?? [], options.route);
-  const initialSession = initialRecord ? (cloneValue(initialRecord.value) as TSession) : null;
+  const initialState = initialRecord ? restoreStoredSessionState(initialRecord) : undefined;
+  const initialSession = initialState?.session
+    ? attachSessionRuntimeState(initialState.session, initialState.runtime)
+    : null;
   const hasPendingConsumption = delivered.flash.length > 0;
 
   return {
@@ -111,17 +126,18 @@ export function prepareSessionState<
     flash: delivered.flash,
     commit({ session, route, result }) {
       const publishFlash = resolvePublishedFlash(route ?? options.route, result, now);
-      const nextSession = normalizeSessionValue<TSession>(session);
+      const normalized = normalizeSessionValue<TSession>(session);
 
       if (initialRecord) {
         store.delete(initialRecord.id);
       }
 
       const shouldPersist =
-        nextSession !== null ||
+        normalized.session !== null ||
         publishFlash.length > 0 ||
         (initialRecord !== undefined && delivered.remaining.length > 0) ||
-        hasPendingConsumption;
+        hasPendingConsumption ||
+        hasSessionRuntimeState(normalized.runtime);
 
       if (!shouldPersist) {
         return {
@@ -134,9 +150,10 @@ export function prepareSessionState<
       }
 
       const record = createStoredSessionRecord({
-        session: nextSession,
+        session: normalized.session,
+        runtime: normalized.runtime,
         fallbackId:
-          normalizeText(nextSession?.id) ??
+          normalizeText(normalized.session?.id) ??
           (publishFlash.length > 0 ? undefined : initialRecord?.id),
         initialRecord,
         flash: [...delivered.remaining, ...publishFlash],
@@ -147,7 +164,7 @@ export function prepareSessionState<
       store.set(record);
 
       return {
-        session: cloneValue(record.value) as TSession,
+        session: attachSessionRuntimeState(cloneValue(record.value) as TSession, record.runtime),
         setCookie:
           initialRecord?.id === record.id && !invalidCookie && !staleCookie
             ? undefined
@@ -361,15 +378,23 @@ function shouldPublishFlash(
 
 function normalizeSessionValue<TSession extends Record<string, unknown>>(
   session: TSession | null,
-): TSession | null {
+): { session: TSession | null; runtime?: SessionRuntimeState } {
   if (session === null) {
-    return null;
+    return { session: null };
   }
-  return cloneValue(session) as TSession;
+
+  const cloned = cloneValue(session) as Record<string, unknown>;
+  delete cloned[LEGACY_FORM_RUNTIME_KEY];
+
+  return {
+    session: cloned as TSession,
+    runtime: readSessionRuntimeState(session),
+  };
 }
 
 function createStoredSessionRecord<TSession extends Record<string, unknown>>(options: {
   session: TSession | null;
+  runtime?: SessionRuntimeState;
   fallbackId?: string;
   initialRecord?: SessionStoreRecord<TSession>;
   flash: SessionFlashMessage[];
@@ -396,6 +421,7 @@ function createStoredSessionRecord<TSession extends Record<string, unknown>>(opt
       expiresAt,
     } as unknown as TSession,
     flash: options.flash.map((message) => ({ ...message })),
+    runtime: cloneSessionRuntimeState(options.runtime),
     createdAt,
     expiresAt,
   };
@@ -457,9 +483,30 @@ function cloneStoredSessionRecord<TSession extends Record<string, unknown>>(
     id: record.id,
     value: cloneValue(record.value),
     flash: record.flash.map((message) => ({ ...message })),
+    runtime: cloneSessionRuntimeState(record.runtime),
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
   };
+}
+
+function restoreStoredSessionState<TSession extends Record<string, unknown>>(
+  record: SessionStoreRecord<TSession>,
+): { session: TSession; runtime?: SessionRuntimeState } {
+  const session = cloneValue(record.value) as Record<string, unknown>;
+  const legacyRuntime = restoreLegacyFormRuntime(session);
+
+  return {
+    session: session as TSession,
+    runtime: mergeSessionRuntimeState(record.runtime, legacyRuntime),
+  };
+}
+
+function restoreLegacyFormRuntime(
+  session: Record<string, unknown>,
+): SessionRuntimeState | undefined {
+  const legacy = coerceSessionRuntimeFormState(session[LEGACY_FORM_RUNTIME_KEY]);
+  delete session[LEGACY_FORM_RUNTIME_KEY];
+  return legacy ? { form: legacy } : undefined;
 }
 
 function isInMemorySessionStore(

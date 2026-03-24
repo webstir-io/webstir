@@ -56,10 +56,11 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - External copied/temp workspaces used by orchestrator `smoke` and `test` now materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
 - Plan-source consolidation is done: `plans/plan.md` is the sole active execution plan.
 - The non-default Fastify request-time path-hardening slice is done locally: request-time document rendering now threads an explicit workspace root and package-local build/test/smoke coverage is green, including alternate-cwd `WEBSTIR_WORKSPACE_ROOT` regression coverage.
+- Workstream 4 is active again with a bounded session/form/CSRF storage-boundary slice in `packages/tooling/webstir-backend`.
 
 ### Queued
 
-- Durable state boundaries beyond the current SQLite-backed session baseline.
+- Durable state follow-ups beyond the bounded session/form/CSRF storage-boundary slice.
 - Any residual request-time path-resolution cleanup in legacy compatibility layouts that still bypass the shared workspace-root seam.
 
 ## Workstreams
@@ -151,9 +152,50 @@ Success criteria:
 
 ## Current Execution Track
 
-### Milestone C: Upgradeable Bun-Default Backend Runtime
+### Workstream 4 Slice A: Session/Form/CSRF Storage Boundary
 
 This is the current active implementation track.
+
+Status:
+
+- Done locally.
+
+Objective:
+
+Move framework-owned form and CSRF transport state out of the app session payload while keeping current session/flash behavior stable across in-memory and SQLite-backed storage.
+
+Primary targets:
+
+- `packages/tooling/webstir-backend/src/runtime/session.ts`
+- `packages/tooling/webstir-backend/src/runtime/forms.ts`
+- `packages/tooling/webstir-backend/templates/backend/session/sqlite.ts`
+- `packages/tooling/webstir-backend/tests/sessionStore.test.js`
+- `packages/tooling/webstir-backend/tests/sessionScaffoldStore.test.js`
+
+Acceptance:
+
+- framework-owned form/CSRF transport state persists outside app-owned session fields
+- legacy stored sessions that still embed form runtime state remain readable
+- in-memory and SQLite-backed stores preserve current redirect/flash/form semantics
+
+Local status:
+
+- package-local `build`, `test`, and `smoke` are green
+- targeted `sessionStore` and `sessionScaffoldStore` coverage is green
+- diff-local slop/review pass is clean and ready for PR
+- PR #138 is open for the slice on `codex/session-runtime-boundary`
+
+Out of scope:
+
+- new durable adapters beyond the current in-memory and SQLite stores
+- broader auth/session API redesign
+- residual request-time path cleanup
+
+### Milestone C: Upgradeable Bun-Default Backend Runtime
+
+Status:
+
+- Done.
 
 #### Slice A: Package bootstrap plus thin entrypoint
 
@@ -231,20 +273,17 @@ Later work:
 
 ## Validation
 
-Required checks for the active runtime-extraction slice:
+Required checks for the active durable-state slice:
 
 - `bun run --filter @webstir-io/webstir-backend build`
 - `bun run --filter @webstir-io/webstir-backend test`
 - `bun run --filter @webstir-io/webstir-backend smoke`
-- `bun run --filter @webstir-io/webstir test`
-- `bun run --filter @webstir-io/webstir test:install:package`
 
 Recommended targeted checks during implementation:
 
-- `bun test packages/tooling/webstir-backend/tests/integration.test.js`
-- `bun test packages/tooling/webstir-backend/tests/envLoader.test.js`
+- `bun test packages/tooling/webstir-backend/tests/sessionStore.test.js`
 - `bun test packages/tooling/webstir-backend/tests/sessionScaffoldStore.test.js`
-- `bun test orchestrators/bun/tests/init.integration.test.ts`
+- `bun test packages/tooling/webstir-backend/tests/integration.test.js`
 
 ## Risks
 
