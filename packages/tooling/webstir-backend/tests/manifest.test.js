@@ -138,6 +138,91 @@ test('manifest loader merges compiled module definition metadata', async () => {
   assert.deepEqual(moduleManifest?.capabilities, ['search']);
 });
 
+test('manifest loader merges package routes with compiled module routes without duplicating overlaps', async () => {
+  const workspace = await createTempWorkspace();
+  await seedBackendEntry(workspace);
+
+  const moduleSource = `export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/with-routes',
+    version: '1.2.3',
+    kind: 'backend',
+    capabilities: ['http'],
+    routes: [
+      {
+        name: 'builtInRoute',
+        method: 'GET',
+        path: '/demo/built-in',
+        summary: 'Built-in route'
+      },
+      {
+        name: 'overlapRoute',
+        method: 'GET',
+        path: '/demo/overlap',
+        summary: 'Built-in overlap route'
+      }
+    ],
+    views: []
+  }
+};
+`;
+
+  await fs.writeFile(path.join(workspace, 'src', 'backend', 'module.ts'), moduleSource, 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@demo/routes-package',
+        version: '0.0.1',
+        type: 'module',
+        webstir: {
+          moduleManifest: {
+            routes: [
+              {
+                name: 'overlapRouteFromPackage',
+                method: 'GET',
+                path: '/demo/overlap',
+                summary: 'Package overlap route',
+              },
+              {
+                name: 'packageOnlyRoute',
+                method: 'POST',
+                path: '/demo/package-only',
+                summary: 'Package-only route',
+              },
+            ],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
+  };
+
+  const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+  const moduleManifest = result.manifest.module;
+
+  assert.deepEqual(
+    moduleManifest?.routes?.map((route) => ({
+      name: route.name,
+      method: route.method,
+      path: route.path,
+    })),
+    [
+      { name: 'builtInRoute', method: 'GET', path: '/demo/built-in' },
+      { name: 'overlapRoute', method: 'GET', path: '/demo/overlap' },
+      { name: 'packageOnlyRoute', method: 'POST', path: '/demo/package-only' },
+    ],
+  );
+});
+
 test('manifest loader falls back to module exports from the compiled index entry', async () => {
   const workspace = await createTempWorkspace();
   await ensureDir(path.join(workspace, 'src', 'backend'));
@@ -199,15 +284,11 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'index.ts'),
     path.join('src', 'backend', 'module.ts'),
     path.join('src', 'backend', 'server', 'fastify.ts'),
-    path.join('src', 'backend', 'server', 'bun.ts'),
     path.join('src', 'backend', 'auth', 'adapter.ts'),
     path.join('src', 'backend', 'observability', 'logger.ts'),
     path.join('src', 'backend', 'observability', 'metrics.ts'),
     path.join('src', 'backend', 'session', 'store.ts'),
     path.join('src', 'backend', 'session', 'sqlite.ts'),
-    path.join('src', 'backend', 'runtime', 'node-http.ts'),
-    path.join('src', 'backend', 'runtime', 'fastify.ts'),
-    path.join('src', 'backend', 'runtime', 'views.ts'),
     path.join('src', 'backend', 'functions', 'hello', 'index.ts'),
     path.join('src', 'backend', 'jobs', 'nightly', 'index.ts'),
     path.join('src', 'backend', 'jobs', 'runtime.ts'),
@@ -223,38 +304,30 @@ test('scaffold assets expose core backend templates', async () => {
     assert.ok(targetSet.has(target), `expected scaffold assets to include ${target}`);
   }
 
-  const runtimeViewAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'views.ts'),
-  );
-  assert.ok(runtimeViewAsset, 'expected scaffold assets to include the runtime views helper');
+  const removedTargets = [
+    path.join('src', 'backend', 'server', 'bun.ts'),
+    path.join('src', 'backend', 'runtime', 'request-hooks.ts'),
+    path.join('src', 'backend', 'runtime', 'session.ts'),
+    path.join('src', 'backend', 'runtime', 'forms.ts'),
+    path.join('src', 'backend', 'runtime', 'views.ts'),
+    path.join('src', 'backend', 'runtime', 'node-http.ts'),
+    path.join('src', 'backend', 'runtime', 'fastify.ts'),
+  ];
 
-  const runtimeViewSource = await fs.readFile(runtimeViewAsset.sourcePath, 'utf8');
-  assert.match(runtimeViewSource, /export \* from '@webstir-io\/webstir-backend\/runtime\/views';/);
+  for (const target of removedTargets) {
+    assert.ok(!targetSet.has(target), `expected scaffold assets to omit ${target}`);
+  }
 
-  const runtimeNodeHttpAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'node-http.ts'),
+  const fastifyAsset = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'server', 'fastify.ts'),
   );
-  assert.ok(
-    runtimeNodeHttpAsset,
-    'expected scaffold assets to include the runtime node-http helper',
-  );
+  assert.ok(fastifyAsset, 'expected scaffold assets to include the Fastify scaffold');
 
-  const runtimeNodeHttpSource = await fs.readFile(runtimeNodeHttpAsset.sourcePath, 'utf8');
-  assert.match(
-    runtimeNodeHttpSource,
-    /export \* from '@webstir-io\/webstir-backend\/runtime\/node-http';/,
-  );
-
-  const runtimeFastifyAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'runtime', 'fastify.ts'),
-  );
-  assert.ok(runtimeFastifyAsset, 'expected scaffold assets to include the runtime fastify helper');
-
-  const runtimeFastifySource = await fs.readFile(runtimeFastifyAsset.sourcePath, 'utf8');
-  assert.match(
-    runtimeFastifySource,
-    /export \* from '@webstir-io\/webstir-backend\/runtime\/fastify';/,
-  );
+  const fastifySource = await fs.readFile(fastifyAsset.sourcePath, 'utf8');
+  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/fastify/);
+  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/request-hooks/);
+  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/session/);
+  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/views/);
 
   const sessionStoreAsset = assets.find(
     (asset) => asset.targetPath === path.join('src', 'backend', 'session', 'store.ts'),
@@ -263,6 +336,7 @@ test('scaffold assets expose core backend templates', async () => {
 
   const sessionStoreSource = await fs.readFile(sessionStoreAsset.sourcePath, 'utf8');
   assert.match(sessionStoreSource, /createSessionStoreFromEnv/);
+  assert.match(sessionStoreSource, /@webstir-io\/webstir-backend\/runtime\/session/);
   assert.match(sessionStoreSource, /SESSION_STORE_DRIVER/);
 
   const sqliteSessionStoreAsset = assets.find(

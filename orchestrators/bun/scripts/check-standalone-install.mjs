@@ -8,12 +8,16 @@ import { constants as fsConstants } from 'node:fs';
 const scriptRoot = path.dirname(new URL(import.meta.url).pathname);
 const packageRoot = path.resolve(scriptRoot, '..');
 const artifactsRoot = path.join(packageRoot, 'artifacts');
+const repoRoot = path.resolve(packageRoot, '..', '..');
+const backendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-backend');
 
 async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-standalone-install-'));
   const consumerRoot = path.join(tempRoot, 'consumer');
   const existingArtifacts = await listArtifacts(artifactsRoot);
+  const existingBackendTarballs = await listArtifacts(backendPackageRoot);
   let tarballPath = null;
+  let backendTarballPath = null;
   let keepWorkspace = false;
 
   try {
@@ -26,6 +30,8 @@ async function main() {
 
     tarballPath = await packStandaloneTarball();
     console.log(`[webstir][install-smoke] tarball ${tarballPath}`);
+    backendTarballPath = await packPackageTarball(backendPackageRoot);
+    console.log(`[webstir][install-smoke] backend tarball ${backendTarballPath}`);
 
     await run(['bun', 'add', tarballPath], consumerRoot);
 
@@ -41,6 +47,7 @@ async function main() {
     );
 
     await run(['bun', 'install'], workspaceRoot);
+    await installLocalBackendTarball(workspaceRoot, backendTarballPath);
     await run([cliPath, 'build', '--workspace', workspaceRoot], workspaceRoot);
 
     await assertExists(
@@ -72,6 +79,9 @@ async function main() {
     if (tarballPath) {
       await cleanupGeneratedTarball(tarballPath, existingArtifacts);
     }
+    if (backendTarballPath) {
+      await cleanupGeneratedTarball(backendTarballPath, existingBackendTarballs);
+    }
     if (!keepWorkspace) {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -91,6 +101,26 @@ async function packStandaloneTarball() {
   }
 
   return path.resolve(packageRoot, tarballPath);
+}
+
+async function packPackageTarball(root) {
+  const output = await run(['bun', 'pm', 'pack'], root);
+  const tarballPath = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith('.tgz'))
+    .at(-1);
+
+  if (!tarballPath) {
+    throw new Error(`Unable to determine package tarball path from pack output:\n${output}`);
+  }
+
+  return path.resolve(root, tarballPath);
+}
+
+async function installLocalBackendTarball(workspaceRoot, backendTarballPath) {
+  await run(['bun', 'remove', '@webstir-io/webstir-backend'], workspaceRoot);
+  await run(['bun', 'add', backendTarballPath], workspaceRoot);
 }
 
 async function assertExists(targetPath, label) {

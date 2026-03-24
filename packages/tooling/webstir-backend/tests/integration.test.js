@@ -42,6 +42,13 @@ async function hydrateBackendScaffold(workspace) {
   }
 }
 
+async function writePackageRuntimeEntry(workspace, filename, specifier, exportsBlock = '*') {
+  const target = path.join(workspace, filename);
+  await ensureDir(path.dirname(target));
+  await fs.writeFile(target, `export ${exportsBlock} from '${specifier}';\n`, 'utf8');
+  return target;
+}
+
 function getLocalBinPath() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const pkgRoot = path.resolve(here, '..');
@@ -152,24 +159,39 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         })
-      : spawn(
-          'node',
-          [
-            '--input-type=module',
-            '--eval',
-            `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`,
-          ],
-          {
-            cwd: options.cwd ?? workspace,
-            env: {
-              ...process.env,
-              PORT: String(port),
-              NODE_ENV: 'test',
-              ...extraEnv,
+      : runtime === 'bun-import'
+        ? spawn(
+            'bun',
+            ['--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`],
+            {
+              cwd: options.cwd ?? workspace,
+              env: {
+                ...process.env,
+                PORT: String(port),
+                NODE_ENV: 'test',
+                ...extraEnv,
+              },
+              stdio: ['ignore', 'pipe', 'pipe'],
             },
-            stdio: ['ignore', 'pipe', 'pipe'],
-          },
-        );
+          )
+        : spawn(
+            'node',
+            [
+              '--input-type=module',
+              '--eval',
+              `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`,
+            ],
+            {
+              cwd: options.cwd ?? workspace,
+              env: {
+                ...process.env,
+                PORT: String(port),
+                NODE_ENV: 'test',
+                ...extraEnv,
+              },
+              stdio: ['ignore', 'pipe', 'pipe'],
+            },
+          );
 
   let stdout = '';
   let stderr = '';
@@ -518,7 +540,7 @@ function createFormWorkflowModuleSource() {
   groupFormIssuesByField,
   prepareFormState,
   processFormSubmission
-} from './runtime/forms.js';
+} from '@webstir-io/webstir-backend/runtime/forms';
 
 const accountSettingsPageDefinition = {
   name: 'accountSettingsPage',
@@ -1705,8 +1727,13 @@ test('request hook scaffold helper preserves ordered phase execution', async () 
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'request-hooks.mjs');
+  const helperEntryPoint = await writePackageRuntimeEntry(
+    workspace,
+    'request-hooks-entry.ts',
+    '@webstir-io/webstir-backend/runtime/request-hooks',
+  );
   await esbuild({
-    entryPoints: [path.join(workspace, 'src', 'backend', 'runtime', 'request-hooks.ts')],
+    entryPoints: [helperEntryPoint],
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -1874,8 +1901,13 @@ test('node-http scaffold helper loads module runtime and preserves response sema
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'node-http.mjs');
+  const helperEntryPoint = await writePackageRuntimeEntry(
+    workspace,
+    'node-http-entry.ts',
+    '@webstir-io/webstir-backend/runtime/node-http',
+  );
   await esbuild({
-    entryPoints: [path.join(workspace, 'src', 'backend', 'runtime', 'node-http.ts')],
+    entryPoints: [helperEntryPoint],
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -1946,8 +1978,13 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'session.mjs');
+  const helperEntryPoint = await writePackageRuntimeEntry(
+    workspace,
+    'session-entry.ts',
+    '@webstir-io/webstir-backend/runtime/session',
+  );
   await esbuild({
-    entryPoints: [path.join(workspace, 'src', 'backend', 'runtime', 'session.ts')],
+    entryPoints: [helperEntryPoint],
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -2054,8 +2091,13 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
   });
 
   const helperBuildPath = path.join(workspace, 'build', 'forms.mjs');
+  const helperEntryPoint = await writePackageRuntimeEntry(
+    workspace,
+    'forms-entry.ts',
+    '@webstir-io/webstir-backend/runtime/forms',
+  );
   await esbuild({
-    entryPoints: [path.join(workspace, 'src', 'backend', 'runtime', 'forms.ts')],
+    entryPoints: [helperEntryPoint],
     bundle: true,
     format: 'esm',
     platform: 'node',
@@ -2209,31 +2251,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
     mode: 'build',
   });
   assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'fastify.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'forms.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'session.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'runtime', 'views.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'server', 'bun.ts')),
+    fssync.existsSync(path.join(defaultWorkspace, 'src', 'backend', 'server', 'fastify.ts')),
     true,
   );
   assert.equal(
@@ -2248,31 +2266,7 @@ test('request hook scaffold builds for default and fastify entries', async () =>
     mode: 'build',
   });
   assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'node-http.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'fastify.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'forms.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'request-hooks.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'session.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'runtime', 'views.ts')),
-    true,
-  );
-  assert.equal(
-    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'server', 'bun.ts')),
+    fssync.existsSync(path.join(fastifyWorkspace, 'src', 'backend', 'server', 'fastify.ts')),
     true,
   );
   assert.equal(
@@ -2290,12 +2284,18 @@ test('default backend scaffold uses the package-managed Bun bootstrap', async ()
   assert.doesNotMatch(indexSource, /http\.createServer/);
   assert.doesNotMatch(indexSource, /Bun\.serve/);
 
-  const bunSource = await fs.readFile(
-    path.join(workspace, 'src', 'backend', 'server', 'bun.ts'),
-    'utf8',
+  assert.equal(
+    fssync.existsSync(path.join(workspace, 'src', 'backend', 'server', 'bun.ts')),
+    false,
   );
-  assert.match(bunSource, /startBunBackend/);
-  assert.match(bunSource, /moduleCandidates/);
+  assert.equal(
+    fssync.existsSync(path.join(workspace, 'src', 'backend', 'runtime', 'forms.ts')),
+    false,
+  );
+  assert.equal(
+    fssync.existsSync(path.join(workspace, 'src', 'backend', 'runtime', 'request-hooks.ts')),
+    false,
+  );
 });
 
 function extractCookieHeader(setCookie) {
@@ -2453,6 +2453,158 @@ test('publish mode emits sourcemaps when opt-in flag is set', async () => {
     ),
     'expected index.js.map to be included as an asset artifact',
   );
+});
+
+test('publish mode preserves legacy local runtime wrappers and server/bun entry layout', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  const workspace = await createTempWorkspace('webstir-backend-legacy-layout-');
+  await hydrateBackendScaffold(workspace);
+  await linkWorkspaceNodeModules(workspace);
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify({ type: 'module' }, null, 2),
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(workspace, 'src', 'backend', 'index.ts'),
+    "export { start } from './server/bun.js';\n",
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(workspace, 'src', 'backend', 'server', 'bun.ts'),
+    `import { startBunBackend } from '@webstir-io/webstir-backend/runtime/bun';
+
+import { resolveRequestAuth } from '../auth/adapter.js';
+import { loadEnv, resolveWorkspaceRoot } from '../env.js';
+import { createBaseLogger } from '../observability/logger.js';
+import { createMetricsTracker } from '../observability/metrics.js';
+import { sessionStore } from '../session/store.js';
+
+export async function start(): Promise<void> {
+  await startBunBackend({
+    importMetaUrl: import.meta.url,
+    loadEnv,
+    resolveWorkspaceRoot,
+    resolveRequestAuth,
+    createBaseLogger,
+    createMetricsTracker,
+    sessionStore,
+  });
+}
+`,
+    'utf8',
+  );
+
+  for (const [filename, specifier] of [
+    ['src/backend/runtime/bun.ts', '@webstir-io/webstir-backend/runtime/bun'],
+    ['src/backend/runtime/forms.ts', '@webstir-io/webstir-backend/runtime/forms'],
+    ['src/backend/runtime/fastify.ts', '@webstir-io/webstir-backend/runtime/fastify'],
+    ['src/backend/runtime/node-http.ts', '@webstir-io/webstir-backend/runtime/node-http'],
+    ['src/backend/runtime/request-hooks.ts', '@webstir-io/webstir-backend/runtime/request-hooks'],
+    ['src/backend/runtime/session.ts', '@webstir-io/webstir-backend/runtime/session'],
+    ['src/backend/runtime/views.ts', '@webstir-io/webstir-backend/runtime/views'],
+  ]) {
+    await writePackageRuntimeEntry(workspace, filename, specifier);
+  }
+
+  const result = await backendProvider.build({
+    workspaceRoot: workspace,
+    env: {
+      WEBSTIR_MODULE_MODE: 'publish',
+      WEBSTIR_BACKEND_TYPECHECK: 'skip',
+      PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
+    },
+    incremental: false,
+  });
+
+  assert.ok(result.manifest.entryPoints.length >= 1);
+  assert.equal(fssync.existsSync(path.join(workspace, 'build', 'backend', 'index.js')), true);
+
+  const probeEntryPoint = path.join(workspace, 'legacy-runtime-probe.ts');
+  const probeBuildPath = path.join(workspace, 'build', 'legacy-runtime-probe.mjs');
+  await fs.writeFile(
+    probeEntryPoint,
+    `import { startBunBackend } from './src/backend/runtime/bun.js';
+import { groupFormIssuesByField } from './src/backend/runtime/forms.js';
+import { loadFastifyModuleRuntime } from './src/backend/runtime/fastify.js';
+import { createProcessEnvAccessor } from './src/backend/runtime/node-http.js';
+import { resolveRequestHooks } from './src/backend/runtime/request-hooks.js';
+import { prepareSessionState } from './src/backend/runtime/session.js';
+import { matchView } from './src/backend/runtime/views.js';
+
+export const probe = {
+  bun: typeof startBunBackend,
+  forms: typeof groupFormIssuesByField,
+  fastify: typeof loadFastifyModuleRuntime,
+  nodeHttp: typeof createProcessEnvAccessor,
+  requestHooks: typeof resolveRequestHooks,
+  session: typeof prepareSessionState,
+  views: typeof matchView,
+};
+`,
+    'utf8',
+  );
+  await esbuild({
+    entryPoints: [probeEntryPoint],
+    bundle: true,
+    format: 'esm',
+    platform: 'node',
+    outfile: probeBuildPath,
+    logLevel: 'silent',
+  });
+  const probeUrl = pathToFileURL(probeBuildPath).href;
+  const { probe } = await import(probeUrl);
+  assert.deepEqual(probe, {
+    bun: 'function',
+    forms: 'function',
+    fastify: 'function',
+    nodeHttp: 'function',
+    requestHooks: 'function',
+    session: 'function',
+    views: 'function',
+  });
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(
+    workspace,
+    port,
+    {
+      AUTH_SERVICE_TOKENS: 'legacy-test-token',
+    },
+    { runtime: 'bun-import' },
+  );
+
+  try {
+    const readyResponse = await fetch(`http://127.0.0.1:${port}/readyz`);
+    assert.equal(readyResponse.status, 200);
+    const readyPayload = await readyResponse.json();
+    assert.equal(readyPayload.status, 'ready');
+    assert.equal('message' in readyPayload, false);
+    assert.equal(readyPayload.manifest?.name, '@demo/backend');
+    assert.equal(readyPayload.manifest?.version, '0.1.0');
+    assert.equal(readyPayload.manifest?.routes, 3);
+    assert.equal(readyPayload.manifest?.views, 0);
+    assert.ok(Array.isArray(readyPayload.manifest?.capabilities));
+    assert.ok(readyPayload.manifest.capabilities.includes('http'));
+    assert.ok(readyPayload.manifest.capabilities.includes('auth'));
+
+    const helloResponse = await fetch(`http://127.0.0.1:${port}/hello/Legacy`, {
+      headers: {
+        'x-service-token': 'legacy-test-token',
+      },
+    });
+    assert.equal(helloResponse.status, 200);
+    const helloPayload = await helloResponse.json();
+    assert.equal(helloPayload.message, 'Hello Legacy');
+    assert.match(String(helloPayload.greetedAt), /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(helloPayload.user, 'anonymous');
+  } finally {
+    await server.stop();
+  }
 });
 
 test('built backend server validates fragment route responses', async (t) => {

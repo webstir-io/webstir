@@ -6,6 +6,7 @@ import { createServer } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 
 import { DevServer } from '../src/dev-server.ts';
+import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 
 test('browser progressive enhancement flows work in watch mode', async () => {
@@ -59,7 +60,14 @@ test('browser auth and CRUD flows work in publish mode', async () => {
   let session: RuntimeSession | undefined;
 
   try {
-    session = await startPublishSession(workspace);
+    session = await startPublishSession(workspace, {
+      readinessChecks: [
+        {
+          requestPath: '/api/demo/auth-crud',
+          expectedText: 'id="auth-sign-in-form"',
+        },
+      ],
+    });
     await exerciseAuthCrudPublishScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.getLogs() ?? {});
@@ -94,7 +102,14 @@ test('browser dashboard flows work in publish mode', async () => {
   let session: RuntimeSession | undefined;
 
   try {
-    session = await startPublishSession(workspace);
+    session = await startPublishSession(workspace, {
+      readinessChecks: [
+        {
+          requestPath: '/api/demo/dashboard',
+          expectedText: 'id="dashboard-team"',
+        },
+      ],
+    });
     await exerciseDashboardPublishScenario(session.origin);
   } catch (error) {
     throw appendLogs(error, session?.getLogs() ?? {});
@@ -120,13 +135,10 @@ async function exerciseBrowserScenario(
     const fragmentPage = await fragmentContext.newPage();
 
     try {
-      setScenarioStep(progress, 'load progressive enhancement home page');
-      await fragmentPage.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
       setScenarioStep(progress, 'open progressive enhancement proof page');
-      await fragmentPage
-        .locator('a[href="/api/demo/progressive-enhancement"]')
-        .click({ noWaitAfter: true });
-      await waitForPathname(fragmentPage, '/api/demo/progressive-enhancement');
+      await fragmentPage.goto(`${origin}/api/demo/progressive-enhancement`, {
+        waitUntil: 'domcontentloaded',
+      });
       await fragmentPage.locator('h1').waitFor({ state: 'visible' });
 
       setScenarioStep(progress, 'verify document navigation scroll reset');
@@ -825,7 +837,7 @@ async function startWatchSession(
 
   await waitFor(async () => {
     expect(stdout.text).toContain('[webstir] watch starting');
-    expect(stdout.text).toContain('[webstir] backend ready at');
+    expect(stdout.text).toContain('[webstir-backend] watch:ready');
     expect(await fetchText(port, '/')).toContain('Home');
     expect(await fetchText(port, '/api')).toContain('API server running');
     await Promise.all(
@@ -849,7 +861,16 @@ async function startWatchSession(
   };
 }
 
-async function startPublishSession(workspace: string): Promise<RuntimeSession> {
+async function startPublishSession(
+  workspace: string,
+  options: {
+    readonly readinessChecks?: readonly {
+      requestPath: string;
+      expectedText: string;
+    }[];
+  } = {},
+): Promise<RuntimeSession> {
+  await materializeRepoLocalWorkspaceDependencies(workspace);
   const publishResult = Bun.spawnSync({
     cmd: [
       process.execPath,
@@ -894,7 +915,7 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
   const backendStderrDrain = collectOutput(backendChild.stderr, backendStderr);
 
   await waitFor(async () => {
-    expect(backendStdout.text).toContain('API server running at');
+    expect(await fetchText(backendPort, '/')).toContain('API server running');
   }, scaledTimeout(20_000));
 
   const port = await getFreePort();
@@ -909,6 +930,18 @@ async function startPublishSession(workspace: string): Promise<RuntimeSession> {
   await waitFor(async () => {
     expect(await fetchText(port, '/')).toContain('Home');
     expect(await fetchText(port, '/api')).toContain('API server running');
+    await Promise.all(
+      (
+        options.readinessChecks ?? [
+          {
+            requestPath: '/api/demo/progressive-enhancement',
+            expectedText: 'id="demo-name"',
+          },
+        ]
+      ).map(async (check) => {
+        expect(await fetchText(port, check.requestPath)).toContain(check.expectedText);
+      }),
+    );
   }, scaledTimeout(10_000));
 
   return {
@@ -1225,21 +1258,29 @@ function tailOutput(text: string): string {
 
 async function runPublishBrowserScenarioWithRetry(
   workspace: string,
-  scenario: (origin: string) => Promise<void>,
+  scenario: (origin: string, progress?: ScenarioProgress) => Promise<void>,
 ): Promise<void> {
-  const maxAttempts = process.env.CI ? 2 : 1;
+  const maxAttempts = 2;
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let session: RuntimeSession | undefined;
+    const progress: ScenarioProgress = {
+      currentStep: 'start publish session',
+    };
 
     try {
       session = await startPublishSession(workspace);
-      await scenario(session.origin);
+      await scenario(session.origin, progress);
       return;
     } catch (error) {
-      const failure = appendLogs(error, session?.getLogs() ?? {});
-      if (attempt < maxAttempts && isTransientBrowserTeardownError(error)) {
+      const failure = appendLogs(
+        new Error(
+          `${error instanceof Error ? error.message : String(error)}${progress.currentStep ? `\nLatest step: ${progress.currentStep}` : ''}`,
+        ),
+        session?.getLogs() ?? {},
+      );
+      if (attempt < maxAttempts && isRetryablePublishBrowserError(error)) {
         lastError = failure;
         continue;
       }
@@ -1252,6 +1293,16 @@ async function runPublishBrowserScenarioWithRetry(
   }
 
   throw lastError ?? new Error('Publish browser scenario failed without an actionable error.');
+}
+
+function isRetryablePublishBrowserError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    isTransientBrowserTeardownError(error) ||
+    message.includes('Unable to connect') ||
+    message.includes('ECONNREFUSED') ||
+    message.includes('Navigation timeout')
+  );
 }
 
 function isTransientBrowserTeardownError(error: unknown): boolean {

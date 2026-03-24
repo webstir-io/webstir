@@ -22,10 +22,6 @@ export async function getBackendScaffoldAssets(): Promise<readonly ModuleAsset[]
       targetPath: path.join('src', 'backend', 'server', 'fastify.ts'),
     },
     {
-      sourcePath: path.join(templatesRoot, 'server', 'bun.ts'),
-      targetPath: path.join('src', 'backend', 'server', 'bun.ts'),
-    },
-    {
       sourcePath: path.join(templatesRoot, 'module.ts'),
       targetPath: path.join('src', 'backend', 'module.ts'),
     },
@@ -52,30 +48,6 @@ export async function getBackendScaffoldAssets(): Promise<readonly ModuleAsset[]
     {
       sourcePath: path.join(templatesRoot, 'session', 'sqlite.ts'),
       targetPath: path.join('src', 'backend', 'session', 'sqlite.ts'),
-    },
-    {
-      sourcePath: path.join(templatesRoot, 'runtime', 'request-hooks.ts'),
-      targetPath: path.join('src', 'backend', 'runtime', 'request-hooks.ts'),
-    },
-    {
-      sourcePath: path.join(templatesRoot, 'runtime', 'session.ts'),
-      targetPath: path.join('src', 'backend', 'runtime', 'session.ts'),
-    },
-    {
-      sourcePath: path.join(templatesRoot, 'runtime', 'forms.ts'),
-      targetPath: path.join('src', 'backend', 'runtime', 'forms.ts'),
-    },
-    {
-      sourcePath: path.join(templatesRoot, 'runtime', 'views.ts'),
-      targetPath: path.join('src', 'backend', 'runtime', 'views.ts'),
-    },
-    {
-      sourcePath: path.join(templatesRoot, 'runtime', 'node-http.ts'),
-      targetPath: path.join('src', 'backend', 'runtime', 'node-http.ts'),
-    },
-    {
-      sourcePath: path.join(templatesRoot, 'runtime', 'fastify.ts'),
-      targetPath: path.join('src', 'backend', 'runtime', 'fastify.ts'),
     },
     {
       sourcePath: path.join(templatesRoot, 'functions', 'hello', 'index.ts'),

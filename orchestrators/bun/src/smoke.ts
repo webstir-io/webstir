@@ -6,6 +6,10 @@ import type { WorkspaceDescriptor } from './types.ts';
 
 import { runBackendInspect, type BackendInspectResult } from './backend-inspect.ts';
 import { runEnable } from './enable.ts';
+import {
+  materializeRepoLocalWorkspaceDependencies,
+  prepareExternalWorkspaceCopy,
+} from './external-workspace.ts';
 import { monorepoRoot } from './paths.ts';
 import { runBuild, type RunBuildOptions } from './build.ts';
 import { scaffoldWorkspace } from './init.ts';
@@ -121,8 +125,24 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
   readonly source?: string;
 }> {
   if (workspaceRoot) {
+    const resolvedWorkspaceRoot = path.resolve(workspaceRoot);
+    const preparedExternalWorkspace = await prepareExternalWorkspaceCopy(
+      resolvedWorkspaceRoot,
+      'webstir-smoke-explicit-',
+      {
+        forceLocalPackages: true,
+      },
+    );
+    if (preparedExternalWorkspace) {
+      return {
+        workspaceRoot: preparedExternalWorkspace.workspaceRoot,
+        cleanupRoot: preparedExternalWorkspace.cleanupRoot,
+        usedTempWorkspace: false,
+      };
+    }
+
     return {
-      workspaceRoot: path.resolve(workspaceRoot),
+      workspaceRoot: resolvedWorkspaceRoot,
       usedTempWorkspace: false,
     };
   }
@@ -133,6 +153,9 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
   await runEnable({
     workspaceRoot: tempWorkspace,
     args: ['client-nav'],
+  });
+  await materializeRepoLocalWorkspaceDependencies(tempWorkspace, {
+    forceLocalPackages: true,
   });
 
   return {

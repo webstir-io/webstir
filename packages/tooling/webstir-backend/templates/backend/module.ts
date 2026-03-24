@@ -8,7 +8,7 @@ import {
   processFormSubmission,
   type FormIssue,
   type FormValues,
-} from './runtime/forms.js';
+} from '@webstir-io/webstir-backend/runtime/forms';
 
 interface RouteHandlerResult {
   status?: number;

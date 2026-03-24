@@ -38,7 +38,7 @@ Canonical proof apps in this repo:
 
 ## Shipped HTML-First Runtime
 
-The default `src/backend/index.ts` entry, the optional Bun shim, and the optional Fastify scaffold share the same runtime guarantees:
+The default `src/backend/index.ts` entry and the optional Fastify scaffold share the same runtime guarantees. Older workspaces can keep their explicit Bun shim/runtime wrapper files if they already exist:
 
 - Route auto-mounting from compiled `module.ts`
 - Health probes at `/api/health`, `/healthz`, and `/readyz`
@@ -88,7 +88,6 @@ The provider expects a standard workspace layout and performs two steps:
   - `src/backend/tsconfig.json` (NodeNext, outDir `build/backend`)
 - `src/backend/index.ts` (thin composition entry that boots the package-managed Bun runtime)
 - `src/backend/module.ts` (optional manifest + handler example the server loads automatically)
-- `src/backend/server/bun.ts` (optional Bun entry shim)
 - `src/backend/server/fastify.ts` (optional Fastify server scaffold)
 
 ### Bun Scaffold (default)
@@ -99,13 +98,13 @@ Fresh scaffolds now boot through the package-managed Bun runtime by default:
   ```bash
   bun build/backend/index.js
   ```
-- Or pin the entry directly to the Bun shim:
+- Older/custom layouts can still point `src/backend/index.ts` at an existing Bun shim:
   ```ts
   // src/backend/index.ts
   export { start } from './server/bun.js';
   ```
 
-This keeps the default entry thin while moving the operational runtime into upgradeable package code.
+Fresh scaffolds no longer copy `src/backend/server/bun.ts` or `src/backend/runtime/*` re-export files. The operational runtime lives in upgradeable package exports instead.
 
 ### Fastify Scaffold (optional)
 
@@ -132,7 +131,7 @@ When present, the Fastify scaffold will also attempt to auto‑mount any compile
 
 ### Server runtime baseline
 
-The default `src/backend/index.ts` entry, the Bun shim, and the optional Fastify scaffold share the same runtime guarantees:
+The default `src/backend/index.ts` entry and the optional Fastify scaffold share the same runtime guarantees. Older workspaces that already route through `src/backend/server/bun.ts` or `src/backend/runtime/*` remain compatible:
 
 - Route auto-mounting: any `module.ts` routes are compiled, logged, and attached on startup with manifest summaries (name, version, route count, capabilities).
 - Health probes: `/api/health` (for the orchestrator), `/healthz` (generic health), and `/readyz` (status + manifest summary). The CLI still waits for `API server running` before proxying requests.
@@ -143,7 +142,7 @@ The default `src/backend/index.ts` entry, the Bun shim, and the optional Fastify
 - Progressive enhancement responses: handlers can return redirects (`303` by default) or targeted fragment payloads; the scaffold emits `Location` and `x-webstir-fragment-*` headers accordingly.
 - Form handling: JSON bodies still work as before, and the scaffold now parses `application/x-www-form-urlencoded` requests into plain objects for HTML form workflows.
 
-Stick with the default Bun entry while exploring the manifest helpers, keep the Bun shim if you want an explicit local entry, or drop in the Fastify scaffold when you need its plugin ecosystem. The readiness + manifest wiring stays the same.
+Stick with the default Bun entry while exploring the manifest helpers, import package runtime exports directly when you need an explicit local entry, or drop in the Fastify scaffold when you need its plugin ecosystem. The readiness + manifest wiring stays the same.
 
 ### Runtime cache ergonomics
 

@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build as esbuild } from 'esbuild';
 
 import { backendProvider } from '../dist/index.js';
+import { prepareSessionState } from '../dist/runtime/session.js';
 
 const config = {
   secret: 'test-session-secret',
@@ -61,10 +62,14 @@ async function seedBackendWorkspace(workspace, name) {
 }
 
 async function linkWorkspacePackage(workspace) {
-  const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const packageRoot = getPackageRoot();
   const scopeRoot = path.join(workspace, 'node_modules', '@webstir-io');
   await fs.mkdir(scopeRoot, { recursive: true });
   await fs.symlink(packageRoot, path.join(scopeRoot, 'webstir-backend'), 'dir');
+}
+
+function getPackageRoot() {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 }
 
 async function compileTemplateSessionFiles(workspace) {
@@ -73,7 +78,6 @@ async function compileTemplateSessionFiles(workspace) {
       path.join(workspace, 'src', 'backend', 'env.ts'),
       path.join(workspace, 'src', 'backend', 'session', 'sqlite.ts'),
       path.join(workspace, 'src', 'backend', 'session', 'store.ts'),
-      path.join(workspace, 'src', 'backend', 'runtime', 'session.ts'),
     ],
     bundle: false,
     format: 'esm',
@@ -113,7 +117,7 @@ async function runSqliteSessionProbe(workspace, { cwd = workspace, env = {} } = 
     path.join(workspace, 'build', 'backend', 'session', 'store.js'),
   ).href;
   const runtimeSessionUrl = pathToFileURL(
-    path.join(workspace, 'build', 'backend', 'runtime', 'session.js'),
+    path.join(getPackageRoot(), 'dist', 'runtime', 'session.js'),
   ).href;
   const script = `
     const [{ sessionStore }, { prepareSessionState }] = await Promise.all([
@@ -233,10 +237,6 @@ test('scaffold session store defaults to in-memory storage outside production', 
     const { sessionStore } = await importCompiledModule(
       path.join(workspace, 'build', 'backend', 'session', 'store.js'),
     );
-    const { prepareSessionState } = await importCompiledModule(
-      path.join(workspace, 'build', 'backend', 'runtime', 'session.js'),
-    );
-
     const created = prepareSessionState({
       cookies: '',
       route: loginRoute,
@@ -402,10 +402,6 @@ test('scaffold session store allows an explicit memory override in production', 
     const { sessionStore } = await importCompiledModule(
       path.join(workspace, 'build', 'backend', 'session', 'store.js'),
     );
-    const { prepareSessionState } = await importCompiledModule(
-      path.join(workspace, 'build', 'backend', 'runtime', 'session.js'),
-    );
-
     const created = prepareSessionState({
       cookies: '',
       route: loginRoute,

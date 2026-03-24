@@ -2,8 +2,13 @@ import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import type {
+  SessionFlashMessage,
+  SessionStore,
+  SessionStoreRecord,
+} from '@webstir-io/webstir-backend/runtime/session';
+
 import { resolveWorkspaceRoot } from '../env.js';
-import type { SessionFlashMessage, SessionStore, SessionStoreRecord } from '../runtime/session.js';
 
 interface SqliteSessionStoreOptions {
   url?: string;

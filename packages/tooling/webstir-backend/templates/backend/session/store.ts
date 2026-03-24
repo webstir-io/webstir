@@ -1,4 +1,7 @@
-import { createInMemorySessionStore, type SessionStore } from '../runtime/session.js';
+import {
+  createInMemorySessionStore,
+  type SessionStore,
+} from '@webstir-io/webstir-backend/runtime/session';
 import { createSqliteSessionStore } from './sqlite.js';
 
 const DEFAULT_SQLITE_SESSION_STORE_URL = 'file:./data/sessions.sqlite';

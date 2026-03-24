@@ -7,11 +7,14 @@ import { constants as fsConstants } from 'node:fs';
 
 const scriptRoot = path.dirname(new URL(import.meta.url).pathname);
 const packageRoot = path.resolve(scriptRoot, '..');
+const repoRoot = path.resolve(packageRoot, '..', '..');
+const backendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-backend');
 
 async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-package-install-'));
   const installRoot = path.join(tempRoot, 'install-root');
   const workspaceRoot = path.join(tempRoot, 'site');
+  const apiWorkspaceRoot = path.join(tempRoot, 'api-site');
   const addTestTarget = 'frontend/pages/home/package-install-smoke';
   const addRouteTarget = 'package-install-accounts';
   const addJobTarget = 'package-install-nightly';
@@ -30,34 +33,44 @@ async function main() {
   );
   const addedJobPath = path.join(workspaceRoot, 'src', 'backend', 'jobs', addJobTarget, 'index.ts');
   const existingTarballs = await listTarballs(packageRoot);
+  const existingBackendTarballs = await listTarballs(backendPackageRoot);
   let tarballPath = null;
+  let backendTarballPath = null;
   let keepWorkspace = false;
 
   try {
     await mkdir(installRoot, { recursive: true });
-    await writeFile(
-      path.join(installRoot, 'package.json'),
-      `${JSON.stringify({ name: 'webstir-package-smoke', private: true }, null, 2)}\n`,
-      'utf8',
-    );
+    await writeInstallRootManifest(installRoot);
 
     tarballPath = await packPackageTarball();
     console.log(`[webstir][install-smoke] tarball ${tarballPath}`);
+    backendTarballPath = await packPackageTarball(backendPackageRoot);
+    console.log(`[webstir][install-smoke] backend tarball ${backendTarballPath}`);
 
-    await run(['bun', 'add', tarballPath], installRoot);
+    await writeInstallRootManifest(installRoot, {
+      webstirTarballPath: tarballPath,
+      backendTarballPath,
+    });
+    await run(['bun', 'install'], installRoot);
 
     const cliPath = path.join(installRoot, 'node_modules', '.bin', 'webstir');
     await assertExists(cliPath, 'installed CLI binary');
 
     await run([cliPath, 'init', 'full', workspaceRoot], installRoot);
+    await assertPackageManagedBackendScaffold(workspaceRoot, { expectModule: true });
 
     await assertExists(
       path.join(workspaceRoot, 'package.json'),
       'scaffolded workspace package.json',
     );
-    await assertPublishedDependencySpecs(installRoot, workspaceRoot);
+    await assertPublishedDependencySpecs(installRoot, workspaceRoot, [
+      '@webstir-io/webstir-frontend',
+      '@webstir-io/webstir-backend',
+      '@webstir-io/webstir-testing',
+    ]);
 
     await run(['bun', 'install'], workspaceRoot);
+    await installLocalBackendTarball(workspaceRoot, backendTarballPath);
     const addTestOutput = await run(
       [cliPath, 'add-test', addTestTarget, '--workspace', workspaceRoot],
       workspaceRoot,
@@ -181,6 +194,20 @@ async function main() {
       throw new Error(`Expected zero frontend test failures in output, received:\n${testOutput}`);
     }
 
+    await run([cliPath, 'init', 'api', apiWorkspaceRoot], installRoot);
+    await assertPackageManagedBackendScaffold(apiWorkspaceRoot);
+    await assertPublishedDependencySpecs(installRoot, apiWorkspaceRoot, [
+      '@webstir-io/webstir-backend',
+      '@webstir-io/webstir-testing',
+    ]);
+    await run(['bun', 'install'], apiWorkspaceRoot);
+    await installLocalBackendTarball(apiWorkspaceRoot, backendTarballPath);
+    await run([cliPath, 'build', '--workspace', apiWorkspaceRoot], apiWorkspaceRoot);
+    await assertExists(
+      path.join(apiWorkspaceRoot, 'build', 'backend', 'index.js'),
+      'api backend build output',
+    );
+
     console.log('[webstir][install-smoke] package install smoke passed');
   } catch (error) {
     keepWorkspace = (process.env.WEBSTIR_INSTALL_SMOKE_KEEP ?? '').toLowerCase() === '1';
@@ -192,23 +219,22 @@ async function main() {
     if (tarballPath) {
       await cleanupGeneratedTarball(tarballPath, existingTarballs);
     }
+    if (backendTarballPath) {
+      await cleanupGeneratedTarball(backendTarballPath, existingBackendTarballs);
+    }
     if (!keepWorkspace) {
       await rm(tempRoot, { recursive: true, force: true });
     }
   }
 }
 
-async function assertPublishedDependencySpecs(installRoot, workspaceRoot) {
+async function assertPublishedDependencySpecs(installRoot, workspaceRoot, packageNames) {
   const workspacePackageJson = JSON.parse(
     await readFile(path.join(workspaceRoot, 'package.json'), 'utf8'),
   );
   const dependencies = workspacePackageJson.dependencies ?? {};
 
-  for (const packageName of [
-    '@webstir-io/webstir-frontend',
-    '@webstir-io/webstir-backend',
-    '@webstir-io/webstir-testing',
-  ]) {
+  for (const packageName of packageNames) {
     const dependencySpec = dependencies[packageName];
     if (!dependencySpec) {
       throw new Error(
@@ -256,19 +282,80 @@ async function assertManifestEntries(workspaceRoot, expected) {
   }
 }
 
-async function packPackageTarball() {
-  const output = await run(['bun', 'run', 'pack:local'], packageRoot);
+async function assertPackageManagedBackendScaffold(workspaceRoot, options = {}) {
+  const backendRoot = path.join(workspaceRoot, 'src', 'backend');
+  const backendIndexPath = path.join(backendRoot, 'index.ts');
+  const backendIndex = await readFile(backendIndexPath, 'utf8');
+
+  if (!backendIndex.includes('@webstir-io/webstir-backend/runtime/bun')) {
+    throw new Error(`Expected package-managed Bun runtime entrypoint in ${backendIndexPath}`);
+  }
+  if (backendIndex.includes('http.createServer')) {
+    throw new Error(`Expected thinner backend entrypoint in ${backendIndexPath}`);
+  }
+
+  await assertMissing(path.join(backendRoot, 'server', 'bun.ts'), 'legacy Bun backend wrapper');
+  await assertMissing(
+    path.join(backendRoot, 'runtime'),
+    'legacy backend runtime wrapper directory',
+  );
+  if (options.expectModule) {
+    await assertExists(path.join(backendRoot, 'module.ts'), 'backend module definition');
+  }
+}
+
+async function installLocalBackendTarball(workspaceRoot, backendTarballPath) {
+  await run(['bun', 'remove', '@webstir-io/webstir-backend'], workspaceRoot);
+  await run(['bun', 'add', backendTarballPath], workspaceRoot);
+}
+
+async function writeInstallRootManifest(installRoot, options = {}) {
+  const packageJson = {
+    name: 'webstir-package-smoke',
+    private: true,
+    ...(options.webstirTarballPath
+      ? {
+          dependencies: {
+            '@webstir-io/webstir': options.webstirTarballPath,
+          },
+        }
+      : {}),
+    ...(options.backendTarballPath
+      ? {
+          overrides: {
+            '@webstir-io/webstir-backend': options.backendTarballPath,
+          },
+        }
+      : {}),
+  };
+
+  await writeFile(
+    path.join(installRoot, 'package.json'),
+    `${JSON.stringify(packageJson, null, 2)}\n`,
+    'utf8',
+  );
+}
+
+async function packPackageTarball(root = packageRoot) {
+  const output =
+    root === packageRoot
+      ? await run(['bun', 'run', 'pack:local'], root)
+      : await run(['bun', 'pm', 'pack'], root);
+  return resolvePackedTarballPath(output, root);
+}
+
+function resolvePackedTarballPath(output, root) {
   const tarballPath = output
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.endsWith('.tgz') && !line.endsWith('-standalone.tgz'))
+    .filter((line) => line.endsWith('.tgz'))
     .at(-1);
 
   if (!tarballPath) {
     throw new Error(`Unable to determine package tarball path from pack output:\n${output}`);
   }
 
-  return path.resolve(packageRoot, tarballPath);
+  return path.resolve(root, tarballPath);
 }
 
 async function readInstalledPackageVersion(installRoot, packageName) {
@@ -299,6 +386,16 @@ async function assertFileContains(targetPath, expectedSnippet, label) {
   if (!content.includes(expectedSnippet)) {
     throw new Error(`Expected ${label} in ${targetPath}`);
   }
+}
+
+async function assertMissing(targetPath, label) {
+  try {
+    await access(targetPath, fsConstants.F_OK);
+  } catch {
+    return;
+  }
+
+  throw new Error(`Expected ${label} to be absent at ${targetPath}`);
 }
 
 async function listTarballs(root) {
