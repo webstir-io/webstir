@@ -77,6 +77,7 @@ type BackendModuleRuntime = FastifyModuleRuntime<
 
 export async function start(): Promise<void> {
   const env = loadEnv();
+  const workspaceRoot = resolveWorkspaceRoot();
   const port = env.PORT;
   const mode = env.NODE_ENV;
   const readiness = createReadinessTracker();
@@ -157,7 +158,7 @@ export async function start(): Promise<void> {
   }
   manifestSummary = summarizeManifest(runtime.manifest);
   mountRoutes(app, runtime, env.auth, env.sessions);
-  configureViewNotFoundHandler(app, runtime.views, env.auth, env.sessions);
+  configureViewNotFoundHandler(app, runtime.views, env.auth, env.sessions, workspaceRoot);
 
   await app.listen({ port, host: '0.0.0.0' });
 
@@ -293,6 +294,7 @@ function configureViewNotFoundHandler(
   views: readonly CompiledView[],
   authSecrets: ReturnType<typeof loadEnv>['auth'],
   sessionConfig: ReturnType<typeof loadEnv>['sessions'],
+  workspaceRoot: string,
 ): void {
   app.setNotFoundHandler(async (req, reply) => {
     const requestUrl = new URL(req.raw.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -323,7 +325,7 @@ function configureViewNotFoundHandler(
 
     try {
       const rendered = await renderRequestTimeView({
-        workspaceRoot: resolveWorkspaceRoot(),
+        workspaceRoot,
         url: requestUrl,
         view: matchedView.view,
         params: matchedView.params,

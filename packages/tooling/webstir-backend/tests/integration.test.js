@@ -1472,7 +1472,10 @@ async function assertRequestTimeViewRuntimeBehavior({ useFastify }) {
   }
 }
 
-async function assertRequestTimeViewWorkspaceRootBehavior({ useFastify }) {
+async function assertRequestTimeViewWorkspaceRootBehavior({
+  useFastify,
+  extraEnv = (workspace) => ({ WORKSPACE_ROOT: workspace }),
+}) {
   const workspace = await createTempWorkspace(
     useFastify ? 'webstir-backend-fastify-view-root-' : 'webstir-backend-view-root-',
   );
@@ -1499,7 +1502,7 @@ async function assertRequestTimeViewWorkspaceRootBehavior({ useFastify }) {
     port,
     {
       AUTH_SERVICE_TOKENS: 'service-secret',
-      WORKSPACE_ROOT: workspace,
+      ...extraEnv(workspace),
     },
     {
       cwd: alternateCwd,
@@ -2775,5 +2778,23 @@ test('fastify backend scaffold resolves request-time view documents from WORKSPA
     return;
   }
 
-  await assertRequestTimeViewWorkspaceRootBehavior({ useFastify: true });
+  await assertRequestTimeViewWorkspaceRootBehavior({
+    useFastify: true,
+    extraEnv: (workspace) => ({ WORKSPACE_ROOT: workspace }),
+  });
+});
+
+test('fastify backend scaffold resolves request-time view documents from WEBSTIR_WORKSPACE_ROOT outside the workspace cwd', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  await assertRequestTimeViewWorkspaceRootBehavior({
+    useFastify: true,
+    extraEnv: (workspace) => ({
+      WORKSPACE_ROOT: '   ',
+      WEBSTIR_WORKSPACE_ROOT: workspace,
+    }),
+  });
 });
