@@ -26,7 +26,7 @@ Monorepo baseline for Webstir.
 ## Path-Specific Notes
 ### `packages/tooling/webstir-backend`
 - Use `bun run build` for small changes.
-- Use `bun run smoke` for scaffold or template changes; use `WEBSTIR_BACKEND_SMOKE_FASTIFY=skip` or `WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN=skip` when you intentionally need lighter Fastify coverage.
+- Use `bun run smoke` for scaffold or template changes.
 - Release prep: `bun run build && bun run smoke && bun run test`.
 
 ### `packages/tooling/webstir-frontend`

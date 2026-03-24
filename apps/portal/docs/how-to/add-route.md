@@ -1,6 +1,6 @@
 # Add a Backend Route
 
-This guide shows how to add a backend route to your module manifest and optionally scaffold a Fastify handler.
+This guide shows how to add a backend route to your module manifest.
 
 ## Prerequisites
 - A Webstir workspace initialized via `webstir init ...`.
@@ -16,13 +16,8 @@ This guide shows how to add a backend route to your module manifest and optional
    - `webstir add-route accounts --workspace "$PWD" --summary "List accounts" --description "Returns the current tenant accounts" --tags accounts,api`
    - Schema references follow the `kind:name@source` format described in the CLI reference. Example:\
      `webstir add-route accounts --workspace "$PWD" --params-schema zod:AccountParams@src/shared/contracts/accounts.ts --response-schema zod:AccountList@src/shared/contracts/accounts.ts`
-4. Scaffold a Fastify handler (optional):
-   - `webstir add-route accounts --workspace "$PWD" --fastify`
-   - Creates `src/backend/server/routes/accounts.ts`.
-   - If `src/backend/server/fastify.ts` exists, imports and registers `registerAccounts(app)` automatically.
-
 ## Wire the handler
-After writing the manifest entry, implement the handler in `src/backend/module.ts` (or the Fastify scaffold). The template already exports a manifest and route list—extend it with your logic:
+After writing the manifest entry, implement the handler in `src/backend/module.ts`. The template already exports a manifest and route list—extend it with your logic:
 
 ```ts
 // src/backend/module.ts

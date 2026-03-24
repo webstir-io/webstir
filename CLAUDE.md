@@ -18,7 +18,6 @@ bun run --filter @webstir-io/webstir-backend test
 
 # Smoke tests (scaffold/template validation)
 bun run --filter @webstir-io/webstir-backend smoke
-# Lighter Fastify coverage: WEBSTIR_BACKEND_SMOKE_FASTIFY=skip bun run --filter @webstir-io/webstir-backend smoke
 
 # Contracts only
 bun run build:contracts
@@ -50,7 +49,7 @@ bun run webstir -- init ssg ./my-site
 
 - **`packages/contracts/module-contract`** — Zod schemas and TypeScript types defining the `ModuleProvider` interface (resolveWorkspace, build, getScaffoldAssets). All tooling packages depend on this.
 - **`packages/contracts/testing-contract`** — Contract for the testing framework.
-- **`packages/tooling/webstir-backend`** — Backend provider: TypeScript compilation via esbuild, Fastify 5 routing, session management, scaffold templates. Tests use Node's built-in `node --test` with `node:assert/strict`.
+- **`packages/tooling/webstir-backend`** — Backend provider: TypeScript compilation via esbuild, Bun runtime delivery, session management, scaffold templates. Tests use Node's built-in `node --test` with `node:assert/strict`.
 - **`packages/tooling/webstir-frontend`** — Frontend provider: SSG/SPA/SSR modes, markdown processing, image optimization (sharp), HTML minification. Same test setup as backend.
 - **`packages/tooling/webstir-testing`** — Testing runner and CLI.
 - **`orchestrators/bun`** — Primary CLI that bundles everything for end-user consumption. Tests use Bun's test runner with Playwright for browser automation.

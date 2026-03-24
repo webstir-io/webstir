@@ -38,7 +38,7 @@ Canonical proof apps in this repo:
 
 ## Shipped HTML-First Runtime
 
-The default `src/backend/index.ts` entry and the optional Fastify scaffold share the same runtime guarantees. Older workspaces can keep their explicit Bun shim/runtime wrapper files if they already exist:
+The default `src/backend/index.ts` entry is the supported runtime surface. Older workspaces can keep their explicit Bun shim/runtime wrapper files if they already exist:
 
 - Route auto-mounting from compiled `module.ts`
 - Health probes at `/api/health`, `/healthz`, and `/readyz`
@@ -88,7 +88,6 @@ The provider expects a standard workspace layout and performs two steps:
   - `src/backend/tsconfig.json` (NodeNext, outDir `build/backend`)
 - `src/backend/index.ts` (thin composition entry that boots the package-managed Bun runtime)
 - `src/backend/module.ts` (optional manifest + handler example the server loads automatically)
-- `src/backend/server/fastify.ts` (optional Fastify server scaffold)
 
 ### Bun Scaffold (default)
 
@@ -101,32 +100,9 @@ Fresh scaffolds now boot through the package-managed Bun runtime by default:
 
 Fresh scaffolds do not copy `src/backend/server/bun.ts` or `src/backend/runtime/*` re-export files. The operational runtime lives in upgradeable package exports instead.
 
-### Fastify Scaffold (optional)
-
-The default Bun runtime handles `/api/health`, readiness logging, and auto-mounts the compiled `module.ts` handlers. If you prefer Fastify’s plugin ecosystem or need advanced routing features, you can swap the entry for the Fastify scaffold:
-
-- Install Fastify in your workspace:
-  ```bash
-  bun add fastify
-  ```
-- Import and start it from your `src/backend/index.ts`:
-  ```ts
-  // src/backend/index.ts
-  import { start } from './server/fastify';
-  start().catch((err) => { console.error(err); process.exit(1); });
-  ```
-- Or run it directly after a build:
-  ```bash
-  bun build/backend/server/fastify.js
-  ```
-
-Note: The package’s smoke test temporarily installs Fastify only to type‑check the optional scaffold. Normal users do not need Fastify unless they choose to use this server. In CI or offline environments, set `WEBSTIR_BACKEND_SMOKE_FASTIFY=skip` to bypass the Fastify install and type‑check.
-
-When present, the Fastify scaffold will also attempt to auto‑mount any compiled module routes it finds under `build/backend/module(.js)`. Export your module definition as `module`, `moduleDefinition`, or the `default` export from `src/backend/module.ts` and build; the server will attach handlers using the route metadata.
-
 ### Server runtime baseline
 
-The default `src/backend/index.ts` entry and the optional Fastify scaffold share the same runtime guarantees:
+The default `src/backend/index.ts` entry provides these runtime guarantees:
 
 - Route auto-mounting: any `module.ts` routes are compiled, logged, and attached on startup with manifest summaries (name, version, route count, capabilities).
 - Health probes: `/api/health` (for the orchestrator), `/healthz` (generic health), and `/readyz` (status + manifest summary). The CLI still waits for `API server running` before proxying requests.
@@ -137,7 +113,7 @@ The default `src/backend/index.ts` entry and the optional Fastify scaffold share
 - Progressive enhancement responses: handlers can return redirects (`303` by default) or targeted fragment payloads; the scaffold emits `Location` and `x-webstir-fragment-*` headers accordingly.
 - Form handling: JSON bodies still work as before, and the scaffold now parses `application/x-www-form-urlencoded` requests into plain objects for HTML form workflows.
 
-Stick with the default Bun entry while exploring the manifest helpers, import package runtime exports directly when you need an explicit local entry, or drop in the Fastify scaffold when you need its plugin ecosystem. The readiness + manifest wiring stays the same.
+Stick with the default Bun entry while exploring the manifest helpers, or import package runtime exports directly when you need an explicit local entry. The readiness + manifest wiring stays the same.
 
 ### Runtime cache ergonomics
 
@@ -155,7 +131,7 @@ The backend template now ships a lightweight auth adapter so you can secure rout
 - **Bearer verification (HS256 + RS256)** — incoming `Authorization: Bearer <token>` headers now validate against HS256 shared secrets, inline/file-backed RSA public keys, or RSA keys discovered from JWKS. Matching issuer/audience plus `nbf` and `exp` claims are enforced when present. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
 - **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users.
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
-- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies. In development, the scaffold still falls back to a per-process random secret when unset; in production, `SESSION_SECRET` is now required and startup fails fast when it is missing. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the built-in, Bun, and Fastify server templates.
+- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies. In development, the scaffold still falls back to a per-process random secret when unset; in production, `SESSION_SECRET` is now required and startup fails fast when it is missing. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the supported Bun server template.
 - **Durable session storage (optional)** — the scaffold now defaults to SQLite-backed sessions in production when `SESSION_STORE_DRIVER` is unset, while keeping in-memory storage as the development default. You can still opt into SQLite explicitly with `SESSION_STORE_DRIVER=sqlite` or just configure `SESSION_STORE_URL`; set `SESSION_STORE_DRIVER=memory` only when you intentionally want the non-durable path. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` when the SQLite store is active and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
 - Install `pino` in your workspace (`bun add pino`) before running the scaffold; the template server imports it directly.
 
@@ -342,7 +318,7 @@ This keeps your manifest co-located with runtime code while the provider handles
 
 - `src/backend/env.ts` loads `.env.local` (if present) followed by `.env`, merges values into `process.env`, and exposes a typed `loadEnv()` helper.
 - A `.env.example` file is scaffolded at the workspace root—copy it to `.env`/`.env.local`, fill in secrets (e.g., `API_BASE_URL`, `DATABASE_URL`, `JWT_SECRET`), and adjust `loadEnv()` to require the variables your backend needs.
-- The default HTTP server, Bun scaffold, and Fastify scaffold call `loadEnv()` before binding, so the same config is available inside route handlers. Use `ctx.env.require('JWT_SECRET')` to fetch validated values.
+- The default Bun scaffold calls `loadEnv()` before binding, so the same config is available inside route handlers. Use `ctx.env.require('JWT_SECRET')` to fetch validated values.
 
 ### Multiple Entry Points
 The provider discovers these entries automatically (all optional):
@@ -458,4 +434,4 @@ If you use `getScaffoldAssets()` programmatically, these templates are included 
 - The backend template listens on `process.env.PORT` (default `4000`) and logs `API server running` when ready.
 - The orchestrator's dev server waits for that readiness line and proxies `/api/*` to your Node server.
 - Health probes: `/api/health` (orchestrator compatibility) mirrors `/healthz`, while `/readyz` exposes the readiness state plus the current manifest summary for external monitors.
-- If you switch to a framework (e.g., Fastify), keep the same behavior: listen on `process.env.PORT`, expose the same endpoints, and print `API server running` once the server is listening.
+- If you replace the default runtime locally, keep the same behavior: listen on `process.env.PORT`, expose the same endpoints, and print `API server running` once the server is listening.

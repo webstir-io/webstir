@@ -306,17 +306,6 @@ async function main() {
 
   await installPackages(workspace, ['pino']);
 
-  if (process.env.WEBSTIR_BACKEND_SMOKE_FASTIFY !== 'skip') {
-    // Add optional Fastify dependency so the scaffold type-checks if present
-    try {
-      await installPackages(workspace, ['fastify', '@types/node@^20'], { dev: true });
-    } catch (err) {
-      console.warn('[smoke] skipping Fastify install:', err);
-    }
-  } else {
-    console.info('[smoke] fastify install skipped by WEBSTIR_BACKEND_SMOKE_FASTIFY=skip');
-  }
-
   await linkWorkspaceNodeModules(workspace);
 
   const rootTsconfigPath = path.join(workspace, 'tsconfig.json');
@@ -418,86 +407,7 @@ async function main() {
     );
   }
 
-  if (process.env.WEBSTIR_BACKEND_SMOKE_FASTIFY !== 'skip') {
-    // Fastify scaffold type-check (no run): ensure tsc sees server/fastify.ts
-    console.info('[smoke] fastify type-check');
-    const typecheckResult = await backendProvider.build({
-      workspaceRoot: workspace,
-      env: {
-        PATH: envBase.PATH,
-        WEBSTIR_BACKEND_LOG_LEVEL: 'warn',
-        WEBSTIR_MODULE_MODE: 'build',
-        WEBSTIR_BACKEND_TYPECHECK: 'skip',
-      },
-      incremental: false,
-    });
-    const typecheckErrors = typecheckResult.manifest.diagnostics.filter(
-      (d) => d.severity === 'error',
-    );
-    if (typecheckErrors.length > 0) {
-      throw new Error(
-        `[smoke] fastify type-check reported errors: ${typecheckErrors.map((d) => d.message).join('; ')}`,
-      );
-    }
-
-    // Optionally run server and hit /api/health
-    if (process.env.WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN !== 'skip') {
-      console.info('[smoke] fastify run + health check');
-      const port = 47891;
-      const child = spawn(process.execPath, ['build/backend/server/fastify.js'], {
-        cwd: workspace,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, PORT: String(port) },
-      });
-
-      let ready = false;
-      const outChunks = [];
-      child.stdout.on('data', (c) => {
-        const s = c.toString();
-        outChunks.push(s);
-        if (!ready && s.includes('API server running')) {
-          ready = true;
-          (async () => {
-            try {
-              const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-              if (!res.ok) throw new Error(`health returned ${res.status}`);
-              const json = await res.json();
-              if (!json || json.ok !== true) throw new Error('health payload invalid');
-            } catch (err) {
-              console.error('[smoke] fastify health check failed:', err);
-              child.kill();
-              throw err;
-            } finally {
-              child.kill();
-            }
-          })().catch((err) => {
-            console.error(err);
-            process.exitCode = 1;
-          });
-        }
-      });
-
-      await new Promise((resolve) => {
-        const timer = setTimeout(() => {
-          if (!ready) {
-            console.error('[smoke] fastify did not reach readiness');
-            child.kill();
-          }
-          resolve(null);
-        }, 8000);
-        child.on('close', () => {
-          clearTimeout(timer);
-          resolve(null);
-        });
-      });
-    } else {
-      console.info('[smoke] fastify run skipped by WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN=skip');
-    }
-  } else {
-    console.info('[smoke] fastify type-check skipped by WEBSTIR_BACKEND_SMOKE_FASTIFY=skip');
-  }
-
-  console.info('[smoke] completed: build ✔ publish ✔ fastify ✔');
+  console.info('[smoke] completed: build ✔ publish ✔');
 }
 
 main().catch((err) => {

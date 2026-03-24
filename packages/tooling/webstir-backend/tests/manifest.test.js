@@ -283,7 +283,6 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'tsconfig.json'),
     path.join('src', 'backend', 'index.ts'),
     path.join('src', 'backend', 'module.ts'),
-    path.join('src', 'backend', 'server', 'fastify.ts'),
     path.join('src', 'backend', 'auth', 'adapter.ts'),
     path.join('src', 'backend', 'observability', 'logger.ts'),
     path.join('src', 'backend', 'observability', 'metrics.ts'),
@@ -312,23 +311,12 @@ test('scaffold assets expose core backend templates', async () => {
     path.join('src', 'backend', 'runtime', 'views.ts'),
     path.join('src', 'backend', 'runtime', 'node-http.ts'),
     path.join('src', 'backend', 'runtime', 'fastify.ts'),
+    path.join('src', 'backend', 'server', 'fastify.ts'),
   ];
 
   for (const target of removedTargets) {
     assert.ok(!targetSet.has(target), `expected scaffold assets to omit ${target}`);
   }
-
-  const fastifyAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'server', 'fastify.ts'),
-  );
-  assert.ok(fastifyAsset, 'expected scaffold assets to include the Fastify scaffold');
-
-  const fastifySource = await fs.readFile(fastifyAsset.sourcePath, 'utf8');
-  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/fastify/);
-  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/request-hooks/);
-  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/session/);
-  assert.match(fastifySource, /@webstir-io\/webstir-backend\/runtime\/views/);
-
   const sessionStoreAsset = assets.find(
     (asset) => asset.targetPath === path.join('src', 'backend', 'session', 'store.ts'),
   );

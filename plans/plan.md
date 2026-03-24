@@ -49,22 +49,23 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - The low-friction durable-session path and workspace-root path hardening both moved forward enough that the next highest-leverage slice is runtime ownership.
 - Slice A of Milestone C is done: fresh backend scaffolds now default to a package-managed Bun bootstrap with thin `src/backend/index.ts` composition.
 
-### Active
+### Current State
 
-- Milestone C slices A-C are done: the fresh-scaffold backend now defaults to the package-managed Bun runtime and no longer copies framework-owned runtime wrappers.
-- The remaining `full` scaffold now uses the same thin package-managed Bun entry shape as `api`, while keeping the progressive-enhancement demo module and install/add-route coverage intact.
-- External copied/temp workspaces used by orchestrator `smoke` and `test` now materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
+- Milestone C slices A-C are done on `main`: the fresh-scaffold backend defaults to the package-managed Bun runtime and no longer copies framework-owned runtime wrappers.
+- The `full` scaffold uses the same thin package-managed Bun entry shape as `api`, while keeping the progressive-enhancement demo module and install/add-route coverage intact.
+- External copied/temp workspaces used by orchestrator `smoke` and `test` materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
 - Plan-source consolidation is done: `plans/plan.md` is the sole active execution plan.
-- The non-default Fastify request-time path-hardening slice is done locally: request-time document rendering now threads an explicit workspace root and package-local build/test/smoke coverage is green, including alternate-cwd `WEBSTIR_WORKSPACE_ROOT` regression coverage.
 - Workstream 4 Slice A is done on `main`: session/form/CSRF transport state now persists through a package-owned runtime envelope instead of leaking into app-owned session payloads.
 - Workstream 4 Slice B is done on `main`: session metadata now lives in package-owned runtime metadata instead of the persisted app session payload, while compatibility reads remain intact.
 - Workstream 4 Slice C is done on `main`: flash transport state now lives in package-owned runtime metadata for new writes in `packages/tooling/webstir-backend`, while legacy top-level flash rows remain readable for compatibility.
-- The next likely track is Workstream 5, but not as legacy-layout hardening: no external legacy wrapper usage is known, so the justified follow-up is removing unsupported wrapper-compat residue or fixing only current-path launch-directory bugs.
+- Workstream 5 Slice A is done on `main`: unsupported legacy wrapper preservation/proof work was removed from the active support story.
+- Workstream 3 Slice D is done: Fastify is no longer part of the supported backend runtime surface, and Bun is the single supported runtime path.
 
-### Queued
+### Reopen Conditions
 
-- Durable-state follow-ups only if new storage-boundary bugs or adapter requirements justify reopening Workstream 4.
-- Removal of unsupported wrapper-preservation proofs or dead compatibility residue if they are not tied to real users.
+- Reopen Workstream 4 only if a new storage-boundary bug or adapter requirement justifies it.
+- Reopen Workstream 5 only if a concrete current-path launch-directory bug is reproduced on the supported Bun runtime path.
+- Do not reopen legacy wrapper compatibility work unless a real supported-user requirement appears.
 
 ## Workstreams
 
@@ -154,6 +155,47 @@ Success criteria:
 - SSR/document loading works the same in dev, CI, and deployed environments.
 
 ## Current Execution Track
+
+### Workstream 3 Slice D: Remove Fastify As A Supported Runtime Path
+
+Status:
+
+- Done.
+
+Objective:
+
+Drop the optional Fastify scaffold/runtime path so Bun is the single supported backend runtime surface.
+
+Primary targets:
+
+- `packages/tooling/webstir-backend/package.json`
+- `packages/tooling/webstir-backend/src/add.ts`
+- `packages/tooling/webstir-backend/src/scaffold/assets.ts`
+- `packages/tooling/webstir-backend/src/runtime/fastify.ts`
+- `packages/tooling/webstir-backend/templates/backend/server/fastify.ts`
+- `packages/tooling/webstir-backend/scripts/smoke.mjs`
+- `packages/tooling/webstir-backend/tests/**`
+- `orchestrators/bun/src/add-backend.ts`
+- `orchestrators/bun/src/add-backend-compat.ts`
+- `orchestrators/bun/src/cli.ts`
+- `apps/portal/docs/**`
+- `packages/tooling/webstir-backend/README.md`
+
+Acceptance:
+
+- the backend package no longer exports or scaffolds Fastify runtime files
+- `webstir add-route` no longer advertises or implements a Fastify-specific branch
+- backend package docs describe Bun as the supported runtime surface
+- package-local `build`, `test`, and `smoke` stay green
+- the repo required gate stays green after the removal
+
+Out of scope:
+
+- removing the explicit `node:http` compatibility path
+- changing Bun runtime semantics
+- broader backend API redesign
+
+## Completed Slices
 
 ### Workstream 4 Slice A: Session/Form/CSRF Storage Boundary
 
@@ -340,12 +382,7 @@ Acceptance:
 
 #### Slice D: Follow-up runtime parity
 
-Do not mix this into the active slice.
-
-Later work:
-
-- move Fastify and any remaining alternate runtimes onto the same package-owned seams
-- keep `node:http` only as the explicit compatibility path that is still justified by real usage
+Completed by choosing Bun-only support instead of extending parity to Fastify.
 
 ## Validation
 
@@ -379,13 +416,15 @@ Recommended targeted checks during implementation:
 
 ## Immediate Next Step
 
-Select and land the first bounded Workstream 5 slice: remove unsupported legacy-wrapper preservation/proof work from the active support story, then patch only the current canonical runtime path if a real launch-directory bug still exists there.
+None.
+
+Reopen this track only if a new supported runtime requirement appears or a Bun-path regression justifies more runtime surface work.
 
 ### Workstream 5 Slice A: Remove Unsupported Legacy Wrapper Compatibility Surface
 
 Status:
 
-- Done locally.
+- Done on `main`.
 
 Objective:
 
@@ -404,12 +443,12 @@ Acceptance:
 - any wrapper-preservation proof with no real user backing is removed or replaced with current canonical-path coverage
 - supported runtime paths remain green after the unsupported compatibility surface is cut
 
-Local status:
+Merged state:
 
 - the plan and backend package docs no longer describe unpublished wrapper layouts as supported
 - the publish-mode package integration proof for local wrapper preservation is removed
 - package-local `build`, `test`, and `smoke` are green
-- diff-local slop/review pass is clean and ready for PR
+- PR #141 merged the slice onto `main`
 
 Out of scope:
 
