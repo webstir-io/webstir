@@ -55,12 +55,12 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - The remaining `full` scaffold now uses the same thin package-managed Bun entry shape as `api`, while keeping the progressive-enhancement demo module and install/add-route coverage intact.
 - External copied/temp workspaces used by orchestrator `smoke` and `test` now materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
 - Plan-source consolidation is done: `plans/plan.md` is the sole active execution plan.
-- Next implementation choice is the next queued platform hardening slice.
+- The non-default Fastify request-time path-hardening slice is done locally: request-time document rendering now threads an explicit workspace root and package-local build/test/smoke coverage is green, including alternate-cwd `WEBSTIR_WORKSPACE_ROOT` regression coverage.
 
 ### Queued
 
 - Durable state boundaries beyond the current SQLite-backed session baseline.
-- Remaining request-time path-resolution hardening after runtime ownership is centralized.
+- Any residual request-time path-resolution cleanup in legacy compatibility layouts that still bypass the shared workspace-root seam.
 
 ## Workstreams
 
@@ -264,7 +264,4 @@ Recommended targeted checks during implementation:
 
 ## Immediate Next Step
 
-Pick and execute the next queued hardening slice:
-
-- durable state boundaries beyond the current SQLite-backed session baseline, or
-- remaining request-time path-resolution hardening after runtime ownership centralization
+Return to the remaining durable-state boundary work, unless review or merge follow-up exposes another legacy request-time path-resolution seam that still depends on launch-directory behavior.
