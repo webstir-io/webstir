@@ -424,7 +424,8 @@ function createStoredSessionRecord<TSession extends Record<string, unknown>>(opt
 }): SessionStoreRecord<TSession> {
   const sessionValue = (options.session ?? {}) as Record<string, unknown>;
   const sessionId = options.metadata?.id ?? options.fallbackId ?? randomUUID();
-  const createdAt = options.metadata?.createdAt ?? options.initialRecord?.createdAt ?? options.now().toISOString();
+  const createdAt =
+    options.metadata?.createdAt ?? options.initialRecord?.createdAt ?? options.now().toISOString();
   const expiresAt =
     options.metadata?.expiresAt ??
     options.initialRecord?.expiresAt ??
@@ -514,8 +515,10 @@ function restoreStoredSessionState<TSession extends Record<string, unknown>>(
     session: session as TSession,
     metadata: {
       id: normalizeText(record.id) ?? legacyMetadata?.id ?? randomUUID(),
-      createdAt: normalizeDate(record.createdAt) ?? legacyMetadata?.createdAt ?? new Date(0).toISOString(),
-      expiresAt: normalizeDate(record.expiresAt) ?? legacyMetadata?.expiresAt ?? new Date(0).toISOString(),
+      createdAt:
+        normalizeDate(record.createdAt) ?? legacyMetadata?.createdAt ?? new Date(0).toISOString(),
+      expiresAt:
+        normalizeDate(record.expiresAt) ?? legacyMetadata?.expiresAt ?? new Date(0).toISOString(),
     },
     runtime: mergeSessionRuntimeState(record.runtime, legacyRuntime),
   };
