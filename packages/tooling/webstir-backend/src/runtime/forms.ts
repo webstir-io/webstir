@@ -1,5 +1,11 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 
+import {
+  getFormSessionRuntimeState,
+  pruneSessionRuntimeState,
+  type SessionRuntimeFormState,
+} from './session-runtime.js';
+
 export type FormIssueCode = 'validation' | 'auth' | 'csrf';
 export type FormValue = string | string[];
 export type FormValues = Record<string, FormValue>;
@@ -24,16 +30,7 @@ export interface PreparedFormState<TSession extends Record<string, unknown>> {
   issues: FormIssue[];
 }
 
-interface StoredFormState {
-  values: FormValues;
-  issues: FormIssue[];
-  createdAt: string;
-}
-
-interface FormRuntimeStore {
-  csrf: Record<string, string>;
-  states: Record<string, StoredFormState>;
-}
+type FormRuntimeStore = SessionRuntimeFormState;
 
 interface RouteHandlerResultLike {
   status?: number;
@@ -60,7 +57,6 @@ export type FormSubmissionResult<TSession extends Record<string, unknown>, TAuth
       result: RouteHandlerResultLike;
     };
 
-const FORM_RUNTIME_KEY = '__webstir_form_runtime';
 const DEFAULT_CSRF_FIELD_NAME = '_csrf';
 
 export function prepareFormState<TSession extends Record<string, unknown>>(options: {
@@ -273,34 +269,11 @@ function ensureSession<TSession extends Record<string, unknown>>(
 }
 
 function getFormRuntimeStore(session: Record<string, unknown>): FormRuntimeStore {
-  const existing = session[FORM_RUNTIME_KEY];
-  if (existing && typeof existing === 'object' && !Array.isArray(existing)) {
-    const typed = existing as Partial<FormRuntimeStore>;
-    typed.csrf ??= {};
-    typed.states ??= {};
-    session[FORM_RUNTIME_KEY] = typed;
-    return typed as FormRuntimeStore;
-  }
-
-  const created: FormRuntimeStore = {
-    csrf: {},
-    states: {},
-  };
-  session[FORM_RUNTIME_KEY] = created;
-  return created;
+  return getFormSessionRuntimeState(session);
 }
 
 function cleanupFormRuntimeStore(session: Record<string, unknown>): void {
-  const existing = session[FORM_RUNTIME_KEY];
-  if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
-    return;
-  }
-  const typed = existing as FormRuntimeStore;
-  const hasCsrf = Object.keys(typed.csrf ?? {}).length > 0;
-  const hasStates = Object.keys(typed.states ?? {}).length > 0;
-  if (!hasCsrf && !hasStates) {
-    delete session[FORM_RUNTIME_KEY];
-  }
+  pruneSessionRuntimeState(session);
 }
 
 function ensureCsrfToken(store: FormRuntimeStore, formId: string): string {

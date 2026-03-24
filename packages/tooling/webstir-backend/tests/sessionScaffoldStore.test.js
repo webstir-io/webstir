@@ -9,6 +9,7 @@ import { build as esbuild } from 'esbuild';
 
 import { backendProvider } from '../dist/index.js';
 import { prepareSessionState } from '../dist/runtime/session.js';
+import { prepareFormState, processFormSubmission } from '../dist/runtime/forms.js';
 
 const config = {
   secret: 'test-session-secret',
@@ -435,5 +436,127 @@ test('scaffold session store allows an explicit memory override in production', 
     } else {
       globalThis.__webstirSqliteTarget = previousSqliteTarget;
     }
+  }
+});
+
+test('scaffold sqlite session store preserves form and csrf transport without embedding legacy runtime keys', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-form-sqlite-');
+  await seedBackendWorkspace(workspace, '@demo/session-form-sqlite');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'SESSION_STORE_DRIVER',
+    'SESSION_STORE_URL',
+  ]);
+
+  try {
+    process.env.WORKSPACE_ROOT = '   ';
+    process.env.WEBSTIR_WORKSPACE_ROOT = workspace;
+    process.env.SESSION_STORE_DRIVER = 'sqlite';
+    process.env.SESSION_STORE_URL = 'file:./data/form-runtime.sqlite';
+
+    const { sessionStore } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+    );
+    const route = {
+      path: '/account/settings',
+      form: {
+        csrf: true,
+      },
+    };
+
+    const initial = prepareSessionState({
+      cookies: '',
+      route,
+      config,
+      store: sessionStore,
+    });
+    const page = prepareFormState({
+      session: initial.session,
+      formId: 'account-settings',
+      route,
+    });
+    const initialCommit = initial.commit({
+      session: page.session,
+      route,
+      result: {
+        status: 200,
+      },
+    });
+    const postState = prepareSessionState({
+      cookies: extractCookieHeader(initialCommit.setCookie),
+      route,
+      config,
+      store: sessionStore,
+    });
+    const failure = processFormSubmission({
+      session: postState.session,
+      body: {
+        _csrf: page.csrfToken,
+        email: 'invalid-email',
+      },
+      auth: { source: 'service-token' },
+      formId: 'account-settings',
+      route,
+      redirectTo: route.path,
+      validate(values) {
+        return typeof values.email === 'string' && values.email.includes('@')
+          ? []
+          : [{ field: 'email', message: 'Enter a valid email address.' }];
+      },
+    });
+
+    assert.equal(failure.ok, false);
+
+    const failureCommit = postState.commit({
+      session: failure.session,
+      route,
+      result: failure.result,
+    });
+    const cookieHeader = failureCommit.setCookie
+      ? extractCookieHeader(failureCommit.setCookie)
+      : extractCookieHeader(initialCommit.setCookie);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(failureCommit.session ?? {}, '__webstir_form_runtime'),
+      false,
+    );
+
+    const reread = prepareSessionState({
+      cookies: cookieHeader,
+      route,
+      config,
+      store: sessionStore,
+    });
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(reread.session ?? {}, '__webstir_form_runtime'),
+      false,
+    );
+
+    const rereadPage = prepareFormState({
+      session: reread.session,
+      formId: 'account-settings',
+      route,
+    });
+    assert.equal(rereadPage.values.email, 'invalid-email');
+    assert.deepEqual(rereadPage.issues, [
+      {
+        code: 'validation',
+        field: 'email',
+        message: 'Enter a valid email address.',
+      },
+    ]);
+    assert.match(String(rereadPage.csrfToken), /^[a-f0-9-]+$/i);
+    assert.equal(
+      await fs
+        .access(path.join(workspace, 'data', 'form-runtime.sqlite'))
+        .then(() => true)
+        .catch(() => false),
+      true,
+    );
+  } finally {
+    restoreEnv(previousEnv);
   }
 });
