@@ -183,6 +183,7 @@ Local status:
 - package-local `build`, `test`, and `smoke` are green
 - targeted `sessionStore` and `sessionScaffoldStore` coverage is green
 - diff-local slop/review pass is clean and ready for PR
+- PR #138 is open for the slice on `codex/session-runtime-boundary`
 
 Out of scope:
 
