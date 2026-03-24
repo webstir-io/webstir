@@ -116,10 +116,9 @@ export function prepareSessionState<
   const staleCookie = Boolean(initialId) && !initialRecord;
   const delivered = resolveConsumedFlash(initialRecord?.flash ?? [], options.route);
   const initialState = initialRecord ? restoreStoredSessionState(initialRecord) : undefined;
-  const initialSession =
-    initialState?.session
-      ? attachSessionRuntimeState(initialState.session, initialState.runtime)
-      : null;
+  const initialSession = initialState?.session
+    ? attachSessionRuntimeState(initialState.session, initialState.runtime)
+    : null;
   const hasPendingConsumption = delivered.flash.length > 0;
 
   return {

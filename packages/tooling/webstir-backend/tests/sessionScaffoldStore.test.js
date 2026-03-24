@@ -519,10 +519,7 @@ test('scaffold sqlite session store preserves form and csrf transport without em
     const cookieHeader = failureCommit.setCookie
       ? extractCookieHeader(failureCommit.setCookie)
       : extractCookieHeader(initialCommit.setCookie);
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(failureCommit.session ?? {}, '__webstir_form_runtime'),
-      false,
-    );
+    assert.equal(Object.hasOwn(failureCommit.session ?? {}, '__webstir_form_runtime'), false);
 
     const reread = prepareSessionState({
       cookies: cookieHeader,
@@ -530,10 +527,7 @@ test('scaffold sqlite session store preserves form and csrf transport without em
       config,
       store: sessionStore,
     });
-    assert.equal(
-      Object.prototype.hasOwnProperty.call(reread.session ?? {}, '__webstir_form_runtime'),
-      false,
-    );
+    assert.equal(Object.hasOwn(reread.session ?? {}, '__webstir_form_runtime'), false);
 
     const rereadPage = prepareFormState({
       session: reread.session,

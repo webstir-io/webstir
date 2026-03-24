@@ -60,9 +60,7 @@ export function cloneSessionRuntimeState(
   return { form };
 }
 
-export function coerceSessionRuntimeFormState(
-  value: unknown,
-): SessionRuntimeFormState | undefined {
+export function coerceSessionRuntimeFormState(value: unknown): SessionRuntimeFormState | undefined {
   return cloneSessionRuntimeFormState(value);
 }
 

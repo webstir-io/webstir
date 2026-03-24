@@ -165,10 +165,7 @@ test('prepareSessionState migrates legacy embedded form runtime without leaking 
     store,
   });
   assert.equal(read.session?.userId, 'ada@example.com');
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(read.session ?? {}, '__webstir_form_runtime'),
-    false,
-  );
+  assert.equal(Object.hasOwn(read.session ?? {}, '__webstir_form_runtime'), false);
 
   const page = prepareFormState({
     session: read.session,
@@ -188,10 +185,7 @@ test('prepareSessionState migrates legacy embedded form runtime without leaking 
     },
   ]);
   assert.equal(page.csrfToken, 'csrf-token-123');
-  assert.equal(
-    Object.prototype.hasOwnProperty.call(page.session, '__webstir_form_runtime'),
-    false,
-  );
+  assert.equal(Object.hasOwn(page.session, '__webstir_form_runtime'), false);
 });
 
 function extractCookieHeader(setCookie) {
