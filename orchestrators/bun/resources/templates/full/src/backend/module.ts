@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { RouteHandlerResult } from '@webstir-io/webstir-backend/runtime/node-http';
+import type { RouteHandlerResult } from '@webstir-io/webstir-backend/runtime/bun';
 
 const ROOT_PATH = '/';
 const DEMO_PATH = '/demo/progressive-enhancement';

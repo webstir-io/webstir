@@ -9,7 +9,6 @@ Reduce the highest-risk product and platform flaws in Webstir without trying to 
 This plan stays focused on the issues that most directly affect correctness, upgradeability, production trust, and release confidence:
 
 - backend runtime behavior still lives too heavily in scaffolded app files instead of upgradeable package code
-- the default backend scaffold/runtime story is split between Bun-first product messaging and a `node:http` default
 - sessions, flash state, and CSRF state still need clearer durable boundaries
 - request-time runtime behavior still has path-resolution sharp edges
 - plan docs have drifted into multiple overlapping sources of truth
@@ -23,8 +22,7 @@ This plan stays focused on the issues that most directly affect correctness, upg
 
 ## Current Decisions
 
-- Bun is the default backend runtime direction for fresh scaffolds.
-- `node:http` remains supported only as an explicit compatibility/opt-in path.
+- Bun is the default and single supported backend runtime path for fresh scaffolds.
 - App-owned backend surfaces stay local to the scaffold:
   - `src/backend/module.ts`
   - app hooks/config
@@ -105,9 +103,9 @@ Tasks:
 - Add a stable package-managed Bun runtime bootstrap in `@webstir-io/webstir-backend`.
 - Thin scaffolded `src/backend/index.ts` down to composition.
 - Keep app-local ownership for env/config/auth/DB/jobs/module wiring.
-- Move `node:http` to an explicit compatibility/opt-in path instead of the default fresh-scaffold server.
+- Keep Bun as the only supported backend runtime path.
 - Stop copying framework-owned runtime wrappers once the thin Bun-first entry works.
-- Preserve compatibility for existing workspaces without requiring a flag day.
+- Preserve Bun-owned upgradeability without keeping a second public backend runtime surface alive.
 
 Success criteria:
 
@@ -191,7 +189,6 @@ Acceptance:
 
 Out of scope:
 
-- removing the explicit `node:http` compatibility path
 - changing Bun runtime semantics
 - broader backend API redesign
 
@@ -453,5 +450,4 @@ Merged state:
 Out of scope:
 
 - persisted session/flash read compatibility
-- `node:http` as the explicit compatibility path that is still intentionally supported
 - speculative request-time hardening for layouts that are not part of the supported product surface
