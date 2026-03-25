@@ -36,11 +36,6 @@
       "import": "./dist/runtime/bun.js",
       "default": "./dist/runtime/bun.js"
     },
-    "./runtime/node-http": {
-      "types": "./dist/runtime/node-http.d.ts",
-      "import": "./dist/runtime/node-http.js",
-      "default": "./dist/runtime/node-http.js"
-    },
     "./provider": {
       "types": "./dist/provider.d.ts",
       "import": "./dist/provider.js",

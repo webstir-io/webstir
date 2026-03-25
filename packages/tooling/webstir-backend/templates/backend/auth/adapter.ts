@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import type http from 'node:http';
 
 import type { AuthSecrets } from '../env.js';
 
@@ -37,11 +36,11 @@ const jwksFetches = new Map<string, Promise<readonly CachedJwkKey[]>>();
 const publicKeyCache = new Map<string, crypto.KeyObject>();
 
 export async function resolveRequestAuth(
-  req: http.IncomingMessage,
+  request: Request,
   secrets: AuthSecrets,
   logger?: { warn?(message: string, metadata?: Record<string, unknown>): void },
 ): Promise<AuthContext | undefined> {
-  const bearer = getHeader(req, 'authorization');
+  const bearer = getHeader(request, 'authorization');
   if (bearer?.startsWith('Bearer ')) {
     if (!hasJwtVerificationSecrets(secrets)) {
       logger?.warn?.('Authorization header provided but no JWT verification config is set.');
@@ -55,7 +54,7 @@ export async function resolveRequestAuth(
     }
   }
 
-  const serviceToken = getHeader(req, 'x-service-token') ?? getHeader(req, 'x-api-key');
+  const serviceToken = getHeader(request, 'x-service-token') ?? getHeader(request, 'x-api-key');
   if (serviceToken && secrets.serviceTokens.length > 0) {
     if (secrets.serviceTokens.includes(serviceToken)) {
       return {
@@ -441,13 +440,7 @@ function normalizeRoles(value: unknown): string[] {
   return [];
 }
 
-function getHeader(req: http.IncomingMessage, name: string): string | undefined {
-  const value = req.headers[name] ?? req.headers[name.toLowerCase()];
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  return undefined;
+function getHeader(request: Pick<Request, 'headers'>, name: string): string | undefined {
+  const normalized = request.headers.get(name) ?? request.headers.get(name.toLowerCase());
+  return normalized ?? undefined;
 }

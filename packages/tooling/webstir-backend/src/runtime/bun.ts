@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type http from 'node:http';
 
 import { executeRequestHookPhase, type RequestHookReferenceLike } from './request-hooks.js';
 import {
@@ -16,10 +15,10 @@ import {
   type EnvAccessor,
   type ManifestSummary,
   type ModuleRuntime,
-  type NodeHttpRouteDefinitionLike,
+  type BackendRouteDefinitionLike,
   type ReadinessTracker,
   type RouteHandlerResult,
-} from './node-http.js';
+} from './core.js';
 import {
   parseCookieHeader,
   prepareSessionState,
@@ -28,6 +27,8 @@ import {
   type SessionStore,
 } from './session.js';
 import { matchView, renderRequestTimeView, type CompiledView, type LoggerLike } from './views.js';
+
+export type { RouteHandlerResult } from './core.js';
 
 export interface RuntimeLogger {
   child(bindings: Record<string, unknown>): RuntimeLogger;
@@ -64,7 +65,7 @@ export interface BunRuntimeBootstrapOptions<
   loadEnv(): TEnv;
   resolveWorkspaceRoot(): string;
   resolveRequestAuth(
-    req: http.IncomingMessage,
+    request: Request,
     auth: TEnv['auth'],
     logger?: {
       warn?(message: string, metadata?: Record<string, unknown>): void;
@@ -108,7 +109,7 @@ interface RouteContext<
   now: () => Date;
 }
 
-type ModuleRouteDefinition = NodeHttpRouteDefinitionLike & {
+type ModuleRouteDefinition = BackendRouteDefinitionLike & {
   requestHooks?: RequestHookReferenceLike[];
 };
 
@@ -349,11 +350,7 @@ async function handleRequest<
       }
 
       if (ctx.auth === undefined) {
-        ctx.auth = await options.resolveRequestAuth(
-          toNodeLikeRequest(request),
-          env.auth,
-          structuredLogger,
-        );
+        ctx.auth = await options.resolveRequestAuth(request, env.auth, structuredLogger);
       }
 
       const beforeHandler = await executeRequestHookPhase({
@@ -476,7 +473,7 @@ async function handleViewRequest<
     params: matchedView.params,
     cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
     headers: toRequestHeadersRecord(request.headers),
-    auth: await options.resolveRequestAuth(toNodeLikeRequest(request), env.auth, structuredLogger),
+    auth: await options.resolveRequestAuth(request, env.auth, structuredLogger),
     session: sessionState.session,
     env: envAccessor,
     logger: structuredLogger,
@@ -507,7 +504,7 @@ async function handleViewRequest<
 function createCommittedResponse<
   TSession extends Record<string, unknown>,
   TResult extends RouteHandlerResult,
-  TRouteDefinition extends NodeHttpRouteDefinitionLike,
+  TRouteDefinition extends BackendRouteDefinitionLike,
 >(
   result: TResult,
   options: {
@@ -645,20 +642,6 @@ function extractRequestId(request: Request): string {
   } catch {
     return `${Date.now()}`;
   }
-}
-
-function toNodeLikeRequest(request: Request): http.IncomingMessage {
-  return {
-    headers: toIncomingHeaders(request.headers),
-  } as http.IncomingMessage;
-}
-
-function toIncomingHeaders(headers: Headers): http.IncomingHttpHeaders {
-  const record: http.IncomingHttpHeaders = {};
-  for (const [key, value] of headers.entries()) {
-    record[key] = value;
-  }
-  return record;
 }
 
 function toRequestHeadersRecord(headers: Headers): Record<string, string> {
