@@ -71,6 +71,10 @@ async function main() {
 
     await run(['bun', 'install'], workspaceRoot);
     await installLocalBackendTarball(workspaceRoot, backendTarballPath);
+    await assertExists(
+      path.join(workspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
+      'workspace deploy runner binary',
+    );
     const addTestOutput = await run(
       [cliPath, 'add-test', addTestTarget, '--workspace', workspaceRoot],
       workspaceRoot,
@@ -202,6 +206,10 @@ async function main() {
     ]);
     await run(['bun', 'install'], apiWorkspaceRoot);
     await installLocalBackendTarball(apiWorkspaceRoot, backendTarballPath);
+    await assertExists(
+      path.join(apiWorkspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
+      'api workspace deploy runner binary',
+    );
     await run([cliPath, 'build', '--workspace', apiWorkspaceRoot], apiWorkspaceRoot);
     await assertExists(
       path.join(apiWorkspaceRoot, 'build', 'backend', 'index.js'),

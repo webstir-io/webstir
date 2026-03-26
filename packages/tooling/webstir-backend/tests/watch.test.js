@@ -62,7 +62,7 @@ async function waitFor(checkFn, timeoutMs = 5000, pollMs = 100) {
   throw new Error('waitFor timed out');
 }
 
-test('startBackendWatch updates cache files after rebuild', async () => {
+test('startBackendWatch updates cache files after rebuild', { timeout: 15_000 }, async () => {
   const workspace = await createTempWorkspace();
   await seedBackendEntry(workspace);
 
@@ -119,7 +119,9 @@ test('startBackendWatch updates cache files after rebuild', async () => {
   }
 });
 
-test('startBackendWatch emits build outcome events for successful and failed rebuilds', async () => {
+test('startBackendWatch emits build outcome events for successful and failed rebuilds', {
+  timeout: 15_000,
+}, async () => {
   const workspace = await createTempWorkspace('webstir-backend-watch-events-');
   await seedBackendEntry(workspace);
 
@@ -166,7 +168,9 @@ test('startBackendWatch emits build outcome events for successful and failed reb
   }
 });
 
-test('startBackendWatch reports Bun benchmark timings when enabled', async () => {
+test('startBackendWatch reports Bun benchmark timings when enabled', {
+  timeout: 15_000,
+}, async () => {
   const workspace = await createTempWorkspace('webstir-backend-watch-benchmark-');
   await seedBackendScaffold(workspace);
   await linkWorkspacePackage(workspace);
@@ -217,7 +221,9 @@ test('startBackendWatch reports Bun benchmark timings when enabled', async () =>
   }
 });
 
-test('startBackendWatch resolves WEBSTIR_WORKSPACE_ROOT outside the workspace cwd when workspaceRoot is omitted', async () => {
+test('startBackendWatch resolves WEBSTIR_WORKSPACE_ROOT outside the workspace cwd when workspaceRoot is omitted', {
+  timeout: 15_000,
+}, async () => {
   const workspace = await createTempWorkspace('webstir-backend-watch-root-');
   const alternateCwd = await createTempWorkspace('webstir-backend-watch-cwd-');
   const previousCwd = process.cwd();
