@@ -56,7 +56,7 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 - Produces optimized frontend assets under `dist/frontend/**`
 - Produces backend bundles under `build/backend/**`
 - Validates the same runtime shape that the proof apps use in publish mode
-- For local production checks, pair the published workspace with the Bun sandbox helper under `orchestrators/bun/resources/deployment/sandbox`
+- For the supported production contract for `api` and `full`, pair the published workspace with the Bun Docker deployment helper under `orchestrators/bun/resources/deployment/docker`
 
 ## Runtime Scope
 

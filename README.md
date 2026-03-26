@@ -46,5 +46,5 @@ bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 - Published npm package names remain unchanged.
 - `orchestrators/dotnet` remains in-tree as a frozen historical snapshot only; active local workflows, releases, and package maintenance go through the Bun monorepo.
 - For Bun scaffolds and bundled feature assets, edit `orchestrators/bun/resources/**`; `orchestrators/bun/assets/**` is generated package content and is verified by `bun run --filter @webstir-io/webstir check:assets`.
-- For a local production check, use the Bun sandbox helper under `orchestrators/bun/resources/deployment/sandbox`; `orchestrators/bun/assets/deployment/sandbox` is the generated packaged copy.
+- For the supported Docker deployment contract for `api` and `full`, use `orchestrators/bun/resources/deployment/docker`; `orchestrators/bun/assets/deployment/docker` is the generated packaged copy.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

@@ -5,7 +5,6 @@ import { cp, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 
-import { DevServer } from '../src/dev-server.ts';
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 
@@ -896,36 +895,30 @@ async function startPublishSession(
     );
   }
 
-  const backendPort = await getFreePort();
-  const backendChild = Bun.spawn({
-    cmd: [process.execPath, path.join(workspace, 'build', 'backend', 'index.js')],
+  const port = await getFreePort();
+  const deployChild = Bun.spawn({
+    cmd: [
+      process.execPath,
+      path.join(workspace, 'node_modules', '.bin', 'webstir-backend-deploy'),
+      '--workspace',
+      workspace,
+      '--port',
+      String(port),
+    ],
     cwd: workspace,
     env: {
       ...process.env,
-      PORT: String(backendPort),
       NODE_ENV: 'test',
+      SESSION_SECRET: 'publish-test-session-secret',
     },
     stdout: 'pipe',
     stderr: 'pipe',
   });
 
-  const backendStdout = { text: '' };
-  const backendStderr = { text: '' };
-  const backendStdoutDrain = collectOutput(backendChild.stdout, backendStdout);
-  const backendStderrDrain = collectOutput(backendChild.stderr, backendStderr);
-
-  await waitFor(async () => {
-    expect(await fetchText(backendPort, '/')).toContain('API server running');
-  }, scaledTimeout(20_000));
-
-  const port = await getFreePort();
-  const server = new DevServer({
-    buildRoot: path.join(workspace, 'dist', 'frontend'),
-    host: '127.0.0.1',
-    port,
-    apiProxyOrigin: `http://127.0.0.1:${backendPort}`,
-  });
-  await server.start();
+  const deployStdout = { text: '' };
+  const deployStderr = { text: '' };
+  const deployStdoutDrain = collectOutput(deployChild.stdout, deployStdout);
+  const deployStderrDrain = collectOutput(deployChild.stderr, deployStderr);
 
   await waitFor(async () => {
     expect(await fetchText(port, '/')).toContain('Home');
@@ -950,16 +943,15 @@ async function startPublishSession(
       return {
         publishStdout,
         publishStderr,
-        backendStdout: backendStdout.text,
-        backendStderr: backendStderr.text,
+        deployStdout: deployStdout.text,
+        deployStderr: deployStderr.text,
       };
     },
     async stop() {
-      await server.stop();
       await stopChildProcess(
-        backendChild,
-        [backendStdoutDrain, backendStderrDrain],
-        'publish backend session',
+        deployChild,
+        [deployStdoutDrain, deployStderrDrain],
+        'publish session',
       );
     },
   };

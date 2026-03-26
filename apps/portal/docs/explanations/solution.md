@@ -17,7 +17,7 @@ Webstir is an HTML-first full-stack solution. The active system is the Bun orche
 - Frontend delivery: `packages/tooling/webstir-frontend`
 - Backend runtime and scaffolding: `packages/tooling/webstir-backend`
 - Contracts and manifest primitives: `packages/contracts/*`
-- Deployment preview: `orchestrators/bun/resources/deployment/sandbox`
+- Docker deployment contract: `orchestrators/bun/resources/deployment/docker`
 - Proof apps: `examples/demos/auth-crud` and `examples/demos/dashboard`
 
 ## How It Works

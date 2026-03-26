@@ -128,9 +128,7 @@ async function materializeAssets(targetAssetsRoot) {
     await cp(feature.source, targetPath, { recursive: true });
   }
 
-  const deploymentTargetPath = path.join(deploymentRoot, 'sandbox');
-  await mkdir(path.dirname(deploymentTargetPath), { recursive: true });
-  await cp(path.join(deploymentSourcesRoot, 'sandbox'), deploymentTargetPath, { recursive: true });
+  await cp(deploymentSourcesRoot, deploymentRoot, { recursive: true });
 }
 
 async function assertAssetsInSync() {
@@ -220,7 +218,7 @@ function assertNoLegacyAssetReads() {
     ...rootAssets.map((relativePath) => path.join(templateSourcesRoot, 'shared', relativePath)),
     ...modeTemplates.flatMap((template) => template.roots.map((root) => root.source)),
     ...features.map((feature) => feature.source),
-    path.join(deploymentSourcesRoot, 'sandbox'),
+    deploymentSourcesRoot,
   ];
 
   assertSourcesOutsideRoot(dotnetRoot, 'orchestrators/dotnet', sources);

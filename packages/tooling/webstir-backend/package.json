@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "webstir-backend-deploy": "dist/deploy-cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -35,6 +38,11 @@
       "types": "./dist/runtime/bun.d.ts",
       "import": "./dist/runtime/bun.js",
       "default": "./dist/runtime/bun.js"
+    },
+    "./runtime/deploy": {
+      "types": "./dist/runtime/deploy.d.ts",
+      "import": "./dist/runtime/deploy.js",
+      "default": "./dist/runtime/deploy.js"
     },
     "./provider": {
       "types": "./dist/provider.d.ts",

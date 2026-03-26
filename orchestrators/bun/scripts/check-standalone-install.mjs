@@ -48,6 +48,10 @@ async function main() {
 
     await run(['bun', 'install'], workspaceRoot);
     await installLocalBackendTarball(workspaceRoot, backendTarballPath);
+    await assertExists(
+      path.join(workspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
+      'workspace deploy runner binary',
+    );
     await run([cliPath, 'build', '--workspace', workspaceRoot], workspaceRoot);
 
     await assertExists(
