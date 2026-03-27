@@ -33,9 +33,8 @@ async function main() {
   );
   const addedJobPath = path.join(workspaceRoot, 'src', 'backend', 'jobs', addJobTarget, 'index.ts');
   const existingTarballs = await listTarballs(packageRoot);
-  const existingBackendTarballs = await listTarballs(backendPackageRoot);
+  const backendPackageSpec = `file:${backendPackageRoot}`;
   let tarballPath = null;
-  let backendTarballPath = null;
   let keepWorkspace = false;
 
   try {
@@ -44,12 +43,10 @@ async function main() {
 
     tarballPath = await packPackageTarball();
     console.log(`[webstir][install-smoke] tarball ${tarballPath}`);
-    backendTarballPath = await packPackageTarball(backendPackageRoot);
-    console.log(`[webstir][install-smoke] backend tarball ${backendTarballPath}`);
 
     await writeInstallRootManifest(installRoot, {
       webstirTarballPath: tarballPath,
-      backendTarballPath,
+      backendPackageSpec,
     });
     await run(['bun', 'install'], installRoot);
 
@@ -70,7 +67,7 @@ async function main() {
     ]);
 
     await run(['bun', 'install'], workspaceRoot);
-    await installLocalBackendTarball(workspaceRoot, backendTarballPath);
+    await installLocalBackendPackage(workspaceRoot, backendPackageSpec);
     await assertExists(
       path.join(workspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
       'workspace deploy runner binary',
@@ -205,7 +202,7 @@ async function main() {
       '@webstir-io/webstir-testing',
     ]);
     await run(['bun', 'install'], apiWorkspaceRoot);
-    await installLocalBackendTarball(apiWorkspaceRoot, backendTarballPath);
+    await installLocalBackendPackage(apiWorkspaceRoot, backendPackageSpec);
     await assertExists(
       path.join(apiWorkspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
       'api workspace deploy runner binary',
@@ -226,9 +223,6 @@ async function main() {
   } finally {
     if (tarballPath) {
       await cleanupGeneratedTarball(tarballPath, existingTarballs);
-    }
-    if (backendTarballPath) {
-      await cleanupGeneratedTarball(backendTarballPath, existingBackendTarballs);
     }
     if (!keepWorkspace) {
       await rm(tempRoot, { recursive: true, force: true });
@@ -312,26 +306,28 @@ async function assertPackageManagedBackendScaffold(workspaceRoot, options = {}) 
   }
 }
 
-async function installLocalBackendTarball(workspaceRoot, backendTarballPath) {
+async function installLocalBackendPackage(workspaceRoot, backendPackageSpec) {
   await run(['bun', 'remove', '@webstir-io/webstir-backend'], workspaceRoot);
-  await run(['bun', 'add', backendTarballPath], workspaceRoot);
+  await run(['bun', 'add', backendPackageSpec], workspaceRoot);
 }
 
 async function writeInstallRootManifest(installRoot, options = {}) {
+  const dependencies = {};
+  if (options.webstirTarballPath) {
+    dependencies['@webstir-io/webstir'] = options.webstirTarballPath;
+  }
+  if (options.backendPackageSpec) {
+    dependencies['@webstir-io/webstir-backend'] = options.backendPackageSpec;
+  }
+
   const packageJson = {
     name: 'webstir-package-smoke',
     private: true,
-    ...(options.webstirTarballPath
-      ? {
-          dependencies: {
-            '@webstir-io/webstir': options.webstirTarballPath,
-          },
-        }
-      : {}),
-    ...(options.backendTarballPath
+    ...(Object.keys(dependencies).length > 0 ? { dependencies } : {}),
+    ...(options.backendPackageSpec
       ? {
           overrides: {
-            '@webstir-io/webstir-backend': options.backendTarballPath,
+            '@webstir-io/webstir-backend': options.backendPackageSpec,
           },
         }
       : {}),
