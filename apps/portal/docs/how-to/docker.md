@@ -1,6 +1,8 @@
 # Docker Deployment
 
-Use Docker as the official production contract for published `api` and `full` Webstir workspaces.
+Use Docker as the current documented deployment path for published `api` and `full` Webstir workspaces.
+
+Webstir is still experimental, so this document describes the deployment path the repo currently supports and tests. It is not a promise of long-term production stability yet.
 
 ## Command Flow
 

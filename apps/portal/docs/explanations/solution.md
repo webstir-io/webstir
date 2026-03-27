@@ -2,6 +2,8 @@
 
 Webstir is an HTML-first full-stack solution. The active system is the Bun orchestrator plus the canonical TypeScript packages under `packages/**`.
 
+Webstir is still experimental. The current Bun-first workflow is the active path in this repo, but its APIs and operational guidance can still change.
+
 > Active path: the Bun orchestrator in `orchestrators/bun`. Historical `.NET` material remains in-tree for reference only.
 
 ## What It Optimizes For
@@ -17,7 +19,7 @@ Webstir is an HTML-first full-stack solution. The active system is the Bun orche
 - Frontend delivery: `packages/tooling/webstir-frontend`
 - Backend runtime and scaffolding: `packages/tooling/webstir-backend`
 - Contracts and manifest primitives: `packages/contracts/*`
-- Docker deployment contract: `orchestrators/bun/resources/deployment/docker`
+- Current Docker deployment path: `orchestrators/bun/resources/deployment/docker`
 - Proof apps: `examples/demos/auth-crud` and `examples/demos/dashboard`
 
 ## How It Works
