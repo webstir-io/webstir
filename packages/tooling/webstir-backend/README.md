@@ -93,6 +93,8 @@ The provider expects a standard workspace layout and performs two steps:
 
 Fresh scaffolds now boot through the package-managed Bun runtime by default:
 
+- `src/backend/index.ts` composes through `createDefaultBunBackendBootstrap(...)` from `@webstir-io/webstir-backend`, so bootstrap-level fixes can ship through package upgrades instead of template-only copies.
+
 - Start the built backend with Bun:
   ```bash
   bun build/backend/index.js

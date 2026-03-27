@@ -51,7 +51,7 @@ async function assertPackageManagedBackendScaffold(
   const backendRoot = path.join(workspaceRoot, 'src', 'backend');
   const backendIndex = await readFile(path.join(backendRoot, 'index.ts'), 'utf8');
 
-  expect(backendIndex).toContain('@webstir-io/webstir-backend/runtime/bun');
+  expect(backendIndex).toContain('createDefaultBunBackendBootstrap');
   expect(backendIndex).not.toContain('http.createServer');
   expect(existsSync(path.join(backendRoot, 'server', 'bun.ts'))).toBe(false);
   expect(existsSync(path.join(backendRoot, 'runtime'))).toBe(false);

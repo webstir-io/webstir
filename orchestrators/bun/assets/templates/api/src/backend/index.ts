@@ -1,19 +1,14 @@
 import crypto from 'node:crypto';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import {
+  createDefaultBunBackendBootstrap,
   startBunBackend,
   type BunRuntimeEnvLike,
-  type MetricsTracker,
-  type RuntimeLogger,
-} from '@webstir-io/webstir-backend/runtime/bun';
-import { createInMemorySessionStore } from '@webstir-io/webstir-backend/runtime/session';
+} from '@webstir-io/webstir-backend';
 
 type BackendEnv = BunRuntimeEnvLike<Record<string, never>, Record<string, never>>;
 
 const GENERATED_SESSION_SECRET = crypto.randomBytes(32).toString('hex');
-const sessionStore = createInMemorySessionStore<Record<string, unknown>>();
 
 function loadEnv(): BackendEnv {
   const port = Number(process.env.PORT ?? '4321');
@@ -50,64 +45,13 @@ function resolveSessionSecret(): string {
   return process.env.AUTH_JWT_SECRET ?? GENERATED_SESSION_SECRET;
 }
 
-function resolveWorkspaceRoot(): string {
-  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-}
-
-function createBaseLogger(): RuntimeLogger {
-  return {
-    child() {
-      return this;
-    },
-    info(value: unknown, message?: string) {
-      writeLog('info', value, message);
-    },
-    warn(value: unknown, message?: string) {
-      writeLog('warn', value, message);
-    },
-    error(value: unknown, message?: string) {
-      writeLog('error', value, message);
-    },
-  };
-}
-
-function createMetricsTracker(): MetricsTracker {
-  return {
-    record() {},
-    snapshot() {
-      return { enabled: false };
-    },
-  };
-}
-
-function writeLog(level: 'info' | 'warn' | 'error', value: unknown, message?: string): void {
-  const line = typeof value === 'string' && !message ? value : message;
-  const detail = typeof value === 'string' && !message ? undefined : value;
-  const output = [line, detail ? JSON.stringify(detail) : undefined].filter(Boolean).join(' ');
-
-  if (level === 'error') {
-    console.error(output);
-    return;
-  }
-
-  if (level === 'warn') {
-    console.warn(output);
-    return;
-  }
-
-  console.log(output);
-}
-
 export async function start(): Promise<void> {
-  await startBunBackend({
-    importMetaUrl: import.meta.url,
-    loadEnv,
-    resolveWorkspaceRoot,
-    resolveRequestAuth: async () => undefined,
-    createBaseLogger,
-    createMetricsTracker,
-    sessionStore,
-  });
+  await startBunBackend(
+    createDefaultBunBackendBootstrap({
+      importMetaUrl: import.meta.url,
+      loadEnv,
+    }),
+  );
 }
 
 const isMain = (() => {

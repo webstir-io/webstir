@@ -295,8 +295,8 @@ async function assertPackageManagedBackendScaffold(workspaceRoot, options = {}) 
   const backendIndexPath = path.join(backendRoot, 'index.ts');
   const backendIndex = await readFile(backendIndexPath, 'utf8');
 
-  if (!backendIndex.includes('@webstir-io/webstir-backend/runtime/bun')) {
-    throw new Error(`Expected package-managed Bun runtime entrypoint in ${backendIndexPath}`);
+  if (!backendIndex.includes('createDefaultBunBackendBootstrap')) {
+    throw new Error(`Expected package-managed Bun bootstrap helper in ${backendIndexPath}`);
   }
   if (backendIndex.includes('http.createServer')) {
     throw new Error(`Expected thinner backend entrypoint in ${backendIndexPath}`);
