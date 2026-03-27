@@ -2,6 +2,14 @@
 
 Canonical monorepo for the Webstir ecosystem.
 
+## Status
+
+Webstir is still experimental.
+
+- Expect APIs, contracts, generated scaffolds, and workflows to change.
+- Treat the repo as an active framework project, not a production-stable platform.
+- Do not rely on the current Bun runtime and deployment path as a long-term compatibility guarantee yet.
+
 ## Layout
 
 - `packages/contracts` — shared contracts consumed by tooling and orchestrators.
@@ -46,5 +54,5 @@ bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 - Published npm package names remain unchanged.
 - `orchestrators/dotnet` remains in-tree as a frozen historical snapshot only; active local workflows, releases, and package maintenance go through the Bun monorepo.
 - For Bun scaffolds and bundled feature assets, edit `orchestrators/bun/resources/**`; `orchestrators/bun/assets/**` is generated package content and is verified by `bun run --filter @webstir-io/webstir check:assets`.
-- For the supported Docker deployment contract for `api` and `full`, use `orchestrators/bun/resources/deployment/docker`; `orchestrators/bun/assets/deployment/docker` is the generated packaged copy.
+- For the current documented Docker deployment path for `api` and `full`, use `orchestrators/bun/resources/deployment/docker`; `orchestrators/bun/assets/deployment/docker` is the generated packaged copy.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

@@ -33,7 +33,7 @@ Those two demos cover the shipped server-handled forms and dashboard refresh pat
 
 For static-site output, scaffold an `ssg` workspace, or keep the current workspace mode and force SSG publish with `webstir publish --workspace /absolute/path/to/workspace --frontend-mode ssg`. The lower-level `webstir-frontend publish --mode ssg` package CLI still works directly when you need package-level control.
 
-For the official production contract for `api` and `full` workspaces, use the Bun-owned Docker deployment path described in [Docker Deployment](./docker.md).
+For the current documented deployment path for `api` and `full` workspaces, use the Bun-owned Docker deployment path described in [Docker Deployment](./docker.md). Webstir is still experimental, so treat that path as the repo's current recommendation, not a long-term production guarantee.
 
 ## Related Docs
 

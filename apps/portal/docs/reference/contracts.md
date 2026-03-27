@@ -1,6 +1,6 @@
 # Contracts & Invariants
 
-Public, user-visible guarantees that Webstir preserves across releases. These are validated by end-to-end tests and serve as the stable contract between the CLI and projects.
+Current user-visible behaviors that Webstir documents and tests while the framework is still experimental. Treat this page as the present shape of the Bun-based workflow, not a long-term stability guarantee across releases.
 
 ## Source Layout
 - Frontend: `src/frontend/**`
