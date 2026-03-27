@@ -34,7 +34,9 @@ Typical backend scaffold:
 - Base HTML requires a `<main>` in `src/frontend/app/app.html` for page merge.
 - Page folder names must be URL-safe: letters, numbers, `_` and `-`.
 - Each page has `index.html`, `index.css`, `index.ts`.
-- Backend entry is `src/backend/index.ts` and must export an HTTP server.
+- Backend entry is `src/backend/index.ts`.
+- Fresh `api` and `full` scaffolds keep `src/backend/index.ts` thin and use it to boot the package-managed Bun runtime.
+- Manifest-backed route and demo logic lives in `src/backend/module.ts`.
 - For optional app features, prefer absolute app-asset imports such as `await import('/app/router.js')` so dev and publish paths stay aligned.
 
 ## TypeScript
@@ -74,7 +76,8 @@ Typical backend scaffold:
 - Works for both frontend and backend tests.
 
 ## Backend Template
-- Minimal Node server at `src/backend/index.ts`.
+- Thin Bun bootstrap at `src/backend/index.ts`.
+- Manifest-backed route and demo logic at `src/backend/module.ts`.
 - Exposes health endpoints (`GET /api/health` + `/healthz`) and a readiness probe (`/readyz`) that returns the manifest summary.
 - Reads `PORT` env var; defaults handled by the CLI dev server proxy in dev.
 - Optional auth adapter: set `AUTH_JWT_SECRET` (plus `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` and `AUTH_SERVICE_TOKENS` when needed) to enable bearer-token verification and populate `ctx.auth` in module routes.

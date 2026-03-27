@@ -35,7 +35,7 @@ Open `/api/demo/progressive-enhancement` and compare two cases:
 1. Submit the form with JavaScript enabled after `client-nav` is on. The backend returns a targeted fragment update.
 2. Disable JavaScript or reload normally and submit again. The same backend handler falls back to redirect-after-post.
 
-That route lives in `src/backend/index.ts` and gives you a working reference for:
+That route lives in `src/backend/module.ts`. The scaffold keeps `src/backend/index.ts` as a thin Bun bootstrap entry, while `module.ts` holds the demo route logic and gives you a working reference for:
 
 - `application/x-www-form-urlencoded` form handling
 - redirect responses for the baseline HTML path
@@ -51,7 +51,7 @@ Open `/about`, edit files under `src/frontend/pages/about/`, and watch the docum
 
 ## Adapt The Backend Demo
 
-To make the scaffold feel like your app instead of the stock demo, start by editing the existing backend route in `src/backend/index.ts`:
+To make the scaffold feel like your app instead of the stock demo, start by editing the existing backend route in `src/backend/module.ts`:
 
 - change `DEMO_PATH` to the route you actually want
 - rename the route summaries
