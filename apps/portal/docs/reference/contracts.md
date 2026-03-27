@@ -37,7 +37,7 @@ Public, user-visible guarantees that Webstir preserves across releases. These ar
 - Publish minification/prefixing (modern-only): preserves strings/urls and license comments; trims whitespace and trailing `;`; normalizes numbers/zeros; collapses zero shorthands; shortens hex (`#rrggbb→#rgb`, `#rrggbbaa→#rgba`); strips legacy prefixes/values (`-ms-*`, `-o-*`, `-khtml-*`, legacy flexbox); adds minimal `-webkit-` where needed.
 
 ## Dev Server
-- Serves `build/frontend/**` with SSE reload and an `/api/*` proxy to the Node server.
+- Serves `build/frontend/**` with SSE reload and an `/api/*` proxy to the Bun backend runtime.
 - No-cache headers for HTML; short/no-cache for static assets in dev.
 - Accepts client error reports at `POST /client-errors`:
   - Requires `Content-Type: application/json` and body up to 32KB.

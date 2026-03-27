@@ -20,7 +20,7 @@ The current Bun implementation is split across `frontend-watch.ts`, `api-watch.t
 
 ## Ports & Env
 - Web server prints the URL on startup; picks a free port or uses a configured one.
-- Node server respects common env vars:
+- Bun backend runtime respects common env vars:
   - `PORT`
   - `WEB_SERVER_URL`
   - `API_SERVER_URL`

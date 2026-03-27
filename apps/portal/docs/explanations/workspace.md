@@ -34,7 +34,8 @@ The active mode lives in `package.json` under `webstir.mode`.
 ## Backend Conventions
 
 - Backend entry is `src/backend/index.ts`.
-- Optional manifest-backed routes live in `src/backend/module.ts`.
+- Fresh `api` and `full` scaffolds keep `src/backend/index.ts` as a thin Bun bootstrap entry.
+- Manifest-backed routes and scaffold demo logic live in `src/backend/module.ts`.
 - Backend build and publish output lives under `build/backend/**`.
 
 ## Watch Rules
