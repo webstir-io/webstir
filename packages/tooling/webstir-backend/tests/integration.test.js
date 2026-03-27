@@ -2152,7 +2152,7 @@ test('default backend scaffold uses the package-managed Bun bootstrap', async ()
   await hydrateBackendScaffold(workspace);
 
   const indexSource = await fs.readFile(path.join(workspace, 'src', 'backend', 'index.ts'), 'utf8');
-  assert.match(indexSource, /@webstir-io\/webstir-backend\/runtime\/bun/);
+  assert.match(indexSource, /createDefaultBunBackendBootstrap/);
   assert.doesNotMatch(indexSource, /http\.createServer/);
   assert.doesNotMatch(indexSource, /Bun\.serve/);
 
@@ -2168,6 +2168,38 @@ test('default backend scaffold uses the package-managed Bun bootstrap', async ()
     fssync.existsSync(path.join(workspace, 'src', 'backend', 'runtime', 'request-hooks.ts')),
     false,
   );
+});
+
+test('default backend scaffold preserves the readiness log contract', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  const workspace = await createTempWorkspace('webstir-backend-bun-ready-log-');
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: `export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/bootstrap-runtime',
+    version: '0.1.0',
+    kind: 'backend',
+    capabilities: ['http'],
+    routes: []
+  },
+  routes: []
+};
+`,
+  });
+
+  const port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port);
+
+  try {
+    await waitFor(() => server.getStdout().includes('API server running'), 5000, 50);
+  } finally {
+    await server.stop();
+  }
 });
 
 function extractCookieHeader(setCookie) {

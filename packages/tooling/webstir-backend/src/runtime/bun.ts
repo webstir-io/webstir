@@ -1,4 +1,6 @@
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 
 import { executeRequestHookPhase, type RequestHookReferenceLike } from './request-hooks.js';
 import {
@@ -24,6 +26,7 @@ import {
   prepareSessionState,
   type SessionCookieConfig,
   type SessionFlashMessage,
+  createInMemorySessionStore,
   type SessionStore,
 } from './session.js';
 import { matchView, renderRequestTimeView, type CompiledView, type LoggerLike } from './views.js';
@@ -74,6 +77,29 @@ export interface BunRuntimeBootstrapOptions<
   createBaseLogger(env: TEnv): TLogger;
   createMetricsTracker(config: TEnv['metrics']): TMetricsTracker;
   sessionStore: SessionStore<TSession>;
+}
+
+export interface DefaultBunBackendBootstrapOptions<
+  TEnv extends BunRuntimeEnvLike = BunRuntimeEnvLike,
+  TLogger extends RuntimeLogger = RuntimeLogger,
+  TSession extends Record<string, unknown> = Record<string, unknown>,
+  TAuth = unknown,
+  TMetricsTracker extends MetricsTracker = MetricsTracker,
+> {
+  importMetaUrl: string;
+  loadEnv(): TEnv;
+  moduleCandidates?: readonly string[];
+  resolveWorkspaceRoot?: () => string;
+  resolveRequestAuth?: BunRuntimeBootstrapOptions<
+    TEnv,
+    TLogger,
+    TSession,
+    TAuth,
+    TMetricsTracker
+  >['resolveRequestAuth'];
+  createBaseLogger?: (env: TEnv) => TLogger;
+  createMetricsTracker?: (config: TEnv['metrics']) => TMetricsTracker;
+  sessionStore?: SessionStore<TSession>;
 }
 
 interface BunServerLike {
@@ -191,6 +217,78 @@ export async function startBunBackend<
   }
 
   logger.info({ port: env.PORT, mode: env.NODE_ENV, runtime: 'bun' }, 'API server running');
+}
+
+export function createDefaultBunBackendBootstrap<
+  TEnv extends BunRuntimeEnvLike,
+  TLogger extends RuntimeLogger = RuntimeLogger,
+  TSession extends Record<string, unknown> = Record<string, unknown>,
+  TAuth = unknown,
+  TMetricsTracker extends MetricsTracker = MetricsTracker,
+>(
+  options: DefaultBunBackendBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>,
+): BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker> {
+  return {
+    importMetaUrl: options.importMetaUrl,
+    moduleCandidates: options.moduleCandidates,
+    loadEnv: options.loadEnv,
+    resolveWorkspaceRoot:
+      options.resolveWorkspaceRoot ??
+      (() => resolveWorkspaceRootFromImportMetaUrl(options.importMetaUrl)),
+    resolveRequestAuth: options.resolveRequestAuth ?? (async () => undefined),
+    createBaseLogger: options.createBaseLogger ?? (() => createDefaultBaseLogger() as TLogger),
+    createMetricsTracker:
+      options.createMetricsTracker ?? (() => createDefaultMetricsTracker() as TMetricsTracker),
+    sessionStore: options.sessionStore ?? createInMemorySessionStore<TSession>(),
+  };
+}
+
+function createDefaultBaseLogger(): RuntimeLogger {
+  return {
+    child() {
+      return this;
+    },
+    info(value: unknown, message?: string) {
+      writeDefaultLog('info', value, message);
+    },
+    warn(value: unknown, message?: string) {
+      writeDefaultLog('warn', value, message);
+    },
+    error(value: unknown, message?: string) {
+      writeDefaultLog('error', value, message);
+    },
+  };
+}
+
+function createDefaultMetricsTracker(): MetricsTracker {
+  return {
+    record() {},
+    snapshot() {
+      return { enabled: false };
+    },
+  };
+}
+
+function writeDefaultLog(level: 'info' | 'warn' | 'error', value: unknown, message?: string): void {
+  const line = typeof value === 'string' && !message ? value : message;
+  const detail = typeof value === 'string' && !message ? undefined : value;
+  const output = [line, detail ? JSON.stringify(detail) : undefined].filter(Boolean).join(' ');
+
+  if (level === 'error') {
+    console.error(output);
+    return;
+  }
+
+  if (level === 'warn') {
+    console.warn(output);
+    return;
+  }
+
+  console.log(output);
+}
+
+function resolveWorkspaceRootFromImportMetaUrl(importMetaUrl: string): string {
+  return path.resolve(path.dirname(fileURLToPath(importMetaUrl)), '..', '..');
 }
 
 async function handleRequest<
