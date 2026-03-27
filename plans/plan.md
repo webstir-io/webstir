@@ -58,6 +58,7 @@ This plan stays focused on the issues that most directly affect correctness, upg
 - Workstream 4 Slice C is done on `main`: flash transport state now lives in package-owned runtime metadata for new writes in `packages/tooling/webstir-backend`, while legacy top-level flash rows remain readable for compatibility.
 - Workstream 5 Slice A is done on `main`: unsupported legacy wrapper preservation/proof work was removed from the active support story.
 - Workstream 3 Slice D is done: Fastify is no longer part of the supported backend runtime surface, and Bun is the single supported runtime path.
+- Workstream 1 Slice A is done on `main`: `@webstir-io/webstir` package-install smoke now wires the installed CLI through the repo-local backend package path, restoring required CI and package release coverage.
 
 ### Reopen Conditions
 
