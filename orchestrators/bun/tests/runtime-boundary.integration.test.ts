@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 import {
   appendWatchLogs,
   collectOutput,
@@ -83,7 +84,8 @@ test('SSG shell boundary remounts cleanly and restores shell state', async () =>
 }, 120_000);
 
 test('SPA home boundary remounts cleanly and refreshes page state', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
+  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-runtime-boundary-spa-');
+  const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
     workspace,
@@ -139,6 +141,7 @@ test('SPA home boundary remounts cleanly and refreshes page state', async () => 
     await child.exited.catch(() => undefined);
     await Promise.allSettled([stdoutDrain, stderrDrain]);
     removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
   }
 }, 120_000);
 
