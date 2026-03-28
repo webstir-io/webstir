@@ -75,13 +75,11 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
       expect(await fetchText(port, '/')).toContain('Full Home');
     }, 20_000);
 
-    const backendPath = path.join(workspace, 'src', 'backend', 'index.ts');
+    const backendPath = path.join(workspace, 'src', 'backend', 'module.ts');
     const originalBackend = await readFile(backendPath, 'utf8');
-    await writeFile(
-      backendPath,
-      originalBackend.replaceAll('API server running', 'Full API changed'),
-      'utf8',
-    );
+    const updatedBackend = originalBackend.replaceAll('API server running', 'Full API changed');
+    expect(updatedBackend).not.toBe(originalBackend);
+    await writeFile(backendPath, updatedBackend, 'utf8');
 
     await waitFor(async () => {
       expect(stdoutBuffer.text).toContain('backend restarted at');

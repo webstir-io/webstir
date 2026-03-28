@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { buildCheckPlan } from '../run-checks.mjs';
 
 describe('buildCheckPlan', () => {
-  test('required gate stays deterministic and adds testing smoke coverage', () => {
+  test('required gate stays deterministic and relies on the orchestrator required suite for watch coverage', () => {
     const plan = buildCheckPlan('required');
 
     expect(plan.map((step) => step.label)).toEqual([
@@ -27,11 +27,7 @@ describe('buildCheckPlan', () => {
     expect(plan.some((step) => step.command.includes('test:watch-browser'))).toBe(false);
   });
 
-  test('with-watch-browser plan extends the required plan with watch browser coverage', () => {
-    const plan = buildCheckPlan('with-watch-browser');
-
-    expect(plan.at(-1)?.label).toBe('bun orchestrator watch browser tests');
-    expect(plan.at(-1)?.command).toEqual(['bun', 'run', 'test:watch-browser']);
-    expect(plan).toHaveLength(buildCheckPlan('required').length + 1);
+  test('with-watch-browser plan remains an alias for the required gate', () => {
+    expect(buildCheckPlan('with-watch-browser')).toEqual(buildCheckPlan('required'));
   });
 });

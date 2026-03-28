@@ -43,17 +43,23 @@ export function buildTestPlan(mode) {
     label: 'browser watch proofs',
     args: ['test', '--bail=1', browserTestFile, '-t', watchModeFilter],
   };
+  const requiredPlan = [
+    coreTests,
+    publishBrowserTests,
+    integrationWatchBrowserTests,
+    watchBrowserTests,
+  ];
 
   switch (mode) {
     case 'required':
-      return [coreTests, publishBrowserTests];
+      return requiredPlan;
     case 'publish-browser':
       return [publishBrowserTests];
     case 'watch-browser':
       return [integrationWatchBrowserTests, watchBrowserTests];
     case 'all':
     case 'with-watch-browser':
-      return [coreTests, publishBrowserTests, integrationWatchBrowserTests, watchBrowserTests];
+      return requiredPlan;
     default:
       throw new Error(
         `Unknown orchestrator test mode "${mode}". Expected one of: required, publish-browser, watch-browser, with-watch-browser.`,

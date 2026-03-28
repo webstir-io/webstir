@@ -7,8 +7,8 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 - Goal: protect the developer-facing contract, not maximize line coverage.
 - Focus: CLI behavior, generated workspaces, watch/runtime behavior, and publish outputs.
 - Primary surfaces: `orchestrators/bun/tests/**` plus package-local `tests/**`.
-- Default gate: deterministic package checks, package smoke where exposed, orchestrator contract/integration tests, and publish-mode browser proofs.
-- Separate watch browser tests cover the noisiest infrastructure path without expanding the required gate.
+- Default gate: deterministic package checks, package smoke where exposed, orchestrator contract/integration tests, and browser proofs for both publish and watch behavior.
+- Focused watch-browser commands and workflow remain available for direct reruns when you want isolated watch diagnostics.
 
 ## What We Test
 
@@ -16,7 +16,7 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 - Contracts: folder layout, emitted artifacts, exit codes, and manifest summaries
 - Watch behavior: HMR, reloads, backend restarts, and `/api/*` proxying
 - Canonical `webstir test` proof workspace: `full`, kept near the built-in `full` template except for explicit watch/runtime proof deltas
-- Proof apps: `auth-crud` and `dashboard` as consumer-path browser validation and publish proofs, including the manual `Watch Browser Tests` workflow, not separate required `webstir test` lanes
+- Proof apps: `auth-crud` and `dashboard` as consumer-path browser validation for both publish and watch behavior, not separate required `webstir test` lanes
 - Package behavior inside `@webstir-io/webstir-frontend`, `@webstir-io/webstir-backend`, and `@webstir-io/webstir-testing`
 
 ## Test Types
@@ -25,7 +25,7 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 - Package tests under `packages/tooling/*/tests/**/*.test.js`
 - Package smoke scripts where a package exposes `bun run smoke`
 - Browser publish proofs in the default Bun orchestrator gate
-- Browser watch proofs in a separate watch browser test workflow
+- Browser watch proofs in the default Bun orchestrator gate, with a separate focused rerun workflow
 
 ## Running Tests
 
@@ -54,7 +54,7 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 
 Only `webstir test` supports `--runtime <frontend|backend|all>`.
 
-In this repo, `examples/demos/full` is the canonical workspace for the `webstir test` flow. It stays aligned with `orchestrators/bun/resources/templates/full/src/**` outside a small set of proof-only watch/runtime files, and `bun run --filter @webstir-io/webstir check:full-demo-sync` enforces that boundary. `auth-crud` and `dashboard` belong to the browser-proof layer instead: publish-mode browser coverage in the required gate, plus the manual `Watch Browser Tests` workflow when watch-mode confidence matters. Any app-local tests inside those demos should be treated as reference coverage rather than a separate required gate.
+In this repo, `examples/demos/full` is the canonical workspace for the `webstir test` flow. It stays aligned with `orchestrators/bun/resources/templates/full/src/**` outside a small set of proof-only watch/runtime files, and `bun run --filter @webstir-io/webstir check:full-demo-sync` enforces that boundary. `auth-crud` and `dashboard` belong to the browser-proof layer instead: publish-mode and watch-mode browser coverage now live in the required gate, while the focused `Watch Browser Tests` workflow remains useful for isolated reruns. Any app-local tests inside those demos should be treated as reference coverage rather than a separate required gate.
 
 ## What We Avoid
 
@@ -67,8 +67,8 @@ In this repo, `examples/demos/full` is the canonical workspace for the `webstir 
 - Integration tests use isolated temp workspaces and copied fixtures.
 - Watch tests prefer explicit readiness and port checks over long sleeps.
 - Browser flows focus on shipped proof apps so regressions surface on real consumer paths.
-- PR and `main` should run the same required gate; that gate now starts with `bun run check:biome`, follows with `bun run lint`, includes package smoke coverage, and keeps watch browser proofs outside it rather than treating them as a hidden substitute.
-- GitHub `CI` runs `bun run check:required`; the `Watch Browser Tests` workflow is manual and runs `bun run test:watch-browser` on demand.
+- PR and `main` should run the same required gate; that gate now starts with `bun run check:biome`, follows with `bun run lint`, includes package smoke coverage, and includes watch browser proofs instead of treating them as an optional side lane.
+- GitHub `CI` runs `bun run check:required`; the `Watch Browser Tests` workflow remains manual as a focused rerun path and runs `bun run test:watch-browser` on demand.
 
 ## Related Docs
 
