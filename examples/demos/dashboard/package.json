@@ -10,10 +10,10 @@
     "@webstir-io/webstir-backend": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "catalog:node20",
-    "autoprefixer": "catalog:",
-    "esbuild": "catalog:",
-    "typescript": "catalog:"
+    "@types/node": "^20.19.21",
+    "autoprefixer": "^10.4.20",
+    "esbuild": "^0.25.10",
+    "typescript": "^5.7.2"
   },
   "packageManager": "bun@1.3.11",
   "browserslist": [

@@ -43,10 +43,10 @@
     "@webstir-io/webstir-backend": "^0.1.15",
     "@webstir-io/webstir-frontend": "^0.1.40",
     "@webstir-io/webstir-testing": "^0.1.5",
-    "typescript": "catalog:"
+    "typescript": "^5.7.2"
   },
   "devDependencies": {
-    "@types/node": "catalog:node20",
+    "@types/node": "^20.19.21",
     "playwright": "^1.58.2"
   }
 }

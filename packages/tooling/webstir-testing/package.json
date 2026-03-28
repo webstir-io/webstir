@@ -73,8 +73,8 @@
     "access": "public"
   },
   "devDependencies": {
-    "@types/node": "catalog:node20",
-    "typescript": "catalog:"
+    "@types/node": "^20.19.21",
+    "typescript": "^5.7.2"
   },
   "dependencies": {
     "@webstir-io/testing-contract": "^0.1.7",
