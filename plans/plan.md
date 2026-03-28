@@ -49,7 +49,7 @@ This plan stays focused on the issues that most directly affect correctness, upg
 
 ### Current State
 
-- Workstream 1 Slice B is in progress: strengthen `@webstir-io/webstir-testing` package-local coverage around discovery, runtime filtering, CLI `test`, and watch reruns.
+- Workstream 1 Slice B is done on `main`: `@webstir-io/webstir-testing` now has package-local coverage for discovery, runtime filtering, CLI `test`, watch reruns, and backend-filter smoke.
 - Milestone C slices A-C are done on `main`: the fresh-scaffold backend defaults to the package-managed Bun runtime and no longer copies framework-owned runtime wrappers.
 - The `full` scaffold uses the same thin package-managed Bun entry shape as `api`, while keeping the progressive-enhancement demo module and install/add-route coverage intact.
 - External copied/temp workspaces used by orchestrator `smoke` and `test` materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
@@ -160,7 +160,7 @@ Success criteria:
 
 Status:
 
-- Implemented on `codex/testing-runner-coverage`; local review gate green, pending PR/merge.
+- Done on `main` via PR #149.
 
 Objective:
 
@@ -185,7 +185,7 @@ Out of scope:
 - backend-harness failure injection matrices
 - public API redesign for the testing package
 
-Current branch-local check status:
+Merged check status:
 
 - `bun run check:biome` green
 - `bun run lint` green
