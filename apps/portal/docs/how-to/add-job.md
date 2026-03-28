@@ -51,8 +51,8 @@ export async function run() {
 - The scheduler prints job names, schedules, and manifest metadata so you can verify exactly what will run locally, and `--json` emits the same metadata in a machine-friendly format for external schedulers.
 
 ## Notes
-- The CLI validates `--schedule` strings (`@hourly`, `@daily`, or cron-style fields) but stores them exactly as provided so your production scheduler can interpret them.
-- The built-in watcher understands `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n unit)` syntax. Cron expressions are surfaced unchanged in the manifest so you can wire them into Temporal, Cloud Scheduler, etc., and `--json` gives you a direct export path instead of scraping CLI text.
+- The CLI validates `--schedule` strings (`@hourly`, `@daily`, `@weekly`, cron-style fields, `rate(...)`, or `@reboot`) but stores them exactly as provided so your production scheduler can interpret them.
+- On Bun `1.3.11+`, the built-in watcher uses `Bun.cron.parse(...)` for real cron expressions and nicknames such as `0 0 * * *`, `*/15 * * * *`, `@daily`, or `@monthly`, while still supporting `rate(...)` and `@reboot` for local development loops. The manifest keeps the original schedule string unchanged, and `--json` gives you a direct export path instead of scraping CLI text.
 - Jobs run through the scheduler automatically load `.env` values, reuse the backend logger, and emit structured logs just like HTTP handlers.
 - Use `webstir backend-inspect --workspace "$PWD"` after adding jobs to confirm the manifest entry (name, schedule, description, priority) before committing changes.
 

@@ -82,7 +82,8 @@ Typical backend scaffold:
 - Reads `PORT` env var; defaults handled by the CLI dev server proxy in dev.
 - Optional auth adapter: set `AUTH_JWT_SECRET` (plus `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` and `AUTH_SERVICE_TOKENS` when needed) to enable bearer-token verification and populate `ctx.auth` in module routes.
 - Observability: install `pino`, set `LOG_LEVEL` / `LOG_SERVICE_NAME`, and enable metrics via `METRICS_ENABLED`. Every request logs structured JSON and `/metrics` exposes rolling latency/error stats.
-- Database & migrations: set `DATABASE_URL` (defaults to SQLite in `./data/dev.sqlite`) and manage schema changes via `src/backend/db/migrate.ts` + `src/backend/db/migrations/*.ts`. SQLite uses Bun's built-in `bun:sqlite`; install `pg` only for Postgres, then run `bun src/backend/db/migrate.ts`.
+- Database & migrations: set `DATABASE_URL` (defaults to SQLite in `./data/dev.sqlite`) and manage schema changes via `src/backend/db/migrate.ts` + `src/backend/db/migrations/*.ts`. The scaffolded helper uses `Bun.SQL` for both SQLite (`file:./data/dev.sqlite`, `sqlite:./data/dev.sqlite`, `:memory:`) and Postgres (`postgres://...`), so the same Bun-native client works across both paths without an extra `pg` install.
+- Jobs & scheduling: `src/backend/jobs/**` plus `build/backend/jobs/scheduler.js` support one-off runs, manifest export, and local watch-mode execution. On Bun `1.3.11+`, the built-in scheduler uses `Bun.cron.parse(...)` for real cron expressions and nicknames while still preserving `rate(...)` and `@reboot` schedules for local development loops.
 
 ## Publish Outputs
 - Per page: `dist/frontend/pages/<page>/index.html`
