@@ -100,7 +100,7 @@ Fresh scaffolds now boot through the package-managed Bun runtime by default:
   bun build/backend/index.js
   ```
 
-Published `api` and `full` workspaces also ship a Docker-oriented deploy runner:
+Published `api` and `full` workspaces also ship the supported Bun deploy runner:
 
 - Start the published workspace through the single-port deploy host:
   ```bash

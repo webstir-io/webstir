@@ -16,6 +16,19 @@ test('deploy cli is emitted with a Bun shebang', async () => {
   assert.match(source, /^#!\/usr\/bin\/env bun/m);
 });
 
+test('deploy cli prints usage', () => {
+  const cliPath = path.join(getPackageRoot(), 'dist', 'deploy-cli.js');
+  const result = Bun.spawnSync({
+    cmd: ['bun', cliPath, '--help'],
+    cwd: getPackageRoot(),
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.match(new TextDecoder().decode(result.stdout), /Usage: webstir-backend-deploy/);
+});
+
 test('published deploy serves frontend assets and proxies backend routes for full workspaces', async (t) => {
   if (!(await canListenOnTcp())) {
     t.skip('TCP listen is not permitted in this environment.');
@@ -60,6 +73,24 @@ test('published deploy serves frontend assets and proxies backend routes for ful
     assert.equal(readyResponse.status, 200);
     const readyPayload = await readyResponse.json();
     assert.equal(readyPayload.status, 'ready');
+    assert.equal(readyPayload.manifest?.routes, 2);
+
+    const healthResponse = await fetch(`${server.origin}/healthz`);
+    assert.equal(healthResponse.status, 200);
+    assert.equal((await healthResponse.json()).ok, true);
+
+    const metricsResponse = await fetch(`${server.origin}/metrics`);
+    assert.equal(metricsResponse.status, 200);
+    const metricsPayload = await metricsResponse.json();
+    assert.equal(metricsPayload.enabled, true);
+    assert.ok(metricsPayload.totalRequests >= 1);
+    assert.ok((metricsPayload.byStatus?.['200'] ?? 0) >= 1);
+
+    const redirectResponse = await fetch(`${server.origin}/api/deploy/redirect`, {
+      redirect: 'manual',
+    });
+    assert.equal(redirectResponse.status, 303);
+    assert.equal(redirectResponse.headers.get('location'), '/api/deploy/check');
   } finally {
     await server.stop();
     await fs.rm(workspace, { recursive: true, force: true });
@@ -86,6 +117,20 @@ test('published deploy proxies api workspaces without a frontend host', async (t
     const apiResponse = await fetch(`${server.origin}/deploy/check`);
     assert.equal(apiResponse.status, 200);
     assert.deepEqual(await apiResponse.json(), { ok: true, mode: 'api' });
+
+    const healthResponse = await fetch(`${server.origin}/healthz`);
+    assert.equal(healthResponse.status, 200);
+    assert.equal((await healthResponse.json()).ok, true);
+
+    const metricsResponse = await fetch(`${server.origin}/metrics`);
+    assert.equal(metricsResponse.status, 200);
+    assert.equal((await metricsResponse.json()).enabled, true);
+
+    const redirectResponse = await fetch(`${server.origin}/deploy/redirect`, {
+      redirect: 'manual',
+    });
+    assert.equal(redirectResponse.status, 303);
+    assert.equal(redirectResponse.headers.get('location'), '/deploy/check');
 
     const missingResponse = await fetch(`${server.origin}/missing`);
     assert.equal(missingResponse.status, 404);
@@ -228,6 +273,19 @@ function createModuleSource(mode) {
       body: {
         ok: true,
         mode: ${JSON.stringify(mode)}
+      }
+    })
+  },
+  {
+    definition: {
+      name: 'deployRedirect',
+      method: 'GET',
+      path: '/deploy/redirect'
+    },
+    handler: async () => ({
+      status: 303,
+      redirect: {
+        location: '/deploy/check'
       }
     })
   }

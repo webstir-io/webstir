@@ -1,6 +1,6 @@
 # Webstir Docker Deployment
 
-Canonical Docker deployment contract for published `api` and `full` workspaces.
+Canonical Bun deployment contract for published `api` and `full` workspaces.
 
 ## Workspace Prerequisites
 
