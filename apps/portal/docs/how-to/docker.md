@@ -19,7 +19,7 @@ docker run --rm -p 8080:8080 --env-file ./.env.production my-webstir-app
 Use the canonical Dockerfile and `.dockerignore` in the workspace root:
 
 ```dockerfile
-FROM oven/bun:1.3.10-alpine
+FROM oven/bun:1.3.11-alpine
 
 WORKDIR /app
 

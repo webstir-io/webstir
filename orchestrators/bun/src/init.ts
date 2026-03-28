@@ -7,7 +7,7 @@ import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import { monorepoRoot } from './paths.ts';
 import type { WorkspaceMode } from './types.ts';
 
-const PACKAGE_MANAGER = 'bun@1.3.5';
+const PACKAGE_MANAGER = 'bun@1.3.11';
 
 const MODE_DESCRIPTIONS: Record<WorkspaceMode, string> = {
   ssg: 'Static site (SSG) workspace for Webstir.',

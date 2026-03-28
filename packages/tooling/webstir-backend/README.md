@@ -21,7 +21,7 @@ Backend delivery for Webstir's HTML-first application model. The package type-ch
    console.log(manifest.entryPoints);
    ```
 
-Requires Bun **1.3.5** or newer.
+Requires Bun **1.3.11** or newer.
 
 ## What This Runtime Is Good At
 
