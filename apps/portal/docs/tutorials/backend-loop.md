@@ -80,12 +80,9 @@ export const module = {
 
 ## 4. Connect to the database helper
 
-- The scaffold ships with `src/backend/db/connection.ts`, which can create SQLite (`better-sqlite3`) or Postgres (`pg`) clients based on `DATABASE_URL`.
-- Install the driver you plan to use, for example:
-
-```bash
-bun add better-sqlite3
-```
+- The scaffold ships with `src/backend/db/connection.ts`, which uses `Bun.SQL` for both SQLite and Postgres based on `DATABASE_URL`.
+- SQLite works out of the box with `file:./data/dev.sqlite`, `sqlite:./data/dev.sqlite`, or `:memory:`.
+- Postgres uses the same helper with a `postgres://...` URL, so you do not need to add a separate `pg` client just to use the scaffolded connection layer.
 
 ## 5. Schedule a job
 
@@ -114,7 +111,10 @@ Test it quickly:
 
 ```bash
 bun build/backend/jobs/scheduler.js --job nightly
+bun build/backend/jobs/scheduler.js --watch
 ```
+
+- The local scheduler now understands real cron expressions and cron nicknames on Bun `1.3.11+`, so schedules such as `0 0 * * *`, `*/15 * * * *`, `@daily`, `@monthly`, `rate(15 minutes)`, and `@reboot` all work in the built-in watch loop while still being preserved exactly in the manifest for your production scheduler.
 
 ## 6. Inspect the manifest
 
