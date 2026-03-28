@@ -4,6 +4,7 @@ import { open, readFile, writeFile } from 'node:fs/promises';
 import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 import {
   appendWatchLogs,
   collectOutput,
@@ -20,7 +21,8 @@ afterEach(async () => {
 });
 
 test('CLI watch reloads SSG content edits after rebuild', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
+  const workspaceCopy = await copyDemoWorkspace('ssg/base', 'webstir-ssg-watch-content');
+  const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
     workspace,
@@ -59,11 +61,13 @@ test('CLI watch reloads SSG content edits after rebuild', async () => {
         'utf8',
       );
     }
+    await removeDemoWorkspace(workspaceCopy);
   }
 }, 120_000);
 
 test('CLI watch hot-swaps docs page CSS edits without a full reload', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
+  const workspaceCopy = await copyDemoWorkspace('ssg/base', 'webstir-ssg-watch-css');
+  const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
     workspace,
@@ -130,11 +134,13 @@ test('CLI watch hot-swaps docs page CSS edits without a full reload', async () =
         'utf8',
       );
     }
+    await removeDemoWorkspace(workspaceCopy);
   }
 }, 120_000);
 
 test('CLI watch remounts the docs sidebar boundary for JS edits without a full reload', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
+  const workspaceCopy = await copyDemoWorkspace('ssg/base', 'webstir-ssg-watch-js');
+  const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
     workspace,
@@ -226,11 +232,13 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
         'utf8',
       );
     }
+    await removeDemoWorkspace(workspaceCopy);
   }
 }, 120_000);
 
 test('CLI watch remounts the docs boundary for _sidebar.json edits without a full reload', async () => {
-  const workspace = path.join(repoRoot, 'examples', 'demos', 'ssg', 'base');
+  const workspaceCopy = await copyDemoWorkspace('ssg/base', 'webstir-ssg-watch-sidebar');
+  const workspace = workspaceCopy.workspaceRoot;
   const port = await getFreePort();
   const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
     workspace,
@@ -327,6 +335,7 @@ test('CLI watch remounts the docs boundary for _sidebar.json edits without a ful
         'utf8',
       );
     }
+    await removeDemoWorkspace(workspaceCopy);
   }
 }, 120_000);
 
