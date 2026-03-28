@@ -207,7 +207,7 @@
         "zod": "^3.23.8",
       },
       "devDependencies": {
-        "@types/bun": "^1.3.10",
+        "@types/bun": "^1.3.11",
         "@types/csso": "^5.0.4",
         "@types/html-minifier-terser": "^7.0.2",
         "@types/node": "^25.5.0",

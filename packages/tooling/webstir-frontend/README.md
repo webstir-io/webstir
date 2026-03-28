@@ -11,7 +11,7 @@ HTML-first frontend delivery for Webstir workspaces. This package builds page do
 - Runtime helpers for boundary-style mount/unmount lifecycles and cleanup scopes
 - SSG as a supported mode, without making static-only delivery the center of the product story
 
-Requires Bun **1.3.5** or newer.
+Requires Bun **1.3.11** or newer.
 
 ## Runtime Model
 

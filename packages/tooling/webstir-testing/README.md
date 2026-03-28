@@ -18,7 +18,7 @@ Unified test runner, runtime helpers, and CLI for Webstir TypeScript workspaces.
    bunx webstir-testing --workspace /absolute/path/to/workspace
    ```
 
-Requires Bun **1.3.10** or newer and assumes TypeScript has already produced compiled output in `build/**/tests/`.
+Requires Bun **1.3.11** or newer and assumes TypeScript has already produced compiled output in `build/**/tests/`.
 
 ## Workspace Layout
 
