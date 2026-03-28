@@ -63,7 +63,7 @@ bun run webstir -- --help
 ## Notes
 
 - Run commands from the repo root unless a package README says otherwise.
-- `bun run check:required` now starts with `bun run check:biome` and `bun run lint`.
+- `bun run check:required` now starts with `bun run check:biome` and `bun run lint`, and it includes the watch-browser proof lane.
 - The archived `.NET` tree has its own historical tooling, but it is not part of the active Bun workflow.
 
 ## Related Docs

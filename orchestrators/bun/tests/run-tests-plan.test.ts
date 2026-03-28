@@ -2,15 +2,11 @@ import { expect, test } from 'bun:test';
 
 import { buildTestPlan, listCoreTestFiles } from '../scripts/run-tests.mjs';
 
-test('required orchestrator plan excludes watch browser proofs from the default gate', () => {
+test('required orchestrator plan includes watch browser proofs in the default gate', () => {
   const plan = buildTestPlan('required');
 
-  expect(plan).toHaveLength(2);
+  expect(plan).toHaveLength(4);
   expect(plan[0]?.args).toContain('tests/add.integration.test.ts');
-  expect(plan[0]?.args).not.toContain('tests/runtime-boundary.integration.test.ts');
-  expect(plan[0]?.args).not.toContain('tests/bun-first-spa.integration.test.ts');
-  expect(plan[0]?.args).not.toContain('tests/ssg-watch.integration.test.ts');
-  expect(plan[0]?.args).not.toContain('tests/full-watch.integration.test.ts');
   expect(plan[0]?.args).not.toContain('tests/progressive-enhancement.browser.integration.test.ts');
   expect(plan[1]?.args).toEqual([
     'test',
@@ -19,12 +15,6 @@ test('required orchestrator plan excludes watch browser proofs from the default 
     '-t',
     'publish mode',
   ]);
-});
-
-test('with-watch-browser orchestrator plan adds watch browser tests to the required plan', () => {
-  const plan = buildTestPlan('with-watch-browser');
-
-  expect(plan).toHaveLength(4);
   expect(plan[2]?.args).toEqual([
     'test',
     '--bail=1',
@@ -40,6 +30,10 @@ test('with-watch-browser orchestrator plan adds watch browser tests to the requi
     '-t',
     'watch mode',
   ]);
+});
+
+test('with-watch-browser orchestrator plan remains an alias for the default required plan', () => {
+  expect(buildTestPlan('with-watch-browser')).toEqual(buildTestPlan('required'));
 });
 
 test('core orchestrator file list remains sorted for deterministic runs', () => {

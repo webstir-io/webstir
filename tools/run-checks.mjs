@@ -80,13 +80,7 @@ export function buildCheckPlan(mode) {
       return requiredSteps;
     case 'all':
     case 'with-watch-browser':
-      return [
-        ...requiredSteps,
-        {
-          label: 'bun orchestrator watch browser tests',
-          command: ['bun', 'run', 'test:watch-browser'],
-        },
-      ];
+      return requiredSteps;
     default:
       throw new Error(
         `Unknown check mode "${mode}". Expected one of: required, with-watch-browser.`,
