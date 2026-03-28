@@ -166,16 +166,16 @@ bun add pino                    # already needed for the server
 bun src/backend/jobs/scheduler.ts --list
 bun src/backend/jobs/scheduler.ts --json
 bun build/backend/jobs/scheduler.js --job nightly
-bun build/backend/jobs/scheduler.js --watch        # runs @hourly/@daily/@weekly/@reboot or rate(...) jobs
+bun build/backend/jobs/scheduler.js --watch        # runs cron expressions, cron nicknames, @reboot, or rate(...) jobs
 ```
 
 - `/readyz` surfaces manifest job counts, and `bun build/backend/jobs/<name>/index.js` remains the quickest way to execute a single job in isolation.
-- Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). The built-in watcher supports the `@hourly`, `@daily`, `@weekly`, `@reboot`, and `rate(n units)` patterns for basic local loops; use `--json` when you want a machine-friendly export of job metadata for an external scheduler instead of relying on the local watcher.
+- Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). On Bun `1.3.11+`, the built-in watcher now uses `Bun.cron.parse(...)` for real cron expressions and nicknames such as `0 0 * * *`, `*/15 * * * *`, `@daily`, or `@monthly`, while still preserving `rate(n units)` and `@reboot` for local development loops. Cron-based schedules wait for the next matching wall-clock time; use `--job <name>` or `--all` when you want an immediate run.
 
 ### Database & migrations
 
 - `DATABASE_URL` defaults to `file:./data/dev.sqlite`. Point it at Postgres (`postgres://...`) or another SQLite file as needed. Override the tracking table via `DATABASE_MIGRATIONS_TABLE` (defaults to `_webstir_migrations`).
-- `src/backend/db/connection.ts` exposes a tiny helper that connects to SQLite via Bun's built-in `bun:sqlite` runtime or to Postgres via `pg`. The default SQLite flow needs Bun; install `pg` only when you use Postgres.
+- `src/backend/db/connection.ts` exposes a tiny helper backed by `Bun.SQL`, so the same Bun-native client now handles SQLite (`file:./data/dev.sqlite`, `sqlite:./data/dev.sqlite`, `:memory:`) and Postgres (`postgres://...`) without a separate `pg` install.
 - `src/backend/session/store.ts` now owns the runtime session-store choice. Development still defaults to the in-memory store for stateless/local flows, while production defaults to SQLite unless you pin `SESSION_STORE_DRIVER=memory`. You can also persist sessions explicitly in SQLite via `src/backend/session/sqlite.ts` by setting `SESSION_STORE_DRIVER=sqlite` or just configuring `SESSION_STORE_URL`. The SQLite adapter creates its table lazily and runs on Bun without any extra SQLite package install.
 - Drop SQL/TypeScript migrations under `src/backend/db/migrations/*.ts`, exporting `id`, `up`, and optional `down`.
 - Run migrations with:
@@ -187,6 +187,7 @@ bun src/backend/db/migrate.ts --down --steps 1
 ```
 
 - The runner logs each migration, records history in `DATABASE_MIGRATIONS_TABLE`, and works the same way once compiled (`bun build/backend/db/migrate.js ...`).
+- When you pass migration parameters, use `?` placeholders in your scaffold code. The helper keeps that style working across SQLite and Postgres.
 
 ### Module Manifest Integration
 

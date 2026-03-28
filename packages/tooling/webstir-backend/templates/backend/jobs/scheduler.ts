@@ -1,9 +1,17 @@
 #!/usr/bin/env bun
-import { setInterval } from 'node:timers';
+import { clearTimeout, setInterval, setTimeout } from 'node:timers';
 
 import { loadJobs } from './runtime.js';
 
 const args = process.argv.slice(2);
+const MAX_TIMEOUT_MS = 2_147_483_647;
+const RAN_ONCE = 'ran-once';
+
+type ScheduledJobHandle =
+  | ReturnType<typeof setInterval>
+  | {
+      [Symbol.dispose](): void;
+    };
 
 async function main() {
   if (args.includes('--help') || args.includes('-h')) {
@@ -56,7 +64,12 @@ async function startWatch(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName?: 
   }
 
   const timers = filtered.map((job) => scheduleJob(job));
-  if (timers.every((timer) => timer === undefined)) {
+  const hasActiveWatch = timers.some((timer) => timer !== undefined && timer !== RAN_ONCE);
+  if (!hasActiveWatch) {
+    if (timers.includes(RAN_ONCE)) {
+      console.info('[jobs] completed @reboot jobs and exiting.');
+      return;
+    }
     console.warn(
       '[jobs] no jobs have schedules compatible with the built-in watcher. Use --json to export job metadata for an external scheduler.',
     );
@@ -67,24 +80,30 @@ async function startWatch(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName?: 
   process.stdin.resume();
 }
 
-function scheduleJob(job: Awaited<ReturnType<typeof loadJobs>>[number]) {
-  const intervalMs = toInterval(job.schedule);
-  if (intervalMs === null) {
+function scheduleJob(
+  job: Awaited<ReturnType<typeof loadJobs>>[number],
+): ScheduledJobHandle | typeof RAN_ONCE | undefined {
+  const schedule = normalizeSchedule(job.schedule);
+  if (!schedule) {
     console.info(
       `[jobs] schedule '${job.schedule ?? 'unspecified'}' is not supported by the built-in watcher. Run manually or use --json with an external scheduler.`,
     );
     return undefined;
   }
 
-  if (intervalMs === 0) {
+  if (schedule.kind === 'reboot') {
     void runJob(job);
-    return undefined;
+    return RAN_ONCE;
   }
 
-  void runJob(job);
-  return setInterval(() => {
+  if (schedule.kind === 'rate') {
     void runJob(job);
-  }, intervalMs);
+    return setInterval(() => {
+      void runJob(job);
+    }, schedule.intervalMs);
+  }
+
+  return scheduleCronJob(job, schedule.expression);
 }
 
 async function runNamedJob(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName: string) {
@@ -143,27 +162,24 @@ function parseOption(flag: string): string | undefined {
   return undefined;
 }
 
-function toInterval(schedule: string | undefined): number | null {
+function normalizeSchedule(
+  schedule: string | undefined,
+):
+  | { kind: 'cron'; expression: string }
+  | { kind: 'rate'; intervalMs: number }
+  | { kind: 'reboot' }
+  | undefined {
   if (!schedule) {
-    return null;
+    return undefined;
   }
   const trimmed = schedule.trim().toLowerCase();
-  if (!trimmed) return null;
+  if (!trimmed) return undefined;
 
   if (trimmed.startsWith('@')) {
-    switch (trimmed.slice(1)) {
-      case 'hourly':
-        return 60 * 60 * 1000;
-      case 'daily':
-      case 'midnight':
-        return 24 * 60 * 60 * 1000;
-      case 'weekly':
-        return 7 * 24 * 60 * 60 * 1000;
-      case 'reboot':
-        return 0;
-      default:
-        return null;
+    if (trimmed === '@reboot') {
+      return { kind: 'reboot' };
     }
+    return isSupportedCronExpression(trimmed) ? { kind: 'cron', expression: trimmed } : undefined;
   }
 
   const rateMatch = /^rate\((\d+)\s+(second|seconds|minute|minutes|hour|hours)\)$/.exec(trimmed);
@@ -177,10 +193,70 @@ function toInterval(schedule: string | undefined): number | null {
         : unit.startsWith('hour')
           ? 60 * 60 * 1000
           : 0;
-    return value > 0 && multiplier > 0 ? value * multiplier : null;
+    if (value > 0 && multiplier > 0) {
+      return { kind: 'rate', intervalMs: value * multiplier };
+    }
+    return undefined;
   }
 
-  return null;
+  return isSupportedCronExpression(trimmed) ? { kind: 'cron', expression: trimmed } : undefined;
+}
+
+function isSupportedCronExpression(expression: string): boolean {
+  try {
+    return Bun.cron.parse(expression) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleCronJob(job: Awaited<ReturnType<typeof loadJobs>>[number], expression: string) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
+
+  const queueNext = (relativeTo?: Date) => {
+    if (stopped) {
+      return;
+    }
+
+    const nextRun = Bun.cron.parse(expression, relativeTo);
+    if (!nextRun) {
+      console.warn(
+        `[jobs] schedule '${expression}' does not produce a future run time. Stopping local watch for ${job.name}.`,
+      );
+      return;
+    }
+    scheduleTimeout(nextRun, async () => {
+      await runJob(job);
+      queueNext(nextRun);
+    });
+  };
+
+  const scheduleTimeout = (nextRun: Date, callback: () => Promise<void>) => {
+    const remainingMs = nextRun.getTime() - Date.now();
+    const delayMs = Math.max(0, Math.min(remainingMs, MAX_TIMEOUT_MS));
+    timer = setTimeout(() => {
+      if (stopped) {
+        return;
+      }
+      if (remainingMs > MAX_TIMEOUT_MS && nextRun.getTime() > Date.now()) {
+        scheduleTimeout(nextRun, callback);
+        return;
+      }
+      void callback();
+    }, delayMs);
+  };
+
+  queueNext();
+
+  return {
+    [Symbol.dispose]() {
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+    },
+  };
 }
 
 function printHelp() {
@@ -194,7 +270,7 @@ Options:
   --json            Print registered job metadata as JSON for external schedulers
   --job <name>      Run a specific job immediately (or watch a single job)
   --all             Run all jobs once (default when no options are provided)
-  --watch           Run supported jobs on an interval (supports @hourly/@daily/@weekly/@reboot and rate(...) syntax)
+  --watch           Watch jobs locally (supports cron expressions, cron nicknames, @reboot, and rate(...) syntax)
   --help            Display this message
 `);
 }

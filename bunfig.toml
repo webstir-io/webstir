@@ -1,0 +1,10 @@
+[install]
+minimumReleaseAge = 259200
+minimumReleaseAgeExcludes = [
+  "@types/bun",
+  "@types/node",
+  "path-to-regexp",
+  "playwright",
+  "serialize-javascript",
+  "typescript",
+]
