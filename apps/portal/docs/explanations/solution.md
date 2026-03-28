@@ -19,7 +19,7 @@ Webstir is still experimental. The current Bun-first workflow is the active path
 - Frontend delivery: `packages/tooling/webstir-frontend`
 - Backend runtime and scaffolding: `packages/tooling/webstir-backend`
 - Contracts and manifest primitives: `packages/contracts/*`
-- Current Docker deployment path: `orchestrators/bun/resources/deployment/docker`
+- Supported Bun deployment contract: `orchestrators/bun/resources/deployment/docker`
 - Proof apps: `examples/demos/auth-crud` and `examples/demos/dashboard`
 
 ## How It Works

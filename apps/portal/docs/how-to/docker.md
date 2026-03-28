@@ -1,8 +1,8 @@
 # Docker Deployment
 
-Use Docker as the current documented deployment path for published `api` and `full` Webstir workspaces.
+Use Docker as the supported deployment contract today for published `api` and `full` Webstir workspaces.
 
-Webstir is still experimental, so this document describes the deployment path the repo currently supports and tests. It is not a promise of long-term production stability yet.
+Webstir is still experimental, but this is the one Bun deployment path the repo supports and tests end to end right now. Treat other deployment shapes as out of contract unless the docs start naming them explicitly.
 
 ## Command Flow
 
@@ -43,11 +43,13 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 - `api` workspaces expose the published backend on the container port.
 - `full` workspaces expose one public port that serves `dist/frontend/**` and proxies `/api/*` to the published backend.
 - `dist/frontend/**` is only required for `full`; `api` workspaces can build the image without a `dist` tree.
-- Health and readiness stay available on the same public port:
+- The single public port keeps the runtime probes available without a second sidecar port:
   - `GET /healthz`
   - `GET /readyz`
   - `GET /metrics`
+- `/metrics` stays reachable on that port even when metrics are disabled; the default scaffold returns `{ "enabled": false }` instead of exposing rolling counters.
 - `SESSION_SECRET` is required in production for the default Bun backend scaffold.
+- Only published `api` and `full` workspaces are in contract for this deploy path.
 
 ## Canonical Source
 
