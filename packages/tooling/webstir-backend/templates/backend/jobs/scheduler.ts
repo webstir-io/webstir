@@ -80,10 +80,9 @@ async function startWatch(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName?: 
   process.stdin.resume();
 }
 
-function scheduleJob(job: Awaited<ReturnType<typeof loadJobs>>[number]):
-  | ScheduledJobHandle
-  | typeof RAN_ONCE
-  | undefined {
+function scheduleJob(
+  job: Awaited<ReturnType<typeof loadJobs>>[number],
+): ScheduledJobHandle | typeof RAN_ONCE | undefined {
   const schedule = normalizeSchedule(job.schedule);
   if (!schedule) {
     console.info(
@@ -163,7 +162,9 @@ function parseOption(flag: string): string | undefined {
   return undefined;
 }
 
-function normalizeSchedule(schedule: string | undefined):
+function normalizeSchedule(
+  schedule: string | undefined,
+):
   | { kind: 'cron'; expression: string }
   | { kind: 'rate'; intervalMs: number }
   | { kind: 'reboot' }

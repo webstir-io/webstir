@@ -38,13 +38,13 @@ export async function createDatabaseClient(
 function detectDatabaseDriver(url: string): 'sqlite' | 'postgres' {
   const trimmed = url.trim();
   if (
-    trimmed === ':memory:'
-    || trimmed.startsWith('file:')
-    || trimmed.startsWith('file://')
-    || trimmed.startsWith('sqlite:')
-    || trimmed.startsWith('sqlite://')
-    || trimmed.endsWith('.sqlite')
-    || trimmed.endsWith('.db')
+    trimmed === ':memory:' ||
+    trimmed.startsWith('file:') ||
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('sqlite:') ||
+    trimmed.startsWith('sqlite://') ||
+    trimmed.endsWith('.sqlite') ||
+    trimmed.endsWith('.db')
   ) {
     return 'sqlite';
   }
@@ -56,10 +56,7 @@ function detectDatabaseDriver(url: string): 'sqlite' | 'postgres' {
   );
 }
 
-function createBunSqlClient(
-  client: BunSqlClient,
-  driver: 'sqlite' | 'postgres',
-): DatabaseClient {
+function createBunSqlClient(client: BunSqlClient, driver: 'sqlite' | 'postgres'): DatabaseClient {
   return {
     async query<T>(query, params) {
       const prepared = prepareQuery(query, params, driver);
@@ -117,7 +114,9 @@ function normalizeSqliteUrl(url: string): string {
 
   const workspaceRoot = resolveWorkspaceRoot();
   const target = stripSqlitePrefix(url.trim());
-  const resolved = path.isAbsolute(target) ? path.resolve(target) : path.resolve(workspaceRoot, target);
+  const resolved = path.isAbsolute(target)
+    ? path.resolve(target)
+    : path.resolve(workspaceRoot, target);
   return `file:${resolved}`;
 }
 
@@ -190,9 +189,9 @@ function convertQuestionMarksToDollarParams(query: string): string {
       continue;
     }
 
-    if (character === '\'' && !inDoubleQuote) {
+    if (character === "'" && !inDoubleQuote) {
       result += character;
-      if (inSingleQuote && next === '\'') {
+      if (inSingleQuote && next === "'") {
         result += next;
         index += 1;
       } else {
