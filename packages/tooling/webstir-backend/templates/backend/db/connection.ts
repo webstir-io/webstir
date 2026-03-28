@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { mkdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
 
 import { resolveWorkspaceRoot } from '../env.js';
 
@@ -10,110 +9,217 @@ export interface DatabaseClient {
   close(): Promise<void>;
 }
 
-type SqliteStatement = {
-  all<T = unknown>(...params: unknown[]): T[];
-  run(...params: unknown[]): unknown;
+type BunSqlClient = {
+  unsafe<T = unknown>(query: string, params?: unknown[]): Promise<T[]>;
+  close(options?: { timeout?: number }): Promise<void>;
 };
 
-type SqliteDatabase = {
-  prepare(sql: string): SqliteStatement;
-  close(): void;
-};
+type BunSqlConstructor = new (url?: string) => BunSqlClient;
 
-const require = createRequire(import.meta.url);
+type BunRuntime = {
+  SQL?: BunSqlConstructor;
+};
 
 export async function createDatabaseClient(
   url = process.env.DATABASE_URL ?? 'file:./data/dev.sqlite',
 ): Promise<DatabaseClient> {
-  if (isSqlite(url)) {
-    return createSqliteClient(url);
+  const driver = detectDatabaseDriver(url);
+  const SQL = loadBunSql();
+  const normalizedUrl = driver === 'sqlite' ? normalizeSqliteUrl(url) : url;
+
+  if (driver === 'sqlite') {
+    ensureSqliteDirectory(normalizedUrl);
   }
-  if (isPostgres(url)) {
-    return createPostgresClient(url);
+
+  const client = new SQL(normalizedUrl);
+  return createBunSqlClient(client, driver);
+}
+
+function detectDatabaseDriver(url: string): 'sqlite' | 'postgres' {
+  const trimmed = url.trim();
+  if (
+    trimmed === ':memory:'
+    || trimmed.startsWith('file:')
+    || trimmed.startsWith('file://')
+    || trimmed.startsWith('sqlite:')
+    || trimmed.startsWith('sqlite://')
+    || trimmed.endsWith('.sqlite')
+    || trimmed.endsWith('.db')
+  ) {
+    return 'sqlite';
+  }
+  if (trimmed.startsWith('postgres://') || trimmed.startsWith('postgresql://')) {
+    return 'postgres';
   }
   throw new Error(
-    `[db] Unsupported DATABASE_URL '${url}'. Use file:./path/to.sqlite or postgres://...`,
+    `[db] Unsupported DATABASE_URL '${url}'. Use file:./path/to.sqlite, sqlite:./path/to.sqlite, :memory:, or postgres://...`,
   );
 }
 
-function isSqlite(url: string): boolean {
-  return url.startsWith('file:') || url.endsWith('.sqlite') || url.endsWith('.db');
-}
-
-function isPostgres(url: string): boolean {
-  return url.startsWith('postgres://') || url.startsWith('postgresql://');
-}
-
-async function createSqliteClient(url: string): Promise<DatabaseClient> {
-  const Database = loadBunSqlite();
-  const target = normalizeSqlitePath(url);
-  mkdirSync(path.dirname(target), { recursive: true });
-  const db = new Database(target);
-
+function createBunSqlClient(
+  client: BunSqlClient,
+  driver: 'sqlite' | 'postgres',
+): DatabaseClient {
   return {
-    async query(sql, params) {
-      const statement = db.prepare(sql);
-      return statement.all(...(params ?? []));
+    async query<T>(query, params) {
+      const prepared = prepareQuery(query, params, driver);
+      return await client.unsafe<T>(prepared.query, prepared.params);
     },
-    async execute(sql, params) {
-      const statement = db.prepare(sql);
-      statement.run(...(params ?? []));
+    async execute(query, params) {
+      const prepared = prepareQuery(query, params, driver);
+      await client.unsafe(prepared.query, prepared.params);
     },
     async close() {
-      db.close();
+      await client.close();
     },
   };
 }
 
-function loadBunSqlite(): new (filename: string) => SqliteDatabase {
-  try {
-    const sqliteModule = require('bun:sqlite');
-    return sqliteModule.Database ?? sqliteModule.default ?? sqliteModule;
-  } catch (error) {
-    throw new Error(
-      `[db] Failed to load bun:sqlite. Run the SQLite client with Bun or switch DATABASE_URL to postgres://... (${(error as Error).message})`,
-    );
+function prepareQuery(
+  query: string,
+  params: unknown[] | undefined,
+  driver: 'sqlite' | 'postgres',
+): {
+  query: string;
+  params: unknown[] | undefined;
+} {
+  if (!params || params.length === 0 || driver !== 'postgres' || !query.includes('?')) {
+    return { query, params };
   }
-}
-
-async function createPostgresClient(url: string): Promise<DatabaseClient> {
-  type PgClientCtor = new (
-    ...args: unknown[]
-  ) => {
-    query: (text: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    connect: () => Promise<void>;
-    end: () => Promise<void>;
-  };
-
-  let ClientCtor: PgClientCtor;
-  try {
-    const pgModule = await import('pg');
-    ClientCtor = (pgModule as unknown as { Client: PgClientCtor }).Client;
-  } catch (error) {
-    throw new Error(
-      `[db] Failed to load pg. Install it in your workspace with "bun add pg". (${(error as Error).message})`,
-    );
-  }
-
-  const client = new ClientCtor({ connectionString: url });
-  await client.connect();
 
   return {
-    async query(sql, params) {
-      const result = await client.query(sql, params);
-      return result.rows;
-    },
-    async execute(sql, params) {
-      await client.query(sql, params);
-    },
-    async close() {
-      await client.end();
-    },
+    query: convertQuestionMarksToDollarParams(query),
+    params,
   };
 }
 
-function normalizeSqlitePath(url: string): string {
+function loadBunSql(): BunSqlConstructor {
+  const bunRuntime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
+  const SQL = bunRuntime?.SQL;
+  if (SQL) {
+    return SQL;
+  }
+
+  let reason = 'missing Bun.SQL runtime';
+  try {
+    reason = String(Bun.version);
+  } catch (error) {
+    reason = (error as Error).message;
+  }
+
+  throw new Error(`[db] Failed to load Bun.SQL. Run database helpers with Bun. (${reason})`);
+}
+
+function normalizeSqliteUrl(url: string): string {
+  if (url.trim() === ':memory:') {
+    return ':memory:';
+  }
+
   const workspaceRoot = resolveWorkspaceRoot();
-  const target = url.startsWith('file:') ? url.slice('file:'.length) : url;
-  return path.isAbsolute(target) ? path.resolve(target) : path.resolve(workspaceRoot, target);
+  const target = stripSqlitePrefix(url.trim());
+  const resolved = path.isAbsolute(target) ? path.resolve(target) : path.resolve(workspaceRoot, target);
+  return `file:${resolved}`;
+}
+
+function ensureSqliteDirectory(url: string): void {
+  if (url === ':memory:') {
+    return;
+  }
+
+  const filename = stripSqlitePrefix(url);
+  mkdirSync(path.dirname(filename), { recursive: true });
+}
+
+function stripSqlitePrefix(url: string): string {
+  if (url.startsWith('file://')) {
+    return url.slice('file://'.length);
+  }
+  if (url.startsWith('file:')) {
+    return url.slice('file:'.length);
+  }
+  if (url.startsWith('sqlite://')) {
+    return url.slice('sqlite://'.length);
+  }
+  if (url.startsWith('sqlite:')) {
+    return url.slice('sqlite:'.length);
+  }
+  return url;
+}
+
+function convertQuestionMarksToDollarParams(query: string): string {
+  let result = '';
+  let placeholderIndex = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let index = 0; index < query.length; index += 1) {
+    const character = query[index];
+    const next = query[index + 1];
+
+    if (inLineComment) {
+      result += character;
+      if (character === '\n') {
+        inLineComment = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      result += character;
+      if (character === '*' && next === '/') {
+        result += next;
+        index += 1;
+        inBlockComment = false;
+      }
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && character === '-' && next === '-') {
+      result += character + next;
+      index += 1;
+      inLineComment = true;
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && character === '/' && next === '*') {
+      result += character + next;
+      index += 1;
+      inBlockComment = true;
+      continue;
+    }
+
+    if (character === '\'' && !inDoubleQuote) {
+      result += character;
+      if (inSingleQuote && next === '\'') {
+        result += next;
+        index += 1;
+      } else {
+        inSingleQuote = !inSingleQuote;
+      }
+      continue;
+    }
+
+    if (character === '"' && !inSingleQuote) {
+      result += character;
+      if (inDoubleQuote && next === '"') {
+        result += next;
+        index += 1;
+      } else {
+        inDoubleQuote = !inDoubleQuote;
+      }
+      continue;
+    }
+
+    if (!inSingleQuote && !inDoubleQuote && character === '?') {
+      placeholderIndex += 1;
+      result += `$${placeholderIndex}`;
+      continue;
+    }
+
+    result += character;
+  }
+
+  return result;
 }

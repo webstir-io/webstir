@@ -346,6 +346,7 @@ test('scaffold assets expose core backend templates', async () => {
   const schedulerSource = await fs.readFile(schedulerAsset.sourcePath, 'utf8');
   assert.match(schedulerSource, /^#!\/usr\/bin\/env bun/m);
   assert.match(schedulerSource, /bun build\/backend\/jobs\/scheduler\.js --job <name>/);
+  assert.match(schedulerSource, /Bun\.cron\.parse/);
   assert.match(
     schedulerSource,
     /--json\s+Print registered job metadata as JSON for external schedulers/,

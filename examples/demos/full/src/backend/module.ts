@@ -16,6 +16,28 @@ const DEV_FRONTEND_ASSETS = {
   scriptSrc: '/src/frontend/app/app.ts',
 } as const;
 
+type BunCookieMapInstance = {
+  get(name: string): string | null;
+  set(options: {
+    name: string;
+    value: string;
+    path?: string;
+    httpOnly?: boolean;
+    sameSite?: 'lax' | 'strict' | 'none';
+    maxAge?: number;
+    expires?: Date | number | string;
+  }): void;
+  toSetCookieHeaders(): string[];
+};
+
+type BunCookieMapConstructor = new (
+  init?: string[][] | Record<string, string> | string
+) => BunCookieMapInstance;
+
+type BunRuntime = {
+  CookieMap?: BunCookieMapConstructor;
+};
+
 interface RouteMatch {
   readonly name: string;
   readonly method: 'GET' | 'POST';
@@ -406,58 +428,52 @@ export const module = {
 };
 
 function readSessionName(request: Request): string | null {
-  const cookies = parseCookies(request.headers.get('cookie'));
-  return cookies[SESSION_COOKIE_NAME] ?? null;
-}
-
-function parseCookies(header: string | null): Record<string, string> {
-  const values: Record<string, string> = {};
-  for (const part of (header ?? '').split(';')) {
-    const trimmed = part.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    const separator = trimmed.indexOf('=');
-    if (separator <= 0) {
-      continue;
-    }
-
-    const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim();
-    if (!key) {
-      continue;
-    }
-
-    try {
-      values[key] = decodeURIComponent(value);
-    } catch {
-      values[key] = value;
-    }
-  }
-
-  return values;
+  const cookies = new (requireBunCookieMap())(request.headers.get('cookie') ?? '');
+  return cookies.get(SESSION_COOKIE_NAME);
 }
 
 function createSessionCookie(sessionName: string): string {
-  return [
-    `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionName)}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    'Max-Age=3600',
-  ].join('; ');
+  const cookies = new (requireBunCookieMap())();
+  cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: sessionName,
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 3600,
+  });
+  const [header] = cookies.toSetCookieHeaders();
+  if (!header) {
+    throw new Error('Bun.CookieMap did not serialize the progressive-enhancement session cookie.');
+  }
+  return header;
 }
 
 function clearSessionCookie(): string {
-  return [
-    `${SESSION_COOKIE_NAME}=`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    'Max-Age=0',
-    'Expires=Thu, 01 Jan 1970 00:00:00 GMT',
-  ].join('; ');
+  const cookies = new (requireBunCookieMap())();
+  cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: '',
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 0,
+    expires: new Date(0),
+  });
+  const [header] = cookies.toSetCookieHeaders();
+  if (!header) {
+    throw new Error('Bun.CookieMap did not serialize the progressive-enhancement session clear cookie.');
+  }
+  return header;
+}
+
+function requireBunCookieMap(): BunCookieMapConstructor {
+  const runtime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
+  const CookieMap = runtime?.CookieMap;
+  if (!CookieMap) {
+    throw new Error('This demo requires Bun.CookieMap.');
+  }
+  return CookieMap;
 }
 
 function resolveFrontendAssets(): { cssHref: string; scriptSrc: string } {

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -20,6 +20,8 @@ const DEV_FRONTEND_ASSETS = {
   scriptSrc: '/app/app.js'
 } as const;
 const SESSION_MAX_AGE_SECONDS = 60 * 60;
+const CSRF_MAX_AGE_MS = SESSION_MAX_AGE_SECONDS * 1000;
+const GENERATED_CSRF_SECRET = randomBytes(32).toString('base64url');
 
 type ProjectStatus = 'draft' | 'active' | 'archived';
 type FlashLevel = 'info' | 'success' | 'warning' | 'error';
@@ -103,7 +105,6 @@ interface DemoSession {
   projects: DemoProject[];
   flash: FlashMessage[];
   formStates: Record<string, FormState>;
-  csrf: Record<string, string>;
 }
 
 interface PageState {
@@ -115,6 +116,34 @@ interface SessionAccess {
   readonly session: DemoSession;
   readonly setCookie?: string;
 }
+
+type BunCookieMapInstance = {
+  get(name: string): string | null;
+  set(options: {
+    name: string;
+    value: string;
+    path?: string;
+    httpOnly?: boolean;
+    sameSite?: 'lax' | 'strict' | 'none';
+    maxAge?: number;
+    expires?: Date | number | string;
+  }): void;
+  toSetCookieHeaders(): string[];
+};
+
+type BunCookieMapConstructor = new (
+  init?: string[][] | Record<string, string> | string
+) => BunCookieMapInstance;
+
+type BunCsrfApi = {
+  generate(secret?: string, options?: { expiresIn?: number }): string;
+  verify(token: string, options?: { secret?: string; maxAge?: number }): boolean;
+};
+
+type BunRuntime = {
+  CookieMap?: BunCookieMapConstructor;
+  CSRF?: BunCsrfApi;
+};
 
 const FORM_IDS = {
   signIn: 'sign-in',
@@ -544,8 +573,7 @@ function withSessionCookie(setCookie: string | undefined): Record<string, string
 }
 
 function resolveSession(request: IncomingRequest): SessionAccess {
-  const cookies = parseCookies(request.headers.cookie);
-  const existingId = cookies[SESSION_COOKIE_NAME];
+  const existingId = readCookie(request.headers.cookie, SESSION_COOKIE_NAME);
   const existing = existingId ? sessionStore.get(existingId) : undefined;
   if (existing) {
     return { session: existing };
@@ -566,49 +594,25 @@ function createSession(): DemoSession {
     auth: null,
     projects: [],
     flash: [],
-    formStates: {},
-    csrf: {}
+    formStates: {}
   };
 }
 
 function createSessionCookie(sessionId: string): string {
-  return [
-    `${SESSION_COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${SESSION_MAX_AGE_SECONDS}`
-  ].join('; ');
-}
-
-function parseCookies(header: string | string[] | undefined): Record<string, string> {
-  const joined = Array.isArray(header) ? header.join(';') : (header ?? '');
-  const values: Record<string, string> = {};
-  for (const part of joined.split(';')) {
-    const trimmed = part.trim();
-    if (!trimmed) {
-      continue;
-    }
-
-    const separator = trimmed.indexOf('=');
-    if (separator <= 0) {
-      continue;
-    }
-
-    const key = trimmed.slice(0, separator).trim();
-    const value = trimmed.slice(separator + 1).trim();
-    if (!key) {
-      continue;
-    }
-
-    try {
-      values[key] = decodeURIComponent(value);
-    } catch {
-      values[key] = value;
-    }
+  const cookies = new (requireBunCookieMap())();
+  cookies.set({
+    name: SESSION_COOKIE_NAME,
+    value: sessionId,
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: SESSION_MAX_AGE_SECONDS
+  });
+  const [header] = cookies.toSetCookieHeaders();
+  if (!header) {
+    throw new Error('Bun.CookieMap did not serialize the auth-crud session cookie.');
   }
-
-  return values;
+  return header;
 }
 
 function normalizeFormValues(body: unknown): Record<string, string> {
@@ -679,8 +683,11 @@ function validateCsrf(
   values: Record<string, string>
 ): FormIssue[] {
   const providedToken = values._csrf?.trim() ?? '';
-  const expectedToken = ensureCsrfToken(session, formId);
-  if (!providedToken || providedToken !== expectedToken) {
+  const isValid = providedToken.length > 0 && requireBunCsrf().verify(providedToken, {
+    secret: createCsrfSecret(session, formId),
+    maxAge: CSRF_MAX_AGE_MS
+  });
+  if (!isValid) {
     return [{
       code: 'csrf',
       message: 'Form session expired. Reload the page and try again.'
@@ -689,9 +696,18 @@ function validateCsrf(
   return [];
 }
 
-function ensureCsrfToken(session: DemoSession, formId: string): string {
-  session.csrf[formId] ??= randomUUID();
-  return session.csrf[formId];
+function createCsrfToken(session: DemoSession, formId: string): string {
+  return requireBunCsrf().generate(createCsrfSecret(session, formId), {
+    expiresIn: CSRF_MAX_AGE_MS
+  });
+}
+
+function createCsrfSecret(session: DemoSession, formId: string): string {
+  return `${resolveCsrfSecret()}:${session.id}:${formId}`;
+}
+
+function resolveCsrfSecret(): string {
+  return process.env.CSRF_SECRET?.trim() || GENERATED_CSRF_SECRET;
 }
 
 function storeFormState(
@@ -861,7 +877,7 @@ function renderAuthCard(session: DemoSession, signInState: FormState): string {
       '  </div>',
       `  <p id="session-user" data-session-user="${escapeHtml(session.auth.email)}">Signed in as <strong>${escapeHtml(session.auth.email)}</strong>.</p>`,
       `  <form id="auth-sign-out-form" method="post" action="${SIGN_OUT_ACTION}" class="button-row">`,
-      `    <input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(session, FORM_IDS.signOut))}" />`,
+      `    <input type="hidden" name="_csrf" value="${escapeHtml(createCsrfToken(session, FORM_IDS.signOut))}" />`,
       '    <button id="auth-sign-out" type="submit">Sign out</button>',
       '  </form>',
       '</section>'
@@ -877,7 +893,7 @@ function renderAuthCard(session: DemoSession, signInState: FormState): string {
     '  <p class="status">The same forms still post without JavaScript, then redirect back into this page.</p>',
     renderIssueList(grouped.form),
     `  <form id="auth-sign-in-form" method="post" action="${SIGN_IN_ACTION}" class="grid">`,
-    `    <input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(session, FORM_IDS.signIn))}" />`,
+    `    <input type="hidden" name="_csrf" value="${escapeHtml(createCsrfToken(session, FORM_IDS.signIn))}" />`,
     '    <label for="auth-email">',
     '      Email',
     `      <input id="auth-email" name="email" type="email" autocomplete="username" value="${escapeHtml(readFormValue(signInState.values, 'email') ?? '')}" />`,
@@ -907,7 +923,7 @@ function renderWorkspaceCard(session: DemoSession, pageState: PageState, createS
       : '  <p class="status">Reload after any mutation to confirm the session-backed project list persists.</p>',
     renderIssueList(createIssues.form),
     `  <form id="project-create-form" method="post" action="${CREATE_PROJECT_ACTION}" class="grid">`,
-    `    <input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(session, FORM_IDS.createProject))}" />`,
+    `    <input type="hidden" name="_csrf" value="${escapeHtml(createCsrfToken(session, FORM_IDS.createProject))}" />`,
     '    <div class="project-grid">',
     '      <label for="project-title">',
     '        Project title',
@@ -984,7 +1000,7 @@ function renderProjectCard(session: DemoSession, pageState: PageState, project: 
     `  <p class="project-meta"><span>Created ${formatIsoDate(project.createdAt)}</span><span>Updated ${formatIsoDate(project.updatedAt)}</span></p>`,
     renderIssueList(grouped.form),
     `  <form id="project-edit-form-${escapeHtml(project.id)}" method="post" action="${UPDATE_PROJECT_ACTION}" class="grid">`,
-    `    <input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(session, formId))}" />`,
+    `    <input type="hidden" name="_csrf" value="${escapeHtml(createCsrfToken(session, formId))}" />`,
     `    <input type="hidden" name="projectId" value="${escapeHtml(project.id)}" />`,
     '    <div class="project-grid">',
     `      <label for="project-title-${escapeHtml(project.id)}">`,
@@ -1012,7 +1028,7 @@ function renderProjectCard(session: DemoSession, pageState: PageState, project: 
     '    </div>',
     '  </form>',
     `  <form id="project-delete-form-${escapeHtml(project.id)}" method="post" action="${DELETE_PROJECT_ACTION}" class="button-row">`,
-    `    <input type="hidden" name="_csrf" value="${escapeHtml(ensureCsrfToken(session, deleteFormId))}" />`,
+    `    <input type="hidden" name="_csrf" value="${escapeHtml(createCsrfToken(session, deleteFormId))}" />`,
     `    <input type="hidden" name="projectId" value="${escapeHtml(project.id)}" />`,
     `    <button class="secondary" type="submit" data-project-delete="${escapeHtml(project.id)}">Delete project</button>`,
     '  </form>',
@@ -1135,6 +1151,29 @@ function isProjectStatus(value: string | undefined): value is ProjectStatus {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function readCookie(header: string | string[] | undefined, name: string): string | undefined {
+  const cookies = new (requireBunCookieMap())(Array.isArray(header) ? header.join('; ') : (header ?? ''));
+  return cookies.get(name) ?? undefined;
+}
+
+function requireBunCookieMap(): BunCookieMapConstructor {
+  const runtime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
+  const CookieMap = runtime?.CookieMap;
+  if (!CookieMap) {
+    throw new Error('This demo requires Bun.CookieMap.');
+  }
+  return CookieMap;
+}
+
+function requireBunCsrf(): BunCsrfApi {
+  const runtime = (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun;
+  const csrf = runtime?.CSRF;
+  if (!csrf) {
+    throw new Error('This demo requires Bun.CSRF.');
+  }
+  return csrf;
 }
 
 function sendRouteResponse(response: ServerResponse, result: RouteResult): void {

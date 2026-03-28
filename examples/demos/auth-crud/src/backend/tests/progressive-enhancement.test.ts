@@ -108,6 +108,30 @@ test('enhanced create validation failure returns a fragment shell with inline er
   assert.isTrue(html.includes('Too blank to save'));
 });
 
+test('enhanced create rejects invalid csrf tokens with the existing fragment flow', async () => {
+  const signedIn = await signInAndLoadPage();
+  const response = await requestWithCookie(`${DEMO_PATH}/projects/create`, signedIn.cookie, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'x-webstir-client-nav': '1'
+    },
+    body: [
+      `_csrf=${encodeURIComponent('wrong-token')}`,
+      `title=${encodeURIComponent('Should Fail')}`,
+      'status=active',
+      `notes=${encodeURIComponent('CSRF should still block this mutation.')}`
+    ].join('&')
+  });
+
+  const html = await response.text();
+
+  assert.equal(response.status, 403);
+  assert.equal(response.headers.get('x-webstir-fragment-target'), 'backoffice-shell');
+  assert.isTrue(html.includes('Form session expired. Reload the page and try again.'));
+  assert.isTrue(html.includes('Should Fail'));
+});
+
 test('enhanced update and delete return fragment shells and persist across reloads', async () => {
   const signedIn = await signInAndLoadPage();
   const projectId = extractFirstProjectId(signedIn.html);
