@@ -49,6 +49,7 @@ This plan stays focused on the issues that most directly affect correctness, upg
 
 ### Current State
 
+- Workstream 1 Slice B is in progress: strengthen `@webstir-io/webstir-testing` package-local coverage around discovery, runtime filtering, CLI `test`, and watch reruns.
 - Milestone C slices A-C are done on `main`: the fresh-scaffold backend defaults to the package-managed Bun runtime and no longer copies framework-owned runtime wrappers.
 - The `full` scaffold uses the same thin package-managed Bun entry shape as `api`, while keeping the progressive-enhancement demo module and install/add-route coverage intact.
 - External copied/temp workspaces used by orchestrator `smoke` and `test` materialize repo-local package dependencies before backend runtime execution, so the thin runtime shape stays green outside the monorepo tree.
@@ -154,6 +155,42 @@ Success criteria:
 - SSR/document loading works the same in dev, CI, and deployed environments.
 
 ## Current Execution Track
+
+### Workstream 1 Slice B: Strengthen Testing Runner Package Coverage
+
+Status:
+
+- Implemented on `codex/testing-runner-coverage`; local review gate green, pending PR/merge.
+
+Objective:
+
+Raise release confidence for `@webstir-io/webstir-testing` by adding package-local integration coverage for the published runner contract instead of relying mainly on orchestrator-level proofs.
+
+Primary targets:
+
+- `packages/tooling/webstir-testing/tests/**`
+- `packages/tooling/webstir-testing/scripts/smoke.mjs`
+- `packages/tooling/webstir-testing/src/**` only where testability gaps force a small supporting change
+
+Acceptance:
+
+- package-local tests cover manifest discovery and runtime filtering on temp workspaces
+- package-local tests cover `dist/cli.js test` against frontend and backend fixture workspaces
+- package-local tests cover a real watch rerun after a source change
+- package-local `test` and `smoke` stay green
+
+Out of scope:
+
+- orchestrator-wide test restructuring
+- backend-harness failure injection matrices
+- public API redesign for the testing package
+
+Current branch-local check status:
+
+- `bun run check:biome` green
+- `bun run lint` green
+- `bun run --filter @webstir-io/webstir-testing test` green
+- `bun run --filter @webstir-io/webstir-testing smoke` green
 
 ### Workstream 3 Slice D: Remove Fastify As A Supported Runtime Path
 
