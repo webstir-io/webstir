@@ -147,91 +147,97 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
   const entryPath = path.join(workspace, 'build', 'backend', 'index.js');
   const entryUrl = pathToFileURL(entryPath).href;
   const runtime = options.runtime ?? 'bun';
-  const child =
-    runtime === 'bun'
-      ? spawn('bun', [entryPath], {
-          cwd: options.cwd ?? workspace,
-          env: {
-            ...process.env,
-            PORT: String(port),
-            NODE_ENV: 'test',
-            ...extraEnv,
-          },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-      : runtime === 'bun-import'
-        ? spawn(
-            'bun',
-            ['--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`],
-            {
-              cwd: options.cwd ?? workspace,
-              env: {
-                ...process.env,
-                PORT: String(port),
-                NODE_ENV: 'test',
-                ...extraEnv,
-              },
-              stdio: ['ignore', 'pipe', 'pipe'],
+  let candidatePort = port;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const child =
+      runtime === 'bun'
+        ? spawn('bun', [entryPath], {
+            cwd: options.cwd ?? workspace,
+            env: {
+              ...process.env,
+              PORT: String(candidatePort),
+              NODE_ENV: 'test',
+              ...extraEnv,
             },
-          )
-        : spawn(
-            'node',
-            [
-              '--input-type=module',
-              '--eval',
-              `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`,
-            ],
-            {
-              cwd: options.cwd ?? workspace,
-              env: {
-                ...process.env,
-                PORT: String(port),
-                NODE_ENV: 'test',
-                ...extraEnv,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+        : runtime === 'bun-import'
+          ? spawn(
+              'bun',
+              ['--eval', `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`],
+              {
+                cwd: options.cwd ?? workspace,
+                env: {
+                  ...process.env,
+                  PORT: String(candidatePort),
+                  NODE_ENV: 'test',
+                  ...extraEnv,
+                },
+                stdio: ['ignore', 'pipe', 'pipe'],
               },
-              stdio: ['ignore', 'pipe', 'pipe'],
-            },
-          );
+            )
+          : spawn(
+              'node',
+              [
+                '--input-type=module',
+                '--eval',
+                `import(${JSON.stringify(entryUrl)}).then((mod) => mod.start())`,
+              ],
+              {
+                cwd: options.cwd ?? workspace,
+                env: {
+                  ...process.env,
+                  PORT: String(candidatePort),
+                  NODE_ENV: 'test',
+                  ...extraEnv,
+                },
+                stdio: ['ignore', 'pipe', 'pipe'],
+              },
+            );
 
-  let stdout = '';
-  let stderr = '';
-  child.stdout.setEncoding('utf8');
-  child.stderr.setEncoding('utf8');
-  child.stdout.on('data', (chunk) => {
-    stdout += chunk;
-  });
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk;
-  });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+    });
 
-  try {
-    await Promise.race([
-      waitFor(async () => await canConnectToPort(port), 10000, 50),
-      new Promise((_, reject) => {
-        child.once('exit', (code, signal) => {
-          reject(
-            new Error(
-              `Backend server exited before readiness (code=${code ?? 'null'} signal=${signal ?? 'null'}).`,
-            ),
-          );
-        });
-      }),
-    ]);
-  } catch {
-    child.kill('SIGTERM');
-    await onceExit(child);
-    throw new Error(`Backend server did not become ready.\nstdout:\n${stdout}\nstderr:\n${stderr}`);
-  }
-
-  return {
-    child,
-    getStdout: () => stdout,
-    getStderr: () => stderr,
-    async stop() {
+    try {
+      await waitForProcessReady(child, 'API server running', 10000);
+      return {
+        child,
+        port: candidatePort,
+        getStdout: () => stdout,
+        getStderr: () => stderr,
+        async stop() {
+          child.kill('SIGTERM');
+          await onceExit(child);
+        },
+      };
+    } catch (error) {
       child.kill('SIGTERM');
       await onceExit(child);
-    },
-  };
+      const message = error instanceof Error ? error.message : String(error);
+      lastError = new Error(
+        `Backend server did not become ready on port ${candidatePort}.\nstdout:\n${stdout}\nstderr:\n${stderr}\nerror:\n${message}`,
+      );
+
+      if (attempt < 9 && [stdout, stderr, message].some((value) => value.includes('EADDRINUSE'))) {
+        candidatePort += 1;
+        continue;
+      }
+
+      throw lastError;
+    }
+  }
+
+  throw lastError ?? new Error('Backend server did not become ready.');
 }
 
 async function buildRuntimeWorkspace(workspace, { moduleSource, mode = 'publish' } = {}) {
@@ -641,10 +647,11 @@ async function assertRequestHookRuntimeBehavior() {
     moduleSource: createRequestHookRuntimeModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
     AUTH_SERVICE_TOKENS: 'service-secret',
   });
+  port = server.port;
 
   try {
     const normalResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo`, {
@@ -700,7 +707,7 @@ async function assertBunRequestHookRuntimeBehavior() {
     moduleSource: createRequestHookRuntimeModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(
     workspace,
     port,
@@ -712,6 +719,7 @@ async function assertBunRequestHookRuntimeBehavior() {
       runtime: 'bun',
     },
   );
+  port = server.port;
 
   try {
     const normalResponse = await fetch(`http://127.0.0.1:${port}/hooks/demo`, {
@@ -786,7 +794,6 @@ function encodeJwtSegment(value) {
 }
 
 async function startJwksServer(payload) {
-  const port = await getOpenPort();
   const server = http.createServer((req, res) => {
     if ((req.url ?? '/') !== '/.well-known/jwks.json') {
       res.statusCode = 404;
@@ -802,11 +809,16 @@ async function startJwksServer(payload) {
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '127.0.0.1', () => resolve());
+    server.listen(0, '127.0.0.1', () => resolve());
   });
 
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Failed to read JWKS test server address.');
+  }
+
   return {
-    url: `http://127.0.0.1:${port}/.well-known/jwks.json`,
+    url: `http://127.0.0.1:${address.port}/.well-known/jwks.json`,
     async stop() {
       await new Promise((resolve, reject) => {
         server.close((error) => {
@@ -827,7 +839,7 @@ async function assertJwtTimeClaimBehavior() {
     moduleSource: createAuthRuntimeModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const secret = 'jwt-test-secret';
   const issuer = 'https://issuer.example.com/';
   const audience = 'webstir-tests';
@@ -836,6 +848,7 @@ async function assertJwtTimeClaimBehavior() {
     AUTH_JWT_ISSUER: issuer,
     AUTH_JWT_AUDIENCE: audience,
   });
+  port = server.port;
 
   try {
     const now = Math.floor(Date.now() / 1000);
@@ -925,13 +938,14 @@ async function assertJwtAsymmetricBehavior() {
     ],
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
     AUTH_JWT_PUBLIC_KEY: publicKeyPair.publicKey.export({ type: 'spki', format: 'pem' }).toString(),
     AUTH_JWKS_URL: jwks.url,
     AUTH_JWT_ISSUER: issuer,
     AUTH_JWT_AUDIENCE: audience,
   });
+  port = server.port;
 
   try {
     const publicKeyToken = signJwtToken(
@@ -1025,10 +1039,11 @@ async function assertRequestBodyLimitBehavior() {
     moduleSource: createBodyLimitRuntimeModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
     REQUEST_BODY_MAX_BYTES: '16',
   });
+  port = server.port;
 
   try {
     const acceptedResponse = await fetch(`http://127.0.0.1:${port}/echo`, {
@@ -1066,8 +1081,9 @@ async function assertSessionRuntimeBehavior() {
     moduleSource: createSessionRuntimeModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port);
+  port = server.port;
 
   try {
     const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
@@ -1137,10 +1153,11 @@ async function assertFormWorkflowRuntimeBehavior() {
     moduleSource: createFormWorkflowModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
     AUTH_SERVICE_TOKENS: 'service-secret',
   });
+  port = server.port;
 
   try {
     const initialPageResponse = await fetch(`http://127.0.0.1:${port}/account/settings`, {
@@ -1328,10 +1345,11 @@ async function assertRequestTimeViewRuntimeBehavior() {
     ].join('\n'),
   );
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port, {
     AUTH_SERVICE_TOKENS: 'service-secret',
   });
+  port = server.port;
 
   try {
     const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
@@ -1459,7 +1477,7 @@ async function assertRequestTimeViewWorkspaceRootBehavior({
     ].join('\n'),
   );
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const alternateCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-backend-alt-cwd-'));
   const server = await startBuiltServer(
     workspace,
@@ -1472,6 +1490,7 @@ async function assertRequestTimeViewWorkspaceRootBehavior({
       cwd: alternateCwd,
     },
   );
+  port = server.port;
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/accounts/demo`, {
@@ -1615,8 +1634,9 @@ async function assertFragmentRuntimeBehavior() {
     moduleSource: createFragmentRuntimeModuleSource(),
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port);
+  port = server.port;
 
   try {
     const redirectResponse = await fetch(`http://127.0.0.1:${port}/actions/redirect`, {
@@ -2192,8 +2212,9 @@ test('default backend scaffold preserves the readiness log contract', async (t) 
 `,
   });
 
-  const port = await getOpenPort();
+  let port = await getOpenPort();
   const server = await startBuiltServer(workspace, port);
+  port = server.port;
 
   try {
     await waitFor(() => server.getStdout().includes('API server running'), 5000, 50);
@@ -2229,17 +2250,61 @@ async function onceExit(child) {
   await new Promise((resolve) => child.once('exit', resolve));
 }
 
-async function canConnectToPort(port) {
-  return await new Promise((resolve) => {
-    const socket = net.createConnection({ host: '127.0.0.1', port });
-    const settle = (value) => {
-      socket.removeAllListeners();
-      socket.destroy();
-      resolve(value);
+async function waitForProcessReady(child, readyText, timeoutMs) {
+  const normalized = readyText
+    .split('|')
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const readinessMatches = (line) =>
+    normalized.length === 0 ? line.length > 0 : normalized.some((token) => line.includes(token));
+
+  await new Promise((resolve, reject) => {
+    const cleanup = () => {
+      child.stdout?.off('data', onStdout);
+      child.stderr?.off('data', onStderr);
+      child.off('exit', onExit);
+      clearTimeout(timer);
     };
-    socket.once('connect', () => settle(true));
-    socket.once('error', () => settle(false));
-    socket.setTimeout(200, () => settle(false));
+
+    const onStdout = (chunk) => {
+      const text = chunk.toString();
+      for (const line of text.split(/\r?\n/)) {
+        if (line && readinessMatches(line)) {
+          cleanup();
+          resolve();
+          return;
+        }
+      }
+    };
+
+    const onStderr = (chunk) => {
+      const text = chunk.toString();
+      for (const line of text.split(/\r?\n/)) {
+        if (line && readinessMatches(line)) {
+          cleanup();
+          resolve();
+          return;
+        }
+      }
+    };
+
+    const onExit = (code, signal) => {
+      cleanup();
+      reject(
+        new Error(
+          `Backend server exited before readiness (code=${code ?? 'null'} signal=${signal ?? 'null'}).`,
+        ),
+      );
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`Backend server did not become ready within ${timeoutMs}ms.`));
+    }, timeoutMs);
+
+    child.stdout?.on('data', onStdout);
+    child.stderr?.on('data', onStderr);
+    child.once('exit', onExit);
   });
 }
 

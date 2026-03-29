@@ -17,14 +17,11 @@ async function writeHarnessFixture(
     entryPath = path.join(workspace, 'build', 'backend', 'index.js'),
     manifestPath = path.join(workspace, '.webstir', 'backend-manifest.json'),
     manifest = { name: '@demo/backend', version: '0.0.1', routes: [] },
+    entrySource = "console.log('API server running');\nsetInterval(() => {}, 1000);\n",
   } = {},
 ) {
   await fs.mkdir(path.dirname(entryPath), { recursive: true });
-  await fs.writeFile(
-    entryPath,
-    "console.log('API server running');\nsetInterval(() => {}, 1000);\n",
-    'utf8',
-  );
+  await fs.writeFile(entryPath, entrySource, 'utf8');
   await fs.mkdir(path.dirname(manifestPath), { recursive: true });
   await fs.writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
 }
@@ -150,6 +147,64 @@ test('createBackendTestHarness resolves WEBSTIR_WORKSPACE_ROOT from env override
   } finally {
     await harness?.stop();
     process.chdir(previousCwd);
+  }
+});
+
+test('createBackendTestHarness retries on EADDRINUSE and reports the bound port', async (t) => {
+  if (!(await canListenOnTcp())) {
+    t.skip('TCP listen is not permitted in this environment.');
+    return;
+  }
+
+  const workspace = await createTempDir('webstir-backend-harness-port-retry-');
+  const requestedPort = await getOpenPort();
+  const blocker = net.createServer();
+  await new Promise((resolve, reject) => {
+    blocker.once('error', reject);
+    blocker.listen(requestedPort, '127.0.0.1', () => resolve());
+  });
+
+  await writeHarnessFixture(workspace, {
+    entrySource: `
+import net from 'node:net';
+
+const server = net.createServer((socket) => socket.end());
+const port = Number(process.env.PORT ?? '0');
+
+server.listen(port, '127.0.0.1', () => {
+  console.log('API server running');
+});
+
+const shutdown = () => {
+  server.close(() => process.exit(0));
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+`,
+  });
+
+  let harness;
+  try {
+    harness = await createBackendTestHarness({
+      workspaceRoot: workspace,
+      port: requestedPort,
+    });
+
+    assert.notEqual(harness.context.port, requestedPort);
+    assert.equal(harness.context.env.PORT, String(harness.context.port));
+    assert.match(harness.context.baseUrl, new RegExp(`:${harness.context.port}/?$`));
+  } finally {
+    await harness?.stop();
+    await new Promise((resolve, reject) => {
+      blocker.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
   }
 });
 

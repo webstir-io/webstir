@@ -2,7 +2,6 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import net from 'node:net';
 import path from 'node:path';
 
 import type { ModuleManifest } from '@webstir-io/module-contract';
@@ -64,28 +63,18 @@ export async function createBackendTestHarness(
     );
   }
 
+  const manifest = await loadManifest(manifestPath);
   const requestedPort =
     options.port ?? readInt(resolvedEnv.WEBSTIR_BACKEND_TEST_PORT, DEFAULT_PORT);
-  const port = await findOpenPort(requestedPort);
-  const env = createRuntimeEnv({
+  const { child, env, port } = await startBackendTestProcess({
     workspaceRoot,
-    port,
+    entry,
+    requestedPort,
     baseEnv: resolvedEnv,
     overrides: options.env,
+    readyText,
+    readyTimeoutMs,
   });
-  const manifest = await loadManifest(manifestPath);
-  const child = spawn(process.execPath, [entry], {
-    cwd: workspaceRoot,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  try {
-    await waitForReady(child, readyText, readyTimeoutMs);
-  } catch (error) {
-    await stopProcess(child);
-    throw error;
-  }
 
   const baseUrl = new URL(env.API_BASE_URL ?? `http://127.0.0.1:${port}`);
   const context: BackendTestContext = {
@@ -147,36 +136,67 @@ function readInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-async function findOpenPort(start: number, attempts = 10): Promise<number> {
-  let candidate = start;
-  for (let index = 0; index < attempts; index += 1) {
-    // eslint-disable-next-line no-await-in-loop
-    if (await isPortAvailable(candidate)) {
-      return candidate;
-    }
-    candidate += 1;
-  }
-  throw new Error(`Unable to find an open port for backend tests (tried starting at ${start}).`);
-}
-
-function isPortAvailable(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once('error', () => {
-      server.close(() => resolve(false));
-    });
-    server.once('listening', () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, '127.0.0.1');
-  });
-}
-
 interface RuntimeEnvOptions {
   workspaceRoot: string;
   port: number;
   baseEnv: Record<string, string | undefined>;
   overrides?: Record<string, string | undefined>;
+}
+
+interface StartBackendTestProcessOptions {
+  workspaceRoot: string;
+  entry: string;
+  requestedPort: number;
+  baseEnv: Record<string, string | undefined>;
+  overrides?: Record<string, string | undefined>;
+  readyText: string;
+  readyTimeoutMs: number;
+}
+
+async function startBackendTestProcess(
+  options: StartBackendTestProcessOptions,
+): Promise<{ child: ChildProcess; env: Record<string, string>; port: number }> {
+  let candidate = options.requestedPort;
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const env = createRuntimeEnv({
+      workspaceRoot: options.workspaceRoot,
+      port: candidate,
+      baseEnv: options.baseEnv,
+      overrides: options.overrides,
+    });
+    const child = spawn(process.execPath, [options.entry], {
+      cwd: options.workspaceRoot,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const output = captureChildOutput(child);
+
+    try {
+      await waitForReady(child, options.readyText, options.readyTimeoutMs);
+      output.stop();
+      return { child, env, port: candidate };
+    } catch (error) {
+      const captured = output.read();
+      output.stop();
+      await stopProcess(child);
+      const message = error instanceof Error ? error.message : String(error);
+      const failure = new Error(
+        `Backend test server did not become ready on port ${candidate}.\nstdout:\n${captured.stdout}\nstderr:\n${captured.stderr}\nerror:\n${message}`,
+      );
+
+      if (attempt < 9 && indicatesPortInUse(captured.stdout, captured.stderr, message)) {
+        lastError = failure;
+        candidate += 1;
+        continue;
+      }
+
+      throw failure;
+    }
+  }
+
+  throw lastError ?? new Error('Backend test server did not become ready.');
 }
 
 function createRuntimeEnv(options: RuntimeEnvOptions): Record<string, string> {
@@ -198,6 +218,38 @@ function createRuntimeEnv(options: RuntimeEnvOptions): Record<string, string> {
     WORKSPACE_ROOT: options.workspaceRoot,
     WEBSTIR_BACKEND_TEST_RUN: '1',
   };
+}
+
+function captureChildOutput(child: ChildProcess): {
+  stop(): void;
+  read(): { stdout: string; stderr: string };
+} {
+  let stdout = '';
+  let stderr = '';
+
+  const onStdout = (chunk: Buffer | string) => {
+    stdout += chunk.toString();
+  };
+  const onStderr = (chunk: Buffer | string) => {
+    stderr += chunk.toString();
+  };
+
+  child.stdout?.on('data', onStdout);
+  child.stderr?.on('data', onStderr);
+
+  return {
+    stop() {
+      child.stdout?.off('data', onStdout);
+      child.stderr?.off('data', onStderr);
+    },
+    read() {
+      return { stdout, stderr };
+    },
+  };
+}
+
+function indicatesPortInUse(stdout: string, stderr: string, message: string): boolean {
+  return [stdout, stderr, message].some((value) => value.includes('EADDRINUSE'));
 }
 
 function resolveWorkspacePath(workspaceRoot: string, value: string): string {
