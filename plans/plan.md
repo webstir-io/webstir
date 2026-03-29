@@ -161,6 +161,7 @@ Success criteria:
 Status:
 
 - Implemented and locally validated with package-local backend tests plus the repo `check:required` gate.
+- Open in PR #157 for merge once GitHub checks complete.
 
 Objective:
 
