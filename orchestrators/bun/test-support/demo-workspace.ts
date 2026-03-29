@@ -34,8 +34,15 @@ export async function copyDemoWorkspace(
 }
 
 export async function removeDemoWorkspace(copy: DemoWorkspaceCopy): Promise<void> {
+  try {
+    await rm(copy.cleanupRoot, { recursive: true, force: true });
+  } catch (error) {
+    if (!isRetryableCleanupError(error)) {
+      throw error;
+    }
+    rmSync(copy.cleanupRoot, { recursive: true, force: true });
+  }
   cleanupRoots.delete(copy.cleanupRoot);
-  await rm(copy.cleanupRoot, { recursive: true, force: true });
 }
 
 function registerCleanupHook(): void {
@@ -54,4 +61,13 @@ function registerCleanupHook(): void {
   });
 
   cleanupRegistered = true;
+}
+
+function isRetryableCleanupError(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      (error.code === 'EFAULT' || error.code === 'UNKNOWN'),
+  );
 }

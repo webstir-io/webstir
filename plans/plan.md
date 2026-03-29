@@ -156,6 +156,35 @@ Success criteria:
 
 ## Current Execution Track
 
+### Workstream 1 Slice C: Stabilize Backend Test Port Allocation
+
+Status:
+
+- Implemented and locally validated with package-local backend tests plus the repo `check:required` gate.
+
+Objective:
+
+Remove the flaky reserve-then-release TCP port selection path from backend tests so the required gate stays trustworthy under parallel execution.
+
+Primary targets:
+
+- `packages/tooling/webstir-backend/tests/integration.test.js`
+- `packages/tooling/webstir-backend/src/testing/index.ts`
+- nearby backend tests only if they need coverage updates for the same startup path
+
+Acceptance:
+
+- backend integration startup no longer depends on probing and releasing a port before the child process binds it
+- the package test harness uses the same safer startup behavior
+- package-local backend tests stay green
+- `bun run check:required` is green from the repo root
+
+Out of scope:
+
+- backend runtime feature changes
+- broad test harness redesign outside backend startup
+- docs or plan cleanup unrelated to the flaky gate
+
 ### Workstream 1 Slice B: Strengthen Testing Runner Package Coverage
 
 Status:
