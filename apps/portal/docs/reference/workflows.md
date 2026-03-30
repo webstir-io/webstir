@@ -11,6 +11,7 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 - `webstir publish`
 - `webstir smoke`
 - `webstir operations`
+- `webstir inspect`
 - `webstir agent`
 - `webstir doctor`
 - `webstir add-page`
@@ -28,7 +29,7 @@ When in doubt, use this path:
 4. Use `webstir add-route` for backend endpoints that need manifest metadata or inspection visibility
 5. Define request-time views in `src/backend/module.ts` when a page needs server-loaded data at request time
 6. Enable `client-nav` only after the baseline HTML flow is already correct
-7. Use `webstir doctor` to confirm scaffold health and backend manifest health before shipping
+7. Use `webstir inspect` to confirm scaffold health plus the frontend/backend contract surfaces before shipping
 8. Use `webstir repair` to restore scaffold drift without changing the app shape
 9. Use `webstir publish` plus the Bun Docker deployment contract for shipped `api` and `full` workspaces
 

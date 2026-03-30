@@ -74,16 +74,25 @@ export function buildCheckPlan(mode) {
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:install:standalone'],
     },
   ];
+  const releaseSteps = [
+    ...requiredSteps,
+    {
+      label: 'recipe-app benchmark',
+      command: ['bun', 'run', 'benchmark:agent-tasks'],
+    },
+  ];
 
   switch (mode) {
     case 'required':
       return requiredSteps;
+    case 'release':
+      return releaseSteps;
     case 'all':
     case 'with-watch-browser':
       return requiredSteps;
     default:
       throw new Error(
-        `Unknown check mode "${mode}". Expected one of: required, with-watch-browser.`,
+        `Unknown check mode "${mode}". Expected one of: required, release, with-watch-browser.`,
       );
   }
 }

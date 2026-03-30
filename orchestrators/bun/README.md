@@ -8,9 +8,12 @@ Current command surface:
 
 - `init`
 - `refresh`
+- `inspect`
+- `frontend-inspect`
 - `doctor`
 - `repair`
 - `operations`
+- `mcp`
 - `agent`
 - `enable`
 - `add-page`

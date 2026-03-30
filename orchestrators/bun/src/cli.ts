@@ -14,7 +14,11 @@ import {
   formatDoctorJson,
   formatDoctorSummary,
   formatEnableSummary,
+  formatFrontendInspectJson,
+  formatFrontendInspectSummary,
   formatInitSummary,
+  formatInspectJson,
+  formatInspectSummary,
   formatOperationsJson,
   formatOperationsSummary,
   formatPublishSummary,
@@ -42,7 +46,10 @@ const HELP_TEXT = `Usage:
   webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--interaction <navigation|mutation>] [--session <optional|required>] [--session-write] [--form-urlencoded] [--csrf] [--fragment-target <target>] [--fragment-selector <selector>] [--fragment-mode <replace|append|prepend>]
   webstir add-job <name> --workspace <path> [--schedule <expression>]
   webstir operations
+  webstir mcp
   webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> [...]
+  webstir inspect --workspace <path>
+  webstir frontend-inspect --workspace <path>
   webstir backend-inspect --workspace <path>
   webstir doctor --workspace <path>
   webstir test --workspace <path> [--runtime <frontend|backend|all>]
@@ -61,7 +68,10 @@ Commands:
   add-route  Scaffold a backend route in an existing workspace.
   add-job    Scaffold a backend job in an existing workspace.
   operations  List the stable Webstir framework operations.
+  mcp        Run the Webstir MCP server over stdio.
   agent      Orchestrate stable Webstir operations for a narrow goal.
+  inspect    Diagnose and surface stable frontend and backend contract data.
+  frontend-inspect  Inspect stable frontend workspace facts for an existing workspace.
   backend-inspect  Inspect the backend manifest for an existing workspace.
   doctor     Diagnose scaffold drift and backend health for an existing workspace.
   test       Build and run workspace tests with the Bun orchestrator.
@@ -99,7 +109,10 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     command !== 'add-route' &&
     command !== 'add-job' &&
     command !== 'operations' &&
+    command !== 'mcp' &&
     command !== 'agent' &&
+    command !== 'inspect' &&
+    command !== 'frontend-inspect' &&
     command !== 'backend-inspect' &&
     command !== 'doctor' &&
     command !== 'test' &&
@@ -137,12 +150,14 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     options.json &&
     command !== 'operations' &&
     command !== 'agent' &&
+    command !== 'inspect' &&
+    command !== 'frontend-inspect' &&
     command !== 'backend-inspect' &&
     command !== 'doctor' &&
     command !== 'repair'
   ) {
     io.stderr.write(
-      `Only operations, agent, backend-inspect, doctor, and repair accept --json.\n\n${HELP_TEXT}`,
+      `Only operations, agent, inspect, frontend-inspect, backend-inspect, doctor, and repair accept --json.\n\n${HELP_TEXT}`,
     );
     return 1;
   }
@@ -153,7 +168,13 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const workspaceRoot = options.workspaceRoot;
-  if (command !== 'init' && command !== 'smoke' && command !== 'operations' && !workspaceRoot) {
+  if (
+    command !== 'init' &&
+    command !== 'smoke' &&
+    command !== 'operations' &&
+    command !== 'mcp' &&
+    !workspaceRoot
+  ) {
     io.stderr.write(`Missing required --workspace <path>.\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -198,6 +219,25 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       io.stdout.write(
         `${options.json ? formatOperationsJson(operations) : formatOperationsSummary(operations)}\n`,
       );
+      return 0;
+    }
+
+    if (command === 'mcp') {
+      if (
+        options.host ||
+        options.port !== undefined ||
+        options.verbose ||
+        options.hmrVerbose ||
+        options.positionals.length > 0 ||
+        options.workspaceRoot ||
+        options.json
+      ) {
+        io.stderr.write(`MCP does not accept CLI options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const { runMcpServer } = await import('./mcp/server.ts');
+      await runMcpServer();
       return 0;
     }
     if (command === 'add-page') {
@@ -295,6 +335,27 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return 0;
     }
 
+    if (command === 'frontend-inspect') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Frontend-inspect does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Frontend-inspect does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const { runFrontendInspect } = await import('./frontend-inspect.ts');
+      const result = await runFrontendInspect({
+        workspaceRoot: requireWorkspaceRoot(),
+      });
+      io.stdout.write(
+        `${options.json ? formatFrontendInspectJson(result) : formatFrontendInspectSummary(result)}\n`,
+      );
+      return 0;
+    }
+
     if (command === 'doctor') {
       if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Doctor does not accept watch options.\n\n${HELP_TEXT}`);
@@ -314,6 +375,29 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       );
       io.stdout.write(`${options.json ? formatDoctorJson(result) : formatDoctorSummary(result)}\n`);
       return result.healthy ? 0 : 1;
+    }
+
+    if (command === 'inspect') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Inspect does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Inspect does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const { runInspect } = await import('./inspect.ts');
+      const result = await withSuppressedStdout(() =>
+        runInspect({
+          workspaceRoot: requireWorkspaceRoot(),
+        }),
+      );
+      io.stdout.write(
+        `${options.json ? formatInspectJson(result) : formatInspectSummary(result)}\n`,
+      );
+      return result.success ? 0 : 1;
     }
 
     if (command === 'agent') {

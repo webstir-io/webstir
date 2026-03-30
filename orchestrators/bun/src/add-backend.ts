@@ -1,3 +1,9 @@
+import type {
+  AddJobOptions,
+  AddRouteOptions,
+  UpdateRouteContractOptions as BackendUpdateRouteContractOptions,
+} from '@webstir-io/webstir-backend';
+
 import type { AddCommandResult } from './add.ts';
 
 import { monorepoRoot } from './paths.ts';
@@ -7,9 +13,68 @@ export interface RunAddBackendOptions {
   readonly rawArgs: readonly string[];
 }
 
+export type AddRouteScaffoldOptions = AddRouteOptions;
+export type AddJobScaffoldOptions = AddJobOptions;
+export type UpdateRouteContractOptions = BackendUpdateRouteContractOptions;
+
 export async function runAddRouteCommand(options: RunAddBackendOptions): Promise<AddCommandResult> {
+  return await runAddRouteScaffold({
+    workspaceRoot: options.workspaceRoot,
+    ...parseAddRouteScaffoldArgs(options.rawArgs),
+  });
+}
+
+export async function runAddRouteScaffold(
+  options: AddRouteScaffoldOptions,
+): Promise<AddCommandResult> {
   const backendAdd = await loadBackendAddModule();
-  const parsed = parseBackendCommandArgs(options.rawArgs, {
+  const result = await backendAdd.runAddRoute(options);
+
+  return {
+    workspaceRoot: options.workspaceRoot,
+    subject: 'route',
+    target: result.target,
+    changes: result.changes,
+  };
+}
+
+export async function runAddJobCommand(options: RunAddBackendOptions): Promise<AddCommandResult> {
+  return await runAddJobScaffold({
+    workspaceRoot: options.workspaceRoot,
+    ...parseAddJobScaffoldArgs(options.rawArgs),
+  });
+}
+
+export async function runAddJobScaffold(options: AddJobScaffoldOptions): Promise<AddCommandResult> {
+  const backendAdd = await loadBackendAddModule();
+  const result = await backendAdd.runAddJob(options);
+
+  return {
+    workspaceRoot: options.workspaceRoot,
+    subject: 'job',
+    target: result.target,
+    changes: result.changes,
+  };
+}
+
+export async function runUpdateRouteContract(
+  options: UpdateRouteContractOptions,
+): Promise<AddCommandResult> {
+  const backendAdd = await loadBackendAddModule();
+  const result = await backendAdd.runUpdateRouteContract(options);
+
+  return {
+    workspaceRoot: options.workspaceRoot,
+    subject: 'route',
+    target: result.target,
+    changes: result.changes,
+  };
+}
+
+export function parseAddRouteScaffoldArgs(
+  rawArgs: readonly string[],
+): Omit<AddRouteScaffoldOptions, 'workspaceRoot'> {
+  const parsed = parseBackendCommandArgs(rawArgs, {
     valueFlags: new Set([
       '--method',
       '--path',
@@ -45,8 +110,7 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
     .map((tag) => tag.trim())
     .filter(Boolean);
 
-  const result = await backendAdd.runAddRoute({
-    workspaceRoot: options.workspaceRoot,
+  return {
     name,
     method: parsed.values.get('--method'),
     path: parsed.values.get('--path'),
@@ -68,19 +132,13 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
     responseSchema: parsed.values.get('--response-schema'),
     responseStatus: parsed.values.get('--response-status'),
     responseHeadersSchema: parsed.values.get('--response-headers-schema'),
-  });
-
-  return {
-    workspaceRoot: options.workspaceRoot,
-    subject: 'route',
-    target: result.target,
-    changes: result.changes,
   };
 }
 
-export async function runAddJobCommand(options: RunAddBackendOptions): Promise<AddCommandResult> {
-  const backendAdd = await loadBackendAddModule();
-  const parsed = parseBackendCommandArgs(options.rawArgs, {
+export function parseAddJobScaffoldArgs(
+  rawArgs: readonly string[],
+): Omit<AddJobScaffoldOptions, 'workspaceRoot'> {
+  const parsed = parseBackendCommandArgs(rawArgs, {
     valueFlags: new Set(['--schedule', '--description', '--priority']),
     booleanFlags: new Set(),
   });
@@ -90,19 +148,11 @@ export async function runAddJobCommand(options: RunAddBackendOptions): Promise<A
     throw new Error('Usage: webstir add-job <name> --workspace <path> [--schedule <expression>].');
   }
 
-  const result = await backendAdd.runAddJob({
-    workspaceRoot: options.workspaceRoot,
+  return {
     name,
     schedule: parsed.values.get('--schedule'),
     description: parsed.values.get('--description'),
     priority: parsed.values.get('--priority'),
-  });
-
-  return {
-    workspaceRoot: options.workspaceRoot,
-    subject: 'job',
-    target: result.target,
-    changes: result.changes,
   };
 }
 
@@ -123,54 +173,55 @@ interface BackendAddResult {
 }
 
 interface BackendAddModule {
-  readonly runAddRoute: (options: {
-    readonly workspaceRoot: string;
-    readonly name: string;
-    readonly method?: string;
-    readonly path?: string;
-    readonly summary?: string;
-    readonly description?: string;
-    readonly tags?: readonly string[];
-    readonly interaction?: string;
-    readonly sessionMode?: string;
-    readonly sessionWrite?: boolean;
-    readonly formUrlEncoded?: boolean;
-    readonly formCsrf?: boolean;
-    readonly fragmentTarget?: string;
-    readonly fragmentSelector?: string;
-    readonly fragmentMode?: string;
-    readonly paramsSchema?: string;
-    readonly querySchema?: string;
-    readonly bodySchema?: string;
-    readonly headersSchema?: string;
-    readonly responseSchema?: string;
-    readonly responseStatus?: string | number;
-    readonly responseHeadersSchema?: string;
-  }) => Promise<BackendAddResult>;
-  readonly runAddJob: (options: {
-    readonly workspaceRoot: string;
-    readonly name: string;
-    readonly schedule?: string;
-    readonly description?: string;
-    readonly priority?: string;
-  }) => Promise<BackendAddResult>;
+  readonly runAddRoute: (options: AddRouteOptions) => Promise<BackendAddResult>;
+  readonly runAddJob: (options: AddJobOptions) => Promise<BackendAddResult>;
+  readonly runUpdateRouteContract: (
+    options: UpdateRouteContractOptions,
+  ) => Promise<BackendAddResult>;
 }
 
 let backendAddModulePromise: Promise<BackendAddModule> | null = null;
 
 async function loadBackendAddModule(): Promise<BackendAddModule> {
-  backendAddModulePromise ??= import('@webstir-io/webstir-backend').then(async (module) => {
-    if (typeof module.runAddRoute === 'function' && typeof module.runAddJob === 'function') {
+  if (backendAddModulePromise) {
+    return await backendAddModulePromise;
+  }
+
+  backendAddModulePromise = import('@webstir-io/webstir-backend').then(async (module) => {
+    if (
+      typeof module.runAddRoute === 'function' &&
+      typeof module.runAddJob === 'function' &&
+      typeof module.runUpdateRouteContract === 'function'
+    ) {
       return module as BackendAddModule;
     }
 
     if (monorepoRoot) {
       throw new Error(
-        'Installed @webstir-io/webstir-backend package does not export runAddRoute/runAddJob.',
+        'Installed @webstir-io/webstir-backend package does not export runAddRoute/runAddJob/runUpdateRouteContract.',
       );
     }
 
-    return await import('./add-backend-compat.ts');
+    const compat = await import('./add-backend-compat.ts');
+    return {
+      async runAddRoute(options: AddRouteOptions): Promise<BackendAddResult> {
+        return await compat.runAddRoute(options);
+      },
+      async runAddJob(options: AddJobOptions): Promise<BackendAddResult> {
+        return await compat.runAddJob({
+          workspaceRoot: options.workspaceRoot,
+          name: options.name,
+          schedule: options.schedule,
+          description: options.description,
+          ...(options.priority !== undefined ? { priority: String(options.priority) } : {}),
+        });
+      },
+      async runUpdateRouteContract(): Promise<BackendAddResult> {
+        throw new Error(
+          'Installed @webstir-io/webstir-backend package does not export runUpdateRouteContract.',
+        );
+      },
+    };
   });
 
   return await backendAddModulePromise;

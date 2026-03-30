@@ -1,5 +1,7 @@
 import type { AgentResult } from './agent.ts';
+import type { FrontendInspectResult } from './frontend-inspect.ts';
 import type { EnableResult } from './enable.ts';
+import type { InspectResult } from './inspect.ts';
 import type { DoctorResult } from './doctor.ts';
 import type { InitResult } from './init.ts';
 import type { WebstirOperationDescriptor } from './operations.ts';
@@ -179,6 +181,89 @@ export function formatDoctorJson(result: DoctorResult): string {
   );
 }
 
+export function formatFrontendInspectSummary(result: FrontendInspectResult): string {
+  const enabledFeatures = listEnabledFlags(result.frontend.packageJson.enable.known);
+  const lines = [
+    '[webstir] frontend-inspect complete',
+    `workspace: ${result.workspace.name}`,
+    `mode: ${result.workspace.mode}`,
+    `root: ${result.workspace.root}`,
+    `app-shell: ${result.frontend.appShell.exists ? 'present' : 'missing'}`,
+    `frontend-features: ${enabledFeatures.length > 0 ? enabledFeatures.join(', ') : 'none'}`,
+    `pages: ${result.frontend.pages.length}`,
+  ];
+
+  for (const page of result.frontend.pages) {
+    const details = [
+      page.htmlExists ? 'html' : undefined,
+      page.stylesheetExists ? 'css' : undefined,
+      page.scriptExists ? 'script' : undefined,
+    ].filter(Boolean);
+    lines.push(`  - ${page.name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`);
+  }
+
+  lines.push(`content-root: ${result.frontend.content.root}`);
+  lines.push(`content-present: ${result.frontend.content.exists ? 'true' : 'false'}`);
+  lines.push(
+    `content-sidebar-override: ${result.frontend.content.sidebarOverrideExists ? 'true' : 'false'}`,
+  );
+
+  return lines.join('\n');
+}
+
+export function formatFrontendInspectJson(result: FrontendInspectResult): string {
+  return JSON.stringify(
+    {
+      command: 'frontend-inspect',
+      workspace: {
+        name: result.workspace.name,
+        mode: result.workspace.mode,
+        root: result.workspace.root,
+      },
+      frontend: result.frontend,
+    },
+    null,
+    2,
+  );
+}
+
+export function formatInspectSummary(result: InspectResult): string {
+  const lines = [
+    '[webstir] inspect complete',
+    `workspace: ${result.workspace.name}`,
+    `mode: ${result.workspace.mode}`,
+    `root: ${result.workspace.root}`,
+    `success: ${result.success ? 'true' : 'false'}`,
+    `steps: ${result.steps.length}`,
+  ];
+
+  for (const step of result.steps) {
+    lines.push(`  - ${step.id}: ${step.status} (${step.summary})`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatInspectJson(result: InspectResult): string {
+  return JSON.stringify(
+    {
+      command: 'inspect',
+      workspace: {
+        name: result.workspace.name,
+        mode: result.workspace.mode,
+        root: result.workspace.root,
+      },
+      success: result.success,
+      steps: result.steps,
+      doctor: result.doctor,
+      ...(result.frontend ? { frontend: result.frontend } : {}),
+      ...(result.backend ? { backend: result.backend } : {}),
+    },
+    null,
+    2,
+  );
+}
+
 export function formatAgentSummary(result: AgentResult): string {
   const lines = [
     '[webstir] agent complete',
@@ -193,6 +278,12 @@ export function formatAgentSummary(result: AgentResult): string {
   }
 
   return lines.join('\n');
+}
+
+function listEnabledFlags(flags: object): string[] {
+  return Object.entries(flags)
+    .filter(([, enabled]) => enabled === true)
+    .map(([name]) => name);
 }
 
 export function formatAgentJson(result: AgentResult): string {

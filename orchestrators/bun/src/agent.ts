@@ -1,11 +1,17 @@
 import type { AddCommandResult } from './add.ts';
+import type { AddJobScaffoldOptions, AddRouteScaffoldOptions } from './add-backend.ts';
 import type { BackendInspectResult } from './backend-inspect.ts';
 import type { DoctorResult } from './doctor.ts';
 import type { RepairResult } from './repair.ts';
 import type { TestCommandResult } from './test.ts';
 
 import { runAddPageCommand } from './add.ts';
-import { runAddJobCommand, runAddRouteCommand } from './add-backend.ts';
+import {
+  parseAddJobScaffoldArgs,
+  parseAddRouteScaffoldArgs,
+  runAddJobScaffold,
+  runAddRouteScaffold,
+} from './add-backend.ts';
 import { runBackendInspect } from './backend-inspect.ts';
 import { runDoctor } from './doctor.ts';
 import { runRepair } from './repair.ts';
@@ -50,6 +56,20 @@ export interface AgentResult {
   readonly repair?: RepairResult;
   readonly test?: Pick<TestCommandResult, 'runtime' | 'builtTargets' | 'summary' | 'hadFailures'>;
   readonly scaffold?: Pick<AddCommandResult, 'subject' | 'target' | 'changes' | 'note'>;
+}
+
+export interface RunAgentScaffoldPageOptions {
+  readonly workspaceRoot: string;
+  readonly pageName: string;
+  readonly env?: Record<string, string | undefined>;
+}
+
+export interface RunAgentScaffoldRouteOptions extends AddRouteScaffoldOptions {
+  readonly env?: Record<string, string | undefined>;
+}
+
+export interface RunAgentScaffoldJobOptions extends AddJobScaffoldOptions {
+  readonly env?: Record<string, string | undefined>;
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
@@ -234,73 +254,105 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
   }
 
   if (options.goal === 'scaffold-page') {
-    const scaffold = await runAddPageCommand({
-      workspaceRoot: options.workspaceRoot,
-      args: options.positionals.slice(1),
-    });
-    steps.push({
-      id: 'add-page',
-      status: 'completed',
-      summary: `Scaffolded page ${scaffold.target}.`,
-    });
+    const pageName = options.positionals[1];
+    if (!pageName) {
+      throw new Error('Usage: webstir agent scaffold-page <name> --workspace <path>.');
+    }
 
-    const doctor = await runDoctor({
+    return await runAgentScaffoldPage({
       workspaceRoot: options.workspaceRoot,
+      pageName,
       env: options.env,
     });
-    steps.push({
-      id: 'doctor',
-      status: doctor.healthy ? 'completed' : 'failed',
-      summary: doctor.healthy
-        ? 'Workspace remains healthy after page scaffolding.'
-        : `Workspace diagnosis found ${doctor.issues.length} issue(s) after scaffolding.`,
-    });
-
-    return {
-      workspaceRoot: options.workspaceRoot,
-      goal: options.goal,
-      success: doctor.healthy,
-      steps,
-      doctor,
-      scaffold,
-    };
   }
 
   if (options.goal === 'scaffold-route') {
-    const scaffold = await runAddRouteCommand({
+    return await runAgentScaffoldRoute({
       workspaceRoot: options.workspaceRoot,
-      rawArgs: stripGoalFromRawArgs(options.rawArgs, options.goal),
-    });
-    steps.push({
-      id: 'add-route',
-      status: 'completed',
-      summary: `Scaffolded route ${scaffold.target}.`,
-    });
-
-    const inspect = await runBackendInspect({
-      workspaceRoot: options.workspaceRoot,
+      ...parseAddRouteScaffoldArgs(stripGoalFromRawArgs(options.rawArgs, options.goal)),
       env: options.env,
     });
-    steps.push({
-      id: 'backend-inspect',
-      status: 'completed',
-      summary: `${inspect.manifest.routes?.length ?? 0} route(s), ${inspect.manifest.jobs?.length ?? 0} job(s), module ${inspect.manifest.name}@${inspect.manifest.version}.`,
-    });
-
-    return {
-      workspaceRoot: options.workspaceRoot,
-      goal: options.goal,
-      success: true,
-      steps,
-      inspect,
-      scaffold,
-    };
   }
 
-  const scaffold = await runAddJobCommand({
+  return await runAgentScaffoldJob({
     workspaceRoot: options.workspaceRoot,
-    rawArgs: stripGoalFromRawArgs(options.rawArgs, options.goal),
+    ...parseAddJobScaffoldArgs(stripGoalFromRawArgs(options.rawArgs, options.goal)),
+    env: options.env,
   });
+}
+
+export async function runAgentScaffoldPage(
+  options: RunAgentScaffoldPageOptions,
+): Promise<AgentResult> {
+  const steps: AgentStepResult[] = [];
+  const scaffold = await runAddPageCommand({
+    workspaceRoot: options.workspaceRoot,
+    args: [options.pageName],
+  });
+  steps.push({
+    id: 'add-page',
+    status: 'completed',
+    summary: `Scaffolded page ${scaffold.target}.`,
+  });
+
+  const doctor = await runDoctor({
+    workspaceRoot: options.workspaceRoot,
+    env: options.env,
+  });
+  steps.push({
+    id: 'doctor',
+    status: doctor.healthy ? 'completed' : 'failed',
+    summary: doctor.healthy
+      ? 'Workspace remains healthy after page scaffolding.'
+      : `Workspace diagnosis found ${doctor.issues.length} issue(s) after scaffolding.`,
+  });
+
+  return {
+    workspaceRoot: options.workspaceRoot,
+    goal: 'scaffold-page',
+    success: doctor.healthy,
+    steps,
+    doctor,
+    scaffold,
+  };
+}
+
+export async function runAgentScaffoldRoute(
+  options: RunAgentScaffoldRouteOptions,
+): Promise<AgentResult> {
+  const steps: AgentStepResult[] = [];
+  const scaffold = await runAddRouteScaffold(options);
+  steps.push({
+    id: 'add-route',
+    status: 'completed',
+    summary: `Scaffolded route ${scaffold.target}.`,
+  });
+
+  const inspect = await runBackendInspect({
+    workspaceRoot: options.workspaceRoot,
+    env: options.env,
+  });
+  steps.push({
+    id: 'backend-inspect',
+    status: 'completed',
+    summary: `${inspect.manifest.routes?.length ?? 0} route(s), ${inspect.manifest.jobs?.length ?? 0} job(s), module ${inspect.manifest.name}@${inspect.manifest.version}.`,
+  });
+
+  return {
+    workspaceRoot: options.workspaceRoot,
+    goal: 'scaffold-route',
+    success: true,
+    steps,
+    inspect,
+    scaffold,
+  };
+}
+
+export async function runAgentScaffoldJob(
+  options: RunAgentScaffoldJobOptions,
+): Promise<AgentResult> {
+  const steps: AgentStepResult[] = [];
+  const scaffold = await runAddJobScaffold(options);
   steps.push({
     id: 'add-job',
     status: 'completed',
@@ -319,7 +371,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
 
   return {
     workspaceRoot: options.workspaceRoot,
-    goal: options.goal,
+    goal: 'scaffold-job',
     success: true,
     steps,
     inspect,

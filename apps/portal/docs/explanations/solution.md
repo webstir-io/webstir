@@ -43,7 +43,7 @@ Use this as the default app path today:
 4. Add manifest-backed backend endpoints with `webstir add-route` when those routes need explicit metadata or inspection output.
 5. Define request-time views in `src/backend/module.ts` when a document needs server-loaded data at request time.
 6. Enable `client-nav` only after the baseline HTML path is already correct.
-7. Use `webstir doctor` to check scaffold drift and backend manifest health before shipping or automating fixes.
+7. Use `webstir inspect` to check scaffold drift plus the frontend/backend contract surfaces before shipping or automating fixes.
 8. If scaffold wiring drifts, use `webstir repair` to restore the same mode and enabled-feature shape.
 9. Publish with `webstir publish`, then deploy `api` or `full` workspaces with the supported Bun Docker contract.
 
@@ -65,6 +65,7 @@ The canonical primitive breakdown for those behaviors lives in [Primitives](../r
 ## Agent Surface
 
 - `webstir operations --json` lists the stable framework operations that wrappers and MCP adapters should call.
+- `webstir inspect --json` is the direct combined inspection contract for workspace-aware wrappers.
 - `webstir agent` is intentionally thin: it orchestrates inspect, scaffold, validate, and repair flows by composing those stable operations instead of inventing architecture from scratch.
 - The benchmark runner at `bun run benchmark:agent-tasks` stays pinned to the recipe apps so the agent-facing story stays tied to real framework behavior.
 

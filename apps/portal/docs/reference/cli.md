@@ -105,6 +105,28 @@ What it does:
 Notes:
 - This is the contract surface for wrappers and agents; it is intentionally narrower than the full implementation internals
 
+### inspect
+Usage: `webstir inspect --workspace <path>`
+
+What it does:
+- Runs `doctor` first and then surfaces the stable frontend and backend contract data that apply to the workspace mode
+- Uses `frontend-inspect` for `spa`, `ssg`, and `full`
+- Uses `backend-inspect` for `api` and `full`
+- Accepts `--json` for machine-readable inspection output
+
+Notes:
+- Exits non-zero when diagnosis fails or when one of the applicable inspection surfaces fails
+- This is the top-level inspection surface for wrappers and MCP adapters
+
+### frontend-inspect
+Usage: `webstir frontend-inspect --workspace <path>`
+
+What it does:
+- Reads stable frontend workspace facts without running a build
+- Reports resolved frontend config, recorded enable flags, app-shell presence, discovered pages, and content-root basics
+- Accepts `--json` for machine-readable inspection output
+- Supports `spa`, `ssg`, and `full` workspaces only
+
 ### agent
 Usage: `webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> --workspace <path> [goal-args...]`
 
@@ -114,7 +136,7 @@ What it does:
 - Accepts `--json` for machine-readable orchestration results
 
 Notes:
-- `inspect` runs diagnosis first and then backend inspection when the workspace supports it
+- `inspect` remains the thin agent goal; use top-level `webstir inspect` when you want the direct combined inspection contract
 - `validate` runs `doctor` and then `test`
 - `repair` runs `doctor`, applies scaffold repair when available, and then re-checks health
 - `scaffold-page`, `scaffold-route`, and `scaffold-job` call the matching scaffold commands and then verify the resulting workspace state
@@ -191,6 +213,14 @@ What it does:
 - Prints module metadata, capabilities, routes, views, and jobs
 - Accepts `--json` for machine-readable manifest output
 - Supports `api` and `full` workspaces only
+
+### mcp
+Usage: `webstir mcp`
+
+What it does:
+- Runs the Webstir MCP server over stdio
+- Exposes the thin stable tool layer for listing operations plus inspect, validate, repair, and scaffold flows
+- Reuses the existing machine-readable CLI contracts instead of introducing a second control plane
 
 ### add-page
 Usage: `webstir add-page <name> --workspace <path>`

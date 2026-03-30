@@ -10,6 +10,7 @@ import type {
   SchemaReference,
   SessionAccessMode,
 } from '@webstir-io/module-contract';
+import { routeDefinitionSchema } from '@webstir-io/module-contract';
 
 import { readTextFile, writeTextFile } from './utils/bun.js';
 
@@ -76,7 +77,27 @@ export interface AddJobOptions {
   readonly name: string;
   readonly schedule?: string;
   readonly description?: string;
-  readonly priority?: string;
+  readonly priority?: string | number;
+}
+
+export interface UpdateRouteContractOptions {
+  readonly workspaceRoot: string;
+  readonly method: string;
+  readonly path: string;
+  readonly sessionMode?: SessionAccessMode | string | null;
+  readonly sessionWrite?: boolean | null;
+  readonly formUrlEncoded?: boolean | null;
+  readonly formCsrf?: boolean | null;
+  readonly fragmentTarget?: string | null;
+  readonly fragmentSelector?: string | null;
+  readonly fragmentMode?: FragmentUpdateMode | string | null;
+  readonly paramsSchema?: string | null;
+  readonly querySchema?: string | null;
+  readonly bodySchema?: string | null;
+  readonly headersSchema?: string | null;
+  readonly responseSchema?: string | null;
+  readonly responseStatus?: string | number | null;
+  readonly responseHeadersSchema?: string | null;
 }
 
 export interface BackendAddResult {
@@ -164,7 +185,9 @@ export async function runAddJob(options: AddJobOptions): Promise<BackendAddResul
   const name = normalizeRequiredName(options.name, 'job');
   const schedule = normalizeOptionalString(options.schedule);
   const description = normalizeOptionalString(options.description);
-  const priority = normalizeOptionalString(options.priority);
+  const priority = normalizeOptionalString(
+    options.priority !== undefined ? String(options.priority) : undefined,
+  );
 
   if (schedule) {
     validateSchedule(schedule);
@@ -214,6 +237,45 @@ export async function runAddJob(options: AddJobOptions): Promise<BackendAddResul
   };
 }
 
+export async function runUpdateRouteContract(
+  options: UpdateRouteContractOptions,
+): Promise<BackendAddResult> {
+  const packageJsonPath = path.join(options.workspaceRoot, 'package.json');
+  const trackedPaths = [packageJsonPath];
+  const before = await captureFileState(trackedPaths);
+  const pkg = await readWorkspacePackageJson(packageJsonPath);
+  const webstir = asObject(pkg.webstir);
+  const moduleManifest = asObject(webstir.moduleManifest);
+  const routes = Array.isArray(moduleManifest.routes) ? [...moduleManifest.routes] : [];
+  const method = normalizeMethod(options.method);
+  const routePath = normalizeExplicitRoutePath(options.path);
+  const routeIndex = routes.findIndex(
+    (entry) => entry?.method === method && entry?.path === routePath,
+  );
+
+  if (routeIndex < 0) {
+    throw new Error(`Route '${method} ${routePath}' not found.`);
+  }
+
+  const existingRoute = routeDefinitionSchema.parse(routes[routeIndex]) as RouteDefinition;
+  const nextRoute = routeDefinitionSchema.parse({
+    ...existingRoute,
+    ...buildUpdatedRouteContract(existingRoute, options),
+  }) as RouteDefinition;
+
+  routes[routeIndex] = nextRoute;
+  moduleManifest.routes = routes;
+  webstir.moduleManifest = moduleManifest;
+  pkg.webstir = webstir;
+  await writeWorkspacePackageJson(packageJsonPath, pkg);
+
+  return {
+    subject: 'route',
+    target: `${method} ${routePath}`,
+    changes: await collectChangedFiles(options.workspaceRoot, trackedPaths, before),
+  };
+}
+
 function buildRouteInput(
   paramsSchema?: SchemaReference,
   querySchema?: SchemaReference,
@@ -246,6 +308,248 @@ function buildRouteOutput(
       ...(responseHeadersSchema ? { headers: responseHeadersSchema } : {}),
     },
   };
+}
+
+function buildUpdatedRouteContract(
+  existingRoute: RouteDefinition,
+  options: UpdateRouteContractOptions,
+): Partial<RouteDefinition> {
+  const session = buildMergedRouteSession(existingRoute, options);
+  const form = buildMergedRouteForm(existingRoute, options);
+  const fragment = buildMergedRouteFragment(existingRoute, options);
+  const input = buildMergedRouteInput(existingRoute, options);
+  const output = buildMergedRouteOutput(existingRoute, options);
+
+  return {
+    ...(session !== KEEP_VALUE ? { session } : {}),
+    ...(form !== KEEP_VALUE ? { form } : {}),
+    ...(fragment !== KEEP_VALUE ? { fragment } : {}),
+    ...(input !== KEEP_VALUE ? { input } : {}),
+    ...(output !== KEEP_VALUE ? { output } : {}),
+  };
+}
+
+const KEEP_VALUE = Symbol('keep-value');
+
+function buildMergedRouteSession(
+  existingRoute: RouteDefinition,
+  options: UpdateRouteContractOptions,
+): RouteDefinition['session'] | typeof KEEP_VALUE {
+  if (options.sessionMode === undefined && options.sessionWrite === undefined) {
+    return KEEP_VALUE;
+  }
+
+  const mode =
+    options.sessionMode === undefined
+      ? existingRoute.session?.mode
+      : normalizeNullableSessionMode(options.sessionMode);
+  const write =
+    options.sessionWrite === undefined
+      ? existingRoute.session?.write
+      : options.sessionWrite
+        ? true
+        : undefined;
+
+  if (!mode && !write) {
+    return undefined;
+  }
+
+  return {
+    ...(mode ? { mode } : {}),
+    ...(write ? { write: true } : {}),
+  };
+}
+
+function buildMergedRouteForm(
+  existingRoute: RouteDefinition,
+  options: UpdateRouteContractOptions,
+): RouteDefinition['form'] | typeof KEEP_VALUE {
+  if (options.formUrlEncoded === undefined && options.formCsrf === undefined) {
+    return KEEP_VALUE;
+  }
+
+  const existingForm = existingRoute.form;
+  const contentType =
+    options.formUrlEncoded === undefined
+      ? existingForm?.contentType
+      : options.formUrlEncoded
+        ? 'application/x-www-form-urlencoded'
+        : existingForm?.contentType === 'application/x-www-form-urlencoded'
+          ? undefined
+          : existingForm?.contentType;
+  const csrf =
+    options.formCsrf === undefined ? existingForm?.csrf : options.formCsrf ? true : undefined;
+  const nextForm = {
+    ...(existingForm ?? {}),
+    ...(contentType ? { contentType } : {}),
+    ...(csrf ? { csrf: true } : {}),
+  };
+
+  if (!contentType) {
+    delete nextForm.contentType;
+  }
+  if (!csrf) {
+    delete nextForm.csrf;
+  }
+
+  return Object.keys(nextForm).length > 0 ? nextForm : undefined;
+}
+
+function buildMergedRouteFragment(
+  existingRoute: RouteDefinition,
+  options: UpdateRouteContractOptions,
+): RouteDefinition['fragment'] | typeof KEEP_VALUE {
+  if (
+    options.fragmentTarget === undefined &&
+    options.fragmentSelector === undefined &&
+    options.fragmentMode === undefined
+  ) {
+    return KEEP_VALUE;
+  }
+
+  const target =
+    options.fragmentTarget === undefined
+      ? existingRoute.fragment?.target
+      : (options.fragmentTarget ?? undefined);
+  const selector =
+    options.fragmentSelector === undefined
+      ? existingRoute.fragment?.selector
+      : (options.fragmentSelector ?? undefined);
+  const mode =
+    options.fragmentMode === undefined
+      ? existingRoute.fragment?.mode
+      : normalizeNullableFragmentMode(options.fragmentMode);
+
+  if (!target) {
+    return undefined;
+  }
+
+  return {
+    target,
+    ...(selector ? { selector } : {}),
+    ...(mode ? { mode } : {}),
+  };
+}
+
+function buildMergedRouteInput(
+  existingRoute: RouteDefinition,
+  options: UpdateRouteContractOptions,
+): RouteDefinition['input'] | typeof KEEP_VALUE {
+  if (
+    options.paramsSchema === undefined &&
+    options.querySchema === undefined &&
+    options.bodySchema === undefined &&
+    options.headersSchema === undefined
+  ) {
+    return KEEP_VALUE;
+  }
+
+  const params = mergeSchemaReference(
+    existingRoute.input?.params,
+    options.paramsSchema,
+    '--params-schema',
+  );
+  const query = mergeSchemaReference(
+    existingRoute.input?.query,
+    options.querySchema,
+    '--query-schema',
+  );
+  const body = mergeSchemaReference(existingRoute.input?.body, options.bodySchema, '--body-schema');
+  const headers = mergeSchemaReference(
+    existingRoute.input?.headers,
+    options.headersSchema,
+    '--headers-schema',
+  );
+
+  return buildInputObject({ params, query, body, headers });
+}
+
+function buildMergedRouteOutput(
+  existingRoute: RouteDefinition,
+  options: UpdateRouteContractOptions,
+): RouteDefinition['output'] | typeof KEEP_VALUE {
+  if (
+    options.responseSchema === undefined &&
+    options.responseStatus === undefined &&
+    options.responseHeadersSchema === undefined
+  ) {
+    return KEEP_VALUE;
+  }
+
+  if (existingRoute.output && 'responses' in existingRoute.output) {
+    throw new Error(
+      `Route '${existingRoute.method} ${existingRoute.path}' uses response variants and cannot be updated with update_route_contract.`,
+    );
+  }
+  if (existingRoute.output && 'redirect' in existingRoute.output) {
+    throw new Error(
+      `Route '${existingRoute.method} ${existingRoute.path}' uses redirect output and cannot be updated with update_route_contract.`,
+    );
+  }
+
+  const existingOutput =
+    existingRoute.output && 'body' in existingRoute.output ? existingRoute.output : undefined;
+  const body = mergeSchemaReference(
+    existingOutput?.body,
+    options.responseSchema,
+    '--response-schema',
+  );
+  const headers = mergeSchemaReference(
+    existingOutput?.headers,
+    options.responseHeadersSchema,
+    '--response-headers-schema',
+  );
+  const status =
+    options.responseStatus === undefined
+      ? existingOutput?.status
+      : options.responseStatus === null
+        ? undefined
+        : parseResponseStatus(options.responseStatus);
+
+  if ((headers || status !== undefined) && !body) {
+    throw new Error('--response-schema is required when setting response headers or status.');
+  }
+  if (!body) {
+    return undefined;
+  }
+
+  return {
+    ...(status !== undefined ? { status } : {}),
+    ...(headers ? { headers } : {}),
+    body,
+    ...(existingOutput && 'fragment' in existingOutput
+      ? { fragment: existingOutput.fragment }
+      : {}),
+  };
+}
+
+function mergeSchemaReference(
+  existing: SchemaReference | undefined,
+  next: string | null | undefined,
+  flag: string,
+): SchemaReference | undefined {
+  if (next === undefined) {
+    return existing;
+  }
+  if (next === null) {
+    return undefined;
+  }
+  return parseSchemaReference(next, flag);
+}
+
+function buildInputObject(input: {
+  readonly params?: SchemaReference;
+  readonly query?: SchemaReference;
+  readonly body?: SchemaReference;
+  readonly headers?: SchemaReference;
+}): RouteDefinition['input'] {
+  const next = {
+    ...(input.params ? { params: input.params } : {}),
+    ...(input.query ? { query: input.query } : {}),
+    ...(input.body ? { body: input.body } : {}),
+    ...(input.headers ? { headers: input.headers } : {}),
+  };
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 function normalizeInteraction(value?: string): RouteDefinition['interaction'] | undefined {
@@ -340,6 +644,36 @@ function normalizeFragmentMode(value?: string): FragmentUpdateMode | undefined {
   );
 }
 
+function normalizeNullableSessionMode(
+  value: UpdateRouteContractOptions['sessionMode'],
+): SessionAccessMode | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (value === 'optional' || value === 'required') {
+    return value;
+  }
+
+  throw new Error(
+    `Invalid --session value '${value}'. Allowed values: ${ALLOWED_SESSION_MODES.join(', ')}.`,
+  );
+}
+
+function normalizeNullableFragmentMode(
+  value: UpdateRouteContractOptions['fragmentMode'],
+): FragmentUpdateMode | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  if (value === 'replace' || value === 'append' || value === 'prepend') {
+    return value;
+  }
+
+  throw new Error(
+    `Invalid --fragment-mode value '${value}'. Allowed values: ${ALLOWED_FRAGMENT_MODES.join(', ')}.`,
+  );
+}
+
 function buildJobTemplate(name: string): string {
   return `// Generated by webstir add-job
 export async function run(): Promise<void> {
@@ -388,6 +722,14 @@ function normalizeMethod(value?: string): HttpMethod {
 
 function normalizeRoutePath(value: string | undefined, name: string): string {
   const routePath = value?.trim() || `/api/${name}`;
+  return routePath.startsWith('/') ? routePath : `/${routePath}`;
+}
+
+function normalizeExplicitRoutePath(value: string): string {
+  const routePath = value.trim();
+  if (!routePath) {
+    throw new Error('Missing route path.');
+  }
   return routePath.startsWith('/') ? routePath : `/${routePath}`;
 }
 

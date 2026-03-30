@@ -66,3 +66,61 @@ export interface AddPageCommandOptions extends FrontendCommandOptions {
   readonly pageName: string;
   readonly ssg?: boolean;
 }
+
+export interface FrontendWorkspaceKnownEnableFlags {
+  readonly spa: boolean;
+  readonly clientNav: boolean;
+  readonly backend: boolean;
+  readonly search: boolean;
+  readonly contentNav: boolean;
+}
+
+export interface FrontendWorkspaceEnableFlagsInspect {
+  readonly raw?: Record<string, unknown>;
+  readonly known: FrontendWorkspaceKnownEnableFlags;
+}
+
+export interface FrontendWorkspacePackageInspect {
+  readonly path: string;
+  readonly exists: boolean;
+  readonly mode?: string;
+  readonly enable: FrontendWorkspaceEnableFlagsInspect;
+}
+
+export interface FrontendWorkspaceAppShellInspect {
+  readonly root: string;
+  readonly exists: boolean;
+  readonly templatePath: string;
+  readonly templateExists: boolean;
+  readonly stylesheetPath: string;
+  readonly stylesheetExists: boolean;
+  readonly scriptPath: string;
+  readonly scriptExists: boolean;
+}
+
+export interface FrontendWorkspacePageInspect {
+  readonly name: string;
+  readonly directory: string;
+  readonly htmlPath: string;
+  readonly htmlExists: boolean;
+  readonly stylesheetPath: string;
+  readonly stylesheetExists: boolean;
+  readonly scriptPath: string;
+  readonly scriptExists: boolean;
+}
+
+export interface FrontendWorkspaceContentInspect {
+  readonly root: string;
+  readonly exists: boolean;
+  readonly sidebarOverridePath: string;
+  readonly sidebarOverrideExists: boolean;
+}
+
+export interface FrontendWorkspaceInspectResult {
+  readonly workspaceRoot: string;
+  readonly config: FrontendConfig;
+  readonly packageJson: FrontendWorkspacePackageInspect;
+  readonly appShell: FrontendWorkspaceAppShellInspect;
+  readonly pages: readonly FrontendWorkspacePageInspect[];
+  readonly content: FrontendWorkspaceContentInspect;
+}

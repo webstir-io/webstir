@@ -46,6 +46,16 @@ test('CLI operations emits a machine-readable operation catalog', async () => {
   expect(parsed.operations).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
+        id: 'inspect',
+        supportsJson: true,
+        stableForMcp: true,
+      }),
+      expect.objectContaining({
+        id: 'frontend-inspect',
+        supportsJson: true,
+        stableForMcp: true,
+      }),
+      expect.objectContaining({
         id: 'doctor',
         supportsJson: true,
         stableForMcp: true,

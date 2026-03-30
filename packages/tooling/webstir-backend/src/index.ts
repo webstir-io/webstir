@@ -1,4 +1,5 @@
-export { runAddJob, runAddRoute } from './add.js';
+export { runAddJob, runAddRoute, runUpdateRouteContract } from './add.js';
+export type { AddJobOptions, AddRouteOptions, UpdateRouteContractOptions } from './add.js';
 export { backendProvider } from './provider.js';
 export { startBackendWatch } from './watch.js';
 export { getBackendScaffoldAssets } from './scaffold/assets.js';

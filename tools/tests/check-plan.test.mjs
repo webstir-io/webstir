@@ -30,4 +30,15 @@ describe('buildCheckPlan', () => {
   test('with-watch-browser plan remains an alias for the required gate', () => {
     expect(buildCheckPlan('with-watch-browser')).toEqual(buildCheckPlan('required'));
   });
+
+  test('release gate extends the required gate with the recipe-app benchmark', () => {
+    const requiredPlan = buildCheckPlan('required');
+    const releasePlan = buildCheckPlan('release');
+
+    expect(releasePlan.slice(0, requiredPlan.length)).toEqual(requiredPlan);
+    expect(releasePlan.at(-1)).toEqual({
+      label: 'recipe-app benchmark',
+      command: ['bun', 'run', 'benchmark:agent-tasks'],
+    });
+  });
 });

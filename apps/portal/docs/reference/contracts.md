@@ -50,5 +50,5 @@ Current user-visible behaviors that Webstir documents and tests while the framew
  - Template includes a client error handler (`/app/error.js`) that throttles to 1/sec (max 20/session) and deduplicates repeats for 60s.
 
 ## CLI Guarantees
-- Commands: `init`, `refresh`, `doctor`, `repair`, `enable`, `build`, `watch`, `test`, `publish`, `smoke`, `backend-inspect`, `add-page`, `add-test`, `add-route`, `add-job`.
+- Commands: `init`, `refresh`, `inspect`, `frontend-inspect`, `doctor`, `repair`, `enable`, `build`, `watch`, `test`, `publish`, `smoke`, `backend-inspect`, `add-page`, `add-test`, `add-route`, `add-job`, `mcp`.
 - Running `webstir` with no command prints help; there is no default implicit workflow.

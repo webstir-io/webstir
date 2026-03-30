@@ -1,4 +1,5 @@
 export * from './operations.js';
+export * from './inspect.js';
 export * from './config/manifest.js';
 export * from './config/schema.js';
 export * from './runtime/index.js';
