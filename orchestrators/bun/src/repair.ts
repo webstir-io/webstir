@@ -91,8 +91,10 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     );
     await ensureAppImport(workspace.root, './scripts/features/content-nav.js', changes, dryRun);
   }
-  if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
+  if (enable.backend && workspace.mode !== 'api' && workspace.mode !== 'full') {
     await restoreBackendAssets(workspace.root, changes, dryRun);
+  }
+  if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
     await ensureBackendTsReference(workspace.root, changes, dryRun);
   }
   if (enable.githubPages) {

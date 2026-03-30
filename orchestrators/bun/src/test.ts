@@ -30,6 +30,7 @@ export interface RunTestOptions {
   readonly workspaceRoot: string;
   readonly rawArgs: readonly string[];
   readonly env?: Record<string, string | undefined>;
+  readonly quietInstall?: boolean;
 }
 
 export interface TestCommandResult {
@@ -42,7 +43,9 @@ export interface TestCommandResult {
 }
 
 export async function runTest(options: RunTestOptions): Promise<TestCommandResult> {
-  await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot);
+  await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot, {
+    installStdio: options.quietInstall ? 'pipe' : 'inherit',
+  });
   const runtime = parseRuntimeFlag(options.rawArgs, options.env);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   const builtTargets = selectBuildTargets(workspace.mode, runtime);

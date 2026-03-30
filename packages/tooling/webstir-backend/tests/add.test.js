@@ -53,6 +53,13 @@ test('runAddRoute writes manifest metadata without scaffolding server-specific f
     summary: 'List accounts',
     description: 'Returns the current account list',
     tags: ['accounts', 'api', 'accounts'],
+    interaction: 'mutation',
+    sessionMode: 'required',
+    sessionWrite: true,
+    formUrlEncoded: true,
+    formCsrf: true,
+    fragmentTarget: 'accounts-panel',
+    fragmentMode: 'replace',
     paramsSchema: 'zod:AccountParams@src/shared/contracts/accounts.ts',
     responseSchema: 'AccountList@src/shared/contracts/accounts.ts',
     responseStatus: '201',
@@ -71,6 +78,19 @@ test('runAddRoute writes manifest metadata without scaffolding server-specific f
       summary: 'List accounts',
       description: 'Returns the current account list',
       tags: ['accounts', 'api'],
+      interaction: 'mutation',
+      session: {
+        mode: 'required',
+        write: true,
+      },
+      form: {
+        contentType: 'application/x-www-form-urlencoded',
+        csrf: true,
+      },
+      fragment: {
+        target: 'accounts-panel',
+        mode: 'replace',
+      },
       input: {
         params: {
           kind: 'zod',
@@ -85,6 +105,66 @@ test('runAddRoute writes manifest metadata without scaffolding server-specific f
           source: 'src/shared/contracts/accounts.ts',
         },
         status: 201,
+      },
+    },
+  ]);
+});
+
+test('runAddRoute preserves interaction, session, form, and fragment metadata', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-route-metadata-');
+
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@demo/api',
+        version: '1.0.0',
+        type: 'module',
+        webstir: { mode: 'api', moduleManifest: {} },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const result = await runAddRoute({
+    workspaceRoot: workspace,
+    name: 'session-sign-in',
+    method: 'POST',
+    path: '/session/sign-in',
+    interaction: 'mutation',
+    sessionMode: 'required',
+    sessionWrite: true,
+    formUrlEncoded: true,
+    formCsrf: true,
+    fragmentTarget: 'session-panel',
+    fragmentSelector: '#session-panel',
+    fragmentMode: 'replace',
+  });
+
+  assert.equal(result.subject, 'route');
+  assert.deepEqual(result.changes, ['package.json']);
+
+  const pkg = await readJson(path.join(workspace, 'package.json'));
+  assert.deepEqual(pkg.webstir.moduleManifest.routes, [
+    {
+      name: 'session-sign-in',
+      method: 'POST',
+      path: '/session/sign-in',
+      interaction: 'mutation',
+      session: {
+        mode: 'required',
+        write: true,
+      },
+      form: {
+        contentType: 'application/x-www-form-urlencoded',
+        csrf: true,
+      },
+      fragment: {
+        target: 'session-panel',
+        selector: '#session-panel',
+        mode: 'replace',
       },
     },
   ]);

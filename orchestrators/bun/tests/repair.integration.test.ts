@@ -150,3 +150,42 @@ test('CLI repair restores enabled feature assets and wiring for the SSG site dem
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
+
+test('CLI repair emits machine-readable JSON for dry-run output', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-json-', {
+    workspaceName: 'spa',
+  });
+
+  try {
+    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    await rm(missingFile, { force: true });
+
+    const result = await runCli([
+      'repair',
+      '--dry-run',
+      '--json',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(existsSync(missingFile)).toBe(false);
+
+    const parsed = JSON.parse(result.stdout) as {
+      command: string;
+      workspaceRoot: string;
+      mode: string;
+      dryRun: boolean;
+      changes: string[];
+    };
+
+    expect(parsed.command).toBe('repair');
+    expect(parsed.workspaceRoot).toBe(copiedWorkspace.workspaceRoot);
+    expect(parsed.mode).toBe('spa');
+    expect(parsed.dryRun).toBe(true);
+    expect(parsed.changes).toContain('Errors.404.html');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});

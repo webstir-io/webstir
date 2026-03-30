@@ -6,11 +6,19 @@ import { fileURLToPath } from 'node:url';
 
 import {
   formatAddSummary,
+  formatAgentJson,
+  formatAgentSummary,
+  formatBackendInspectJson,
   formatBackendInspectSummary,
   formatBuildSummary,
+  formatDoctorJson,
+  formatDoctorSummary,
   formatEnableSummary,
   formatInitSummary,
+  formatOperationsJson,
+  formatOperationsSummary,
   formatPublishSummary,
+  formatRepairJson,
   formatRepairSummary,
   formatRefreshSummary,
   formatSmokeSummary,
@@ -31,9 +39,12 @@ const HELP_TEXT = `Usage:
   webstir init <directory>
   webstir add-page <name> --workspace <path>
   webstir add-test <name-or-path> --workspace <path>
-  webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>]
+  webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--interaction <navigation|mutation>] [--session <optional|required>] [--session-write] [--form-urlencoded] [--csrf] [--fragment-target <target>] [--fragment-selector <selector>] [--fragment-mode <replace|append|prepend>]
   webstir add-job <name> --workspace <path> [--schedule <expression>]
+  webstir operations
+  webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> [...]
   webstir backend-inspect --workspace <path>
+  webstir doctor --workspace <path>
   webstir test --workspace <path> [--runtime <frontend|backend|all>]
   webstir smoke [--workspace <path>]
   webstir build --workspace <path>
@@ -49,7 +60,10 @@ Commands:
   add-test   Scaffold a test file in an existing workspace.
   add-route  Scaffold a backend route in an existing workspace.
   add-job    Scaffold a backend job in an existing workspace.
+  operations  List the stable Webstir framework operations.
+  agent      Orchestrate stable Webstir operations for a narrow goal.
   backend-inspect  Inspect the backend manifest for an existing workspace.
+  doctor     Diagnose scaffold drift and backend health for an existing workspace.
   test       Build and run workspace tests with the Bun orchestrator.
   smoke      Run an end-to-end Bun orchestrator verification flow.
   build      Build a Webstir workspace with the Bun orchestrator.
@@ -65,6 +79,7 @@ Options:
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
   --frontend-mode <mode>   Frontend publish mode for publish (defaults to bundle; bundle or ssg).
   --dry-run                Report repair changes without writing files.
+  --json                   Emit machine-readable JSON for supported commands.
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
   -h, --help               Show this help text.
@@ -83,7 +98,10 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     command !== 'add-test' &&
     command !== 'add-route' &&
     command !== 'add-job' &&
+    command !== 'operations' &&
+    command !== 'agent' &&
     command !== 'backend-inspect' &&
+    command !== 'doctor' &&
     command !== 'test' &&
     command !== 'smoke' &&
     command !== 'build' &&
@@ -98,7 +116,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const options = parseCommandOptions(rest, {
-    allowUnknownOptions: command === 'add-route' || command === 'add-job',
+    allowUnknownOptions: command === 'add-route' || command === 'add-job' || command === 'agent',
   });
   if (options.help) {
     io.stdout.write(HELP_TEXT);
@@ -115,13 +133,27 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     return 1;
   }
 
+  if (
+    options.json &&
+    command !== 'operations' &&
+    command !== 'agent' &&
+    command !== 'backend-inspect' &&
+    command !== 'doctor' &&
+    command !== 'repair'
+  ) {
+    io.stderr.write(
+      `Only operations, agent, backend-inspect, doctor, and repair accept --json.\n\n${HELP_TEXT}`,
+    );
+    return 1;
+  }
+
   if (options.frontendMode && command !== 'publish') {
     io.stderr.write(`Only publish accepts --frontend-mode.\n\n${HELP_TEXT}`);
     return 1;
   }
 
   const workspaceRoot = options.workspaceRoot;
-  if (command !== 'init' && command !== 'smoke' && !workspaceRoot) {
+  if (command !== 'init' && command !== 'smoke' && command !== 'operations' && !workspaceRoot) {
     io.stderr.write(`Missing required --workspace <path>.\n\n${HELP_TEXT}`);
     return 1;
   }
@@ -150,6 +182,24 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
       return resolvedWorkspaceRoot;
     };
+    if (command === 'operations') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Operations does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Operations does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const { listOperations } = await import('./operations.ts');
+      const operations = listOperations();
+      io.stdout.write(
+        `${options.json ? formatOperationsJson(operations) : formatOperationsSummary(operations)}\n`,
+      );
+      return 0;
+    }
     if (command === 'add-page') {
       if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
         io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);
@@ -230,11 +280,74 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       }
 
       const { runBackendInspect } = await import('./backend-inspect.ts');
-      const result = await runBackendInspect({
-        workspaceRoot: requireWorkspaceRoot(),
-      });
-      io.stdout.write(`${formatBackendInspectSummary(result)}\n`);
+      const result = options.json
+        ? await withSuppressedStdout(() =>
+            runBackendInspect({
+              workspaceRoot: requireWorkspaceRoot(),
+            }),
+          )
+        : await runBackendInspect({
+            workspaceRoot: requireWorkspaceRoot(),
+          });
+      io.stdout.write(
+        `${options.json ? formatBackendInspectJson(result) : formatBackendInspectSummary(result)}\n`,
+      );
       return 0;
+    }
+
+    if (command === 'doctor') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Doctor does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      if (options.positionals.length > 0) {
+        io.stderr.write(`Doctor does not accept positional arguments.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const { runDoctor } = await import('./doctor.ts');
+      const result = await withSuppressedStdout(() =>
+        runDoctor({
+          workspaceRoot: requireWorkspaceRoot(),
+        }),
+      );
+      io.stdout.write(`${options.json ? formatDoctorJson(result) : formatDoctorSummary(result)}\n`);
+      return result.healthy ? 0 : 1;
+    }
+
+    if (command === 'agent') {
+      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+        io.stderr.write(`Agent does not accept watch options.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
+      const goal = options.positionals[0];
+      if (
+        goal !== 'inspect' &&
+        goal !== 'validate' &&
+        goal !== 'repair' &&
+        goal !== 'scaffold-page' &&
+        goal !== 'scaffold-route' &&
+        goal !== 'scaffold-job'
+      ) {
+        io.stderr.write(
+          `Agent requires one of: inspect, validate, repair, scaffold-page, scaffold-route, scaffold-job.\n\n${HELP_TEXT}`,
+        );
+        return 1;
+      }
+
+      const { runAgent } = await import('./agent.ts');
+      const result = await withSuppressedStdout(() =>
+        runAgent({
+          workspaceRoot: requireWorkspaceRoot(),
+          goal,
+          rawArgs: options.rawArgs,
+          positionals: options.positionals,
+        }),
+      );
+      io.stdout.write(`${options.json ? formatAgentJson(result) : formatAgentSummary(result)}\n`);
+      return result.success ? 0 : 1;
     }
 
     if (command === 'test') {
@@ -326,7 +439,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         workspaceRoot: requireWorkspaceRoot(),
         rawArgs: options.rawArgs,
       });
-      io.stdout.write(`${formatRepairSummary(result)}\n`);
+      io.stdout.write(`${options.json ? formatRepairJson(result) : formatRepairSummary(result)}\n`);
       return 0;
     }
 
@@ -373,6 +486,7 @@ interface ParsedCommandOptions {
   readonly port?: number;
   readonly frontendMode?: 'bundle' | 'ssg';
   readonly dryRun: boolean;
+  readonly json: boolean;
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
   readonly positionals: readonly string[];
@@ -390,6 +504,7 @@ function parseCommandOptions(
   let port: number | undefined;
   let frontendMode: 'bundle' | 'ssg' | undefined;
   let dryRun = false;
+  let json = false;
   let verbose = false;
   let hmrVerbose = false;
   const positionals: string[] = [];
@@ -410,6 +525,7 @@ function parseCommandOptions(
           port,
           frontendMode,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -433,6 +549,7 @@ function parseCommandOptions(
           port,
           frontendMode,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -450,6 +567,7 @@ function parseCommandOptions(
           port,
           frontendMode,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -473,6 +591,7 @@ function parseCommandOptions(
           port,
           frontendMode,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -490,6 +609,7 @@ function parseCommandOptions(
           port,
           frontendMode,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -511,6 +631,7 @@ function parseCommandOptions(
           host,
           port,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -534,6 +655,7 @@ function parseCommandOptions(
           host,
           port,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -556,6 +678,7 @@ function parseCommandOptions(
           host,
           port,
           dryRun,
+          json,
           verbose,
           hmrVerbose,
           positionals,
@@ -578,6 +701,11 @@ function parseCommandOptions(
       continue;
     }
 
+    if (arg === '--json') {
+      json = true;
+      continue;
+    }
+
     if (arg === '--hmr-verbose') {
       hmrVerbose = true;
       continue;
@@ -589,6 +717,7 @@ function parseCommandOptions(
         host,
         port,
         dryRun,
+        json,
         verbose,
         hmrVerbose,
         positionals,
@@ -611,6 +740,7 @@ function parseCommandOptions(
       host,
       port,
       dryRun,
+      json,
       verbose,
       hmrVerbose,
       positionals,
@@ -626,6 +756,7 @@ function parseCommandOptions(
     port,
     frontendMode,
     dryRun,
+    json,
     verbose,
     hmrVerbose,
     positionals,
@@ -664,5 +795,22 @@ function resolveRealpath(filePath: string): string {
     return realpathSync(filePath);
   } catch {
     return path.resolve(filePath);
+  }
+}
+
+async function withSuppressedStdout<T>(callback: () => Promise<T>): Promise<T> {
+  const originalWrite = process.stdout.write.bind(process.stdout);
+  const originalLog = console.log;
+  const originalInfo = console.info;
+  process.stdout.write = (() => true) as typeof process.stdout.write;
+  console.log = (() => undefined) as typeof console.log;
+  console.info = (() => undefined) as typeof console.info;
+
+  try {
+    return await callback();
+  } finally {
+    process.stdout.write = originalWrite;
+    console.log = originalLog;
+    console.info = originalInfo;
   }
 }

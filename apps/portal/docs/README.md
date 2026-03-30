@@ -1,10 +1,10 @@
 # Webstir Docs
 
-Webstir is an HTML-first full-stack framework. The core model is:
+Webstir is a server-first, HTML-first framework for low-JS apps. It is not a broad React replacement or an architecture menu. The core model is:
 
 - render documents on the server
-- treat forms, links, redirects, and document navigation as the baseline
-- add JavaScript only where fragment updates or navigation polish materially improve the experience
+- treat forms, links, redirects, auth, and document navigation as the baseline
+- add JavaScript only when fragment updates or navigation polish materially improve the experience
 
 The active implementation lives in the Bun orchestrator plus the canonical TypeScript packages under `packages/**`.
 
@@ -18,14 +18,15 @@ The active implementation lives in the Bun orchestrator plus the canonical TypeS
 ## Default User Path
 
 - Install the packaged CLI in a small tool root with `bun add @webstir-io/webstir`.
-- Scaffold a workspace outside the monorepo with `webstir init`.
+- Scaffold a server-first workspace outside the monorepo with `webstir init`.
+- Build the baseline app around working server routes, forms, redirects, and auth before opting into `client-nav` or other enhancements.
 - Run `watch`, `test`, and `publish` against that workspace with the installed CLI.
 - Use the repo-local `bun run webstir -- ...` form only when you are contributing inside this monorepo.
 
 ## Proof Apps
 
 - [`examples/demos/auth-crud`](https://github.com/webstir-io/webstir/tree/main/examples/demos/auth-crud) proves sessions, auth gates, validation recovery, redirect-after-post, and fragment-enhanced CRUD forms.
-- [`examples/demos/dashboard`](https://github.com/webstir-io/webstir/tree/main/examples/demos/dashboard) proves shell-level and panel-level refreshes without forcing SPA architecture.
+- [`examples/demos/dashboard`](https://github.com/webstir-io/webstir/tree/main/examples/demos/dashboard) proves deliberate shell-level and panel-level refreshes without making SPA architecture the default.
 
 ## Docs Index
 
@@ -37,7 +38,8 @@ The active implementation lives in the Bun orchestrator plus the canonical TypeS
 ## Current Framing
 
 - The Bun orchestrator is the active workflow surface.
-- SSG is supported, but it is one delivery mode inside an HTML-first framework, not the main identity of the product.
+- The main product lane is server-first HTML delivery with low-JS enhancement on top.
+- SSG is supported, but it is one delivery mode inside that lane, not the main identity of the product.
 - The canonical package/runtime story lives in `packages/tooling/webstir-frontend` and `packages/tooling/webstir-backend`.
 
 ## Community & Support

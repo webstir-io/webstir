@@ -5,7 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import type { WorkspaceDescriptor } from './types.ts';
 
 import { runBackendInspect, type BackendInspectResult } from './backend-inspect.ts';
-import { runEnable } from './enable.ts';
+import { runDoctor, type DoctorResult } from './doctor.ts';
 import {
   materializeRepoLocalWorkspaceDependencies,
   prepareExternalWorkspaceCopy,
@@ -23,7 +23,7 @@ export interface RunSmokeOptions {
 }
 
 export interface SmokePhaseResult {
-  readonly name: 'build' | 'test' | 'publish' | 'backend-inspect';
+  readonly name: 'build' | 'test' | 'publish' | 'doctor' | 'backend-inspect';
   readonly detail: string;
 }
 
@@ -71,6 +71,18 @@ export async function runSmoke(options: RunSmokeOptions = {}): Promise<SmokeResu
     phases.push({
       name: 'publish',
       detail: formatBuildDetail(publishResult),
+    });
+
+    const doctorResult = await runDoctor({
+      workspaceRoot: workspace.root,
+      env,
+    });
+    if (!doctorResult.healthy) {
+      throw new Error('Smoke doctor phase reported issues.');
+    }
+    phases.push({
+      name: 'doctor',
+      detail: formatDoctorDetail(doctorResult),
     });
 
     if (workspace.mode === 'api' || workspace.mode === 'full') {
@@ -150,10 +162,6 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-smoke-'));
   const tempWorkspace = path.join(tempRoot, 'full');
   await scaffoldWorkspace('full', tempWorkspace, { force: true });
-  await runEnable({
-    workspaceRoot: tempWorkspace,
-    args: ['client-nav'],
-  });
   await materializeRepoLocalWorkspaceDependencies(tempWorkspace, {
     forceLocalPackages: true,
   });
@@ -162,7 +170,7 @@ async function prepareWorkspace(workspaceRoot?: string): Promise<{
     workspaceRoot: tempWorkspace,
     cleanupRoot: tempRoot,
     usedTempWorkspace: true,
-    source: 'built-in full template + client-nav',
+    source: 'built-in full template',
   };
 }
 
@@ -178,4 +186,8 @@ function formatTestDetail(result: TestCommandResult): string {
 
 function formatBackendInspectDetail(result: BackendInspectResult): string {
   return `${result.manifest.routes?.length ?? 0} routes, ${result.manifest.jobs?.length ?? 0} jobs`;
+}
+
+function formatDoctorDetail(result: DoctorResult): string {
+  return result.healthy ? 'healthy' : `${result.issues.length} issue(s)`;
 }

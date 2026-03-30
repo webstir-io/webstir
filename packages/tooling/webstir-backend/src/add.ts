@@ -3,16 +3,21 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 
 import type {
+  FragmentUpdateMode,
   HttpMethod,
   JobDefinition,
   RouteDefinition,
   SchemaReference,
+  SessionAccessMode,
 } from '@webstir-io/module-contract';
 
 import { readTextFile, writeTextFile } from './utils/bun.js';
 
 const ALLOWED_METHODS = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] as const;
 const ALLOWED_SCHEMA_KINDS = ['zod', 'json-schema', 'ts-rest'] as const;
+const ALLOWED_INTERACTIONS = ['navigation', 'mutation'] as const;
+const ALLOWED_SESSION_MODES = ['optional', 'required'] as const;
+const ALLOWED_FRAGMENT_MODES = ['replace', 'append', 'prepend'] as const;
 const ALLOWED_SCHEDULE_MACROS = [
   'yearly',
   'annually',
@@ -49,6 +54,14 @@ export interface AddRouteOptions {
   readonly summary?: string;
   readonly description?: string;
   readonly tags?: readonly string[];
+  readonly interaction?: string;
+  readonly sessionMode?: string;
+  readonly sessionWrite?: boolean;
+  readonly formUrlEncoded?: boolean;
+  readonly formCsrf?: boolean;
+  readonly fragmentTarget?: string;
+  readonly fragmentSelector?: string;
+  readonly fragmentMode?: string;
   readonly paramsSchema?: string;
   readonly querySchema?: string;
   readonly bodySchema?: string;
@@ -79,6 +92,14 @@ export async function runAddRoute(options: AddRouteOptions): Promise<BackendAddR
   const summary = normalizeOptionalString(options.summary);
   const description = normalizeOptionalString(options.description);
   const tags = normalizeTags(options.tags);
+  const interaction = normalizeInteraction(options.interaction);
+  const session = buildRouteSession(options.sessionMode, options.sessionWrite);
+  const form = buildRouteForm(options.formUrlEncoded, options.formCsrf);
+  const fragment = buildRouteFragment(
+    options.fragmentTarget,
+    options.fragmentSelector,
+    options.fragmentMode,
+  );
   const paramsSchema = parseSchemaReference(options.paramsSchema, '--params-schema');
   const querySchema = parseSchemaReference(options.querySchema, '--query-schema');
   const bodySchema = parseSchemaReference(options.bodySchema, '--body-schema');
@@ -113,6 +134,10 @@ export async function runAddRoute(options: AddRouteOptions): Promise<BackendAddR
     ...(summary ? { summary } : {}),
     ...(description ? { description } : {}),
     ...(tags.length > 0 ? { tags } : {}),
+    ...(interaction ? { interaction } : {}),
+    ...(session ? { session } : {}),
+    ...(form ? { form } : {}),
+    ...(fragment ? { fragment } : {}),
     ...buildRouteInput(paramsSchema, querySchema, bodySchema, headersSchema),
     ...buildRouteOutput(responseSchema, responseHeadersSchema, responseStatus),
   };
@@ -221,6 +246,98 @@ function buildRouteOutput(
       ...(responseHeadersSchema ? { headers: responseHeadersSchema } : {}),
     },
   };
+}
+
+function normalizeInteraction(value?: string): RouteDefinition['interaction'] | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (normalized === 'navigation' || normalized === 'mutation') {
+    return normalized;
+  }
+
+  throw new Error(
+    `Invalid --interaction value '${normalized}'. Allowed values: ${ALLOWED_INTERACTIONS.join(', ')}.`,
+  );
+}
+
+function buildRouteSession(mode?: string, write?: boolean): RouteDefinition['session'] | undefined {
+  const normalizedMode = normalizeSessionMode(mode);
+  if (!normalizedMode && !write) {
+    return undefined;
+  }
+
+  return {
+    ...(normalizedMode ? { mode: normalizedMode } : {}),
+    ...(write ? { write: true } : {}),
+  };
+}
+
+function normalizeSessionMode(value?: string): SessionAccessMode | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (normalized === 'optional' || normalized === 'required') {
+    return normalized;
+  }
+
+  throw new Error(
+    `Invalid --session value '${normalized}'. Allowed values: ${ALLOWED_SESSION_MODES.join(', ')}.`,
+  );
+}
+
+function buildRouteForm(urlEncoded?: boolean, csrf?: boolean): RouteDefinition['form'] | undefined {
+  if (!urlEncoded && !csrf) {
+    return undefined;
+  }
+
+  return {
+    ...(urlEncoded ? { contentType: 'application/x-www-form-urlencoded' } : {}),
+    ...(csrf ? { csrf: true } : {}),
+  };
+}
+
+function buildRouteFragment(
+  target?: string,
+  selector?: string,
+  mode?: string,
+): RouteDefinition['fragment'] | undefined {
+  const normalizedTarget = normalizeOptionalString(target);
+  const normalizedSelector = normalizeOptionalString(selector);
+  const normalizedMode = normalizeFragmentMode(mode);
+
+  if (!normalizedTarget && !normalizedSelector && !normalizedMode) {
+    return undefined;
+  }
+
+  if (!normalizedTarget) {
+    throw new Error('--fragment-target is required when setting fragment metadata.');
+  }
+
+  return {
+    target: normalizedTarget,
+    ...(normalizedSelector ? { selector: normalizedSelector } : {}),
+    ...(normalizedMode ? { mode: normalizedMode } : {}),
+  };
+}
+
+function normalizeFragmentMode(value?: string): FragmentUpdateMode | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  if (normalized === 'replace' || normalized === 'append' || normalized === 'prepend') {
+    return normalized;
+  }
+
+  throw new Error(
+    `Invalid --fragment-mode value '${normalized}'. Allowed values: ${ALLOWED_FRAGMENT_MODES.join(', ')}.`,
+  );
 }
 
 function buildJobTemplate(name: string): string {

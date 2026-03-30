@@ -3,11 +3,11 @@
 Create a new project from embedded templates. Produces a ready-to-run layout with frontend, backend, shared code, and types.
 
 ## Purpose
-- Scaffold a clean workspace with sensible defaults.
+- Scaffold a clean server-first workspace with sensible defaults.
 - Zero-config start: `watch` runs immediately after init.
 
 ## When To Use
-- Starting a new app or demo.
+- Starting a new HTML-first app or demo.
 - Recreating a minimal workspace for tests or examples.
 
 ## CLI

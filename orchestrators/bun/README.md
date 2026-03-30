@@ -8,7 +8,10 @@ Current command surface:
 
 - `init`
 - `refresh`
+- `doctor`
 - `repair`
+- `operations`
+- `agent`
 - `enable`
 - `add-page`
 - `add-test`

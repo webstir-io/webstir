@@ -1,5 +1,8 @@
+import type { AgentResult } from './agent.ts';
 import type { EnableResult } from './enable.ts';
+import type { DoctorResult } from './doctor.ts';
 import type { InitResult } from './init.ts';
+import type { WebstirOperationDescriptor } from './operations.ts';
 import type { RefreshResult } from './refresh.ts';
 import type { RepairResult } from './repair.ts';
 import type { BackendInspectResult } from './backend-inspect.ts';
@@ -74,6 +77,135 @@ export function formatRepairSummary(result: RepairResult): string {
   return lines.join('\n');
 }
 
+export function formatRepairJson(result: RepairResult): string {
+  return JSON.stringify(
+    {
+      command: 'repair',
+      workspaceRoot: result.workspaceRoot,
+      mode: result.mode,
+      dryRun: result.dryRun,
+      changes: result.changes,
+    },
+    null,
+    2,
+  );
+}
+
+export function formatOperationsSummary(operations: readonly WebstirOperationDescriptor[]): string {
+  const lines = ['[webstir] operations', `count: ${operations.length}`];
+
+  for (const operation of operations) {
+    const details = [
+      operation.requiresWorkspace ? 'workspace' : 'no-workspace',
+      operation.mutatesWorkspace ? 'mutates' : 'read-only',
+      operation.supportsJson ? 'json' : 'text',
+      operation.stableForMcp ? 'mcp-ready' : 'manual-only',
+      operation.workspaceModes ? `modes: ${operation.workspaceModes.join(', ')}` : undefined,
+    ].filter(Boolean);
+    lines.push(
+      `  - ${operation.id}: ${operation.summary}${details.length > 0 ? ` (${details.join(', ')})` : ''}`,
+    );
+  }
+
+  return lines.join('\n');
+}
+
+export function formatOperationsJson(operations: readonly WebstirOperationDescriptor[]): string {
+  return JSON.stringify(
+    {
+      command: 'operations',
+      operations,
+    },
+    null,
+    2,
+  );
+}
+
+export function formatDoctorSummary(result: DoctorResult): string {
+  const lines = [
+    '[webstir] doctor complete',
+    `workspace: ${result.workspace.name}`,
+    `mode: ${result.workspace.mode}`,
+    `root: ${result.workspace.root}`,
+    `healthy: ${result.healthy ? 'true' : 'false'}`,
+  ];
+
+  lines.push(`checks: ${result.checks.length}`);
+  for (const check of result.checks) {
+    lines.push(`  - ${check.id}: ${check.status} (${check.summary})`);
+    if (check.detail) {
+      lines.push(`    detail: ${check.detail}`);
+    }
+  }
+
+  if (result.issues.length === 0) {
+    lines.push('issues: none');
+  } else {
+    lines.push(`issues: ${result.issues.length}`);
+    for (const issue of result.issues) {
+      lines.push(`  - ${issue.code}: ${issue.message}`);
+      if (issue.changes && issue.changes.length > 0) {
+        for (const change of issue.changes) {
+          lines.push(`    change: ${change}`);
+        }
+      }
+    }
+  }
+
+  if (result.repair.changes.length > 0) {
+    lines.push(`repair: webstir ${result.repair.command} ${result.repair.args.join(' ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatDoctorJson(result: DoctorResult): string {
+  return JSON.stringify(
+    {
+      command: 'doctor',
+      workspace: {
+        name: result.workspace.name,
+        mode: result.workspace.mode,
+        root: result.workspace.root,
+      },
+      healthy: result.healthy,
+      checks: result.checks,
+      issues: result.issues,
+      repair: result.repair,
+      ...(result.backend ? { backend: result.backend } : {}),
+    },
+    null,
+    2,
+  );
+}
+
+export function formatAgentSummary(result: AgentResult): string {
+  const lines = [
+    '[webstir] agent complete',
+    `goal: ${result.goal}`,
+    `root: ${result.workspaceRoot}`,
+    `success: ${result.success ? 'true' : 'false'}`,
+    `steps: ${result.steps.length}`,
+  ];
+
+  for (const step of result.steps) {
+    lines.push(`  - ${step.id}: ${step.status} (${step.summary})`);
+  }
+
+  return lines.join('\n');
+}
+
+export function formatAgentJson(result: AgentResult): string {
+  return JSON.stringify(
+    {
+      command: 'agent',
+      ...result,
+    },
+    null,
+    2,
+  );
+}
+
 export function formatBackendInspectSummary(result: BackendInspectResult): string {
   const lines = [
     '[webstir] backend-inspect complete',
@@ -91,6 +223,12 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
     lines.push(`  - ${route.method} ${route.path}${route.name ? ` (${route.name})` : ''}`);
   }
 
+  const views = result.manifest.views ?? [];
+  lines.push(`views: ${views.length}`);
+  for (const view of views) {
+    lines.push(`  - ${view.path}${view.name ? ` (${view.name})` : ''}`);
+  }
+
   const jobs = result.manifest.jobs ?? [];
   lines.push(`jobs: ${jobs.length}`);
   for (const job of jobs) {
@@ -105,6 +243,23 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
   }
 
   return lines.join('\n');
+}
+
+export function formatBackendInspectJson(result: BackendInspectResult): string {
+  return JSON.stringify(
+    {
+      command: 'backend-inspect',
+      workspace: {
+        name: result.workspace.name,
+        mode: result.workspace.mode,
+        root: result.workspace.root,
+      },
+      buildRoot: result.buildRoot,
+      manifest: result.manifest,
+    },
+    null,
+    2,
+  );
 }
 
 export function formatTestSummary(result: TestCommandResult): string {

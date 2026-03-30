@@ -191,3 +191,74 @@ test('CLI add-test scaffolds a nested test file and reports duplicate no-op runs
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
+
+test('CLI add-route records form and fragment metadata in the backend manifest', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-add-api-');
+
+  try {
+    const result = await runCli([
+      'add-route',
+      'session-sign-in',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+      '--method',
+      'POST',
+      '--path',
+      '/session/sign-in',
+      '--summary',
+      'Sign in through a server-handled form',
+      '--interaction',
+      'mutation',
+      '--session',
+      'required',
+      '--session-write',
+      '--form-urlencoded',
+      '--csrf',
+      '--fragment-target',
+      'session-panel',
+      '--fragment-selector',
+      '#session-panel',
+      '--fragment-mode',
+      'replace',
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('[webstir] add-route complete');
+    expect(result.stdout).toContain('target: POST /session/sign-in');
+
+    const packageJson = JSON.parse(
+      await readFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'), 'utf8'),
+    ) as {
+      webstir?: {
+        moduleManifest?: {
+          routes?: Array<Record<string, unknown>>;
+        };
+      };
+    };
+    const route = packageJson.webstir?.moduleManifest?.routes?.find(
+      (entry) => entry.method === 'POST' && entry.path === '/session/sign-in',
+    );
+
+    expect(route).toBeDefined();
+    expect(route).toMatchObject({
+      name: 'session-sign-in',
+      interaction: 'mutation',
+      session: {
+        mode: 'required',
+        write: true,
+      },
+      form: {
+        contentType: 'application/x-www-form-urlencoded',
+        csrf: true,
+      },
+      fragment: {
+        target: 'session-panel',
+        selector: '#session-panel',
+        mode: 'replace',
+      },
+    });
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});

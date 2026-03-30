@@ -185,7 +185,7 @@ function renderDemoPage(
   const status =
     source === 'redirect'
       ? '<p class="status">Last submit used the no-JavaScript redirect path.</p>'
-      : '<p class="status">This page is ready for progressive enhancement via <code>client-nav</code>.</p>';
+      : '<p class="status">This page starts with server-first HTML. Opt into <code>client-nav</code> if you want fragment updates.</p>';
   const sessionPanelState = sessionName
     ? sessionState === 'signed-in'
       ? 'signed-in'
@@ -223,7 +223,7 @@ function renderDemoPage(
       <p><a href="/">Back to the full demo home page</a></p>
       <div class="stack">
         <h1>Progressive enhancement form flow</h1>
-        <p>This route is served by the backend runtime. The form still works without client JavaScript, and <code>client-nav</code> upgrades it to a fragment update when available.</p>
+        <p>This route is served by the backend runtime. The form still works without client JavaScript, and <code>client-nav</code> remains an optional enhancement for fragment updates.</p>
         ${status}
       </div>
     </header>
