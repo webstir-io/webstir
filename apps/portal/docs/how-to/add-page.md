@@ -14,6 +14,7 @@ Scaffold a new frontend page with `index.html|css|ts` under `src/frontend/pages/
 
 ## Notes
 - Frontend only: this command scaffolds files under `src/frontend/pages/` and does not touch backend or shared code.
+- In the default `full` workflow, document pages live here while form handlers, redirects, and auth stay in `src/backend/module.ts`.
 - Internals: the CLI shells into the `@webstir-io/webstir-frontend` TypeScript package (`webstir-frontend add-page`) so scaffolding stays in sync with the framework templates.
 - SSG default: when `webstir.mode` is `ssg`, scaffolds a JS-free page by default (no `index.ts` and no module script tag); add `index.ts` later if you want JS sprinkles.
 

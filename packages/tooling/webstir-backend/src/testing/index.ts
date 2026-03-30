@@ -249,7 +249,12 @@ function captureChildOutput(child: ChildProcess): {
 }
 
 function indicatesPortInUse(stdout: string, stderr: string, message: string): boolean {
-  return [stdout, stderr, message].some((value) => value.includes('EADDRINUSE'));
+  return [stdout, stderr, message].some(
+    (value) =>
+      value.includes('EADDRINUSE') ||
+      value.includes('address already in use') ||
+      value.includes('Failed to listen at 127.0.0.1'),
+  );
 }
 
 function resolveWorkspacePath(workspaceRoot: string, value: string): string {

@@ -5,7 +5,7 @@ Embedded scaffolding used by the CLI to create projects and generate files. Keep
 ## Overview
 - Repo source of truth lives under `orchestrators/bun/resources/templates/**`.
 - Generated package assets live under `orchestrators/bun/assets/templates/**` and are embedded into the Bun CLI package.
-- `webstir init` lays down a full-stack project by default.
+- `webstir init` lays down a server-first `full` project by default.
 - Generators add files in the right place with sensible defaults.
 
 ## Layout
@@ -37,7 +37,9 @@ Typical backend scaffold:
 - Backend entry is `src/backend/index.ts`.
 - Fresh `api` and `full` scaffolds keep `src/backend/index.ts` thin and use it to boot the package-managed Bun runtime.
 - Manifest-backed route and demo logic lives in `src/backend/module.ts`.
+- The default app primitives are documented in [Primitives](./primitives.md); treat that page as the naming contract for pages, forms, actions, fragment targets, request-time views, and auth-gated routes.
 - For optional app features, prefer absolute app-asset imports such as `await import('/app/router.js')` so dev and publish paths stay aligned.
+- Start with `full` when the app needs forms, redirects, auth, or server-rendered documents; opt into `spa` or `ssg` only when you need those delivery modes specifically.
 
 ## TypeScript
 - Uses an embedded `base.tsconfig.json` referenced by template tsconfigs.
@@ -102,6 +104,7 @@ Typical backend scaffold:
 
 ## Related Docs
 - Solution overview — [solution](../explanations/solution.md)
+- Primitives — [primitives](./primitives.md)
 - CLI reference — [cli](cli.md)
 - Engine internals — [engine](../explanations/engine.md)
 - Pipelines — [pipelines](../explanations/pipelines.md)

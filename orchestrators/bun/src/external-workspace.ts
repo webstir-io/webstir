@@ -26,6 +26,7 @@ export async function prepareExternalWorkspaceCopy(
   tempPrefix: string,
   options: {
     readonly forceLocalPackages?: boolean;
+    readonly installStdio?: 'inherit' | 'pipe';
   } = {},
 ): Promise<{ readonly workspaceRoot: string; readonly cleanupRoot: string } | null> {
   if (!monorepoRoot || !isExternalWorkspace(workspaceRoot)) {
@@ -47,6 +48,7 @@ export async function materializeRepoLocalWorkspaceDependencies(
   workspaceRoot: string,
   options: {
     readonly forceLocalPackages?: boolean;
+    readonly installStdio?: 'inherit' | 'pipe';
   } = {},
 ): Promise<void> {
   if (!monorepoRoot || !isExternalWorkspace(workspaceRoot)) {
@@ -67,7 +69,7 @@ export async function materializeRepoLocalWorkspaceDependencies(
   const install = spawnSync(resolveRuntimeCommand(), ['install'], {
     cwd: workspaceRoot,
     env: process.env,
-    stdio: 'inherit',
+    stdio: options.installStdio ?? 'inherit',
   });
   if (install.error) {
     throw install.error;

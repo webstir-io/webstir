@@ -1,6 +1,6 @@
 # Enable Features
 
-Webstir supports an `enable` workflow to opt into optional functionality by writing the required scaffold files and turning on the corresponding `package.json` flags.
+Webstir supports an `enable` workflow to opt into optional enhancements after the baseline server-first app is already working. It writes the required scaffold files and turns on the corresponding `package.json` flags.
 
 ## Usage
 
@@ -83,3 +83,4 @@ Applies to SSG docs pages (content pipeline) only.
 ## Notes
 - `enable` is additive and idempotent: it avoids duplicating imports on re-run.
 - Feature scripts are appended as `.js` imports in `app.ts` because the dev server serves the compiled output under `build/frontend/**`.
+- Prefer the server-first path for forms, links, redirects, and auth before enabling client-nav or other UI polish.

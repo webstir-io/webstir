@@ -2,6 +2,8 @@
 
 This guide shows how to add a backend route to your module manifest.
 
+Use this when a backend endpoint needs explicit manifest metadata, schema references, or `backend-inspect` visibility. For the default `full` app path, keep document pages in `src/frontend/pages/**` and keep form-handling logic in `src/backend/module.ts`, then add manifest-backed route entries as those backend surfaces stabilize.
+
 ## Prerequisites
 - A Webstir workspace initialized via `webstir init ...`.
 - Backend source at `src/backend/`.
@@ -16,6 +18,9 @@ This guide shows how to add a backend route to your module manifest.
    - `webstir add-route accounts --workspace "$PWD" --summary "List accounts" --description "Returns the current tenant accounts" --tags accounts,api`
    - Schema references follow the `kind:name@source` format described in the CLI reference. Example:\
      `webstir add-route accounts --workspace "$PWD" --params-schema zod:AccountParams@src/shared/contracts/accounts.ts --response-schema zod:AccountList@src/shared/contracts/accounts.ts`
+4. Declare HTML-first route primitives when the route is a server-handled form or fragment update:
+   - `webstir add-route sign-in --workspace "$PWD" --method POST --path /api/sign-in --interaction mutation --session required --session-write --form-urlencoded --csrf`
+   - `webstir add-route account-panel --workspace "$PWD" --method POST --path /api/account/panel --interaction mutation --fragment-target account-panel --fragment-mode replace`
 ## Wire the handler
 After writing the manifest entry, implement the handler in `src/backend/module.ts`. The template already exports a manifest and route list—extend it with your logic:
 
@@ -73,6 +78,8 @@ export const module = {
 - The CLI prevents duplicate entries for the same method+path.
 - The backend provider also validates the manifest and emits diagnostics on duplicates.
 - Route handler scaffolding is optional and intended as a starting point; adapt it to your server style.
+- `--session required` is the current manifest-level way to mark auth-gated routes in the default server-first lane.
+- `--form-urlencoded`, `--csrf`, and `--fragment-*` only declare the contract. Your handler in `src/backend/module.ts` still needs to implement the actual form, redirect, or fragment behavior.
 - Schema references can point at Zod files (`zod:Type@path/to/file.ts`), JSON schema, or ts-rest routers. They only record metadata; the backend provider enforces the manifest at build time.
 
 ## See Also

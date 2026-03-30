@@ -1,6 +1,6 @@
 # Workflows
 
-End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical frontend, backend, and testing packages so a workspace can move from source files to a running or publishable application.
+End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical frontend, backend, and testing packages so a workspace can move from source files to a running or publishable server-first HTML app.
 
 ## Core Commands
 
@@ -10,10 +10,27 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
 - `webstir test`
 - `webstir publish`
 - `webstir smoke`
+- `webstir operations`
+- `webstir agent`
+- `webstir doctor`
 - `webstir add-page`
 - `webstir add-route`
 - `webstir add-job`
 - `webstir add-test`
+
+## Default Path
+
+When in doubt, use this path:
+
+1. `webstir init full <directory>`
+2. Add document pages with `webstir add-page`
+3. Keep forms, redirects, auth, and request-time HTML in `src/backend/module.ts`
+4. Use `webstir add-route` for backend endpoints that need manifest metadata or inspection visibility
+5. Define request-time views in `src/backend/module.ts` when a page needs server-loaded data at request time
+6. Enable `client-nav` only after the baseline HTML flow is already correct
+7. Use `webstir doctor` to confirm scaffold health and backend manifest health before shipping
+8. Use `webstir repair` to restore scaffold drift without changing the app shape
+9. Use `webstir publish` plus the Bun Docker deployment contract for shipped `api` and `full` workspaces
 
 ## Flow Shape
 
@@ -22,6 +39,7 @@ End-to-end flows driven by the Bun CLI. Workflows coordinate the canonical front
    - `spa` and `ssg` => frontend
    - `api` => backend
    - `full` => frontend + backend
+   - `full` is the main lane for server-first apps with forms, redirects, auth, and optional enhancement.
 3. Run the canonical package logic from `packages/tooling/**`.
 4. Emit `build/**` for development and test work.
 5. Emit `dist/frontend/**` for publish-ready frontend assets when a frontend surface exists.
@@ -68,10 +86,22 @@ Only `webstir test` supports `--runtime <frontend|backend|all>`.
 
 If you want to see the workflows exercised against real applications, use:
 
-- `examples/demos/full` as the canonical `webstir test` and full-stack workflow reference
-- `examples/demos/auth-crud` and `examples/demos/dashboard` as browser/publish proof apps, not extra required `webstir test` lanes
+- `examples/demos/full` as the canonical `webstir test` and server-first workflow reference
+- `examples/demos/auth-crud` as a proof app for richer auth and CRUD flows, not the canonical scaffold shape
+- `examples/demos/dashboard` as a deliberate enhancement proof, not a default architecture target
 
-Together those demos cover the current HTML-first runtime across redirect-after-post, fragment updates, sessions, and publish-mode validation.
+Together those demos cover the current HTML-first runtime across redirect-after-post, fragment updates, sessions, auth gates, and publish-mode validation.
+
+## Recipe Benchmarks
+
+Use the pinned recipe apps and benchmark runner when you want to prove the current agent-facing lane instead of just describing it:
+
+- `examples/demos/full` is the scaffold-aligned golden-path recipe
+- `examples/demos/auth-crud` is the richer auth and CRUD proof recipe
+- `examples/demos/dashboard` is the fragment-refresh proof recipe
+- `bun run benchmark:agent-tasks` runs the current benchmark plan across those recipes
+
+That benchmark intentionally stays close to the real framework operations: `doctor`, `backend-inspect`, `test`, and `publish`.
 
 ## Related Docs
 

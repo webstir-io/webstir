@@ -4,11 +4,13 @@ Canonical monorepo for the Webstir ecosystem.
 
 ## Status
 
-Webstir is still experimental.
+Webstir is still experimental, and it is intentionally focused on a narrow product lane:
 
-- Expect APIs, contracts, generated scaffolds, and workflows to change.
-- Treat the repo as an active framework project, not a production-stable platform.
-- Do not rely on the current Bun APIs and workflows as a long-term compatibility guarantee yet; the supported Bun deployment contract is documented below.
+- server-first, HTML-first apps
+- working forms, links, redirects, and auth before client-side polish
+- low-JS progressive enhancement, including optional fragment updates and client-nav
+
+Expect APIs, contracts, generated scaffolds, and workflows to change. Treat the repo as an active framework project, not a production-stable platform. It is not a broad React replacement or an architecture menu. Do not rely on the current Bun APIs and workflows as a long-term compatibility guarantee yet; the supported Bun deployment contract is documented below.
 
 ## Layout
 

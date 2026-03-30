@@ -1,6 +1,6 @@
 # CLI
 
-Active command reference for the Bun orchestrator. The default user-facing path is an installed `webstir` binary; the repo-local `bun run webstir -- <command>` form is for contributors working inside this monorepo.
+Active command reference for the Bun orchestrator. The default user-facing path is an installed `webstir` binary; the repo-local `bun run webstir -- <command>` form is for contributors working inside this monorepo. The CLI is optimized for server-first HTML apps with deliberate progressive enhancement, not for broad framework replacement.
 
 > Historical note: the archived `.NET` orchestrator remains in-tree under `orchestrators/dotnet`, but it is no longer the active CLI for local development or framework evolution.
 
@@ -57,13 +57,26 @@ Notes:
 - This is destructive to generated workspace contents inside the target directory
 - Demo refresh helper scripts in `examples/demos/utils/*.sh` use this Bun path now
 
+### doctor
+Usage: `webstir doctor --workspace <path>`
+
+What it does:
+- Checks scaffold drift by running the same workspace-aware analysis that powers `repair --dry-run`
+- For `api` and `full`, also validates backend manifest health through the backend build path
+- Accepts `--json` for machine-readable health output
+
+Notes:
+- Exits non-zero when it finds repairable scaffold drift or backend manifest/build failures
+- Use this before `repair` when you want a diagnosis and suggested fix instead of immediately mutating the workspace
+
 ### repair
 Usage: `webstir repair --workspace <path> [--dry-run]`
 
 What it does:
 - Restores missing scaffold-managed files for the current workspace mode
-- Uses the canonical scaffold assets already baked into the Bun orchestrator
+- Uses the current mode scaffold plus any explicitly enabled feature assets
 - Re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, and `githubPages`
+- Accepts `--json` for machine-readable dry-run or repair output
 
 Notes:
 - `--dry-run` reports which files or scaffold-managed edits would be restored without writing anything
@@ -73,13 +86,38 @@ Notes:
 Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
 
 What it does:
-- Adds optional scaffolded features to an existing workspace
+- Adds optional enhancements to an existing workspace
 - Supported features include `scripts`, `spa`, `client-nav`, `search`, `content-nav`, `backend`, `github-pages`, and `gh-deploy`
 - Updates workspace files and `package.json` flags so the feature is active on the next build/watch
 
 Notes:
 - Some features accept additional arguments before `--workspace`
 - Demo feature-enablement flows now use the Bun orchestrator directly
+
+### operations
+Usage: `webstir operations`
+
+What it does:
+- Lists the stable Webstir framework operations that the Bun CLI exposes
+- Marks which operations mutate a workspace, which support `--json`, and which are ready to wrap through MCP
+- Accepts `--json` for a machine-readable operation catalog
+
+Notes:
+- This is the contract surface for wrappers and agents; it is intentionally narrower than the full implementation internals
+
+### agent
+Usage: `webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> --workspace <path> [goal-args...]`
+
+What it does:
+- Runs a thin orchestration layer on top of stable Webstir operations
+- Supports inspection, validation, repair, and narrow scaffolding goals without inventing a new app architecture
+- Accepts `--json` for machine-readable orchestration results
+
+Notes:
+- `inspect` runs diagnosis first and then backend inspection when the workspace supports it
+- `validate` runs `doctor` and then `test`
+- `repair` runs `doctor`, applies scaffold repair when available, and then re-checks health
+- `scaffold-page`, `scaffold-route`, and `scaffold-job` call the matching scaffold commands and then verify the resulting workspace state
 
 ### build
 Usage: `webstir build --workspace <path>`
@@ -133,15 +171,16 @@ Usage: `webstir smoke [--workspace <path>]`
 
 What it does:
 - Runs a bounded end-to-end Bun verification flow:
-  - `build`
-  - `test`
-  - `publish`
+- `build`
+- `test`
+- `publish`
+  - `doctor`
   - `backend-inspect` for backend-capable workspaces
-- If `--workspace` is omitted, scaffolds a temporary full workspace from Bun-owned templates and enables `client-nav`
+- If `--workspace` is omitted, scaffolds a temporary server-first full workspace from Bun-owned templates
 - Prints a compact phase-by-phase summary
 
 Notes:
-- The default temporary workspace avoids mutating tracked demo workspaces while still exercising the full Bun-owned smoke surface
+- The default temporary workspace avoids mutating tracked demo workspaces while still exercising the full Bun-owned smoke surface, while leaving `client-nav` as an opt-in enhancement
 - For external copied workspaces, backend type-checking is skipped only when necessary to avoid monorepo-only TypeScript resolution assumptions
 
 ### backend-inspect
@@ -149,7 +188,8 @@ Usage: `webstir backend-inspect --workspace <path>`
 
 What it does:
 - Builds the backend and reads the resulting manifest data
-- Prints module metadata, capabilities, routes, and jobs
+- Prints module metadata, capabilities, routes, views, and jobs
+- Accepts `--json` for machine-readable manifest output
 - Supports `api` and `full` workspaces only
 
 ### add-page
@@ -169,11 +209,19 @@ What it does:
 - Reuses the canonical testing package scaffold helper
 
 ### add-route
-Usage: `webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [...schema/metadata flags]`
+Usage: `webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--interaction <navigation|mutation>] [--session <optional|required>] [--session-write] [--form-urlencoded] [--csrf] [--fragment-target <target>] [--fragment-selector <selector>] [--fragment-mode <replace|append|prepend>] [...schema/metadata flags]`
 
 What it does:
 - Adds a backend route entry to `webstir.moduleManifest.routes` in `package.json`
 - Supports route metadata and schema reference flags already documented by the module contract
+- Exposes first-class route intent for navigation vs mutation, session requirements, form encoding, CSRF, and fragment-target responses
+- Exposes the common HTML-first route primitives directly:
+  - `--interaction navigation|mutation`
+  - `--session optional|required`
+  - `--session-write`
+  - `--form-urlencoded`
+  - `--csrf`
+  - `--fragment-target <name>` with optional `--fragment-selector` and `--fragment-mode`
 
 ### add-job
 Usage: `webstir add-job <name> --workspace <path> [--schedule <expression>] [--description <text>] [--priority <value>]`

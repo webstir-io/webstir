@@ -181,6 +181,44 @@ async function main() {
       );
     }
 
+    const doctorOutput = await run(
+      [cliPath, 'doctor', '--workspace', workspaceRoot],
+      workspaceRoot,
+    );
+    if (!doctorOutput.includes('[webstir] doctor complete')) {
+      throw new Error(`Expected doctor summary in output, received:\n${doctorOutput}`);
+    }
+    if (!doctorOutput.includes('healthy: true')) {
+      throw new Error(`Expected healthy doctor status in output, received:\n${doctorOutput}`);
+    }
+    if (!doctorOutput.includes('issues: none')) {
+      throw new Error(`Expected zero doctor issues in output, received:\n${doctorOutput}`);
+    }
+
+    const operationsOutput = await run([cliPath, 'operations', '--json'], workspaceRoot);
+    if (!operationsOutput.includes('"command": "operations"')) {
+      throw new Error(`Expected operations JSON output, received:\n${operationsOutput}`);
+    }
+    if (!operationsOutput.includes('"id": "doctor"')) {
+      throw new Error(
+        `Expected doctor operation in catalog output, received:\n${operationsOutput}`,
+      );
+    }
+
+    const agentInspectOutput = await run(
+      [cliPath, 'agent', 'inspect', '--json', '--workspace', workspaceRoot],
+      workspaceRoot,
+    );
+    if (!agentInspectOutput.includes('"command": "agent"')) {
+      throw new Error(`Expected agent JSON output, received:\n${agentInspectOutput}`);
+    }
+    if (!agentInspectOutput.includes('"goal": "inspect"')) {
+      throw new Error(`Expected inspect goal in agent output, received:\n${agentInspectOutput}`);
+    }
+    if (!agentInspectOutput.includes('"success": true')) {
+      throw new Error(`Expected successful agent inspect output, received:\n${agentInspectOutput}`);
+    }
+
     const testOutput = await run(
       [cliPath, 'test', '--workspace', workspaceRoot, '--runtime', 'frontend'],
       workspaceRoot,

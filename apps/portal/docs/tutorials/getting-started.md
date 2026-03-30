@@ -1,6 +1,6 @@
 # Getting Started
 
-Install the packaged CLI, scaffold a workspace outside the monorepo, and run the built-in full-stack template.
+Install the packaged CLI, scaffold a server-first workspace outside the monorepo, and run the built-in full template.
 
 > These docs default to the packaged CLI path. If you are contributing inside this repo, use `bun run webstir -- ...` from the monorepo root instead.
 
@@ -43,8 +43,10 @@ bun install
 
 Open the printed URL, then check both of these routes:
 
-- `/` for the scaffolded frontend shell
-- `/api/demo/progressive-enhancement` for the built-in backend form flow that demonstrates the baseline redirect-after-post path you will later upgrade with `client-nav`
+- `/` for the scaffolded document shell
+- `/api/demo/progressive-enhancement` for the built-in backend form flow that demonstrates the baseline redirect-after-post path before any optional `client-nav` enhancement
+
+The default app should work without JavaScript for forms, links, redirects, and auth-gated flows.
 
 ## Next
 

@@ -228,7 +228,15 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
         `Backend server did not become ready on port ${candidatePort}.\nstdout:\n${stdout}\nstderr:\n${stderr}\nerror:\n${message}`,
       );
 
-      if (attempt < 9 && [stdout, stderr, message].some((value) => value.includes('EADDRINUSE'))) {
+      if (
+        attempt < 9 &&
+        [stdout, stderr, message].some(
+          (value) =>
+            value.includes('EADDRINUSE') ||
+            value.includes('address already in use') ||
+            value.includes('Failed to listen at 127.0.0.1'),
+        )
+      ) {
         candidatePort += 1;
         continue;
       }

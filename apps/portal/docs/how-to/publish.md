@@ -20,6 +20,15 @@ webstir publish --workspace /absolute/path/to/workspace
 - Request-time views continue to serve document HTML and expose `x-webstir-document-cache`.
 - Fragment responses stay uncached and continue to emit `x-webstir-fragment-*` headers.
 
+## Default Ship Path
+
+For the main server-first lane:
+
+1. Start from a `full` workspace.
+2. Validate the baseline document and form flow with `watch` and `test`.
+3. Run `webstir publish --workspace "$PWD"`.
+4. Deploy the published workspace with the Bun Docker contract from [Docker Deployment](./docker.md).
+
 ## Proof App Validation
 
 Before changing docs or runtime behavior, confirm publish mode on the proof apps:

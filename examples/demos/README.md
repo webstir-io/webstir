@@ -32,6 +32,16 @@ Root shortcuts:
 - `bun run watch:auth-crud`
 - `bun run watch:dashboard`
 
+Gold-standard recipe apps:
+- `full/` — default golden-path recipe for page + form + action + optional enhancement
+- `auth-crud/` — richer auth-gated and CRUD mutation recipe
+- `dashboard/` — fragment-refresh and shell-panel recipe
+
+Agent task benchmark:
+- `bun run benchmark:agent-tasks`
+- Runs the scaffold-health benchmark on `full`, then runs backend inspect and validation tasks against the proof apps.
+- `doctor` is intentionally benchmarked only on the scaffold-aligned `full` workspace today; `auth-crud` and `dashboard` are proof apps, not repair targets.
+
 Notes:
 - Watch, feature-enable, and refresh helpers use the Bun orchestrator.
 - `bun run --filter @webstir-io/webstir check:full-demo-sync` verifies that `examples/demos/full/src/**` still matches `orchestrators/bun/resources/templates/full/src/**` outside the approved proof-only files.

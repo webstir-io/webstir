@@ -16,6 +16,11 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
       '--summary',
       '--description',
       '--tags',
+      '--interaction',
+      '--session',
+      '--fragment-target',
+      '--fragment-selector',
+      '--fragment-mode',
       '--params-schema',
       '--query-schema',
       '--body-schema',
@@ -24,7 +29,7 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
       '--response-status',
       '--response-headers-schema',
     ]),
-    booleanFlags: new Set(),
+    booleanFlags: new Set(['--session-write', '--form-urlencoded', '--csrf']),
   });
 
   const name = parsed.positionals[0];
@@ -48,6 +53,14 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
     summary: parsed.values.get('--summary'),
     description: parsed.values.get('--description'),
     tags,
+    interaction: parsed.values.get('--interaction'),
+    sessionMode: parsed.values.get('--session'),
+    sessionWrite: parsed.booleans.has('--session-write'),
+    formUrlEncoded: parsed.booleans.has('--form-urlencoded'),
+    formCsrf: parsed.booleans.has('--csrf'),
+    fragmentTarget: parsed.values.get('--fragment-target'),
+    fragmentSelector: parsed.values.get('--fragment-selector'),
+    fragmentMode: parsed.values.get('--fragment-mode'),
     paramsSchema: parsed.values.get('--params-schema'),
     querySchema: parsed.values.get('--query-schema'),
     bodySchema: parsed.values.get('--body-schema'),
@@ -118,6 +131,14 @@ interface BackendAddModule {
     readonly summary?: string;
     readonly description?: string;
     readonly tags?: readonly string[];
+    readonly interaction?: string;
+    readonly sessionMode?: string;
+    readonly sessionWrite?: boolean;
+    readonly formUrlEncoded?: boolean;
+    readonly formCsrf?: boolean;
+    readonly fragmentTarget?: string;
+    readonly fragmentSelector?: string;
+    readonly fragmentMode?: string;
     readonly paramsSchema?: string;
     readonly querySchema?: string;
     readonly bodySchema?: string;
