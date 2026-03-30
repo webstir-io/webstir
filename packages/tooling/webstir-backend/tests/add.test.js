@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { backendProvider, runAddJob, runAddRoute } from '../dist/index.js';
+import { backendProvider, runAddJob, runAddRoute, runUpdateRouteContract } from '../dist/index.js';
 
 async function createTempWorkspace(prefix = 'webstir-backend-add-') {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -227,6 +227,88 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
       schedule: '0 0 * * *',
       description: 'Nightly maintenance run',
       priority: 5,
+    },
+  ]);
+});
+
+test('runUpdateRouteContract merges advanced metadata onto an existing route', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-update-route-contract-');
+
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@demo/api',
+        version: '1.0.0',
+        type: 'module',
+        webstir: {
+          mode: 'api',
+          moduleManifest: {
+            routes: [
+              {
+                name: 'session-sign-in',
+                method: 'POST',
+                path: '/session/sign-in',
+                summary: 'Sign in',
+                interaction: 'mutation',
+              },
+            ],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const result = await runUpdateRouteContract({
+    workspaceRoot: workspace,
+    method: 'POST',
+    path: '/session/sign-in',
+    sessionMode: 'required',
+    sessionWrite: true,
+    formUrlEncoded: true,
+    formCsrf: true,
+    fragmentTarget: 'session-panel',
+    fragmentSelector: '#session-panel',
+    fragmentMode: 'replace',
+    responseSchema: 'SessionSignInResponse@src/shared/contracts/session.ts',
+    responseStatus: 200,
+  });
+
+  assert.equal(result.subject, 'route');
+  assert.deepEqual(result.changes, ['package.json']);
+
+  const pkg = await readJson(path.join(workspace, 'package.json'));
+  assert.deepEqual(pkg.webstir.moduleManifest.routes, [
+    {
+      name: 'session-sign-in',
+      method: 'POST',
+      path: '/session/sign-in',
+      summary: 'Sign in',
+      interaction: 'mutation',
+      session: {
+        mode: 'required',
+        write: true,
+      },
+      form: {
+        contentType: 'application/x-www-form-urlencoded',
+        csrf: true,
+      },
+      fragment: {
+        target: 'session-panel',
+        selector: '#session-panel',
+        mode: 'replace',
+      },
+      output: {
+        body: {
+          kind: 'zod',
+          name: 'SessionSignInResponse',
+          source: 'src/shared/contracts/session.ts',
+        },
+        status: 200,
+      },
     },
   ]);
 });

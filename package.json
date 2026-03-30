@@ -40,6 +40,7 @@
     "check:biome": "biome check . --linter-enabled=false --assist-enabled=false",
     "test:tools": "bun test tools/tests/*.test.mjs",
     "check:required": "bun tools/run-checks.mjs required",
+    "check:release": "bun tools/run-checks.mjs release",
     "check:with-watch-browser": "bun tools/run-checks.mjs with-watch-browser",
     "clean": "bun run --workspaces --if-present clean",
     "smoke": "bun run --workspaces --if-present smoke",

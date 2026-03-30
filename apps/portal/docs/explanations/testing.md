@@ -36,6 +36,7 @@ How the active Bun monorepo tests the CLI, provider packages, and proof apps.
 - Repo-wide required tests plus watch browser tests: `bun run test:with-watch-browser`
 - Watch browser tests: `bun run test:watch-browser`
 - Repo required CI mirror: `bun run check:required`
+- Repo release gate: `bun run check:release`
 - Repo required CI mirror plus watch browser tests: `bun run check:with-watch-browser`
 - Bun orchestrator only: `bun run --filter @webstir-io/webstir test`
 - Bun orchestrator required tests plus watch browser tests: `bun run --filter @webstir-io/webstir test:with-watch-browser`
@@ -67,7 +68,7 @@ In this repo, `examples/demos/full` is the canonical workspace for the `webstir 
 - Integration tests use isolated temp workspaces and copied fixtures.
 - Watch tests prefer explicit readiness and port checks over long sleeps.
 - Browser flows focus on shipped proof apps so regressions surface on real consumer paths.
-- PR and `main` should run the same required gate; that gate now starts with `bun run check:biome`, follows with `bun run lint`, includes package smoke coverage, and includes watch browser proofs instead of treating them as an optional side lane.
+- PR and `main` should run the same required gate; use `bun run check:required` for the CI mirror, `bun run check:with-watch-browser` when you want the watch-browser proof lane, and `bun run check:release` when you want the release-ready gate that includes the recipe-app benchmark.
 - GitHub `CI` runs `bun run check:required`; the `Watch Browser Tests` workflow remains manual as a focused rerun path and runs `bun run test:watch-browser` on demand.
 
 ## Related Docs

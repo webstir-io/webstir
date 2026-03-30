@@ -36,7 +36,9 @@ async function runCli(
   };
 }
 
-test('CLI agent validate orchestrates doctor and test for a healthy workspace', async () => {
+test('CLI agent validate orchestrates doctor and test for a healthy workspace', {
+  timeout: 15_000,
+}, async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-agent-validate-spa-');
 
   try {

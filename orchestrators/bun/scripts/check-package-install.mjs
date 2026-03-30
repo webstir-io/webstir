@@ -9,6 +9,7 @@ const scriptRoot = path.dirname(new URL(import.meta.url).pathname);
 const packageRoot = path.resolve(scriptRoot, '..');
 const repoRoot = path.resolve(packageRoot, '..', '..');
 const backendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-backend');
+const frontendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend');
 
 async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-package-install-'));
@@ -34,6 +35,7 @@ async function main() {
   const addedJobPath = path.join(workspaceRoot, 'src', 'backend', 'jobs', addJobTarget, 'index.ts');
   const existingTarballs = await listTarballs(packageRoot);
   const backendPackageSpec = `file:${backendPackageRoot}`;
+  const frontendPackageSpec = `file:${frontendPackageRoot}`;
   let tarballPath = null;
   let keepWorkspace = false;
 
@@ -47,6 +49,7 @@ async function main() {
     await writeInstallRootManifest(installRoot, {
       webstirTarballPath: tarballPath,
       backendPackageSpec,
+      frontendPackageSpec,
     });
     await run(['bun', 'install'], installRoot);
 
@@ -205,6 +208,33 @@ async function main() {
       );
     }
 
+    const frontendInspectOutput = await run(
+      [cliPath, 'frontend-inspect', '--json', '--workspace', workspaceRoot],
+      workspaceRoot,
+    );
+    if (!frontendInspectOutput.includes('"command": "frontend-inspect"')) {
+      throw new Error(`Expected frontend-inspect JSON output, received:\n${frontendInspectOutput}`);
+    }
+    if (!frontendInspectOutput.includes('"pages"')) {
+      throw new Error(
+        `Expected frontend-inspect page data in output, received:\n${frontendInspectOutput}`,
+      );
+    }
+
+    const inspectOutputJson = await run(
+      [cliPath, 'inspect', '--json', '--workspace', workspaceRoot],
+      workspaceRoot,
+    );
+    if (!inspectOutputJson.includes('"command": "inspect"')) {
+      throw new Error(`Expected inspect JSON output, received:\n${inspectOutputJson}`);
+    }
+    if (!inspectOutputJson.includes('"frontend"')) {
+      throw new Error(`Expected inspect frontend data in output, received:\n${inspectOutputJson}`);
+    }
+    if (!inspectOutputJson.includes('"backend"')) {
+      throw new Error(`Expected inspect backend data in output, received:\n${inspectOutputJson}`);
+    }
+
     const agentInspectOutput = await run(
       [cliPath, 'agent', 'inspect', '--json', '--workspace', workspaceRoot],
       workspaceRoot,
@@ -357,15 +387,23 @@ async function writeInstallRootManifest(installRoot, options = {}) {
   if (options.backendPackageSpec) {
     dependencies['@webstir-io/webstir-backend'] = options.backendPackageSpec;
   }
+  if (options.frontendPackageSpec) {
+    dependencies['@webstir-io/webstir-frontend'] = options.frontendPackageSpec;
+  }
 
   const packageJson = {
     name: 'webstir-package-smoke',
     private: true,
     ...(Object.keys(dependencies).length > 0 ? { dependencies } : {}),
-    ...(options.backendPackageSpec
+    ...(options.backendPackageSpec || options.frontendPackageSpec
       ? {
           overrides: {
-            '@webstir-io/webstir-backend': options.backendPackageSpec,
+            ...(options.backendPackageSpec
+              ? { '@webstir-io/webstir-backend': options.backendPackageSpec }
+              : {}),
+            ...(options.frontendPackageSpec
+              ? { '@webstir-io/webstir-frontend': options.frontendPackageSpec }
+              : {}),
           },
         }
       : {}),

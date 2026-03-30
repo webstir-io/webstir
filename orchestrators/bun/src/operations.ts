@@ -4,6 +4,7 @@ export interface WebstirOperationDescriptor {
   readonly id:
     | 'init'
     | 'refresh'
+    | 'inspect'
     | 'doctor'
     | 'repair'
     | 'enable'
@@ -11,6 +12,7 @@ export interface WebstirOperationDescriptor {
     | 'add-test'
     | 'add-route'
     | 'add-job'
+    | 'frontend-inspect'
     | 'backend-inspect'
     | 'build'
     | 'publish'
@@ -41,6 +43,14 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: true,
     supportsJson: false,
     stableForMcp: false,
+  },
+  {
+    id: 'inspect',
+    summary: 'Diagnose the workspace and surface stable frontend and backend contract data.',
+    requiresWorkspace: true,
+    mutatesWorkspace: false,
+    supportsJson: true,
+    stableForMcp: true,
   },
   {
     id: 'doctor',
@@ -100,6 +110,15 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     supportsJson: false,
     stableForMcp: true,
     workspaceModes: ['api', 'full'],
+  },
+  {
+    id: 'frontend-inspect',
+    summary: 'Read stable frontend workspace facts such as pages, app shell, and feature flags.',
+    requiresWorkspace: true,
+    mutatesWorkspace: false,
+    supportsJson: true,
+    stableForMcp: true,
+    workspaceModes: ['spa', 'ssg', 'full'],
   },
   {
     id: 'backend-inspect',

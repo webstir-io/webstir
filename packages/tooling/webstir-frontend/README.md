@@ -166,6 +166,7 @@ console.log(result.manifest.entryPoints);
 - `frontendProvider.metadata` exposes package and runtime-compatibility metadata
 - `frontendProvider.resolveWorkspace()` returns canonical source/build roots
 - `frontendProvider.build()` executes the pipeline and returns artifacts plus manifest data
+- `inspectFrontendWorkspace()` returns resolved config plus shallow workspace facts without building
 
 ## SSG Mode
 
