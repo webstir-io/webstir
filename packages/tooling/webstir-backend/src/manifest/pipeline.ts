@@ -103,7 +103,7 @@ export async function loadBackendModuleManifest(
         manifestCandidate.routes,
       ),
       views: viewsFromDefinition ?? definitionManifest.views ?? manifestCandidate.views ?? [],
-      jobs: definitionManifest.jobs ?? manifestCandidate.jobs ?? [],
+      jobs: mergeJobDefinitions(definitionManifest.jobs, manifestCandidate.jobs),
       events: definitionManifest.events ?? manifestCandidate.events ?? [],
       services: definitionManifest.services ?? manifestCandidate.services ?? [],
       init: definitionManifest.init ?? manifestCandidate.init,
@@ -321,6 +321,29 @@ function mergeRouteDefinitions(
   }
 
   return merged;
+}
+
+function mergeJobDefinitions(
+  definitionJobs: ModuleManifest['jobs'] | undefined,
+  packageJobs: ModuleManifest['jobs'] | undefined,
+): ModuleManifest['jobs'] {
+  const merged = Array.isArray(definitionJobs) ? [...definitionJobs] : [];
+  const seen = new Set(merged.map((job) => getJobKey(job)).filter(Boolean));
+
+  for (const job of packageJobs ?? []) {
+    const key = getJobKey(job);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    merged.push(job);
+    seen.add(key);
+  }
+
+  return merged;
+}
+
+function getJobKey(job: ManifestJobLike | undefined): string | undefined {
+  return typeof job?.name === 'string' && job.name.length > 0 ? job.name : undefined;
 }
 
 function getRouteKey(route: ManifestRouteLike | undefined): string | undefined {

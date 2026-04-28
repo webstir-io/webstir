@@ -5,6 +5,25 @@ export interface NavigationDomRuntime {
     stripBasePath(value: string): string;
 }
 
+export type DocumentNavigationResponseResolution =
+    | { readonly kind: 'document' }
+    | { readonly kind: 'navigate'; readonly reason: 'http-status' | 'non-html' };
+
+export function resolveDocumentNavigationResponse(options: {
+    readonly ok: boolean;
+    readonly contentType: string | null;
+}): DocumentNavigationResponseResolution {
+    if (!options.ok) {
+        return { kind: 'navigate', reason: 'http-status' };
+    }
+
+    if (!isHtmlDocumentContentType(options.contentType)) {
+        return { kind: 'navigate', reason: 'non-html' };
+    }
+
+    return { kind: 'document' };
+}
+
 export async function syncHead(
     doc: Document,
     url: string,
@@ -298,6 +317,15 @@ function isAppStylesheetHref(href: string | null, stripBasePath: (value: string)
         const [path] = trimmed.split(/[?#]/);
         return stripBasePath(path) === '/app/app.css';
     }
+}
+
+function isHtmlDocumentContentType(value: string | null): boolean {
+    if (!value) {
+        return false;
+    }
+
+    const normalized = value.toLowerCase();
+    return normalized.includes('text/html') || normalized.includes('application/xhtml+xml');
 }
 
 function getPageNameFromUrl(url: string, stripBasePath: (value: string) => string): string {

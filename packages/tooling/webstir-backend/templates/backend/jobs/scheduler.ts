@@ -1,16 +1,19 @@
 #!/usr/bin/env bun
-import { clearTimeout, setInterval, setTimeout } from 'node:timers';
+import { clearInterval, clearTimeout, setInterval, setTimeout } from 'node:timers';
 
 import { loadJobs } from './runtime.js';
 
 const args = process.argv.slice(2);
 const MAX_TIMEOUT_MS = 2_147_483_647;
-const RAN_ONCE = 'ran-once';
 
 type ScheduledJobHandle =
-  | ReturnType<typeof setInterval>
   | {
+      kind: 'timer';
       [Symbol.dispose](): void;
+    }
+  | {
+      kind: 'reboot';
+      done: Promise<void>;
     };
 
 async function main() {
@@ -63,10 +66,17 @@ async function startWatch(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName?: 
     return;
   }
 
-  const timers = filtered.map((job) => scheduleJob(job));
-  const hasActiveWatch = timers.some((timer) => timer !== undefined && timer !== RAN_ONCE);
+  const scheduled = filtered.map((job) => scheduleJob(job));
+  const timers = scheduled.filter(
+    (timer): timer is Extract<ScheduledJobHandle, { kind: 'timer' }> => timer?.kind === 'timer',
+  );
+  const rebootRuns = scheduled.filter(
+    (timer): timer is Extract<ScheduledJobHandle, { kind: 'reboot' }> => timer?.kind === 'reboot',
+  );
+  const hasActiveWatch = timers.length > 0;
   if (!hasActiveWatch) {
-    if (timers.includes(RAN_ONCE)) {
+    if (rebootRuns.length > 0) {
+      await Promise.all(rebootRuns.map((run) => run.done));
       console.info('[jobs] completed @reboot jobs and exiting.');
       return;
     }
@@ -77,33 +87,60 @@ async function startWatch(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName?: 
   }
 
   console.info('[jobs] watching jobs:', filtered.map((job) => job.name).join(', '));
+  registerShutdown(timers);
   process.stdin.resume();
 }
 
 function scheduleJob(
   job: Awaited<ReturnType<typeof loadJobs>>[number],
-): ScheduledJobHandle | typeof RAN_ONCE | undefined {
+): ScheduledJobHandle | undefined {
   const schedule = normalizeSchedule(job.schedule);
   if (!schedule) {
     console.info(
-      `[jobs] schedule '${job.schedule ?? 'unspecified'}' is not supported by the built-in watcher. Run manually or use --json with an external scheduler.`,
+      `[jobs] unsupported schedule '${job.schedule ?? 'unspecified'}'. Run manually or use --json with an external scheduler.`,
     );
     return undefined;
   }
 
+  const runScheduledJob = createNonOverlappingRunner(job);
+
   if (schedule.kind === 'reboot') {
-    void runJob(job);
-    return RAN_ONCE;
+    return { kind: 'reboot', done: runScheduledJob() };
   }
 
   if (schedule.kind === 'rate') {
-    void runJob(job);
-    return setInterval(() => {
-      void runJob(job);
+    void runScheduledJob();
+    const timer = setInterval(() => {
+      void runScheduledJob();
     }, schedule.intervalMs);
+    return {
+      kind: 'timer' as const,
+      [Symbol.dispose]() {
+        clearInterval(timer);
+      },
+    };
   }
 
-  return scheduleCronJob(job, schedule.expression);
+  return scheduleCronJob(job, schedule.expression, runScheduledJob);
+}
+
+function createNonOverlappingRunner(job: Awaited<ReturnType<typeof loadJobs>>[number]) {
+  let running = false;
+  return async () => {
+    if (running) {
+      console.warn(
+        `[jobs] skipping ${job.name}; previous run is still active (overlap policy: skip)`,
+      );
+      return;
+    }
+
+    running = true;
+    try {
+      await runJob(job);
+    } finally {
+      running = false;
+    }
+  };
 }
 
 async function runNamedJob(jobs: Awaited<ReturnType<typeof loadJobs>>, jobName: string) {
@@ -210,7 +247,11 @@ function isSupportedCronExpression(expression: string): boolean {
   }
 }
 
-function scheduleCronJob(job: Awaited<ReturnType<typeof loadJobs>>[number], expression: string) {
+function scheduleCronJob(
+  job: Awaited<ReturnType<typeof loadJobs>>[number],
+  expression: string,
+  runScheduledJob: () => Promise<void>,
+) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
 
@@ -227,7 +268,7 @@ function scheduleCronJob(job: Awaited<ReturnType<typeof loadJobs>>[number], expr
       return;
     }
     scheduleTimeout(nextRun, async () => {
-      await runJob(job);
+      await runScheduledJob();
       queueNext(nextRun);
     });
   };
@@ -250,6 +291,7 @@ function scheduleCronJob(job: Awaited<ReturnType<typeof loadJobs>>[number], expr
   queueNext();
 
   return {
+    kind: 'timer' as const,
     [Symbol.dispose]() {
       stopped = true;
       if (timer) {
@@ -257,6 +299,24 @@ function scheduleCronJob(job: Awaited<ReturnType<typeof loadJobs>>[number], expr
       }
     },
   };
+}
+
+function registerShutdown(timers: readonly Extract<ScheduledJobHandle, { kind: 'timer' }>[]) {
+  let stopped = false;
+  const stop = (signal: NodeJS.Signals) => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    for (const timer of timers) {
+      timer[Symbol.dispose]();
+    }
+    process.stdin.pause();
+    console.info(`[jobs] received ${signal}; stopped ${timers.length} scheduled job timer(s).`);
+  };
+
+  process.once('SIGINT', () => stop('SIGINT'));
+  process.once('SIGTERM', () => stop('SIGTERM'));
 }
 
 function printHelp() {

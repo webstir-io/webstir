@@ -44,6 +44,7 @@ jobs:
         run: bun audit --audit-level=high
 
       - name: Install Playwright browser
+        working-directory: orchestrators/bun
         run: bun x playwright install --with-deps chromium
 
       - name: Run required repo gate

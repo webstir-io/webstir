@@ -32,6 +32,7 @@ jobs:
         run: bun ci
 
       - name: Install Playwright browser
+        working-directory: orchestrators/bun
         run: bun x playwright install --with-deps chromium
 
       - name: Run watch browser tests

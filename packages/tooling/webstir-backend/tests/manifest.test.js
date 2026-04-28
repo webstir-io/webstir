@@ -223,6 +223,77 @@ test('manifest loader merges package routes with compiled module routes without 
   );
 });
 
+test('manifest loader merges package jobs with compiled module jobs without duplicating names', async () => {
+  const workspace = await createTempWorkspace();
+  await seedBackendEntry(workspace);
+
+  const moduleSource = `export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/with-jobs',
+    version: '1.2.3',
+    kind: 'backend',
+    jobs: [
+      {
+        name: 'nightly',
+        schedule: '0 0 * * *'
+      }
+    ],
+    routes: [],
+    views: []
+  }
+};
+`;
+
+  await fs.writeFile(path.join(workspace, 'src', 'backend', 'module.ts'), moduleSource, 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@demo/jobs-package',
+        version: '0.0.1',
+        type: 'module',
+        webstir: {
+          moduleManifest: {
+            jobs: [
+              {
+                name: 'nightly',
+                schedule: 'rate(1 hour)',
+              },
+              {
+                name: 'session-cleanup',
+                schedule: 'rate(5 minutes)',
+              },
+            ],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
+  };
+
+  const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+  const moduleManifest = result.manifest.module;
+
+  assert.deepEqual(
+    moduleManifest?.jobs?.map((job) => ({
+      name: job.name,
+      schedule: job.schedule,
+    })),
+    [
+      { name: 'nightly', schedule: '0 0 * * *' },
+      { name: 'session-cleanup', schedule: 'rate(5 minutes)' },
+    ],
+  );
+});
+
 test('manifest loader falls back to module exports from the compiled index entry', async () => {
   const workspace = await createTempWorkspace();
   await ensureDir(path.join(workspace, 'src', 'backend'));

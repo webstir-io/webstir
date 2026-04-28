@@ -54,7 +54,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   await restoreScaffoldAssets(workspace.root, getRootScaffoldAssets(), changes, dryRun);
   await restoreScaffoldAssets(
     workspace.root,
-    await getModeScaffoldAssets(workspace.mode),
+    filterModeScaffoldAssets(await getModeScaffoldAssets(workspace.mode), enable),
     changes,
     dryRun,
   );
@@ -91,7 +91,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     );
     await ensureAppImport(workspace.root, './scripts/features/content-nav.js', changes, dryRun);
   }
-  if (enable.backend && workspace.mode !== 'api' && workspace.mode !== 'full') {
+  if (enable.backend) {
     await restoreBackendAssets(workspace.root, changes, dryRun);
   }
   if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
@@ -109,6 +109,19 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     dryRun,
     changes: uniqueSorted(changes),
   };
+}
+
+function filterModeScaffoldAssets(
+  assets: readonly { sourcePath: string; targetPath: string }[],
+  enable: RepairEnableFlags,
+): readonly { sourcePath: string; targetPath: string }[] {
+  if (!enable.backend) {
+    return assets;
+  }
+
+  return assets.filter(
+    (asset) => !normalizeRelativePath(asset.targetPath).startsWith('src/backend/'),
+  );
 }
 
 async function restoreScaffoldAssets(
@@ -447,6 +460,10 @@ function ensureImportIncludes(
 
 function relativeWorkspacePath(workspaceRoot: string, absolutePath: string): string {
   return path.relative(workspaceRoot, absolutePath).replaceAll(path.sep, '/');
+}
+
+function normalizeRelativePath(value: string): string {
+  return value.split(path.sep).join('/');
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

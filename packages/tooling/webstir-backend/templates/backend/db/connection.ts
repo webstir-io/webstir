@@ -58,11 +58,11 @@ function detectDatabaseDriver(url: string): 'sqlite' | 'postgres' {
 
 function createBunSqlClient(client: BunSqlClient, driver: 'sqlite' | 'postgres'): DatabaseClient {
   return {
-    async query<T>(query, params) {
+    async query<T = unknown>(query: string, params?: unknown[]): Promise<T[]> {
       const prepared = prepareQuery(query, params, driver);
       return await client.unsafe<T>(prepared.query, prepared.params);
     },
-    async execute(query, params) {
+    async execute(query: string, params?: unknown[]): Promise<void> {
       const prepared = prepareQuery(query, params, driver);
       await client.unsafe(prepared.query, prepared.params);
     },

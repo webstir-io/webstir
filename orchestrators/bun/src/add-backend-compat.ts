@@ -26,6 +26,7 @@ const ALLOWED_SCHEDULE_MACROS = [
   'hourly',
   'reboot',
 ] as const;
+const RATE_SCHEDULE_PATTERN = /^rate\((\d+)\s+(second|seconds|minute|minutes|hour|hours)\)$/i;
 
 interface WorkspacePackageJson {
   readonly webstir?: {
@@ -517,10 +518,15 @@ function validateSchedule(schedule: string): void {
     return;
   }
 
+  if (trimmed.toLowerCase().startsWith('rate(')) {
+    validateRateSchedule(schedule, trimmed);
+    return;
+  }
+
   const parts = trimmed.split(/\s+/);
   if (parts.length < 5 || parts.length > 7) {
     throw new Error(
-      `Invalid --schedule value '${schedule}'. Expected 5-7 space-separated fields or @macro.`,
+      `Invalid --schedule value '${schedule}'. Expected 5-7 space-separated cron fields, @macro, or rate(...).`,
     );
   }
 
@@ -528,6 +534,16 @@ function validateSchedule(schedule: string): void {
     if (!isValidCronField(part)) {
       throw new Error(`Invalid cron field '${part}' in --schedule value '${schedule}'.`);
     }
+  }
+}
+
+function validateRateSchedule(schedule: string, trimmed: string): void {
+  const match = RATE_SCHEDULE_PATTERN.exec(trimmed);
+  const value = match ? Number.parseInt(match[1], 10) : 0;
+  if (!match || value <= 0) {
+    throw new Error(
+      `Invalid --schedule value '${schedule}'. Expected rate(<positive integer> second(s)|minute(s)|hour(s)).`,
+    );
   }
 }
 

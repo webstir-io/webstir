@@ -11,7 +11,7 @@
     "rootDir": ".",
     "declaration": false,
     "sourceMap": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "resolveJsonModule": true
   },
   "include": ["**/*"],

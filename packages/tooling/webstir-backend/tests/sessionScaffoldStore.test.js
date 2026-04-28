@@ -701,3 +701,52 @@ test('scaffold sqlite session store keeps flash in runtime metadata while readin
     restoreEnv(previousEnv);
   }
 });
+
+test('scaffold sqlite session store fails clearly for malformed persisted rows', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-session-malformed-sqlite-');
+  await seedBackendWorkspace(workspace, '@demo/session-malformed-sqlite');
+  await linkWorkspacePackage(workspace);
+  await compileTemplateSessionFiles(workspace);
+
+  const previousEnv = snapshotEnv([
+    'WORKSPACE_ROOT',
+    'WEBSTIR_WORKSPACE_ROOT',
+    'SESSION_STORE_DRIVER',
+    'SESSION_STORE_URL',
+  ]);
+
+  try {
+    process.env.WORKSPACE_ROOT = '   ';
+    process.env.WEBSTIR_WORKSPACE_ROOT = workspace;
+    process.env.SESSION_STORE_DRIVER = 'sqlite';
+    process.env.SESSION_STORE_URL = 'file:./data/malformed-session.sqlite';
+
+    const { sessionStore } = await importCompiledModule(
+      path.join(workspace, 'build', 'backend', 'session', 'store.js'),
+    );
+    const dbPath = path.join(workspace, 'data', 'malformed-session.sqlite');
+    const sqliteModule = await import('bun:sqlite');
+    const Database = sqliteModule.Database;
+    const db = new Database(dbPath);
+
+    db.prepare(
+      `INSERT INTO webstir_sessions (id, value, flash, runtime, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'malformed-session-id',
+      '{not-json',
+      '[]',
+      '{}',
+      '2026-01-01T00:00:00.000Z',
+      '2099-01-02T00:00:00.000Z',
+    );
+    db.close();
+
+    assert.throws(
+      () => sessionStore.get('malformed-session-id'),
+      /Failed to deserialize SQLite session row 'malformed-session-id'/,
+    );
+  } finally {
+    restoreEnv(previousEnv);
+  }
+});

@@ -10,6 +10,7 @@ import {
     cssEscape,
     executeScripts,
     focusAutofocus,
+    resolveDocumentNavigationResponse,
     syncHead
 } from './document-navigation.js';
 
@@ -161,7 +162,11 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
         return;
     }
 
-    if (!response.ok) {
+    const resolution = resolveDocumentNavigationResponse({
+        ok: response.ok,
+        contentType: response.headers.get('content-type')
+    });
+    if (resolution.kind === 'navigate') {
         window.location.href = url;
         return;
     }

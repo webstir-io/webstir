@@ -11,20 +11,23 @@ import {
   trackObserver,
 } from '../dist/runtime/index.js';
 
-test('cleanup scope disposes handlers in reverse registration order', async () => {
+test('cleanup scope continues reverse disposal after a cleanup throws', async () => {
   const events = [];
   const scope = createCleanupScope();
+  const error = new Error('cleanup failed');
 
   scope.add(() => {
     events.push('first');
   });
-  scope.add(async () => {
+  scope.add(() => {
     events.push('second');
+    throw error;
   });
+  scope.add(() => events.push('third'));
 
-  await scope.dispose();
+  await assert.rejects(() => scope.dispose(), error);
 
-  assert.deepEqual(events, ['second', 'first']);
+  assert.deepEqual(events, ['third', 'second', 'first']);
 });
 
 test('cleanup scope disposal is idempotent', async () => {
@@ -152,6 +155,31 @@ test('boundary remounts with fresh state when no hot state hooks are provided', 
 
   assert.equal(second.label, 'initial');
   assert.notEqual(second, first);
+});
+
+test('boundary ignores snapshotted hot state when restoreState is not provided', async () => {
+  const events = [];
+  const boundary = defineBoundary({
+    mount() {
+      events.push('mount');
+      return { label: 'initial' };
+    },
+    snapshotState(state) {
+      events.push(`snapshot:${state.label}`);
+      return { label: state.label };
+    },
+  });
+
+  const root = createFakeRoot();
+  const first = await boundary.mount(root);
+  first.label = 'persisted';
+
+  await boundary.unmount();
+  const second = await boundary.mount(root);
+
+  assert.equal(second.label, 'initial');
+  assert.notEqual(second, first);
+  assert.deepEqual(events, ['mount', 'snapshot:persisted', 'mount']);
 });
 
 test('managed side-effect helpers dispose listeners, timers, observers, and abort controllers', async () => {
@@ -315,6 +343,53 @@ test('nested boundaries unmount children before parent cleanup', async () => {
     'parent-unmount-cleanup',
     'parent-cleanup',
   ]);
+});
+
+test('failed parent mount cleans mounted children and can mount again cleanly', async () => {
+  const events = [];
+  let failParentMount = true;
+
+  const childBoundary = defineBoundary({
+    mount(root, scope) {
+      events.push('child-mount');
+      const button = createFakeButton();
+      const onClick = () => {};
+      button.addEventListener('click', onClick);
+      scope.add(() => {
+        events.push('child-cleanup');
+        button.removeEventListener('click', onClick);
+      });
+      root.append(button);
+      return { button };
+    },
+    unmount: (state) => {
+      events.push('child-unmount');
+      state.button.remove();
+    },
+  });
+
+  const parentBoundary = defineBoundary({
+    async mount(root, scope) {
+      events.push('parent-mount');
+      const childRoot = createFakeRoot();
+      await scope.mountChild(childBoundary, childRoot);
+      root.append(childRoot);
+      if (failParentMount) throw new Error('parent failed');
+      return { childRoot };
+    },
+  });
+
+  const root = createFakeRoot();
+  await assert.rejects(() => parentBoundary.mount(root), /parent failed/);
+  assert.deepEqual(events, ['parent-mount', 'child-mount', 'child-unmount', 'child-cleanup']);
+
+  failParentMount = false;
+  const state = await parentBoundary.mount(root);
+  const mountedButton = state.childRoot.children[0];
+  assert.equal(mountedButton.listenerCount('click'), 1);
+
+  await parentBoundary.unmount();
+  assert.equal(mountedButton.listenerCount('click'), 0);
 });
 
 function createFakeRoot() {

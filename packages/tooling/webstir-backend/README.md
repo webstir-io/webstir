@@ -139,11 +139,12 @@ Stick with the default Bun entry while exploring the manifest helpers, or import
 The backend template now ships a lightweight auth adapter so you can secure routes without wiring a full identity provider on day one:
 
 - **Environment-driven secrets** — populate `.env.local`/`.env` with one JWT verification input: `AUTH_JWT_SECRET` for shared-secret HS256, `AUTH_JWT_PUBLIC_KEY` or `AUTH_JWT_PUBLIC_KEY_FILE` for RSA public-key verification, or `AUTH_JWKS_URL` for remote JWKS discovery. Optional `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` claims and comma/space-delimited `AUTH_SERVICE_TOKENS` still apply. An example lives in `templates/backend/.env.example`.
-- **Bearer verification (HS256 + RS256)** — incoming `Authorization: Bearer <token>` headers now validate against HS256 shared secrets, inline/file-backed RSA public keys, or RSA keys discovered from JWKS. Matching issuer/audience plus `nbf` and `exp` claims are enforced when present. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
-- **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users.
+- **Bearer verification (HS256 + RS256)** — incoming `Authorization: Bearer <token>` headers validate against HS256 shared secrets, inline/file-backed RSA public keys, or RSA keys discovered from JWKS. Unsupported algorithms, malformed compact segments, bad signatures, wrong issuer/audience, invalid numeric-date claims, and invalid `nbf`/`exp` windows fail closed. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
+- **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users. If an invalid bearer token and a valid service token are both present, the service token is still accepted and bearer diagnostics stay redacted.
 - **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
 - **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies. In development, the scaffold still falls back to a per-process random secret when unset; in production, `SESSION_SECRET` is now required and startup fails fast when it is missing. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the supported Bun server template.
 - **Durable session storage (optional)** — the scaffold now defaults to SQLite-backed sessions in production when `SESSION_STORE_DRIVER` is unset, while keeping in-memory storage as the development default. You can still opt into SQLite explicitly with `SESSION_STORE_DRIVER=sqlite` or just configure `SESSION_STORE_URL`; set `SESSION_STORE_DRIVER=memory` only when you intentionally want the non-durable path. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` when the SQLite store is active and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
+- **Session/form safety rules** — stale or tampered session cookies clear on commit, CSRF tokens are single-use after successful verification, and malformed SQLite session rows fail with a session-row diagnostic. Ordinary session updates keep the same session id; clearing a session and starting a new one creates a new id.
 - Install `pino` in your workspace (`bun add pino`) before running the scaffold; the template server imports it directly.
 
 This adapter is still intentionally scoped, but it now supports the two most common integration paths: shared-secret HS256 for local/simple deployments and RSA/JWKS verification for third-party IdPs. The scaffold populates `ctx.auth` for every route once one of those verification inputs is configured.
@@ -158,7 +159,7 @@ Install `pino` (and optionally `pino-pretty` for local formatting) in any worksp
 
 ### Jobs & scheduling
 
-- Define jobs via `webstir add-job <name> [--schedule "<cron>"] [--description "..."] [--priority <number|label>]`. The CLI creates `src/backend/jobs/<name>/index.ts` and records metadata in `webstir.moduleManifest.jobs` in `package.json`.
+- Define jobs via `webstir add-job <name> [--schedule "<cron|@macro|rate(...)>"] [--description "..."] [--priority <number|label>]`. The CLI creates `src/backend/jobs/<name>/index.ts` and records metadata in `webstir.moduleManifest.jobs` in `package.json`.
 - The template provides a zero-config job loader (`src/backend/jobs/runtime.ts`) and a lightweight scheduler/runner (`build/backend/jobs/scheduler.js`). Use it to explore your jobs without wiring a full queue:
 
 ```bash
@@ -171,6 +172,7 @@ bun build/backend/jobs/scheduler.js --watch        # runs cron expressions, cron
 
 - `/readyz` surfaces manifest job counts, and `bun build/backend/jobs/<name>/index.js` remains the quickest way to execute a single job in isolation.
 - Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). On Bun `1.3.11+`, the built-in watcher now uses `Bun.cron.parse(...)` for real cron expressions and nicknames such as `0 0 * * *`, `*/15 * * * *`, `@daily`, or `@monthly`, while still preserving `rate(n units)` and `@reboot` for local development loops. Cron-based schedules wait for the next matching wall-clock time; use `--job <name>` or `--all` when you want an immediate run.
+- Local watch mode skips overlapping runs for the same job and disposes scheduled timers on `SIGINT`/`SIGTERM`. Use an external scheduler or queue when you need distributed locking, retries, or durable job state.
 
 ### Database & migrations
 
@@ -182,11 +184,14 @@ bun build/backend/jobs/scheduler.js --watch        # runs cron expressions, cron
 
 ```bash
 bun src/backend/db/migrate.ts --list
+bun src/backend/db/migrate.ts --status
 bun src/backend/db/migrate.ts               # apply pending migrations
 bun src/backend/db/migrate.ts --down --steps 1
 ```
 
-- The runner logs each migration, records history in `DATABASE_MIGRATIONS_TABLE`, and works the same way once compiled (`bun build/backend/db/migrate.js ...`).
+- The runner logs each migration, records history in the validated `DATABASE_MIGRATIONS_TABLE`, and works the same way once compiled (`bun build/backend/db/migrate.js ...`).
+- Each migration runs in a transaction with its history update. A failed `up()` rolls back and is not recorded; a failed `down()` keeps the record so it can be retried. Avoid opening nested transactions inside migration files.
+- For repeatable tests, point `DATABASE_URL` at a throwaway SQLite file and use `--down` without `--steps` to run every available `down()` migration before recreating test state. App seed data should live in explicit app-owned scripts or migrations rather than an implicit runner hook.
 - When you pass migration parameters, use `?` placeholders in your scaffold code. The helper keeps that style working across SQLite and Postgres.
 
 ### Module Manifest Integration

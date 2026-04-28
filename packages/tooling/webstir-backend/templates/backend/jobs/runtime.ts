@@ -78,6 +78,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 async function loadJobRunner(jobName: string): Promise<() => Promise<void>> {
   const candidates = buildJobModuleCandidates(jobName);
   let lastError: unknown;
+  let loadedWithoutRunner = false;
   for (const candidate of candidates) {
     try {
       const imported = await import(candidate);
@@ -85,9 +86,15 @@ async function loadJobRunner(jobName: string): Promise<() => Promise<void>> {
       if (typeof fn === 'function') {
         return fn;
       }
+      loadedWithoutRunner = true;
     } catch (error) {
       lastError = error;
     }
+  }
+  if (loadedWithoutRunner) {
+    throw new Error(
+      `[jobs] unable to load job '${jobName}': job module must export a run() or default function`,
+    );
   }
   const reason = lastError instanceof Error ? lastError.message : 'unknown';
   throw new Error(`[jobs] unable to load job '${jobName}': ${reason}`);

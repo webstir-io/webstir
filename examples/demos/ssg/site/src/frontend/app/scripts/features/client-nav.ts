@@ -128,7 +128,7 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
         return;
     }
 
-    if (!response.ok) {
+    if (!response.ok || !isHtmlDocumentContentType(response.headers.get('content-type'))) {
         window.location.href = url;
         return;
     }
@@ -444,6 +444,15 @@ function isAppStylesheetHref(href: string | null): boolean {
         const [path] = trimmed.split(/[?#]/);
         return stripBasePath(path) === '/app/app.css';
     }
+}
+
+function isHtmlDocumentContentType(value: string | null): boolean {
+    if (!value) {
+        return false;
+    }
+
+    const normalized = value.toLowerCase();
+    return normalized.includes('text/html') || normalized.includes('application/xhtml+xml');
 }
 
 function getPageNameFromUrl(url: string): string {

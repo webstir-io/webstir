@@ -37,6 +37,20 @@ export interface DoctorBackendSummary {
   readonly module: string;
   readonly routes: number;
   readonly jobs: number;
+  readonly data: DoctorBackendDataSummary;
+}
+
+export interface DoctorBackendDataSummary {
+  readonly migrations: DoctorBackendMigrationSummary;
+}
+
+export interface DoctorBackendMigrationSummary {
+  readonly runnerPresent: boolean;
+  readonly migrationsDirectoryPresent: boolean;
+  readonly migrationFilesCount: number;
+  readonly exampleMigrationPresent: boolean;
+  readonly tableEnvKey: string;
+  readonly configuredTable: string;
 }
 
 export interface DoctorResult {
@@ -136,5 +150,15 @@ function summarizeBackendInspect(result: BackendInspectResult): DoctorBackendSum
     module: `${result.manifest.name}@${result.manifest.version}`,
     routes: result.manifest.routes?.length ?? 0,
     jobs: result.manifest.jobs?.length ?? 0,
+    data: {
+      migrations: {
+        runnerPresent: result.data.migrations.runnerPresent,
+        migrationsDirectoryPresent: result.data.migrations.migrationsDirectoryPresent,
+        migrationFilesCount: result.data.migrations.migrationFilesCount,
+        exampleMigrationPresent: result.data.migrations.exampleMigrationPresent,
+        tableEnvKey: result.data.migrations.tableEnvKey,
+        configuredTable: result.data.migrations.configuredTable,
+      },
+    },
   };
 }
