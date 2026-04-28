@@ -350,8 +350,13 @@ function resolveJwksCacheTtl(headers: Headers): number {
 }
 
 function decodeSegment<T extends Record<string, unknown>>(segment: string): T | undefined {
+  const decoded = decodeBase64Url(segment);
+  if (!decoded) {
+    return undefined;
+  }
+
   try {
-    const json = Buffer.from(segment, 'base64url').toString('utf8');
+    const json = decoded.toString('utf8');
     return JSON.parse(json) as T;
   } catch {
     return undefined;
@@ -359,6 +364,10 @@ function decodeSegment<T extends Record<string, unknown>>(segment: string): T | 
 }
 
 function decodeBase64Url(value: string): Buffer | undefined {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+    return undefined;
+  }
+
   try {
     return Buffer.from(value, 'base64url');
   } catch {
@@ -386,6 +395,10 @@ function audienceMatches(value: unknown, expected: string): boolean {
 }
 
 function isValidTimeClaims(payload: Record<string, unknown>, now: number): boolean {
+  if (payload.iat !== undefined && parseNumericDateClaim(payload.iat) === undefined) {
+    return false;
+  }
+
   const notBefore = parseNumericDateClaim(payload.nbf);
   if (payload.nbf !== undefined && notBefore === undefined) {
     return false;

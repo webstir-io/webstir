@@ -9,6 +9,7 @@ import {
   readFragmentResponseMetadata,
   shouldReplaceFragmentTarget,
 } from '../resources/features/client_nav/form_enhancement.ts';
+import { resolveDocumentNavigationResponse } from '../resources/features/client_nav/document_navigation.ts';
 
 test('buildEnhancedFormRequest serializes form-urlencoded POST bodies', () => {
   const formData = new FormData();
@@ -115,6 +116,36 @@ test('isHtmlDocumentContentType recognizes html responses', () => {
   expect(isHtmlDocumentContentType('text/html; charset=utf-8')).toBe(true);
   expect(isHtmlDocumentContentType('application/xhtml+xml')).toBe(true);
   expect(isHtmlDocumentContentType('application/json')).toBe(false);
+});
+
+test('resolveDocumentNavigationResponse only renders successful html documents', () => {
+  expect(
+    resolveDocumentNavigationResponse({
+      ok: true,
+      contentType: 'text/html; charset=utf-8',
+    }),
+  ).toEqual({ kind: 'document' });
+
+  expect(
+    resolveDocumentNavigationResponse({
+      ok: true,
+      contentType: 'application/xhtml+xml',
+    }),
+  ).toEqual({ kind: 'document' });
+
+  expect(
+    resolveDocumentNavigationResponse({
+      ok: true,
+      contentType: 'application/json',
+    }),
+  ).toEqual({ kind: 'navigate', reason: 'non-html' });
+
+  expect(
+    resolveDocumentNavigationResponse({
+      ok: false,
+      contentType: 'text/html; charset=utf-8',
+    }),
+  ).toEqual({ kind: 'navigate', reason: 'http-status' });
 });
 
 test('resolveEnhancedFormResponse falls back to document navigation when fragment application is skipped', () => {

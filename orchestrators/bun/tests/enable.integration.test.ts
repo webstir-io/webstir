@@ -36,7 +36,34 @@ async function runEnableInWorkspace(
   };
 }
 
+async function runWorkspaceCli(
+  copiedWorkspace: string,
+  args: readonly string[],
+): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
+  const processResult = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      ...args,
+      '--workspace',
+      copiedWorkspace,
+    ],
+    cwd: repoRoot,
+    env: process.env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+
+  return {
+    stdout: decodeOutput(processResult.stdout),
+    stderr: decodeOutput(processResult.stderr),
+    exitCode: processResult.exitCode,
+  };
+}
+
 type EnableWorkspacePackageJson = {
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
   webstir: {
     mode: string;
     enable: {
@@ -184,10 +211,24 @@ test('CLI enables backend on the SPA demo workspace end to end', async () => {
 
   expect(packageJson.webstir.mode).toBe('full');
   expect(packageJson.webstir.enable.backend).toBe(true);
+  expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBe('workspace:*');
+  expect(packageJson.dependencies.pino).toBe('^10.1.0');
+  expect(packageJson.devDependencies['@types/bun']).toBe('^1.3.11');
   expect(existsSync(path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'index.ts'))).toBe(
     true,
   );
   expect(baseTsconfig.references).toContainEqual({ path: 'src/backend' });
+
+  const repairResult = await runWorkspaceCli(copiedWorkspace.workspaceRoot, [
+    'repair',
+    '--dry-run',
+    '--json',
+  ]);
+  const repair = JSON.parse(repairResult.stdout) as { changes: string[] };
+  expect(repairResult.exitCode).toBe(0);
+  expect(repairResult.stderr).toBe('');
+  expect(repair.changes).not.toContain('src/backend/tests/progressive-enhancement.test.ts');
+  expect(repair.changes.some((change) => change.startsWith('src/backend/'))).toBe(false);
 });
 
 test('CLI enables gh-deploy with Bun-native deploy scaffolding', async () => {

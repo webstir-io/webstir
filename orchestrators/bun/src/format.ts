@@ -333,6 +333,17 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
     lines.push(`  - ${job.name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`);
   }
 
+  const migrations = result.data.migrations;
+  lines.push('data-migrations:');
+  lines.push(`  runner: ${migrations.runnerPresent ? 'present' : 'missing'}`);
+  lines.push(
+    `  directory: ${migrations.migrationsDirectoryPresent ? 'present' : 'missing'} (${migrations.migrationsDirectory})`,
+  );
+  lines.push(`  files: ${migrations.migrationFilesCount}`);
+  lines.push(`  example: ${migrations.exampleMigrationPresent ? 'present' : 'missing'}`);
+  lines.push(`  table-env: ${migrations.tableEnvKey}`);
+  lines.push(`  configured-table: ${migrations.configuredTable}`);
+
   return lines.join('\n');
 }
 
@@ -347,6 +358,7 @@ export function formatBackendInspectJson(result: BackendInspectResult): string {
       },
       buildRoot: result.buildRoot,
       manifest: result.manifest,
+      data: result.data,
     },
     null,
     2,

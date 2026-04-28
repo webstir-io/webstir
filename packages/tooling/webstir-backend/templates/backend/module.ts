@@ -173,12 +173,13 @@ const routes = [
         },
         now: ctx.now,
       });
-      ctx.session = submission.session;
+      const nextSession = submission.session ?? {};
+      ctx.session = nextSession;
       if (!submission.ok) {
         return submission.result;
       }
 
-      ctx.session.profile = {
+      nextSession.profile = {
         email: getFormValue(submission.values, 'email')?.trim() ?? 'guest@example.com',
       };
 
@@ -201,6 +202,7 @@ const requestHooks: RequestHook[] = [
         requestId: ctx.requestId,
         session: ctx.session,
       });
+      return undefined;
     },
   },
 ];

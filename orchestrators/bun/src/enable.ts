@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { chmod, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import {
@@ -187,7 +188,11 @@ async function enableBackend(workspaceRoot: string, changes: string[]): Promise<
     }
   }
 
-  await updatePackageJson(workspaceRoot, { enableBackend: true, mode: 'full' }, changes);
+  await updatePackageJson(
+    workspaceRoot,
+    { enableBackend: true, ensureBackendDependency: true, mode: 'full' },
+    changes,
+  );
   await ensureTsReference(workspaceRoot, 'src/backend', changes);
 }
 
@@ -294,6 +299,7 @@ async function updatePackageJson(
     readonly enableBackend?: boolean;
     readonly enableGithubPages?: boolean;
     readonly mode?: string;
+    readonly ensureBackendDependency?: boolean;
     readonly ensureDeployScript?: boolean;
   },
   changes: string[],
@@ -329,6 +335,10 @@ async function updatePackageJson(
   webstir.enable = enable;
   root.webstir = webstir;
 
+  if (options.ensureBackendDependency) {
+    await ensureBackendScaffoldDependencies(root);
+  }
+
   if (options.ensureDeployScript) {
     const scripts = asRecord(root.scripts);
     if (typeof scripts.deploy !== 'string') {
@@ -344,6 +354,46 @@ async function updatePackageJson(
 
   await Bun.write(packageJsonPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, packageJsonPath));
+}
+
+async function ensureBackendScaffoldDependencies(root: Record<string, unknown>): Promise<void> {
+  const dependencies = asRecord(root.dependencies);
+  if (typeof dependencies['@webstir-io/webstir-backend'] !== 'string') {
+    dependencies['@webstir-io/webstir-backend'] = await resolveBackendDependencySpec(root);
+  }
+  if (typeof dependencies.pino !== 'string') {
+    dependencies.pino = '^10.1.0';
+  }
+  root.dependencies = dependencies;
+
+  const devDependencies = asRecord(root.devDependencies);
+  if (typeof devDependencies['@types/bun'] !== 'string') {
+    devDependencies['@types/bun'] = '^1.3.11';
+  }
+  root.devDependencies = devDependencies;
+}
+
+async function resolveBackendDependencySpec(root: Record<string, unknown>): Promise<string> {
+  const dependencies = asRecord(root.dependencies);
+  const frontendSpec = dependencies['@webstir-io/webstir-frontend'];
+  if (typeof frontendSpec === 'string' && frontendSpec.startsWith('workspace:')) {
+    return 'workspace:*';
+  }
+
+  return await readInstalledPackageVersion('@webstir-io/webstir-backend');
+}
+
+async function readInstalledPackageVersion(packageName: string): Promise<string> {
+  const packageJsonUrl = import.meta.resolve(`${packageName}/package.json`);
+  const packageJsonPath = fileURLToPath(packageJsonUrl);
+  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as {
+    readonly version?: string;
+  };
+  if (!packageJson.version) {
+    throw new Error(`Missing version in ${packageJsonPath}`);
+  }
+
+  return `^${packageJson.version}`;
 }
 
 async function updateFrontendConfig(

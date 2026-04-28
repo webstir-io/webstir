@@ -132,15 +132,21 @@ function normalizeSqlitePath(url: string): string {
 function deserializeSessionRecord<TSession extends Record<string, unknown>>(
   row: SqliteSessionRow,
 ): SessionStoreRecord<TSession> {
-  const flash = JSON.parse(row.flash) as SessionFlashMessage[];
-  const runtime = JSON.parse(row.runtime) as SessionStoreRecord<TSession>['runtime'];
-  const legacyFlash = Array.isArray(runtime?.flash) || flash.length === 0 ? undefined : flash;
-  return {
-    id: row.id,
-    value: JSON.parse(row.value) as TSession,
-    ...(legacyFlash ? { flash: legacyFlash } : {}),
-    ...(runtime ? { runtime } : {}),
-    createdAt: row.createdAt,
-    expiresAt: row.expiresAt,
-  };
+  try {
+    const flash = JSON.parse(row.flash) as SessionFlashMessage[];
+    const runtime = JSON.parse(row.runtime) as SessionStoreRecord<TSession>['runtime'];
+    const legacyFlash = Array.isArray(runtime?.flash) || flash.length === 0 ? undefined : flash;
+    return {
+      id: row.id,
+      value: JSON.parse(row.value) as TSession,
+      ...(legacyFlash ? { flash: legacyFlash } : {}),
+      ...(runtime ? { runtime } : {}),
+      createdAt: row.createdAt,
+      expiresAt: row.expiresAt,
+    };
+  } catch (error) {
+    throw new Error(
+      `[session] Failed to deserialize SQLite session row '${row.id}': ${(error as Error).message}`,
+    );
+  }
 }

@@ -144,6 +144,8 @@ async function exerciseBrowserScenario(
       await assertDocumentNavigationResetsScroll(fragmentPage, origin);
       setScenarioStep(progress, 'verify fragment update and focus handoff');
       await assertFragmentUpdateAndFocus(fragmentPage);
+      setScenarioStep(progress, 'verify document navigation browser boundaries');
+      await assertDocumentNavigationBoundaries(fragmentPage, origin);
     } finally {
       await fragmentContext.close().catch(() => undefined);
     }
@@ -196,6 +198,141 @@ async function assertDocumentNavigationResetsScroll(page: Page, _origin: string)
 
   await page.locator('a[href="/api/demo/progressive-enhancement"]').click({ noWaitAfter: true });
   await waitForPathname(page, '/api/demo/progressive-enhancement');
+  await page.locator('#demo-name').waitFor({ state: 'visible' });
+}
+
+async function assertDocumentNavigationBoundaries(page: Page, origin: string): Promise<void> {
+  let nonHtmlFallbackRequests = 0;
+  let httpErrorFallbackRequests = 0;
+
+  await page.route(`${origin}/client-nav-browser-fixture`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: [
+        '<!doctype html>',
+        '<html>',
+        '<head><title>Client Nav Fixture</title></head>',
+        '<body>',
+        '<main>',
+        '<h1 id="client-nav-fixture-heading">Client Nav Fixture</h1>',
+        '<input id="client-nav-fixture-focus" autofocus>',
+        '</main>',
+        '</body>',
+        '</html>',
+      ].join(''),
+    });
+  });
+  await page.route(`${origin}/client-nav-non-html-fixture`, async (route) => {
+    nonHtmlFallbackRequests += 1;
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ok: true }),
+    });
+  });
+  await page.route(`${origin}/client-nav-http-error-fixture`, async (route) => {
+    httpErrorFallbackRequests += 1;
+    await route.fulfill({
+      status: 404,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: '<!doctype html><title>Not Found Fixture</title><main>Not Found Fixture</main>',
+    });
+  });
+
+  await installClientNavRecorder(page);
+  await page.evaluate(() => {
+    const link = document.createElement('a');
+    link.id = 'same-origin-document-fixture';
+    link.href = '/client-nav-browser-fixture';
+    link.textContent = 'Client nav fixture';
+    document.body.append(link);
+  });
+  await page.locator('#same-origin-document-fixture').click({ noWaitAfter: true });
+  await waitForPathname(page, '/client-nav-browser-fixture');
+  await page.locator('#client-nav-fixture-heading').waitFor({ state: 'visible' });
+  expect(await page.title()).toBe('Client Nav Fixture');
+  expect(await readClientNavEvents(page)).toEqual(['/client-nav-browser-fixture']);
+
+  await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
+  await page.locator('#demo-name').waitFor({ state: 'visible' });
+
+  const linkResults = await page.evaluate(() => {
+    const fixture = document.createElement('div');
+    fixture.innerHTML = [
+      '<a id="external-link-fixture" href="https://example.com/outside">external</a>',
+      '<a id="download-link-fixture" href="/download.txt" download>download</a>',
+      '<a id="new-tab-link-fixture" href="/" target="_blank">new tab</a>',
+      '<a id="anchor-link-fixture" href="#client-nav-anchor">anchor</a>',
+      '<span id="client-nav-anchor">anchor target</span>',
+    ].join('');
+    document.body.append(fixture);
+
+    const clickWasPrevented = (selector: string) => {
+      const link = document.querySelector(selector);
+      if (!(link instanceof HTMLAnchorElement)) {
+        throw new Error(`Missing fixture link ${selector}`);
+      }
+      let preventedByClientNav = false;
+      const recorder = (event: MouseEvent) => {
+        preventedByClientNav = event.defaultPrevented;
+        event.preventDefault();
+      };
+      document.addEventListener('click', recorder, { once: true });
+      const event = new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+      document.removeEventListener('click', recorder);
+      return preventedByClientNav;
+    };
+
+    return {
+      external: clickWasPrevented('#external-link-fixture'),
+      download: clickWasPrevented('#download-link-fixture'),
+      newTab: clickWasPrevented('#new-tab-link-fixture'),
+      sameDocumentAnchor: clickWasPrevented('#anchor-link-fixture'),
+    };
+  });
+
+  expect(linkResults).toEqual({
+    external: false,
+    download: false,
+    newTab: false,
+    sameDocumentAnchor: false,
+  });
+
+  await installClientNavRecorder(page);
+  await page.evaluate(() => {
+    const link = document.createElement('a');
+    link.id = 'non-html-navigation-fixture';
+    link.href = '/client-nav-non-html-fixture';
+    link.textContent = 'Non-HTML fixture';
+    document.body.append(link);
+  });
+  await page.locator('#non-html-navigation-fixture').click({ noWaitAfter: true });
+  await waitForPathname(page, '/client-nav-non-html-fixture');
+  expect(nonHtmlFallbackRequests).toBeGreaterThan(0);
+  expect(await readClientNavEvents(page)).toEqual([]);
+
+  await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
+  await page.locator('#demo-name').waitFor({ state: 'visible' });
+  await installClientNavRecorder(page);
+  await page.evaluate(() => {
+    const link = document.createElement('a');
+    link.id = 'http-error-navigation-fixture';
+    link.href = '/client-nav-http-error-fixture';
+    link.textContent = 'HTTP error fixture';
+    document.body.append(link);
+  });
+  await page.locator('#http-error-navigation-fixture').click({ noWaitAfter: true });
+  await waitForPathname(page, '/client-nav-http-error-fixture');
+  expect(httpErrorFallbackRequests).toBeGreaterThan(0);
+  expect(await readClientNavEvents(page)).toEqual([]);
+
+  await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });
 }
 
@@ -784,6 +921,34 @@ async function waitForPathname(page: Page, pathname: string): Promise<void> {
   );
 }
 
+async function installClientNavRecorder(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const targetWindow = window as typeof window & {
+      __webstirClientNavEvents?: string[];
+      __webstirClientNavRecorderInstalled?: boolean;
+    };
+    targetWindow.__webstirClientNavEvents = [];
+    if (targetWindow.__webstirClientNavRecorderInstalled) {
+      return;
+    }
+    targetWindow.__webstirClientNavRecorderInstalled = true;
+    window.addEventListener('webstir:client-nav', (event) => {
+      const detail = (event as CustomEvent<{ url?: string }>).detail;
+      const url = typeof detail?.url === 'string' ? detail.url : window.location.href;
+      targetWindow.__webstirClientNavEvents?.push(new URL(url, window.location.href).pathname);
+    });
+  });
+}
+
+async function readClientNavEvents(page: Page): Promise<string[]> {
+  return await page.evaluate(() => {
+    const targetWindow = window as typeof window & {
+      __webstirClientNavEvents?: string[];
+    };
+    return targetWindow.__webstirClientNavEvents ?? [];
+  });
+}
+
 async function launchBrowser(): Promise<Browser> {
   return await chromium.launch({
     headless: true,
@@ -1174,7 +1339,12 @@ async function runWatchBrowserScenarioWithRetry(
       );
       return;
     } catch (error) {
-      const failure = appendLogs(error, session?.getLogs() ?? {});
+      const failure = appendLogs(
+        new Error(
+          `${error instanceof Error ? error.message : String(error)}${progress.currentStep ? `\nLatest step: ${progress.currentStep}` : ''}`,
+        ),
+        session?.getLogs() ?? {},
+      );
       if (attempt < maxAttempts && isRetryableWatchBrowserError(error)) {
         lastError = failure;
         continue;

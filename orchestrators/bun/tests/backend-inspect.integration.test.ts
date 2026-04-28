@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
@@ -128,6 +128,18 @@ test('CLI backend-inspect emits machine-readable JSON', async () => {
       workspace: { mode: string; root: string };
       buildRoot: string;
       manifest: { name: string; routes?: unknown[]; jobs?: unknown[] };
+      data: {
+        migrations: {
+          runnerPresent: boolean;
+          migrationsDirectoryPresent: boolean;
+          migrationFilesCount: number;
+          migrationFiles: string[];
+          exampleMigrationPresent: boolean;
+          tableEnvKey: string;
+          configuredTable: string;
+          defaultTable: string;
+        };
+      };
     };
 
     expect(parsed.command).toBe('backend-inspect');
@@ -139,6 +151,64 @@ test('CLI backend-inspect emits machine-readable JSON', async () => {
     expect(parsed.manifest.name).toBe('webstir-demo-api');
     expect(Array.isArray(parsed.manifest.routes)).toBe(true);
     expect(Array.isArray(parsed.manifest.jobs)).toBe(true);
+    expect(parsed.data.migrations.tableEnvKey).toBe('DATABASE_MIGRATIONS_TABLE');
+    expect(parsed.data.migrations.configuredTable).toBe('_webstir_migrations');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI backend-inspect emits data migration health', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-backend-inspect-data-');
+
+  try {
+    const dbRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'db');
+    const migrationsRoot = path.join(dbRoot, 'migrations');
+    await mkdir(migrationsRoot, { recursive: true });
+    await writeFile(path.join(dbRoot, 'migrate.ts'), 'export {};\n', 'utf8');
+    await writeFile(path.join(migrationsRoot, '0001-example.ts'), 'export const up = () => {};\n');
+    await writeFile(path.join(migrationsRoot, '0002-extra.js'), 'export const up = () => {};\n');
+
+    const inspectResult = await runCliWithEnv(
+      ['backend-inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],
+      {
+        WEBSTIR_BACKEND_TYPECHECK: 'skip',
+        DATABASE_MIGRATIONS_TABLE: 'custom_migrations',
+      },
+    );
+
+    expect(inspectResult.exitCode).toBe(0);
+    expect(inspectResult.stderr).toBe('');
+
+    const parsed = JSON.parse(inspectResult.stdout) as {
+      data: {
+        migrations: {
+          runnerPresent: boolean;
+          runnerPath: string;
+          migrationsDirectoryPresent: boolean;
+          migrationsDirectory: string;
+          migrationFilesCount: number;
+          migrationFiles: string[];
+          exampleMigrationPresent: boolean;
+          tableEnvKey: string;
+          configuredTable: string;
+          defaultTable: string;
+        };
+      };
+    };
+
+    expect(parsed.data.migrations).toEqual({
+      runnerPresent: true,
+      runnerPath: path.join('src', 'backend', 'db', 'migrate.ts'),
+      migrationsDirectoryPresent: true,
+      migrationsDirectory: path.join('src', 'backend', 'db', 'migrations'),
+      migrationFilesCount: 2,
+      migrationFiles: ['0001-example.ts', '0002-extra.js'],
+      exampleMigrationPresent: true,
+      tableEnvKey: 'DATABASE_MIGRATIONS_TABLE',
+      configuredTable: 'custom_migrations',
+      defaultTable: '_webstir_migrations',
+    });
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

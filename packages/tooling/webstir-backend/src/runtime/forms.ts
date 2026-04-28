@@ -112,26 +112,6 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
   const values = normalizeFormValues(options.body, csrfFieldName);
   const redirectTo = options.redirectTo;
 
-  if (requiresAuth(options.requireAuth) && options.auth === undefined) {
-    return failSubmission({
-      session,
-      store,
-      formId: options.formId,
-      values,
-      redirectTo: resolveAuthRedirect(options.requireAuth, redirectTo),
-      now,
-      issues: [
-        {
-          code: 'auth',
-          message:
-            typeof options.requireAuth === 'object' && options.requireAuth.message
-              ? options.requireAuth.message
-              : 'Sign-in required to submit this form.',
-        },
-      ],
-    });
-  }
-
   if (isCsrfEnabled(options)) {
     const expectedToken = ensureCsrfToken(store, options.formId);
     const providedToken = readCsrfToken(options.body, csrfFieldName);
@@ -151,6 +131,27 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
         ],
       });
     }
+    delete store.csrf[options.formId];
+  }
+
+  if (requiresAuth(options.requireAuth) && options.auth === undefined) {
+    return failSubmission({
+      session,
+      store,
+      formId: options.formId,
+      values,
+      redirectTo: resolveAuthRedirect(options.requireAuth, redirectTo),
+      now,
+      issues: [
+        {
+          code: 'auth',
+          message:
+            typeof options.requireAuth === 'object' && options.requireAuth.message
+              ? options.requireAuth.message
+              : 'Sign-in required to submit this form.',
+        },
+      ],
+    });
   }
 
   const validationResult = options.validate?.(values);

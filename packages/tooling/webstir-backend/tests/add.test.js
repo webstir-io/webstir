@@ -192,7 +192,7 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
   const result = await runAddJob({
     workspaceRoot: workspace,
     name: 'nightly',
-    schedule: '0 0 * * *',
+    schedule: 'rate(5 minutes)',
     description: 'Nightly maintenance run',
     priority: '5',
   });
@@ -205,7 +205,7 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
   assert.deepEqual(pkg.webstir.moduleManifest.jobs, [
     {
       name: 'nightly',
-      schedule: '0 0 * * *',
+      schedule: 'rate(5 minutes)',
       description: 'Nightly maintenance run',
       priority: 5,
     },
@@ -224,11 +224,24 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
   assert.deepEqual(buildResult.manifest.module?.jobs, [
     {
       name: 'nightly',
-      schedule: '0 0 * * *',
+      schedule: 'rate(5 minutes)',
       description: 'Nightly maintenance run',
       priority: 5,
     },
   ]);
+});
+
+test('runAddJob rejects malformed rate schedules before writing files', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-rate-');
+
+  await assert.rejects(
+    runAddJob({
+      workspaceRoot: workspace,
+      name: 'nightly',
+      schedule: 'rate(0 seconds)',
+    }),
+    /Expected rate\(<positive integer> second\(s\)\|minute\(s\)\|hour\(s\)\)/,
+  );
 });
 
 test('runUpdateRouteContract merges advanced metadata onto an existing route', async () => {

@@ -6,7 +6,7 @@ import {
   prepareSessionState,
   resetInMemorySessionStore,
 } from '../dist/runtime/session.js';
-import { prepareFormState } from '../dist/runtime/forms.js';
+import { prepareFormState, processFormSubmission } from '../dist/runtime/forms.js';
 
 const config = {
   secret: 'test-session-secret',
@@ -73,6 +73,66 @@ test('prepareSessionState honors an injected in-memory store boundary', () => {
   );
 });
 
+test('prepareSessionState clears expired records and stale or tampered cookies on commit', () => {
+  const store = createInMemorySessionStore();
+  const created = prepareSessionState({
+    cookies: '',
+    route: loginRoute,
+    config,
+    store,
+    now: () => new Date('2026-01-01T00:00:00.000Z'),
+  });
+  const createdCommit = created.commit({
+    session: {
+      userId: 'ada@example.com',
+    },
+    route: loginRoute,
+    result: {
+      status: 303,
+      redirect: { location: '/session/account' },
+    },
+  });
+  const cookieHeader = extractCookieHeader(createdCommit.setCookie);
+  const sessionId = extractSessionId(cookieHeader, config.cookieName);
+  const stored = store.get(sessionId);
+
+  assert.ok(stored, 'expected stored session record');
+  store.set({
+    ...stored,
+    expiresAt: '2025-12-31T23:59:59.000Z',
+  });
+
+  const expired = prepareSessionState({
+    cookies: cookieHeader,
+    route: accountRoute,
+    config,
+    store,
+    now: () => new Date('2026-01-01T00:00:00.000Z'),
+  });
+  assert.equal(expired.session, null);
+  assert.equal(store.get(sessionId), undefined);
+  const expiredCommit = expired.commit({
+    session: expired.session,
+    route: accountRoute,
+    result: { status: 200 },
+  });
+  assert.match(String(expiredCommit.setCookie), /^webstir_session=;.*Max-Age=0/);
+
+  const tampered = prepareSessionState({
+    cookies: cookieHeader.replace(/\.[^.;]+/, '.invalid-signature'),
+    route: accountRoute,
+    config,
+    store,
+  });
+  assert.equal(tampered.session, null);
+  const tamperedCommit = tampered.commit({
+    session: tampered.session,
+    route: accountRoute,
+    result: { status: 200 },
+  });
+  assert.match(String(tamperedCommit.setCookie), /^webstir_session=;.*Max-Age=0/);
+});
+
 test('resetInMemorySessionStore clears an injected in-memory store', () => {
   const store = createInMemorySessionStore();
 
@@ -104,6 +164,141 @@ test('resetInMemorySessionStore clears an injected in-memory store', () => {
   });
   assert.equal(afterReset.session, null);
   assert.deepEqual(afterReset.flash, []);
+});
+
+test('prepareSessionState preserves session ids for updates and rotates after clearing', () => {
+  const store = createInMemorySessionStore();
+  const created = prepareSessionState({
+    cookies: '',
+    route: loginRoute,
+    config,
+    store,
+  });
+  const createdCommit = created.commit({
+    session: {
+      userId: 'ada@example.com',
+    },
+    route: loginRoute,
+    result: {
+      status: 303,
+      redirect: { location: '/session/account' },
+    },
+  });
+  const firstCookie = extractCookieHeader(createdCommit.setCookie);
+  const firstId = extractSessionId(firstCookie, config.cookieName);
+
+  const read = prepareSessionState({
+    cookies: firstCookie,
+    route: accountRoute,
+    config,
+    store,
+  });
+  const updatedCommit = read.commit({
+    session: {
+      ...read.session,
+      theme: 'dark',
+    },
+    route: accountRoute,
+    result: { status: 200 },
+  });
+  assert.equal(updatedCommit.setCookie, undefined);
+  assert.ok(store.get(firstId), 'expected ordinary session updates to keep the current id');
+
+  const cleared = prepareSessionState({
+    cookies: firstCookie,
+    route: accountRoute,
+    config,
+    store,
+  });
+  const clearedCommit = cleared.commit({
+    session: null,
+    route: accountRoute,
+    result: { status: 303, redirect: { location: '/signed-out' } },
+  });
+  assert.match(String(clearedCommit.setCookie), /^webstir_session=;.*Max-Age=0/);
+  assert.equal(store.get(firstId), undefined);
+
+  const recreated = prepareSessionState({
+    cookies: '',
+    route: loginRoute,
+    config,
+    store,
+  });
+  const recreatedCommit = recreated.commit({
+    session: {
+      userId: 'ada@example.com',
+    },
+    route: loginRoute,
+    result: { status: 303, redirect: { location: '/session/account' } },
+  });
+  const nextId = extractSessionId(
+    extractCookieHeader(recreatedCommit.setCookie),
+    config.cookieName,
+  );
+  assert.notEqual(nextId, firstId);
+});
+
+test('processFormSubmission consumes valid csrf tokens so replay fails with retry state', () => {
+  const route = {
+    path: '/account/settings',
+    form: { csrf: true },
+  };
+  const page = prepareFormState({
+    session: null,
+    formId: 'account-settings',
+    route,
+  });
+
+  const validationFailure = processFormSubmission({
+    session: page.session,
+    body: {
+      _csrf: page.csrfToken,
+      email: 'invalid-email',
+    },
+    auth: { source: 'service-token' },
+    formId: 'account-settings',
+    route,
+    redirectTo: route.path,
+    validate(values) {
+      return typeof values.email === 'string' && values.email.includes('@')
+        ? []
+        : [{ field: 'email', message: 'Enter a valid email address.' }];
+    },
+  });
+  assert.equal(validationFailure.ok, false);
+
+  const replay = processFormSubmission({
+    session: validationFailure.session,
+    body: {
+      _csrf: page.csrfToken,
+      email: 'ada@example.com',
+    },
+    auth: { source: 'service-token' },
+    formId: 'account-settings',
+    route,
+    redirectTo: route.path,
+  });
+  assert.equal(replay.ok, false);
+  assert.deepEqual(replay.issues, [
+    {
+      code: 'csrf',
+      message: 'Form session expired. Reload the page and try again.',
+    },
+  ]);
+
+  const retryPage = prepareFormState({
+    session: replay.session,
+    formId: 'account-settings',
+    route,
+  });
+  assert.equal(retryPage.values.email, 'ada@example.com');
+  assert.deepEqual(retryPage.issues, [
+    {
+      code: 'csrf',
+      message: 'Form session expired. Reload the page and try again.',
+    },
+  ]);
+  assert.notEqual(retryPage.csrfToken, page.csrfToken);
 });
 
 test('prepareSessionState migrates legacy embedded form runtime without leaking the old payload key', () => {
