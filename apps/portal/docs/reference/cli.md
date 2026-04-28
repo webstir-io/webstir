@@ -63,6 +63,7 @@ Usage: `webstir doctor --workspace <path>`
 What it does:
 - Checks scaffold drift by running the same workspace-aware analysis that powers `repair --dry-run`
 - For `api` and `full`, also validates backend manifest health through the backend build path
+- Reports backend data/migration health in JSON for backend-capable workspaces, including whether the runner and migrations directory are present, how many migration files exist, and which migration table is configured
 - Accepts `--json` for machine-readable health output
 
 Notes:
@@ -75,7 +76,8 @@ Usage: `webstir repair --workspace <path> [--dry-run]`
 What it does:
 - Restores missing scaffold-managed files for the current workspace mode
 - Uses the current mode scaffold plus any explicitly enabled feature assets
-- Re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, and `githubPages`
+- Re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, `backend`, and `githubPages`
+- For package-managed enabled backends, restores the backend package scaffold instead of reintroducing stale mode-template backend files
 - Accepts `--json` for machine-readable dry-run or repair output
 
 Notes:
@@ -210,7 +212,7 @@ Usage: `webstir backend-inspect --workspace <path>`
 
 What it does:
 - Builds the backend and reads the resulting manifest data
-- Prints module metadata, capabilities, routes, views, and jobs
+- Prints module metadata, capabilities, routes, views, jobs, and data/migration facts
 - Accepts `--json` for machine-readable manifest output
 - Supports `api` and `full` workspaces only
 
@@ -260,6 +262,8 @@ What it does:
 - Creates `src/backend/jobs/<name>/index.ts`
 - Adds a backend job entry to `webstir.moduleManifest.jobs`
 - Preserves schedule, description, and priority metadata in the manifest
+- Validates cron fields, `@macro` schedules, and `rate(...)` schedules before writing files
+- The generated scheduler supports one-off runs, `--list`, `--json`, cron/nickname schedules, `rate(...)`, and `@reboot`; local watch mode skips overlapping runs and disposes timers on `SIGINT`/`SIGTERM`
 
 ## Dependency Management
 - There is no Bun `webstir install` command.

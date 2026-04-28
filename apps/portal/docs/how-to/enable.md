@@ -62,10 +62,12 @@ Applies to SSG docs pages (content pipeline) only.
 
 ### backend
 - Creates `src/backend/**` if missing (using the current backend package scaffold).
+- Ensures the workspace has the backend package dependency plus scaffold runtime dependencies such as `pino` and Bun types.
 - Updates `package.json`:
   - `webstir.mode=full`
   - `webstir.enable.backend=true`
 - Ensures `base.tsconfig.json` includes a `references` entry for `src/backend`.
+- Records the enabled backend shape so `webstir repair` restores package-managed backend assets instead of stale mode-template backend files.
 
 ### github-pages
 - Writes `utils/deploy-gh-pages.sh`.
