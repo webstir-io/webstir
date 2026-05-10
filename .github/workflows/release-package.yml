@@ -68,6 +68,25 @@ jobs:
       - name: Show package version
         run: echo "${{ steps.package.outputs.package_name }}@${{ steps.package.outputs.package_version }}"
 
+      - name: Build local package dependencies
+        run: |
+          set -euo pipefail
+          case "${{ steps.package.outputs.package_name }}" in
+            "@webstir-io/webstir-backend"|"@webstir-io/webstir-frontend")
+              bun run --filter @webstir-io/module-contract build
+              ;;
+            "@webstir-io/webstir-testing")
+              bun run --filter @webstir-io/testing-contract build
+              ;;
+            "@webstir-io/webstir")
+              bun run --filter @webstir-io/module-contract build
+              bun run --filter @webstir-io/testing-contract build
+              bun run --filter @webstir-io/webstir-backend build
+              bun run --filter @webstir-io/webstir-frontend build
+              bun run --filter @webstir-io/webstir-testing build
+              ;;
+          esac
+
       - name: Clean package
         working-directory: ${{ steps.package.outputs.package_dir }}
         run: bun run --if-present clean
