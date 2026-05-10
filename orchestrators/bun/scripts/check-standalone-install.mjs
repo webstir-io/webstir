@@ -2,14 +2,18 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { access, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 
 const scriptRoot = path.dirname(new URL(import.meta.url).pathname);
 const packageRoot = path.resolve(scriptRoot, '..');
 const artifactsRoot = path.join(packageRoot, 'artifacts');
 const repoRoot = path.resolve(packageRoot, '..', '..');
+const moduleContractPackageRoot = path.join(repoRoot, 'packages', 'contracts', 'module-contract');
+const testingContractPackageRoot = path.join(repoRoot, 'packages', 'contracts', 'testing-contract');
 const backendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-backend');
+const frontendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend');
+const testingPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-testing');
 
 async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-standalone-install-'));
@@ -19,14 +23,17 @@ async function main() {
   let tarballPath = null;
   let backendTarballPath = null;
   let keepWorkspace = false;
+  const localPackageSpecs = {
+    '@webstir-io/module-contract': `file:${moduleContractPackageRoot}`,
+    '@webstir-io/testing-contract': `file:${testingContractPackageRoot}`,
+    '@webstir-io/webstir-backend': `file:${backendPackageRoot}`,
+    '@webstir-io/webstir-frontend': `file:${frontendPackageRoot}`,
+    '@webstir-io/webstir-testing': `file:${testingPackageRoot}`,
+  };
 
   try {
     await mkdir(consumerRoot, { recursive: true });
-    await writeFile(
-      path.join(consumerRoot, 'package.json'),
-      `${JSON.stringify({ name: 'webstir-standalone-smoke', private: true }, null, 2)}\n`,
-      'utf8',
-    );
+    await writeConsumerManifest(consumerRoot, localPackageSpecs);
 
     tarballPath = await packStandaloneTarball();
     console.log(`[webstir][install-smoke] tarball ${tarballPath}`);
@@ -46,6 +53,7 @@ async function main() {
       'scaffolded workspace package.json',
     );
 
+    await writeWorkspaceLocalPackageOverrides(workspaceRoot, localPackageSpecs);
     await run(['bun', 'install'], workspaceRoot);
     await installLocalBackendTarball(workspaceRoot, backendTarballPath);
     await assertExists(
@@ -125,6 +133,32 @@ async function packPackageTarball(root) {
 async function installLocalBackendTarball(workspaceRoot, backendTarballPath) {
   await run(['bun', 'remove', '@webstir-io/webstir-backend'], workspaceRoot);
   await run(['bun', 'add', backendTarballPath], workspaceRoot);
+}
+
+async function writeConsumerManifest(consumerRoot, localPackageSpecs) {
+  await writeFile(
+    path.join(consumerRoot, 'package.json'),
+    `${JSON.stringify(
+      {
+        name: 'webstir-standalone-smoke',
+        private: true,
+        overrides: localPackageSpecs,
+      },
+      null,
+      2,
+    )}\n`,
+    'utf8',
+  );
+}
+
+async function writeWorkspaceLocalPackageOverrides(workspaceRoot, localPackageSpecs) {
+  const packageJsonPath = path.join(workspaceRoot, 'package.json');
+  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+  packageJson.overrides = {
+    ...(packageJson.overrides ?? {}),
+    ...localPackageSpecs,
+  };
+  await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 }
 
 async function assertExists(targetPath, label) {

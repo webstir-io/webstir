@@ -53,6 +53,8 @@ export async function run() {
 ## Notes
 - The CLI validates `--schedule` strings (`@hourly`, `@daily`, `@weekly`, cron-style fields, `rate(...)`, or `@reboot`) but stores them exactly as provided so your production scheduler can interpret them.
 - On Bun `1.3.11+`, the built-in watcher uses `Bun.cron.parse(...)` for real cron expressions and nicknames such as `0 0 * * *`, `*/15 * * * *`, `@daily`, or `@monthly`, while still supporting `rate(...)` and `@reboot` for local development loops. The manifest keeps the original schedule string unchanged, and `--json` gives you a direct export path instead of scraping CLI text.
+- Local watch mode skips a run when the same job is still running, and `SIGINT`/`SIGTERM` disposes scheduled timers cleanly. Use an external scheduler or queue when you need durable retry state, distributed locks, or multi-process coordination.
+- If a job module is missing or does not export `run()` or a default function, the scheduler fails with a job-specific diagnostic instead of silently skipping it.
 - Jobs run through the scheduler automatically load `.env` values, reuse the backend logger, and emit structured logs just like HTTP handlers.
 - Use `webstir backend-inspect --workspace "$PWD"` after adding jobs to confirm the manifest entry (name, schedule, description, priority) before committing changes.
 

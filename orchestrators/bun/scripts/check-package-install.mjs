@@ -8,8 +8,11 @@ import { constants as fsConstants } from 'node:fs';
 const scriptRoot = path.dirname(new URL(import.meta.url).pathname);
 const packageRoot = path.resolve(scriptRoot, '..');
 const repoRoot = path.resolve(packageRoot, '..', '..');
+const moduleContractPackageRoot = path.join(repoRoot, 'packages', 'contracts', 'module-contract');
+const testingContractPackageRoot = path.join(repoRoot, 'packages', 'contracts', 'testing-contract');
 const backendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-backend');
 const frontendPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend');
+const testingPackageRoot = path.join(repoRoot, 'packages', 'tooling', 'webstir-testing');
 
 async function main() {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-package-install-'));
@@ -34,8 +37,13 @@ async function main() {
   );
   const addedJobPath = path.join(workspaceRoot, 'src', 'backend', 'jobs', addJobTarget, 'index.ts');
   const existingTarballs = await listTarballs(packageRoot);
-  const backendPackageSpec = `file:${backendPackageRoot}`;
-  const frontendPackageSpec = `file:${frontendPackageRoot}`;
+  const localPackageSpecs = {
+    '@webstir-io/module-contract': `file:${moduleContractPackageRoot}`,
+    '@webstir-io/testing-contract': `file:${testingContractPackageRoot}`,
+    '@webstir-io/webstir-backend': `file:${backendPackageRoot}`,
+    '@webstir-io/webstir-frontend': `file:${frontendPackageRoot}`,
+    '@webstir-io/webstir-testing': `file:${testingPackageRoot}`,
+  };
   let tarballPath = null;
   let keepWorkspace = false;
 
@@ -48,8 +56,7 @@ async function main() {
 
     await writeInstallRootManifest(installRoot, {
       webstirTarballPath: tarballPath,
-      backendPackageSpec,
-      frontendPackageSpec,
+      localPackageSpecs,
     });
     await run(['bun', 'install'], installRoot);
 
@@ -69,8 +76,12 @@ async function main() {
       '@webstir-io/webstir-testing',
     ]);
 
+    await writeWorkspaceLocalPackageOverrides(workspaceRoot, localPackageSpecs);
     await run(['bun', 'install'], workspaceRoot);
-    await installLocalBackendPackage(workspaceRoot, backendPackageSpec);
+    await installLocalBackendPackage(
+      workspaceRoot,
+      localPackageSpecs['@webstir-io/webstir-backend'],
+    );
     await assertExists(
       path.join(workspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
       'workspace deploy runner binary',
@@ -269,8 +280,12 @@ async function main() {
       '@webstir-io/webstir-backend',
       '@webstir-io/webstir-testing',
     ]);
+    await writeWorkspaceLocalPackageOverrides(apiWorkspaceRoot, localPackageSpecs);
     await run(['bun', 'install'], apiWorkspaceRoot);
-    await installLocalBackendPackage(apiWorkspaceRoot, backendPackageSpec);
+    await installLocalBackendPackage(
+      apiWorkspaceRoot,
+      localPackageSpecs['@webstir-io/webstir-backend'],
+    );
     await assertExists(
       path.join(apiWorkspaceRoot, 'node_modules', '.bin', 'webstir-backend-deploy'),
       'api workspace deploy runner binary',
@@ -379,32 +394,29 @@ async function installLocalBackendPackage(workspaceRoot, backendPackageSpec) {
   await run(['bun', 'add', backendPackageSpec], workspaceRoot);
 }
 
+async function writeWorkspaceLocalPackageOverrides(workspaceRoot, localPackageSpecs) {
+  const packageJsonPath = path.join(workspaceRoot, 'package.json');
+  const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+  packageJson.overrides = {
+    ...(packageJson.overrides ?? {}),
+    ...localPackageSpecs,
+  };
+  await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+}
+
 async function writeInstallRootManifest(installRoot, options = {}) {
-  const dependencies = {};
+  const dependencies = { ...(options.localPackageSpecs ?? {}) };
   if (options.webstirTarballPath) {
     dependencies['@webstir-io/webstir'] = options.webstirTarballPath;
-  }
-  if (options.backendPackageSpec) {
-    dependencies['@webstir-io/webstir-backend'] = options.backendPackageSpec;
-  }
-  if (options.frontendPackageSpec) {
-    dependencies['@webstir-io/webstir-frontend'] = options.frontendPackageSpec;
   }
 
   const packageJson = {
     name: 'webstir-package-smoke',
     private: true,
     ...(Object.keys(dependencies).length > 0 ? { dependencies } : {}),
-    ...(options.backendPackageSpec || options.frontendPackageSpec
+    ...(options.localPackageSpecs
       ? {
-          overrides: {
-            ...(options.backendPackageSpec
-              ? { '@webstir-io/webstir-backend': options.backendPackageSpec }
-              : {}),
-            ...(options.frontendPackageSpec
-              ? { '@webstir-io/webstir-frontend': options.frontendPackageSpec }
-              : {}),
-          },
+          overrides: options.localPackageSpecs,
         }
       : {}),
   };
