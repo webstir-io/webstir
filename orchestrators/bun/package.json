@@ -5,6 +5,11 @@
   "bin": {
     "webstir": "src/cli.ts"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webstir-io/webstir.git",
+    "directory": "orchestrators/bun"
+  },
   "scripts": {
     "check:assets": "bun scripts/sync-assets.mjs --check",
     "check:feature-projections": "bun scripts/check-feature-projections.mjs",
