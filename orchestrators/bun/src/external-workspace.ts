@@ -8,6 +8,14 @@ import { resolveRuntimeCommand } from './runtime.ts';
 
 const REPO_LOCAL_PACKAGES = new Map<string, string>([
   [
+    '@webstir-io/module-contract',
+    path.join(monorepoRoot ?? '', 'packages', 'contracts', 'module-contract'),
+  ],
+  [
+    '@webstir-io/testing-contract',
+    path.join(monorepoRoot ?? '', 'packages', 'contracts', 'testing-contract'),
+  ],
+  [
     '@webstir-io/webstir-frontend',
     path.join(monorepoRoot ?? '', 'packages', 'tooling', 'webstir-frontend'),
   ],
@@ -19,6 +27,12 @@ const REPO_LOCAL_PACKAGES = new Map<string, string>([
     '@webstir-io/webstir-testing',
     path.join(monorepoRoot ?? '', 'packages', 'tooling', 'webstir-testing'),
   ],
+]);
+
+const REPO_LOCAL_TRANSITIVE_DEPENDENCIES = new Map<string, readonly string[]>([
+  ['@webstir-io/webstir-frontend', ['@webstir-io/module-contract']],
+  ['@webstir-io/webstir-backend', ['@webstir-io/module-contract']],
+  ['@webstir-io/webstir-testing', ['@webstir-io/testing-contract']],
 ]);
 
 export async function prepareExternalWorkspaceCopy(
@@ -59,6 +73,7 @@ export async function materializeRepoLocalWorkspaceDependencies(
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
+    overrides?: Record<string, string>;
   };
   const normalized = normalizeRepoLocalDependencySpecs(packageJson, options);
   if (!normalized.changed) {
@@ -88,10 +103,11 @@ export function isExternalWorkspace(workspaceRoot: string): boolean {
   return relativeToRepo.startsWith('..') || path.isAbsolute(relativeToRepo);
 }
 
-function normalizeRepoLocalDependencySpecs(
+export function normalizeRepoLocalDependencySpecs(
   source: {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
+    overrides?: Record<string, string>;
   },
   options: {
     readonly forceLocalPackages?: boolean;
@@ -100,11 +116,23 @@ function normalizeRepoLocalDependencySpecs(
   readonly packageJson: {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
+    overrides?: Record<string, string>;
   };
   readonly changed: boolean;
 } {
   let changed = false;
   const packageJson = structuredClone(source);
+
+  function setLocalOverride(packageName: string, packageRoot: string): void {
+    packageJson.overrides ??= {};
+    const dependencySpec = `file:${packageRoot}`;
+    if (packageJson.overrides[packageName] === dependencySpec) {
+      return;
+    }
+
+    packageJson.overrides[packageName] = dependencySpec;
+    changed = true;
+  }
 
   for (const field of ['dependencies', 'devDependencies'] as const) {
     const entries = packageJson[field];
@@ -112,6 +140,7 @@ function normalizeRepoLocalDependencySpecs(
       continue;
     }
 
+    const localizedPackages = new Set<string>();
     for (const [packageName, packageRoot] of REPO_LOCAL_PACKAGES) {
       if (!entries[packageName]) {
         continue;
@@ -121,7 +150,27 @@ function normalizeRepoLocalDependencySpecs(
       }
 
       entries[packageName] = `file:${packageRoot}`;
+      setLocalOverride(packageName, packageRoot);
+      localizedPackages.add(packageName);
       changed = true;
+    }
+
+    for (const packageName of localizedPackages) {
+      for (const dependencyName of REPO_LOCAL_TRANSITIVE_DEPENDENCIES.get(packageName) ?? []) {
+        const dependencyRoot = REPO_LOCAL_PACKAGES.get(dependencyName);
+        if (!dependencyRoot) {
+          continue;
+        }
+
+        const dependencySpec = `file:${dependencyRoot}`;
+        setLocalOverride(dependencyName, dependencyRoot);
+        if (entries[dependencyName] === dependencySpec) {
+          continue;
+        }
+
+        entries[dependencyName] = dependencySpec;
+        changed = true;
+      }
     }
   }
 

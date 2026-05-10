@@ -44,6 +44,7 @@ async function main() {
 
     const packageJson = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
     const originalDependencies = { ...packageJson.dependencies };
+    const originalOverrides = packageJson.overrides ? { ...packageJson.overrides } : null;
     packageJson.dependencies = Object.fromEntries(
       Object.entries(originalDependencies).map(([name, version]) => {
         const tarballPath = tarballs.get(name);
@@ -53,6 +54,12 @@ async function main() {
 
         return [name, `file:${path.relative(stageRoot, tarballPath).split(path.sep).join('/')}`];
       }),
+    );
+    packageJson.overrides = Object.fromEntries(
+      [...tarballs].map(([name, tarballPath]) => [
+        name,
+        `file:${path.relative(stageRoot, tarballPath).split(path.sep).join('/')}`,
+      ]),
     );
     packageJson.bundledDependencies = Object.keys(packageJson.dependencies);
     packageJson.files = ['assets', 'src', 'README.md'];
@@ -67,6 +74,11 @@ async function main() {
 
     await run(['bun', 'install'], stageRoot);
     packageJson.dependencies = originalDependencies;
+    if (originalOverrides) {
+      packageJson.overrides = originalOverrides;
+    } else {
+      delete packageJson.overrides;
+    }
     await writeFile(
       path.join(stageRoot, 'package.json'),
       `${JSON.stringify(packageJson, null, 2)}\n`,

@@ -129,17 +129,17 @@
     },
     "orchestrators/bun": {
       "name": "@webstir-io/webstir",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "bin": {
         "webstir": "src/cli.ts",
       },
       "dependencies": {
         "@modelcontextprotocol/sdk": "1.28.0",
-        "@webstir-io/module-contract": "^0.1.15",
-        "@webstir-io/testing-contract": "^0.1.7",
-        "@webstir-io/webstir-backend": "^0.1.15",
-        "@webstir-io/webstir-frontend": "^0.1.40",
-        "@webstir-io/webstir-testing": "^0.1.5",
+        "@webstir-io/module-contract": "^0.1.16",
+        "@webstir-io/testing-contract": "^0.1.8",
+        "@webstir-io/webstir-backend": "^0.1.16",
+        "@webstir-io/webstir-frontend": "^0.1.41",
+        "@webstir-io/webstir-testing": "^0.1.6",
         "typescript": "^5.7.2",
         "zod": "^3.23.8",
       },
@@ -150,7 +150,7 @@
     },
     "packages/contracts/module-contract": {
       "name": "@webstir-io/module-contract",
-      "version": "0.1.15",
+      "version": "0.1.16",
       "dependencies": {
         "@ts-rest/core": "^3.40.0",
         "zod": "^3.23.8",
@@ -163,7 +163,7 @@
     },
     "packages/contracts/testing-contract": {
       "name": "@webstir-io/testing-contract",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "devDependencies": {
         "@types/node": "^20.19.21",
         "typescript": "^5.7.2",
@@ -171,12 +171,12 @@
     },
     "packages/tooling/webstir-backend": {
       "name": "@webstir-io/webstir-backend",
-      "version": "0.1.15",
+      "version": "0.1.16",
       "bin": {
         "webstir-backend-deploy": "dist/deploy-cli.js",
       },
       "dependencies": {
-        "@webstir-io/module-contract": "^0.1.14",
+        "@webstir-io/module-contract": "^0.1.16",
         "esbuild": "^0.25.10",
         "glob": "^10.4.1",
       },
@@ -188,12 +188,12 @@
     },
     "packages/tooling/webstir-frontend": {
       "name": "@webstir-io/webstir-frontend",
-      "version": "0.1.40",
+      "version": "0.1.41",
       "bin": {
         "webstir-frontend": "dist/cli.js",
       },
       "dependencies": {
-        "@webstir-io/module-contract": "^0.1.14",
+        "@webstir-io/module-contract": "^0.1.16",
         "autoprefixer": "^10.4.18",
         "cheerio": "^1.0.0-rc.12",
         "commander": "^12.1.0",
@@ -218,7 +218,7 @@
     },
     "packages/tooling/webstir-testing": {
       "name": "@webstir-io/webstir-testing",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "bin": {
         "webstir-testing": "dist/cli.js",
         "webstir-testing-runner": "dist/cli.js",
@@ -228,7 +228,7 @@
         "webstir-test-add": "dist/add-cli.js",
       },
       "dependencies": {
-        "@webstir-io/testing-contract": "^0.1.7",
+        "@webstir-io/testing-contract": "^0.1.8",
         "chokidar": "^3.6.0",
         "commander": "^11.1.0",
       },
@@ -239,6 +239,8 @@
     },
   },
   "overrides": {
+    "@babel/plugin-transform-modules-systemjs": "7.29.4",
+    "fast-uri": "3.1.2",
     "lodash": "4.18.1",
     "path-to-regexp": "0.1.13",
     "serialize-javascript": "7.0.5",
@@ -412,7 +414,7 @@
 
     "@babel/plugin-transform-modules-commonjs": ["@babel/plugin-transform-modules-commonjs@7.28.6", "", { "dependencies": { "@babel/helper-module-transforms": "^7.28.6", "@babel/helper-plugin-utils": "^7.28.6" }, "peerDependencies": { "@babel/core": "^7.0.0-0" } }, "sha512-jppVbf8IV9iWWwWTQIxJMAJCWBuuKx71475wHwYytrRGQ2CWiDvYlADQno3tcYpS/T2UUWFQp3nVtYfK/YBQrA=="],
 
-    "@babel/plugin-transform-modules-systemjs": ["@babel/plugin-transform-modules-systemjs@7.29.0", "", { "dependencies": { "@babel/helper-module-transforms": "^7.28.6", "@babel/helper-plugin-utils": "^7.28.6", "@babel/helper-validator-identifier": "^7.28.5", "@babel/traverse": "^7.29.0" }, "peerDependencies": { "@babel/core": "^7.0.0-0" } }, "sha512-PrujnVFbOdUpw4UHiVwKvKRLMMic8+eC0CuNlxjsyZUiBjhFdPsewdXCkveh2KqBA9/waD0W1b4hXSOBQJezpQ=="],
+    "@babel/plugin-transform-modules-systemjs": ["@babel/plugin-transform-modules-systemjs@7.29.4", "", { "dependencies": { "@babel/helper-module-transforms": "^7.28.6", "@babel/helper-plugin-utils": "^7.28.6", "@babel/helper-validator-identifier": "^7.28.5", "@babel/traverse": "^7.29.0" }, "peerDependencies": { "@babel/core": "^7.0.0-0" } }, "sha512-N7QmZ0xRZfjHOfZeQLJjwgX2zS9pdGHSVl/cjSGlo4dXMqvurfxXDMKY4RqEKzPozV78VMcd0lxyG13mlbKc4w=="],
 
     "@babel/plugin-transform-modules-umd": ["@babel/plugin-transform-modules-umd@7.27.1", "", { "dependencies": { "@babel/helper-module-transforms": "^7.27.1", "@babel/helper-plugin-utils": "^7.27.1" }, "peerDependencies": { "@babel/core": "^7.0.0-0" } }, "sha512-iQBE/xC5BV1OxJbp6WG7jq9IWiD+xxlZhLrdwpPkTX3ydmXdvoCpyfJN7acaIBZaOqTfr76pgzqBJflNbeRK+w=="],
 
@@ -1470,7 +1472,7 @@
 
     "fast-json-stable-stringify": ["fast-json-stable-stringify@2.1.0", "", {}, "sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw=="],
 
-    "fast-uri": ["fast-uri@3.1.0", "", {}, "sha512-iPeeDKJSWf4IEOasVVrknXpaBV0IApz/gp7S2bb7Z4Lljbl2MGJRqInZiUrQwV16cpzw/D3S5j5Julj/gT52AA=="],
+    "fast-uri": ["fast-uri@3.1.2", "", {}, "sha512-rVjf7ArG3LTk+FS6Yw81V1DLuZl1bRbNrev6Tmd/9RaroeeRRJhAt7jg/6YFxbvAQXUCavSoZhPPj6oOx+5KjQ=="],
 
     "fastq": ["fastq@1.20.1", "", { "dependencies": { "reusify": "^1.0.4" } }, "sha512-GGToxJ/w1x32s/D2EKND7kTil4n8OVk/9mycTc4VDza13lOvpUZTGX3mFSCtV9ksdGBVzvsyAVLM6mHFThxXxw=="],
 
