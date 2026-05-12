@@ -40,6 +40,7 @@ test('DevServer serves static files with the expected cache headers', async () =
     await Promise.all([
       writeFile(path.join(buildRoot, 'pages', 'home', 'index.html'), '<h1>Home</h1>', 'utf8'),
       writeFile(path.join(buildRoot, 'refresh.js'), 'console.log("refresh");', 'utf8'),
+      writeFile(path.join(buildRoot, 'docs-nav.json'), '[]', 'utf8'),
       writeFile(path.join(buildRoot, 'assets', 'app.12345678.js'), 'console.log("asset");', 'utf8'),
     ]);
 
@@ -60,6 +61,14 @@ test('DevServer serves static files with the expected cache headers', async () =
     );
     expect(refreshResponse.headers.get('pragma')).toBe('no-cache');
     expect(refreshResponse.headers.get('expires')).toBe('0');
+
+    const manifestResponse = await fetch(`${address.origin}/docs-nav.json`);
+    expect(manifestResponse.status).toBe(200);
+    expect(manifestResponse.headers.get('cache-control')).toBe(
+      'no-cache, no-store, must-revalidate',
+    );
+    expect(manifestResponse.headers.get('pragma')).toBe('no-cache');
+    expect(manifestResponse.headers.get('expires')).toBe('0');
 
     const assetHeadResponse = await fetch(`${address.origin}/assets/app.12345678.js`, {
       method: 'HEAD',

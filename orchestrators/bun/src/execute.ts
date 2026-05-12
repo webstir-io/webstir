@@ -10,6 +10,7 @@ import type {
   CommandMode,
 } from './types.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
+import { assertNoActiveWorkspaceWatch } from './workspace-lock.ts';
 
 export interface RunCommandOptions {
   readonly workspaceRoot: string;
@@ -22,6 +23,7 @@ export async function runCommand(
   options: RunCommandOptions,
 ): Promise<CommandExecutionResult> {
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
+  await assertNoActiveWorkspaceWatch(workspace.root, mode);
   const providerLoader = options.loadProvider ?? loadProvider;
   const targets = [];
 

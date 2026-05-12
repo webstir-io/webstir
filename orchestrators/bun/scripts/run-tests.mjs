@@ -17,6 +17,13 @@ const watchBrowserTestFiles = [
 const publishModeFilter = 'publish mode';
 const watchModeFilter = 'watch mode';
 
+function buildSingleFileTestSteps(labelPrefix, files) {
+  return files.map((file) => ({
+    label: `${labelPrefix}: ${path.basename(file)}`,
+    args: ['test', '--bail=1', file],
+  }));
+}
+
 export function listCoreTestFiles() {
   return readdirSync(testsDir)
     .filter((file) => file.endsWith('.ts'))
@@ -27,26 +34,23 @@ export function listCoreTestFiles() {
 }
 
 export function buildTestPlan(mode) {
-  const coreTests = {
-    label: 'core orchestrator tests',
-    args: ['test', '--bail=1', ...listCoreTestFiles()],
-  };
+  const coreTests = buildSingleFileTestSteps('core orchestrator test', listCoreTestFiles());
   const publishBrowserTests = {
     label: 'browser publish proofs',
     args: ['test', '--bail=1', browserTestFile, '-t', publishModeFilter],
   };
-  const integrationWatchBrowserTests = {
-    label: 'browser watch integration proofs',
-    args: ['test', '--bail=1', ...watchBrowserTestFiles],
-  };
+  const integrationWatchBrowserTests = buildSingleFileTestSteps(
+    'browser watch integration proof',
+    watchBrowserTestFiles,
+  );
   const watchBrowserTests = {
     label: 'browser watch proofs',
     args: ['test', '--bail=1', browserTestFile, '-t', watchModeFilter],
   };
   const requiredPlan = [
-    coreTests,
+    ...coreTests,
     publishBrowserTests,
-    integrationWatchBrowserTests,
+    ...integrationWatchBrowserTests,
     watchBrowserTests,
   ];
 
@@ -56,7 +60,7 @@ export function buildTestPlan(mode) {
     case 'publish-browser':
       return [publishBrowserTests];
     case 'watch-browser':
-      return [integrationWatchBrowserTests, watchBrowserTests];
+      return [...integrationWatchBrowserTests, watchBrowserTests];
     case 'all':
     case 'with-watch-browser':
       return requiredPlan;

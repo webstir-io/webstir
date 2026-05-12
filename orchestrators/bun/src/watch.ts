@@ -4,6 +4,7 @@ import { runFrontendWatch } from './frontend-watch.ts';
 import { runFullWatch } from './full-watch.ts';
 import type { WorkspaceDescriptor } from './types.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
+import { acquireWorkspaceWatchLock } from './workspace-lock.ts';
 
 interface WatchStream {
   write(message: string): void;
@@ -42,24 +43,30 @@ const defaultIo: WatchIo = {
 
 export async function runWatch(options: RunWatchOptions): Promise<void> {
   const io = options.io ?? defaultIo;
-  await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
+  const watchLock = await acquireWorkspaceWatchLock(workspace.root);
 
-  switch (workspace.mode) {
-    case 'spa':
-      await runFrontendWatch(workspace, options, io);
-      return;
-    case 'ssg':
-      await runFrontendWatch(workspace, options, io);
-      return;
-    case 'api':
-      await runApiWatch(workspace, options, io);
-      return;
-    case 'full':
-      await runFullWatch(workspace, options, io);
-      return;
-    default:
-      throwUnsupportedWatchMode(workspace);
+  try {
+    await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot);
+
+    switch (workspace.mode) {
+      case 'spa':
+        await runFrontendWatch(workspace, options, io);
+        return;
+      case 'ssg':
+        await runFrontendWatch(workspace, options, io);
+        return;
+      case 'api':
+        await runApiWatch(workspace, options, io);
+        return;
+      case 'full':
+        await runFullWatch(workspace, options, io);
+        return;
+      default:
+        throwUnsupportedWatchMode(workspace);
+    }
+  } finally {
+    await watchLock.release();
   }
 }
 
