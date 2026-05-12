@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/webstir",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "type": "module",
   "bin": {
     "webstir": "src/cli.ts"
