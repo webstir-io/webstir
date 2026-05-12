@@ -1,7 +1,7 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterAll, afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
-import { open, readFile, writeFile } from 'node:fs/promises';
-import { chromium, type Browser } from 'playwright';
+import { mkdir, open, readFile, writeFile } from 'node:fs/promises';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
@@ -10,11 +10,21 @@ import {
   collectOutput,
   getFreePort,
   removeTrackedChild,
+  settleOutputDrains,
+  stopSpawnedProcess,
   stopTrackedChildren,
   waitFor,
 } from '../test-support/watch.ts';
 
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
+let sharedBrowser: Browser | undefined;
+
+afterAll(async () => {
+  if (sharedBrowser) {
+    await Promise.race([sharedBrowser.close(), Bun.sleep(5_000)]);
+    sharedBrowser = undefined;
+  }
+});
 
 afterEach(async () => {
   await stopTrackedChildren(childProcesses);
@@ -50,9 +60,8 @@ test('CLI watch reloads SSG content edits after rebuild', async () => {
   } catch (error) {
     throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
   } finally {
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    await stopSpawnedProcess(child);
+    await settleOutputDrains(stdoutDrain, stderrDrain);
     removeTrackedChild(childProcesses, child);
     if (originalContent) {
       await writeFile(
@@ -61,6 +70,42 @@ test('CLI watch reloads SSG content edits after rebuild', async () => {
         'utf8',
       );
     }
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
+
+test('CLI build and publish refuse while SSG watch owns a workspace with static font assets', async () => {
+  const workspaceCopy = await copyDemoWorkspace('ssg/base', 'webstir-ssg-watch-lock');
+  const workspace = workspaceCopy.workspaceRoot;
+  await addSelfHostedFontAssets(workspace);
+
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
+    workspace,
+    port,
+  );
+
+  const spawnedCommands: Array<ReturnType<typeof Bun.spawn>> = [];
+
+  try {
+    await waitFor(async () => {
+      expect(await fetchText(port, '/docs/')).toContain('Documentation');
+    }, 20_000);
+    const fontResponse = await fetch(`http://127.0.0.1:${port}/fonts/IBM-Plex-Sans.woff2`);
+    expect(fontResponse.ok).toBe(true);
+
+    await expectPipelineCommandRefused(workspace, 'build', spawnedCommands);
+    await expectPipelineCommandRefused(workspace, 'publish', spawnedCommands);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    for (const commandChild of spawnedCommands) {
+      await stopSpawnedProcess(commandChild);
+      removeTrackedChild(childProcesses, commandChild);
+    }
+    await stopSpawnedProcess(child);
+    await settleOutputDrains(stdoutDrain, stderrDrain);
+    removeTrackedChild(childProcesses, child);
     await removeDemoWorkspace(workspaceCopy);
   }
 }, 120_000);
@@ -74,7 +119,7 @@ test('CLI watch hot-swaps docs page CSS edits without a full reload', async () =
     port,
   );
 
-  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
   let originalStylesheet = '';
 
   try {
@@ -82,21 +127,19 @@ test('CLI watch hot-swaps docs page CSS edits without a full reload', async () =
       expect(await fetchText(port, '/docs/hosting')).toContain('Deploying your site');
     }, 20_000);
 
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-dev-shm-usage'],
-    });
-    const context = await browser.newContext({
-      javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 },
-    });
+    context = await createBrowserContext();
     const page = await context.newPage();
 
     await page.goto(`http://127.0.0.1:${port}/docs/`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => document.querySelector('.docs-layout') instanceof HTMLElement);
+    await page.waitForFunction(
+      () => document.querySelector('.docs-layout') instanceof HTMLElement,
+      undefined,
+      { timeout: 15_000 },
+    );
     await page.evaluate(() => {
       (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker = 'persist';
     });
+    await waitForHmrRuntime(page);
 
     const stylesheetPath = path.join(workspace, 'src', 'frontend', 'pages', 'docs', 'index.css');
     originalStylesheet = await readFile(stylesheetPath, 'utf8');
@@ -106,26 +149,27 @@ test('CLI watch hot-swaps docs page CSS edits without a full reload', async () =
       'utf8',
     );
 
-    await page.waitForFunction(() => {
-      const title = document.querySelector('.docs-sidebar__title');
-      return title instanceof HTMLElement && getComputedStyle(title).color === 'rgb(0, 128, 0)';
-    });
+    await page.waitForFunction(
+      () => {
+        const title = document.querySelector('.docs-sidebar__title');
+        return title instanceof HTMLElement && getComputedStyle(title).color === 'rgb(0, 128, 0)';
+      },
+      undefined,
+      { timeout: 15_000 },
+    );
     expect(
       await page.evaluate(
         () => (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker ?? null,
       ),
     ).toBe('persist');
-
-    await context.close();
   } catch (error) {
     throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
   } finally {
-    if (browser) {
-      await browser.close();
+    if (context) {
+      await closeBrowserContext(context);
     }
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    await stopSpawnedProcess(child);
+    await settleOutputDrains(stdoutDrain, stderrDrain);
     removeTrackedChild(childProcesses, child);
     if (originalStylesheet) {
       await writeFile(
@@ -147,7 +191,7 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
     port,
   );
 
-  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
   const browserLogs: string[] = [];
   let originalDocsPage = '';
 
@@ -156,14 +200,7 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
       expect(await fetchText(port, '/docs/')).toContain('Documentation');
     }, 20_000);
 
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-dev-shm-usage'],
-    });
-    const context = await browser.newContext({
-      javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 },
-    });
+    context = await createBrowserContext();
     const page = await context.newPage();
     page.on('console', (message) => {
       browserLogs.push(`${message.type()}: ${message.text()}`);
@@ -173,17 +210,22 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
     });
 
     await page.goto(`http://127.0.0.1:${port}/docs/`, { waitUntil: 'domcontentloaded' });
-    await page.waitForFunction(() => {
-      const layout = document.querySelector('.docs-layout');
-      const links = document.querySelector('#docs-links');
-      return (
-        layout?.dataset.webstirDocsBoundaryVersion === 'docs-boundary-v1' &&
-        links?.dataset.webstirDocsSidebarBoundaryVersion === 'docs-sidebar-v1'
-      );
-    });
+    await page.waitForFunction(
+      () => {
+        const layout = document.querySelector('.docs-layout');
+        const links = document.querySelector('#docs-links');
+        return (
+          layout?.dataset.webstirDocsBoundaryVersion === 'docs-boundary-v1' &&
+          links?.dataset.webstirDocsSidebarBoundaryVersion === 'docs-sidebar-v1'
+        );
+      },
+      undefined,
+      { timeout: 15_000 },
+    );
     await page.evaluate(() => {
       (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker = 'persist';
     });
+    await waitForHmrRuntime(page);
 
     const docsPagePath = path.join(workspace, 'src', 'frontend', 'pages', 'docs', 'index.ts');
     originalDocsPage = await readFile(docsPagePath, 'utf8');
@@ -197,6 +239,8 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
       () =>
         document.querySelector('#docs-links')?.dataset.webstirDocsSidebarBoundaryVersion ===
         'docs-sidebar-v2',
+      undefined,
+      { timeout: 15_000 },
     );
     expect(
       await page.locator('.docs-layout').getAttribute('data-webstir-docs-boundary-version'),
@@ -210,20 +254,17 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
       ),
     ).toBe('persist');
     expect(await page.locator('.docs-layout').textContent()).toContain('Documentation');
-
-    await context.close();
   } catch (error) {
     if (error instanceof Error && browserLogs.length > 0) {
       error.message = `${error.message}\n\nbrowser:\n${browserLogs.join('\n')}`;
     }
     throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
   } finally {
-    if (browser) {
-      await browser.close();
+    if (context) {
+      await closeBrowserContext(context);
     }
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    await stopSpawnedProcess(child);
+    await settleOutputDrains(stdoutDrain, stderrDrain);
     removeTrackedChild(childProcesses, child);
     if (originalDocsPage) {
       await writeFile(
@@ -245,7 +286,7 @@ test('CLI watch remounts the docs boundary for _sidebar.json edits without a ful
     port,
   );
 
-  let browser: Browser | undefined;
+  let context: BrowserContext | undefined;
   const browserLogs: string[] = [];
   let originalSidebar = '';
 
@@ -254,14 +295,7 @@ test('CLI watch remounts the docs boundary for _sidebar.json edits without a ful
       expect(await fetchText(port, '/docs/')).toContain('Documentation');
     }, 20_000);
 
-    browser = await chromium.launch({
-      headless: true,
-      args: ['--disable-dev-shm-usage'],
-    });
-    const context = await browser.newContext({
-      javaScriptEnabled: true,
-      viewport: { width: 1280, height: 720 },
-    });
+    context = await createBrowserContext();
     const page = await context.newPage();
     page.on('console', (message) => {
       browserLogs.push(`${message.type()}: ${message.text()}`);
@@ -273,11 +307,14 @@ test('CLI watch remounts the docs boundary for _sidebar.json edits without a ful
     await page.goto(`http://127.0.0.1:${port}/docs/`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(
       () => (document.querySelector('#docs-links')?.textContent ?? '').trim().length > 0,
+      undefined,
+      { timeout: 15_000 },
     );
     const initialSidebarText = (await page.locator('#docs-links').textContent()) ?? '';
     await page.evaluate(() => {
       (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker = 'persist';
     });
+    await waitForHmrRuntime(page);
 
     const sidebarPath = path.join(workspace, 'src', 'frontend', 'content', '_sidebar.json');
     originalSidebar = await readFile(sidebarPath, 'utf8');
@@ -306,6 +343,7 @@ test('CLI watch remounts the docs boundary for _sidebar.json edits without a ful
     await page.waitForFunction(
       (previousText) => (document.querySelector('#docs-links')?.textContent ?? '') !== previousText,
       initialSidebarText,
+      { timeout: 15_000 },
     );
     expect(await page.locator('#docs-links').textContent()).toContain('Hosting hot updated');
     expect(
@@ -313,20 +351,17 @@ test('CLI watch remounts the docs boundary for _sidebar.json edits without a ful
         () => (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker ?? null,
       ),
     ).toBe('persist');
-
-    await context.close();
   } catch (error) {
     if (error instanceof Error && browserLogs.length > 0) {
       error.message = `${error.message}\n\nbrowser:\n${browserLogs.join('\n')}`;
     }
     throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
   } finally {
-    if (browser) {
-      await browser.close();
+    if (context) {
+      await closeBrowserContext(context);
     }
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
-    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    await stopSpawnedProcess(child);
+    await settleOutputDrains(stdoutDrain, stderrDrain);
     removeTrackedChild(childProcesses, child);
     if (originalSidebar) {
       await writeFile(
@@ -376,6 +411,105 @@ function spawnWatch(
     stdoutDrain: collectOutput(child.stdout, stdoutBuffer),
     stderrDrain: collectOutput(child.stderr, stderrBuffer),
   };
+}
+
+async function expectPipelineCommandRefused(
+  workspace: string,
+  command: 'build' | 'publish',
+  spawnedCommands: Array<ReturnType<typeof Bun.spawn>>,
+): Promise<void> {
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      command,
+      '--workspace',
+      workspace,
+    ],
+    cwd: repoRoot,
+    env: process.env,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  childProcesses.push(child);
+  spawnedCommands.push(child);
+
+  const stdoutBuffer = { text: '' };
+  const stderrBuffer = { text: '' };
+  const stdoutDrain = collectOutput(child.stdout, stdoutBuffer);
+  const stderrDrain = collectOutput(child.stderr, stderrBuffer);
+
+  expect(await child.exited).toBe(1);
+  await settleOutputDrains(stdoutDrain, stderrDrain);
+  expect(stderrBuffer.text).toContain(
+    `Cannot run webstir ${command} because webstir watch is active`,
+  );
+  expect(stdoutBuffer.text).not.toContain(`[webstir] ${command} complete`);
+}
+
+async function closeBrowserContext(context: BrowserContext): Promise<void> {
+  await Promise.race([context.close(), Bun.sleep(5_000)]);
+}
+
+async function createBrowserContext(): Promise<BrowserContext> {
+  sharedBrowser ??= await chromium.launch({
+    headless: true,
+    args: ['--disable-dev-shm-usage'],
+  });
+  const context = await sharedBrowser.newContext({
+    javaScriptEnabled: true,
+    viewport: { width: 1280, height: 720 },
+  });
+  await context.addInitScript(() => {
+    const originalAddEventListener = EventSource.prototype.addEventListener;
+    EventSource.prototype.addEventListener = function (
+      this: EventSource,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions,
+    ): void {
+      if (type === 'hmr') {
+        (
+          window as Window & { __webstirHmrListenerRegistered?: boolean }
+        ).__webstirHmrListenerRegistered = true;
+      }
+      originalAddEventListener.call(this, type, listener, options);
+    };
+  });
+  return context;
+}
+
+async function waitForHmrRuntime(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const runtime = window as Window & {
+        __webstirEventSource?: EventSource;
+        __webstirHmrListenerRegistered?: boolean;
+      };
+      return (
+        runtime.__webstirHmrListenerRegistered === true &&
+        runtime.__webstirEventSource instanceof EventSource &&
+        runtime.__webstirEventSource.readyState === EventSource.OPEN
+      );
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
+}
+
+async function addSelfHostedFontAssets(workspace: string): Promise<void> {
+  const fontsRoot = path.join(workspace, 'src', 'frontend', 'fonts');
+  await mkdir(fontsRoot, { recursive: true });
+  await writeFile(path.join(fontsRoot, 'IBM-Plex-Sans.woff2'), 'webstir-font-fixture', 'utf8');
+  await writeFile(path.join(fontsRoot, 'IBM-Plex-OFL-1.1.txt'), 'Font fixture license.\n', 'utf8');
+
+  const appCssPath = path.join(workspace, 'src', 'frontend', 'app', 'app.css');
+  const appCss = await readFile(appCssPath, 'utf8');
+  await writeFile(
+    appCssPath,
+    `${appCss}\n@font-face {\n  font-family: "IBM Plex Sans Fixture";\n  src: url("/fonts/IBM-Plex-Sans.woff2") format("woff2");\n}\n`,
+    'utf8',
+  );
 }
 
 async function fetchText(port: number, requestPath: string): Promise<string> {

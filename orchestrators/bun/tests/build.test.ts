@@ -6,6 +6,7 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import { runBuild } from '../src/build.ts';
 import { runPublish } from '../src/publish.ts';
 import type { BuildProvider, BuildTargetKind } from '../src/types.ts';
+import { acquireWorkspaceWatchLock } from '../src/workspace-lock.ts';
 
 function createFakeProvider(
   kind: BuildTargetKind,
@@ -150,6 +151,38 @@ test('runBuild fails when a provider reports fatal diagnostics', async () => {
   expect(calls[0]?.env.WEBSTIR_MODULE_MODE).toBe('build');
 });
 
+test('runBuild refuses while watch owns the workspace', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-build-watch-lock-'));
+  await writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'spa-workspace',
+        webstir: {
+          mode: 'spa',
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
+  const lock = await acquireWorkspaceWatchLock(workspace);
+
+  try {
+    await expect(
+      runBuild({
+        workspaceRoot: workspace,
+        loadProvider: async () => createFakeProvider('frontend', calls),
+      }),
+    ).rejects.toThrow(/webstir watch is active/);
+    expect(calls).toHaveLength(0);
+  } finally {
+    await lock.release();
+  }
+});
+
 test('runPublish fails when the frontend prebuild reports fatal diagnostics', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-publish-fatal-'));
   await writeFile(
@@ -181,4 +214,36 @@ test('runPublish fails when the frontend prebuild reports fatal diagnostics', as
 
   expect(calls).toHaveLength(1);
   expect(calls[0]?.env.WEBSTIR_MODULE_MODE).toBe('build');
+});
+
+test('runPublish refuses while watch owns the workspace', async () => {
+  const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-publish-watch-lock-'));
+  await writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'spa-workspace',
+        webstir: {
+          mode: 'spa',
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
+  const lock = await acquireWorkspaceWatchLock(workspace);
+
+  try {
+    await expect(
+      runPublish({
+        workspaceRoot: workspace,
+        loadProvider: async () => createFakeProvider('frontend', calls),
+      }),
+    ).rejects.toThrow(/webstir watch is active/);
+    expect(calls).toHaveLength(0);
+  } finally {
+    await lock.release();
+  }
 });

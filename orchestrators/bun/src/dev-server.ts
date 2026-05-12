@@ -434,7 +434,7 @@ function setCacheHeaders(headers: Headers, relativePath: string): void {
   }
 
   const extension = path.extname(relativePath).toLowerCase();
-  if (extension === '.html' || extension === '') {
+  if (extension === '.html' || extension === '' || extension === '.json') {
     setNoCacheHeaders(headers);
     return;
   }

@@ -2,6 +2,9 @@ import { createServer } from 'node:net';
 
 export type SpawnedProcess = ReturnType<typeof Bun.spawn>;
 
+const PROCESS_STOP_TIMEOUT_MS = 5_000;
+const OUTPUT_DRAIN_TIMEOUT_MS = 5_000;
+
 export async function stopTrackedChildren(children: SpawnedProcess[]): Promise<void> {
   while (children.length > 0) {
     const child = children.pop();
@@ -9,9 +12,25 @@ export async function stopTrackedChildren(children: SpawnedProcess[]): Promise<v
       continue;
     }
 
-    child.kill('SIGTERM');
-    await child.exited.catch(() => undefined);
+    await stopSpawnedProcess(child);
   }
+}
+
+export async function stopSpawnedProcess(child: SpawnedProcess): Promise<void> {
+  child.kill('SIGTERM');
+  const stopped = await Promise.race([
+    child.exited.then(
+      () => true,
+      () => true,
+    ),
+    Bun.sleep(PROCESS_STOP_TIMEOUT_MS).then(() => false),
+  ]);
+  if (stopped) {
+    return;
+  }
+
+  child.kill('SIGKILL');
+  await Promise.race([child.exited.catch(() => undefined), Bun.sleep(PROCESS_STOP_TIMEOUT_MS)]);
 }
 
 export function removeTrackedChild(children: SpawnedProcess[], child: SpawnedProcess): void {
@@ -86,6 +105,10 @@ export async function collectOutput(
   } finally {
     reader.releaseLock();
   }
+}
+
+export async function settleOutputDrains(...drains: Promise<void>[]): Promise<void> {
+  await Promise.race([Promise.allSettled(drains), Bun.sleep(OUTPUT_DRAIN_TIMEOUT_MS)]);
 }
 
 export function appendWatchLogs(error: unknown, stdout: string, stderr: string): Error {
