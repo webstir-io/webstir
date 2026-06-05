@@ -1,4 +1,4 @@
-import test from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -7,6 +7,8 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { backendProvider, startPublishedWorkspaceServer } from '../dist/index.js';
+
+const tcpListenAvailable = await canListenOnTcp();
 
 test('deploy cli is emitted with a Bun shebang', async () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -29,116 +31,112 @@ test('deploy cli prints usage', () => {
   assert.match(new TextDecoder().decode(result.stdout), /Usage: webstir-backend-deploy/);
 });
 
-test('published deploy serves frontend assets and proxies backend routes for full workspaces', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+test.skipIf(!tcpListenAvailable)(
+  'published deploy serves frontend assets and proxies backend routes for full workspaces',
+  async () => {
+    const workspace = await createTempWorkspace('webstir-backend-deploy-full-');
+    await buildRuntimeWorkspace(workspace, 'full');
+    await writePublishedFrontendDocument(
+      workspace,
+      'home',
+      '<!DOCTYPE html><html><body>Home</body></html>',
+    );
+    await writePublishedFrontendDocument(
+      workspace,
+      'about',
+      '<!DOCTYPE html><html><body>About</body></html>',
+    );
 
-  const workspace = await createTempWorkspace('webstir-backend-deploy-full-');
-  await buildRuntimeWorkspace(workspace, 'full');
-  await writePublishedFrontendDocument(
-    workspace,
-    'home',
-    '<!DOCTYPE html><html><body>Home</body></html>',
-  );
-  await writePublishedFrontendDocument(
-    workspace,
-    'about',
-    '<!DOCTYPE html><html><body>About</body></html>',
-  );
-
-  const port = await getOpenPort();
-  const server = await startPublishedWorkspaceServer({
-    workspaceRoot: workspace,
-    port,
-    io: quietIo,
-  });
-
-  try {
-    const homeResponse = await fetch(`${server.origin}/`);
-    assert.equal(homeResponse.status, 200);
-    assert.match(await homeResponse.text(), /Home/);
-    assert.match(String(homeResponse.headers.get('cache-control')), /no-store/);
-
-    const aboutResponse = await fetch(`${server.origin}/about`);
-    assert.equal(aboutResponse.status, 200);
-    assert.match(await aboutResponse.text(), /About/);
-
-    const apiResponse = await fetch(`${server.origin}/api/deploy/check`);
-    assert.equal(apiResponse.status, 200);
-    assert.deepEqual(await apiResponse.json(), { ok: true, mode: 'full' });
-
-    const readyResponse = await fetch(`${server.origin}/readyz`);
-    assert.equal(readyResponse.status, 200);
-    const readyPayload = await readyResponse.json();
-    assert.equal(readyPayload.status, 'ready');
-    assert.equal(readyPayload.manifest?.routes, 2);
-
-    const healthResponse = await fetch(`${server.origin}/healthz`);
-    assert.equal(healthResponse.status, 200);
-    assert.equal((await healthResponse.json()).ok, true);
-
-    const metricsResponse = await fetch(`${server.origin}/metrics`);
-    assert.equal(metricsResponse.status, 200);
-    const metricsPayload = await metricsResponse.json();
-    assert.equal(metricsPayload.enabled, true);
-    assert.ok(metricsPayload.totalRequests >= 1);
-    assert.ok((metricsPayload.byStatus?.['200'] ?? 0) >= 1);
-
-    const redirectResponse = await fetch(`${server.origin}/api/deploy/redirect`, {
-      redirect: 'manual',
+    const port = await getOpenPort();
+    const server = await startPublishedWorkspaceServer({
+      workspaceRoot: workspace,
+      port,
+      io: quietIo,
     });
-    assert.equal(redirectResponse.status, 303);
-    assert.equal(redirectResponse.headers.get('location'), '/api/deploy/check');
-  } finally {
-    await server.stop();
-    await fs.rm(workspace, { recursive: true, force: true });
-  }
-});
 
-test('published deploy proxies api workspaces without a frontend host', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+    try {
+      const homeResponse = await fetch(`${server.origin}/`);
+      assert.equal(homeResponse.status, 200);
+      assert.match(await homeResponse.text(), /Home/);
+      assert.match(String(homeResponse.headers.get('cache-control')), /no-store/);
 
-  const workspace = await createTempWorkspace('webstir-backend-deploy-api-');
-  await buildRuntimeWorkspace(workspace, 'api');
+      const aboutResponse = await fetch(`${server.origin}/about`);
+      assert.equal(aboutResponse.status, 200);
+      assert.match(await aboutResponse.text(), /About/);
 
-  const port = await getOpenPort();
-  const server = await startPublishedWorkspaceServer({
-    workspaceRoot: workspace,
-    port,
-    io: quietIo,
-  });
+      const apiResponse = await fetch(`${server.origin}/api/deploy/check`);
+      assert.equal(apiResponse.status, 200);
+      assert.deepEqual(await apiResponse.json(), { ok: true, mode: 'full' });
 
-  try {
-    const apiResponse = await fetch(`${server.origin}/deploy/check`);
-    assert.equal(apiResponse.status, 200);
-    assert.deepEqual(await apiResponse.json(), { ok: true, mode: 'api' });
+      const readyResponse = await fetch(`${server.origin}/readyz`);
+      assert.equal(readyResponse.status, 200);
+      const readyPayload = await readyResponse.json();
+      assert.equal(readyPayload.status, 'ready');
+      assert.equal(readyPayload.manifest?.routes, 2);
 
-    const healthResponse = await fetch(`${server.origin}/healthz`);
-    assert.equal(healthResponse.status, 200);
-    assert.equal((await healthResponse.json()).ok, true);
+      const healthResponse = await fetch(`${server.origin}/healthz`);
+      assert.equal(healthResponse.status, 200);
+      assert.equal((await healthResponse.json()).ok, true);
 
-    const metricsResponse = await fetch(`${server.origin}/metrics`);
-    assert.equal(metricsResponse.status, 200);
-    assert.equal((await metricsResponse.json()).enabled, true);
+      const metricsResponse = await fetch(`${server.origin}/metrics`);
+      assert.equal(metricsResponse.status, 200);
+      const metricsPayload = await metricsResponse.json();
+      assert.equal(metricsPayload.enabled, true);
+      assert.ok(metricsPayload.totalRequests >= 1);
+      assert.ok((metricsPayload.byStatus?.['200'] ?? 0) >= 1);
 
-    const redirectResponse = await fetch(`${server.origin}/deploy/redirect`, {
-      redirect: 'manual',
+      const redirectResponse = await fetch(`${server.origin}/api/deploy/redirect`, {
+        redirect: 'manual',
+      });
+      assert.equal(redirectResponse.status, 303);
+      assert.equal(redirectResponse.headers.get('location'), '/api/deploy/check');
+    } finally {
+      await server.stop();
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'published deploy proxies api workspaces without a frontend host',
+  async () => {
+    const workspace = await createTempWorkspace('webstir-backend-deploy-api-');
+    await buildRuntimeWorkspace(workspace, 'api');
+
+    const port = await getOpenPort();
+    const server = await startPublishedWorkspaceServer({
+      workspaceRoot: workspace,
+      port,
+      io: quietIo,
     });
-    assert.equal(redirectResponse.status, 303);
-    assert.equal(redirectResponse.headers.get('location'), '/deploy/check');
 
-    const missingResponse = await fetch(`${server.origin}/missing`);
-    assert.equal(missingResponse.status, 404);
-  } finally {
-    await server.stop();
-    await fs.rm(workspace, { recursive: true, force: true });
-  }
-});
+    try {
+      const apiResponse = await fetch(`${server.origin}/deploy/check`);
+      assert.equal(apiResponse.status, 200);
+      assert.deepEqual(await apiResponse.json(), { ok: true, mode: 'api' });
+
+      const healthResponse = await fetch(`${server.origin}/healthz`);
+      assert.equal(healthResponse.status, 200);
+      assert.equal((await healthResponse.json()).ok, true);
+
+      const metricsResponse = await fetch(`${server.origin}/metrics`);
+      assert.equal(metricsResponse.status, 200);
+      assert.equal((await metricsResponse.json()).enabled, true);
+
+      const redirectResponse = await fetch(`${server.origin}/deploy/redirect`, {
+        redirect: 'manual',
+      });
+      assert.equal(redirectResponse.status, 303);
+      assert.equal(redirectResponse.headers.get('location'), '/deploy/check');
+
+      const missingResponse = await fetch(`${server.origin}/missing`);
+      assert.equal(missingResponse.status, 404);
+    } finally {
+      await server.stop();
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 async function createTempWorkspace(prefix) {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -261,12 +259,13 @@ async function buildRuntimeWorkspace(workspace, mode) {
 }
 
 function createModuleSource(mode) {
+  const routePrefix = mode === 'full' ? '/api' : '';
   return `const routes = [
   {
     definition: {
       name: 'deployCheck',
       method: 'GET',
-      path: '/deploy/check'
+      path: '${routePrefix}/deploy/check'
     },
     handler: async () => ({
       status: 200,
@@ -280,12 +279,12 @@ function createModuleSource(mode) {
     definition: {
       name: 'deployRedirect',
       method: 'GET',
-      path: '/deploy/redirect'
+      path: '${routePrefix}/deploy/redirect'
     },
     handler: async () => ({
       status: 303,
       redirect: {
-        location: '/deploy/check'
+        location: '${routePrefix}/deploy/check'
       }
     })
   }

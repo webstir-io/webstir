@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 type IncomingRequest = http.IncomingMessage;
 type ServerResponse = http.ServerResponse<IncomingRequest>;
 
-const DEMO_PATH = '/demo/dashboard';
+const DEMO_PATH = '/api/demo/dashboard';
 const SHELL_TARGET = 'dashboard-shell';
 const METRICS_TARGET = 'metrics-panel';
 const ALERTS_TARGET = 'alerts-panel';
@@ -149,6 +149,23 @@ const METRIC_BASELINES: Record<DashboardTeam, Record<DashboardRange, {
 };
 
 const sessionStore = new Map<string, DemoSession>();
+
+const rootStatusRoute: DemoRoute = {
+  definition: {
+    name: 'rootStatusPage',
+    method: 'GET',
+    path: '/api',
+    summary: 'Render the default backend status page.',
+    interaction: 'navigation'
+  },
+  handler: () => ({
+    status: 200,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8'
+    },
+    body: 'API server running'
+  })
+};
 
 const pageRoute: DemoRoute = {
   definition: {
@@ -308,6 +325,7 @@ const acknowledgeAlertRoute: DemoRoute = {
 };
 
 const routes: readonly DemoRoute[] = [
+  rootStatusRoute,
   pageRoute,
   updateFiltersRoute,
   refreshMetricsRoute,

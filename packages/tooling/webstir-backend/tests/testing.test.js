@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -65,107 +65,102 @@ async function getOpenPort() {
   });
 }
 
-test('createBackendTestHarness resolves WORKSPACE_ROOT when WEBSTIR_WORKSPACE_ROOT is unset', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+const tcpListenAvailable = await canListenOnTcp();
 
-  const workspace = await createTempDir('webstir-backend-harness-workspace-');
-  const alternateCwd = await createTempDir('webstir-backend-harness-cwd-');
-  const port = await getOpenPort();
-  await writeHarnessFixture(workspace);
+test.skipIf(!tcpListenAvailable)(
+  'createBackendTestHarness resolves WORKSPACE_ROOT when WEBSTIR_WORKSPACE_ROOT is unset',
+  async () => {
+    const workspace = await createTempDir('webstir-backend-harness-workspace-');
+    const alternateCwd = await createTempDir('webstir-backend-harness-cwd-');
+    const port = await getOpenPort();
+    await writeHarnessFixture(workspace);
 
-  const previousWorkspaceRoot = process.env.WORKSPACE_ROOT;
-  const previousWebstirWorkspaceRoot = process.env.WEBSTIR_WORKSPACE_ROOT;
-  const previousCwd = process.cwd();
-  let harness;
+    const previousWorkspaceRoot = process.env.WORKSPACE_ROOT;
+    const previousWebstirWorkspaceRoot = process.env.WEBSTIR_WORKSPACE_ROOT;
+    const previousCwd = process.cwd();
+    let harness;
 
-  try {
-    process.env.WORKSPACE_ROOT = workspace;
-    delete process.env.WEBSTIR_WORKSPACE_ROOT;
-    process.chdir(alternateCwd);
-
-    harness = await createBackendTestHarness({ port });
-
-    assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
-    assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
-  } finally {
-    await harness?.stop();
-    process.chdir(previousCwd);
-    if (previousWorkspaceRoot === undefined) {
-      delete process.env.WORKSPACE_ROOT;
-    } else {
-      process.env.WORKSPACE_ROOT = previousWorkspaceRoot;
-    }
-    if (previousWebstirWorkspaceRoot === undefined) {
+    try {
+      process.env.WORKSPACE_ROOT = workspace;
       delete process.env.WEBSTIR_WORKSPACE_ROOT;
-    } else {
-      process.env.WEBSTIR_WORKSPACE_ROOT = previousWebstirWorkspaceRoot;
+      process.chdir(alternateCwd);
+
+      harness = await createBackendTestHarness({ port });
+
+      assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
+      assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
+    } finally {
+      await harness?.stop();
+      process.chdir(previousCwd);
+      if (previousWorkspaceRoot === undefined) {
+        delete process.env.WORKSPACE_ROOT;
+      } else {
+        process.env.WORKSPACE_ROOT = previousWorkspaceRoot;
+      }
+      if (previousWebstirWorkspaceRoot === undefined) {
+        delete process.env.WEBSTIR_WORKSPACE_ROOT;
+      } else {
+        process.env.WEBSTIR_WORKSPACE_ROOT = previousWebstirWorkspaceRoot;
+      }
     }
-  }
-});
+  },
+);
 
-test('createBackendTestHarness resolves WEBSTIR_WORKSPACE_ROOT from env overrides outside the workspace cwd', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  const workspace = await createTempDir('webstir-backend-harness-env-workspace-');
-  const alternateCwd = await createTempDir('webstir-backend-harness-env-cwd-');
-  const port = await getOpenPort();
-  await writeHarnessFixture(workspace, {
-    entryPath: path.join(workspace, 'custom', 'backend', 'index.js'),
-    manifestPath: path.join(workspace, '.webstir', 'custom-backend-manifest.json'),
-    manifest: {
-      name: '@demo/env-harness',
-      version: '1.2.3',
-      routes: [{ path: '/env', method: 'GET' }],
-    },
-  });
-
-  const previousCwd = process.cwd();
-  let harness;
-
-  try {
-    process.chdir(alternateCwd);
-
-    harness = await createBackendTestHarness({
-      port,
-      env: {
-        WEBSTIR_WORKSPACE_ROOT: workspace,
-        WEBSTIR_BACKEND_BUILD_ROOT: 'custom/backend',
-        WEBSTIR_BACKEND_TEST_MANIFEST: '.webstir/custom-backend-manifest.json',
+test.skipIf(!tcpListenAvailable)(
+  'createBackendTestHarness resolves WEBSTIR_WORKSPACE_ROOT from env overrides outside the workspace cwd',
+  async () => {
+    const workspace = await createTempDir('webstir-backend-harness-env-workspace-');
+    const alternateCwd = await createTempDir('webstir-backend-harness-env-cwd-');
+    const port = await getOpenPort();
+    await writeHarnessFixture(workspace, {
+      entryPath: path.join(workspace, 'custom', 'backend', 'index.js'),
+      manifestPath: path.join(workspace, '.webstir', 'custom-backend-manifest.json'),
+      manifest: {
+        name: '@demo/env-harness',
+        version: '1.2.3',
+        routes: [{ path: '/env', method: 'GET' }],
       },
     });
 
-    assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
-    assert.equal(harness.context.manifest?.name, '@demo/env-harness');
-    assert.equal(harness.context.routes[0]?.path, '/env');
-    assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
-  } finally {
-    await harness?.stop();
-    process.chdir(previousCwd);
-  }
-});
+    const previousCwd = process.cwd();
+    let harness;
 
-test('createBackendTestHarness retries on EADDRINUSE and reports the bound port', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+    try {
+      process.chdir(alternateCwd);
 
-  const workspace = await createTempDir('webstir-backend-harness-port-retry-');
-  const requestedPort = await getOpenPort();
-  const blocker = net.createServer();
-  await new Promise((resolve, reject) => {
-    blocker.once('error', reject);
-    blocker.listen(requestedPort, '127.0.0.1', () => resolve());
-  });
+      harness = await createBackendTestHarness({
+        port,
+        env: {
+          WEBSTIR_WORKSPACE_ROOT: workspace,
+          WEBSTIR_BACKEND_BUILD_ROOT: 'custom/backend',
+          WEBSTIR_BACKEND_TEST_MANIFEST: '.webstir/custom-backend-manifest.json',
+        },
+      });
 
-  await writeHarnessFixture(workspace, {
-    entrySource: `
+      assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
+      assert.equal(harness.context.manifest?.name, '@demo/env-harness');
+      assert.equal(harness.context.routes[0]?.path, '/env');
+      assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
+    } finally {
+      await harness?.stop();
+      process.chdir(previousCwd);
+    }
+  },
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'createBackendTestHarness retries on EADDRINUSE and reports the bound port',
+  async () => {
+    const workspace = await createTempDir('webstir-backend-harness-port-retry-');
+    const requestedPort = await getOpenPort();
+    const blocker = net.createServer();
+    await new Promise((resolve, reject) => {
+      blocker.once('error', reject);
+      blocker.listen(requestedPort, '127.0.0.1', () => resolve());
+    });
+
+    await writeHarnessFixture(workspace, {
+      entrySource: `
 import net from 'node:net';
 
 const server = net.createServer((socket) => socket.end());
@@ -173,7 +168,8 @@ const port = Number(process.env.PORT ?? '0');
 
 server.listen(port, '127.0.0.1', () => {
   console.log('API server running');
-});
+  },
+);
 
 const shutdown = () => {
   server.close(() => process.exit(0));
@@ -182,71 +178,70 @@ const shutdown = () => {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 `,
-  });
-
-  let harness;
-  try {
-    harness = await createBackendTestHarness({
-      workspaceRoot: workspace,
-      port: requestedPort,
     });
 
-    assert.notEqual(harness.context.port, requestedPort);
-    assert.equal(harness.context.env.PORT, String(harness.context.port));
-    assert.match(harness.context.baseUrl, new RegExp(`:${harness.context.port}/?$`));
-  } finally {
-    await harness?.stop();
-    await new Promise((resolve, reject) => {
-      blocker.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
+    let harness;
+    try {
+      harness = await createBackendTestHarness({
+        workspaceRoot: workspace,
+        port: requestedPort,
       });
-    });
-  }
-});
 
-test('createBackendTestHarness resolves option-based relative entry and manifest paths outside the workspace cwd', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+      assert.notEqual(harness.context.port, requestedPort);
+      assert.equal(harness.context.env.PORT, String(harness.context.port));
+      assert.match(harness.context.baseUrl, new RegExp(`:${harness.context.port}/?$`));
+    } finally {
+      await harness?.stop();
+      await new Promise((resolve, reject) => {
+        blocker.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+    }
+  },
+);
 
-  const workspace = await createTempDir('webstir-backend-harness-options-workspace-');
-  const alternateCwd = await createTempDir('webstir-backend-harness-options-cwd-');
-  const port = await getOpenPort();
-  await writeHarnessFixture(workspace, {
-    entryPath: path.join(workspace, 'artifacts', 'backend', 'server.js'),
-    manifestPath: path.join(workspace, 'artifacts', 'backend', 'manifest.json'),
-    manifest: {
-      name: '@demo/options-harness',
-      version: '4.5.6',
-      routes: [{ path: '/options', method: 'POST' }],
-    },
-  });
-
-  const previousCwd = process.cwd();
-  let harness;
-
-  try {
-    process.chdir(alternateCwd);
-
-    harness = await createBackendTestHarness({
-      workspaceRoot: workspace,
-      buildRoot: 'artifacts/backend',
-      entry: 'artifacts/backend/server.js',
-      manifestPath: 'artifacts/backend/manifest.json',
-      port,
+test.skipIf(!tcpListenAvailable)(
+  'createBackendTestHarness resolves option-based relative entry and manifest paths outside the workspace cwd',
+  async () => {
+    const workspace = await createTempDir('webstir-backend-harness-options-workspace-');
+    const alternateCwd = await createTempDir('webstir-backend-harness-options-cwd-');
+    const port = await getOpenPort();
+    await writeHarnessFixture(workspace, {
+      entryPath: path.join(workspace, 'artifacts', 'backend', 'server.js'),
+      manifestPath: path.join(workspace, 'artifacts', 'backend', 'manifest.json'),
+      manifest: {
+        name: '@demo/options-harness',
+        version: '4.5.6',
+        routes: [{ path: '/options', method: 'POST' }],
+      },
     });
 
-    assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
-    assert.equal(harness.context.manifest?.name, '@demo/options-harness');
-    assert.equal(harness.context.routes[0]?.path, '/options');
-    assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
-  } finally {
-    await harness?.stop();
-    process.chdir(previousCwd);
-  }
-});
+    const previousCwd = process.cwd();
+    let harness;
+
+    try {
+      process.chdir(alternateCwd);
+
+      harness = await createBackendTestHarness({
+        workspaceRoot: workspace,
+        buildRoot: 'artifacts/backend',
+        entry: 'artifacts/backend/server.js',
+        manifestPath: 'artifacts/backend/manifest.json',
+        port,
+      });
+
+      assert.equal(harness.context.env.WORKSPACE_ROOT, workspace);
+      assert.equal(harness.context.manifest?.name, '@demo/options-harness');
+      assert.equal(harness.context.routes[0]?.path, '/options');
+      assert.match(harness.context.baseUrl, /^http:\/\/127\.0\.0\.1:\d+\/?$/);
+    } finally {
+      await harness?.stop();
+      process.chdir(previousCwd);
+    }
+  },
+);

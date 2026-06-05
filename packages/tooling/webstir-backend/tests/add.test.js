@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -110,6 +110,42 @@ test('runAddRoute writes manifest metadata without scaffolding server-specific f
   ]);
 });
 
+test('runAddRoute defaults full workspace route definitions to the public api namespace', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-route-full-');
+
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: '@demo/full',
+        version: '1.0.0',
+        type: 'module',
+        webstir: { mode: 'full', moduleManifest: {} },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const result = await runAddRoute({
+    workspaceRoot: workspace,
+    name: 'accounts',
+    method: 'POST',
+  });
+
+  assert.equal(result.target, 'POST /api/accounts');
+
+  const pkg = await readJson(path.join(workspace, 'package.json'));
+  assert.deepEqual(pkg.webstir.moduleManifest.routes, [
+    {
+      name: 'accounts',
+      method: 'POST',
+      path: '/api/accounts',
+    },
+  ]);
+});
+
 test('runAddRoute preserves interaction, session, form, and fragment metadata', async () => {
   const workspace = await createTempWorkspace('webstir-backend-add-route-metadata-');
 
@@ -200,6 +236,15 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
   assert.equal(result.subject, 'job');
   assert.ok(result.changes.includes('package.json'));
   assert.ok(result.changes.includes('src/backend/jobs/nightly/index.ts'));
+
+  const jobSource = await fs.readFile(
+    path.join(workspace, 'src', 'backend', 'jobs', 'nightly', 'index.ts'),
+    'utf8',
+  );
+  assert.match(jobSource, /fileURLToPath\(import\.meta\.url\)/);
+  assert.match(jobSource, /path\.resolve\(entrypointPath\)/);
+  assert.doesNotMatch(jobSource, /process\.argv\?\.\[1\]/);
+  assert.doesNotMatch(jobSource, /catch \{/);
 
   const pkg = await readJson(path.join(workspace, 'package.json'));
   assert.deepEqual(pkg.webstir.moduleManifest.jobs, [

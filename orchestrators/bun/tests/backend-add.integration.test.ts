@@ -106,6 +106,35 @@ test('CLI add-route writes backend route manifest metadata end to end', async ()
   }
 });
 
+test('CLI add-route defaults full workspace route definitions to the public api namespace', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-backend-add-full-');
+
+  try {
+    const result = await runCli([
+      'add-route',
+      'accounts',
+      '--method',
+      'POST',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain('[webstir] add-route complete');
+    expect(result.stdout).toContain('target: POST /api/accounts');
+
+    const packageJson = await readJson(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
+    expect(packageJson.webstir.moduleManifest.routes).toContainEqual({
+      name: 'accounts',
+      method: 'POST',
+      path: '/api/accounts',
+    });
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI add-job scaffolds a backend job end to end', async () => {
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-backend-add-api-');
 

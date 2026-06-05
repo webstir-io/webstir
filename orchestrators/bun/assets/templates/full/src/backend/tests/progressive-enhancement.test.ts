@@ -2,7 +2,7 @@ import { assert, test } from '@webstir-io/webstir-testing';
 
 test('progressive enhancement demo page renders a form shell', async () => {
   const ctx = requireBackendTestContext();
-  const response = await ctx.request('/demo/progressive-enhancement');
+  const response = await ctx.request('/api/demo/progressive-enhancement');
   const html = await response.text();
 
   assert.equal(response.status, 200);
@@ -23,7 +23,7 @@ test('progressive enhancement demo page renders a form shell', async () => {
 
 test('native form submissions redirect back to the document route', async () => {
   const ctx = requireBackendTestContext();
-  const response = await ctx.request('/demo/progressive-enhancement', {
+  const response = await ctx.request('/api/demo/progressive-enhancement', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded'
@@ -35,7 +35,7 @@ test('native form submissions redirect back to the document route', async () => 
   assert.equal(response.status, 303);
   assert.equal(
     response.headers.get('location'),
-    '/demo/progressive-enhancement?source=redirect&name=Native%20Flow'
+    '/api/demo/progressive-enhancement?source=redirect&name=Native%20Flow'
   );
   assert.equal(response.headers.get('x-webstir-fragment-target'), null);
   assert.equal(response.headers.get('content-type'), null);
@@ -43,7 +43,7 @@ test('native form submissions redirect back to the document route', async () => 
 
 test('redirected document route preserves the no-javascript form flow', async () => {
   const ctx = requireBackendTestContext();
-  const response = await ctx.request('/demo/progressive-enhancement?source=redirect&name=Native%20Flow');
+  const response = await ctx.request('/api/demo/progressive-enhancement?source=redirect&name=Native%20Flow');
   const html = await response.text();
 
   assert.equal(response.status, 200);
@@ -55,7 +55,7 @@ test('redirected document route preserves the no-javascript form flow', async ()
 
 test('enhanced form submissions return fragment metadata and html', async () => {
   const ctx = requireBackendTestContext();
-  const response = await ctx.request('/demo/progressive-enhancement', {
+  const response = await ctx.request('/api/demo/progressive-enhancement', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -80,7 +80,7 @@ test('enhanced form submissions return fragment metadata and html', async () => 
 
 test('native session sign-in redirects and sets a session cookie', async () => {
   const ctx = requireBackendTestContext();
-  const response = await ctx.request('/demo/progressive-enhancement/session/sign-in', {
+  const response = await ctx.request('/api/demo/progressive-enhancement/session/sign-in', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded'
@@ -90,13 +90,13 @@ test('native session sign-in redirects and sets a session cookie', async () => {
   });
 
   assert.equal(response.status, 303);
-  assert.equal(response.headers.get('location'), '/demo/progressive-enhancement?session=signed-in');
+  assert.equal(response.headers.get('location'), '/api/demo/progressive-enhancement?session=signed-in');
   assert.isTrue(String(response.headers.get('set-cookie')).includes('webstir_demo_session=Casey%20Proxy'));
 });
 
 test('enhanced session sign-in returns a fragment and persists on the next document request', async () => {
   const ctx = requireBackendTestContext();
-  const response = await ctx.request('/demo/progressive-enhancement/session/sign-in', {
+  const response = await ctx.request('/api/demo/progressive-enhancement/session/sign-in', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -115,7 +115,7 @@ test('enhanced session sign-in returns a fragment and persists on the next docum
   assert.isTrue(html.includes('Signed in as <strong>Casey Proxy</strong>'));
   assert.isTrue(html.includes('id="demo-sign-out"'));
 
-  const documentResponse = await ctx.request('/demo/progressive-enhancement', {
+  const documentResponse = await ctx.request('/api/demo/progressive-enhancement', {
     headers: {
       cookie
     }
@@ -129,7 +129,7 @@ test('enhanced session sign-in returns a fragment and persists on the next docum
 
 test('enhanced session sign-out returns a fragment and clears the session cookie', async () => {
   const ctx = requireBackendTestContext();
-  const signInResponse = await ctx.request('/demo/progressive-enhancement/session/sign-in', {
+  const signInResponse = await ctx.request('/api/demo/progressive-enhancement/session/sign-in', {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
@@ -139,7 +139,7 @@ test('enhanced session sign-out returns a fragment and clears the session cookie
   });
   const cookie = requireCookie(signInResponse.headers.get('set-cookie'));
 
-  const response = await ctx.request('/demo/progressive-enhancement/session/sign-out', {
+  const response = await ctx.request('/api/demo/progressive-enhancement/session/sign-out', {
     method: 'POST',
     headers: {
       'x-webstir-client-nav': '1',

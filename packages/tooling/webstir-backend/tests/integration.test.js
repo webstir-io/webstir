@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
@@ -142,6 +142,8 @@ async function canListenOnTcp() {
     server.listen(0, '127.0.0.1', () => settle(true));
   });
 }
+
+const tcpListenAvailable = await canListenOnTcp();
 
 async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
   const entryPath = path.join(workspace, 'build', 'backend', 'index.js');
@@ -2198,15 +2200,12 @@ test('default backend scaffold uses the package-managed Bun bootstrap', async ()
   );
 });
 
-test('default backend scaffold preserves the readiness log contract', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  const workspace = await createTempWorkspace('webstir-backend-bun-ready-log-');
-  await buildRuntimeWorkspace(workspace, {
-    moduleSource: `export const module = {
+test.skipIf(!tcpListenAvailable)(
+  'default backend scaffold preserves the readiness log contract',
+  async () => {
+    const workspace = await createTempWorkspace('webstir-backend-bun-ready-log-');
+    await buildRuntimeWorkspace(workspace, {
+      moduleSource: `export const module = {
   manifest: {
     contractVersion: '1.0.0',
     name: '@demo/bootstrap-runtime',
@@ -2218,18 +2217,19 @@ test('default backend scaffold preserves the readiness log contract', async (t) 
   routes: []
 };
 `,
-  });
+    });
 
-  let port = await getOpenPort();
-  const server = await startBuiltServer(workspace, port);
-  port = server.port;
+    let port = await getOpenPort();
+    const server = await startBuiltServer(workspace, port);
+    port = server.port;
 
-  try {
-    await waitFor(() => server.getStdout().includes('API server running'), 5000, 50);
-  } finally {
-    await server.stop();
-  }
-});
+    try {
+      await waitFor(() => server.getStdout().includes('API server running'), 5000, 50);
+    } finally {
+      await server.stop();
+    }
+  },
+);
 
 function extractCookieHeader(setCookie) {
   return String(setCookie ?? '').split(';')[0];
@@ -2432,106 +2432,84 @@ test('publish mode emits sourcemaps when opt-in flag is set', async () => {
   );
 });
 
-test('built backend server validates fragment route responses', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+test.skipIf(!tcpListenAvailable)(
+  'built backend server validates fragment route responses',
+  async () => {
+    await assertFragmentRuntimeBehavior();
+  },
+);
 
-  await assertFragmentRuntimeBehavior();
-});
+test.skipIf(!tcpListenAvailable)(
+  'built backend server executes request hooks with ordered context handoff',
+  async () => {
+    await assertRequestHookRuntimeBehavior();
+  },
+);
 
-test('built backend server executes request hooks with ordered context handoff', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+test.skipIf(!tcpListenAvailable)(
+  'bun backend scaffold executes request hooks with ordered context handoff',
+  async () => {
+    await assertBunRequestHookRuntimeBehavior();
+  },
+);
 
-  await assertRequestHookRuntimeBehavior();
-});
+test.skipIf(!tcpListenAvailable)(
+  'built backend server enforces jwt exp and nbf claims',
+  async () => {
+    await assertJwtTimeClaimBehavior();
+  },
+);
 
-test('bun backend scaffold executes request hooks with ordered context handoff', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+test.skipIf(!tcpListenAvailable)(
+  'built backend server accepts rsa public-key and jwks bearer tokens',
+  async () => {
+    await assertJwtAsymmetricBehavior();
+  },
+);
 
-  await assertBunRequestHookRuntimeBehavior();
-});
+test.skipIf(!tcpListenAvailable)(
+  'built backend server resolves session state and flash transport',
+  async () => {
+    await assertSessionRuntimeBehavior();
+  },
+);
 
-test('built backend server enforces jwt exp and nbf claims', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+test.skipIf(!tcpListenAvailable)(
+  'built backend server rejects oversized request bodies with 413',
+  async () => {
+    await assertRequestBodyLimitBehavior();
+  },
+);
 
-  await assertJwtTimeClaimBehavior();
-});
+test.skipIf(!tcpListenAvailable)(
+  'built backend server handles auth-aware form workflows with csrf and validation',
+  async () => {
+    await assertFormWorkflowRuntimeBehavior();
+  },
+);
 
-test('built backend server accepts rsa public-key and jwks bearer tokens', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
+test.skipIf(!tcpListenAvailable)(
+  'built backend server renders request-time views with live SSR context',
+  async () => {
+    await assertRequestTimeViewRuntimeBehavior();
+  },
+);
 
-  await assertJwtAsymmetricBehavior();
-});
+test.skipIf(!tcpListenAvailable)(
+  'built backend server resolves request-time view documents from WORKSPACE_ROOT outside the workspace cwd',
+  async () => {
+    await assertRequestTimeViewWorkspaceRootBehavior();
+  },
+);
 
-test('built backend server resolves session state and flash transport', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertSessionRuntimeBehavior();
-});
-
-test('built backend server rejects oversized request bodies with 413', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestBodyLimitBehavior();
-});
-
-test('built backend server handles auth-aware form workflows with csrf and validation', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertFormWorkflowRuntimeBehavior();
-});
-
-test('built backend server renders request-time views with live SSR context', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestTimeViewRuntimeBehavior();
-});
-
-test('built backend server resolves request-time view documents from WORKSPACE_ROOT outside the workspace cwd', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestTimeViewWorkspaceRootBehavior();
-});
-
-test('built backend server resolves request-time view documents from WEBSTIR_WORKSPACE_ROOT outside the workspace cwd', async (t) => {
-  if (!(await canListenOnTcp())) {
-    t.skip('TCP listen is not permitted in this environment.');
-    return;
-  }
-
-  await assertRequestTimeViewWorkspaceRootBehavior({
-    extraEnv: (workspace) => ({
-      WORKSPACE_ROOT: '   ',
-      WEBSTIR_WORKSPACE_ROOT: workspace,
-    }),
-  });
-});
+test.skipIf(!tcpListenAvailable)(
+  'built backend server resolves request-time view documents from WEBSTIR_WORKSPACE_ROOT outside the workspace cwd',
+  async () => {
+    await assertRequestTimeViewWorkspaceRootBehavior({
+      extraEnv: (workspace) => ({
+        WORKSPACE_ROOT: '   ',
+        WEBSTIR_WORKSPACE_ROOT: workspace,
+      }),
+    });
+  },
+);

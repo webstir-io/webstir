@@ -21,12 +21,12 @@ test('getStaticCandidatePaths rewrites root assets and page routes for SPA devel
   expect(getStaticCandidatePaths('/refresh.js')).toEqual(['refresh.js']);
 });
 
-test('getApiProxyPath strips the /api prefix for backend proxying', () => {
-  expect(getApiProxyPath('/api')).toBe('/');
-  expect(getApiProxyPath('/api/health')).toBe('/health');
-  expect(getApiProxyPath('/api//health')).toBe('/health');
-  expect(getApiProxyPath('/api/../health')).toBe('/health');
-  expect(getApiProxyPath('/api/v1/items')).toBe('/v1/items');
+test('getApiProxyPath preserves the /api namespace for backend proxying', () => {
+  expect(getApiProxyPath('/api')).toBe('/api');
+  expect(getApiProxyPath('/api/health')).toBe('/api/health');
+  expect(getApiProxyPath('/api//health')).toBe('/api/health');
+  expect(getApiProxyPath('/api/../health')).toBeNull();
+  expect(getApiProxyPath('/api/v1/items')).toBe('/api/v1/items');
   expect(getApiProxyPath('/home')).toBeNull();
 });
 
@@ -90,7 +90,7 @@ test('DevServer proxies API requests and rewrites same-origin redirects', async 
     port: 0,
     async fetch(request) {
       const url = new URL(request.url);
-      if (url.pathname === '/echo') {
+      if (url.pathname === '/api/echo') {
         return new Response(await request.text(), {
           headers: {
             'x-upstream-method': request.method,
@@ -121,9 +121,9 @@ test('DevServer proxies API requests and rewrites same-origin redirects', async 
     });
 
     expect(redirectResponse.status).toBe(302);
-    expect(redirectResponse.headers.get('location')).toBe('/api/login');
+    expect(redirectResponse.headers.get('location')).toBe('/login');
     expect(redirectResponse.headers.get('x-upstream-method')).toBe('GET');
-    expect(await redirectResponse.text()).toBe('GET /session?via=test');
+    expect(await redirectResponse.text()).toBe('GET /api/session?via=test');
 
     const response = await fetch(`${address.origin}/api/echo`, {
       method: 'POST',

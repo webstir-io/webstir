@@ -23,7 +23,7 @@ test('portal docs match the Bun backend scaffold split', () => {
 
   assert.match(fullTemplateIndex, /createDefaultBunBackendBootstrap/);
   assert.doesNotMatch(fullTemplateIndex, /DEMO_PATH/);
-  assert.match(fullTemplateModule, /const DEMO_PATH = '\/demo\/progressive-enhancement'/);
+  assert.match(fullTemplateModule, /const DEMO_PATH = '\/api\/demo\/progressive-enhancement'/);
 
   assert.match(firstAppDoc, /That route lives in `src\/backend\/module\.ts`/);
   assert.match(firstAppDoc, /`src\/backend\/index\.ts` as a thin Bun bootstrap entry/);

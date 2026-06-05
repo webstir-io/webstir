@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
+import path from 'node:path';
 import { clearInterval, clearTimeout, setInterval, setTimeout } from 'node:timers';
+import { fileURLToPath } from 'node:url';
 
 import { loadJobs } from './runtime.js';
 
@@ -335,19 +337,8 @@ Options:
 `);
 }
 
-const isMain = (() => {
-  try {
-    const argv1 = process.argv?.[1];
-    if (!argv1) return false;
-    const here = new URL(import.meta.url);
-    const run = new URL(`file://${argv1}`);
-    return here.pathname === run.pathname;
-  } catch {
-    return false;
-  }
-})();
-
-if (isMain) {
+const entrypointPath = process.argv[1];
+if (entrypointPath && path.resolve(entrypointPath) === fileURLToPath(import.meta.url)) {
   main().catch((error) => {
     console.error('[jobs] scheduler failed:', error);
     process.exitCode = 1;

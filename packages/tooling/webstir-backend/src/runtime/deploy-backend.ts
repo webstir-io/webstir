@@ -1,4 +1,5 @@
 import net from 'node:net';
+import path from 'node:path';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -104,36 +105,20 @@ export function shouldProxyToBackend(request: Request, pathname: string): boolea
   if (method !== 'GET' && method !== 'HEAD') {
     return true;
   }
+  const normalizedPath = normalizeProxyPath(pathname);
 
   return (
-    pathname === '/api' ||
-    pathname === '/api/health' ||
-    pathname.startsWith('/api/') ||
-    pathname === '/healthz' ||
-    pathname === '/readyz' ||
-    pathname === '/metrics'
+    normalizedPath === '/api' ||
+    normalizedPath === '/api/health' ||
+    normalizedPath.startsWith('/api/') ||
+    normalizedPath === '/healthz' ||
+    normalizedPath === '/readyz' ||
+    normalizedPath === '/metrics'
   );
 }
 
 export function getFullWorkspaceProxyPath(pathname: string): string {
-  if (pathname === '/healthz' || pathname === '/readyz' || pathname === '/metrics') {
-    return pathname;
-  }
-
-  if (pathname === '/api') {
-    return '/';
-  }
-
-  if (pathname === '/api/health') {
-    return '/api/health';
-  }
-
-  if (pathname.startsWith('/api/')) {
-    const normalizedPath = pathname.slice('/api'.length);
-    return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
-  }
-
-  return pathname;
+  return normalizeProxyPath(pathname);
 }
 
 async function waitForPortOpen(port: number, signal: AbortSignal): Promise<void> {
@@ -191,7 +176,7 @@ function rewriteProxyLocation(value: string, targetUrl: URL, mode: PublishedWork
   }
 
   if (trimmed.startsWith('/')) {
-    return prefixApiMount(trimmed);
+    return trimmed;
   }
 
   try {
@@ -199,18 +184,15 @@ function rewriteProxyLocation(value: string, targetUrl: URL, mode: PublishedWork
     if (resolved.origin !== targetUrl.origin) {
       return value;
     }
-    return prefixApiMount(`${resolved.pathname}${resolved.search}${resolved.hash}`);
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
   } catch {
     return value;
   }
 }
 
-function prefixApiMount(pathname: string): string {
-  if (pathname === '/api' || pathname.startsWith('/api/')) {
-    return pathname;
-  }
-
-  return pathname === '/' ? '/api' : `/api${pathname}`;
+function normalizeProxyPath(pathname: string): string {
+  const normalized = path.posix.normalize(pathname.startsWith('/') ? pathname : `/${pathname}`);
+  return normalized === '.' ? '/' : normalized;
 }
 
 function createProxyRequestInit(

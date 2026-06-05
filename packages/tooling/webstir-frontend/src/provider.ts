@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { readdir } from 'node:fs/promises';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 
@@ -17,8 +16,7 @@ import { runPipeline } from './pipeline.js';
 import type { PipelineMode } from './pipeline.js';
 import { prepareWorkspaceConfig } from './config/setup.js';
 import type { FrontendConfig } from './types.js';
-import { FOLDERS } from './core/constants.js';
-import { pathExists, readJson, remove } from './utils/fs.js';
+import { readJson } from './utils/fs.js';
 import { scanGlob } from './utils/glob.js';
 import { applySsgRouting, assertNoSsgRoutes, generateSsgViewData } from './modes/ssg/index.js';
 
@@ -67,7 +65,6 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
   if (shouldRunSsgPublish) {
     await generateSsgViewData(publishConfig);
     await applySsgRouting(publishConfig);
-    await removeLegacyPagesFolder(publishConfig);
   }
 
   const artifacts = await collectArtifacts(config);
@@ -95,24 +92,6 @@ function applySsgPublishLayout(config: FrontendConfig): FrontendConfig {
       },
     },
   };
-}
-
-async function removeLegacyPagesFolder(config: FrontendConfig): Promise<void> {
-  const legacyPagesRoot = path.join(config.paths.dist.frontend, FOLDERS.pages);
-  if (legacyPagesRoot === config.paths.dist.pages) {
-    return;
-  }
-
-  if (!(await pathExists(legacyPagesRoot))) {
-    return;
-  }
-
-  const entries = await readdir(legacyPagesRoot);
-  if (entries.length > 0) {
-    return;
-  }
-
-  await remove(legacyPagesRoot);
 }
 
 function normalizeMode(rawMode: unknown): PipelineMode {

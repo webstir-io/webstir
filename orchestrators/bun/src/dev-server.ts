@@ -303,15 +303,10 @@ export function getStaticCandidatePaths(pathname: string): readonly string[] {
 }
 
 export function getApiProxyPath(pathname: string): string | null {
-  if (pathname === '/api') {
-    return '/';
+  const normalizedPath = pathname.startsWith('/') ? path.posix.normalize(pathname) : null;
+  if (normalizedPath === '/api' || normalizedPath?.startsWith('/api/')) {
+    return normalizedPath;
   }
-
-  if (pathname.startsWith('/api/')) {
-    const normalizedPath = path.posix.normalize(pathname.slice('/api'.length));
-    return normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
-  }
-
   return null;
 }
 
@@ -357,7 +352,7 @@ function rewriteProxyLocation(value: string, targetUrl: URL): string {
   }
 
   if (trimmed.startsWith('/')) {
-    return prefixApiMount(trimmed);
+    return trimmed;
   }
 
   try {
@@ -365,18 +360,10 @@ function rewriteProxyLocation(value: string, targetUrl: URL): string {
     if (resolved.origin !== targetUrl.origin) {
       return value;
     }
-    return prefixApiMount(`${resolved.pathname}${resolved.search}${resolved.hash}`);
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
   } catch {
     return value;
   }
-}
-
-function prefixApiMount(pathname: string): string {
-  if (pathname === '/api' || pathname.startsWith('/api/')) {
-    return pathname;
-  }
-
-  return pathname === '/' ? '/api' : `/api${pathname}`;
 }
 
 async function resolveStaticFile(

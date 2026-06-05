@@ -313,15 +313,6 @@ function ensureBackdrop(root: HTMLElement): void {
         return;
     }
 
-    const legacy = root.querySelector<HTMLElement>('.webstir-search__backdrop');
-    if (legacy) {
-        legacy.classList.add('ws-drawer-backdrop');
-        legacy.classList.remove('webstir-search__backdrop');
-        legacy.setAttribute('data-webstir-search-close', '');
-        legacy.setAttribute('aria-hidden', 'true');
-        return;
-    }
-
     const created = document.createElement('div');
     created.className = 'ws-drawer-backdrop';
     created.setAttribute('data-webstir-search-close', '');
