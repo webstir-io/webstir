@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { createDefaultBunBackendBootstrap, startBunBackend } from '@webstir-io/webstir-backend';
 
 import { resolveRequestAuth } from './auth/adapter.js';
@@ -19,19 +22,8 @@ export async function start(): Promise<void> {
   );
 }
 
-const isMain = (() => {
-  try {
-    const argv1 = process.argv?.[1];
-    if (!argv1) return false;
-    const here = new URL(import.meta.url);
-    const run = new URL(`file://${argv1}`);
-    return here.pathname === run.pathname;
-  } catch {
-    return false;
-  }
-})();
-
-if (isMain) {
+const entrypointPath = process.argv[1];
+if (entrypointPath && path.resolve(entrypointPath) === fileURLToPath(import.meta.url)) {
   start().catch((err) => {
     console.error(err);
     process.exitCode = 1;

@@ -1,12 +1,13 @@
-import type {
-  AddJobOptions,
-  AddRouteOptions,
-  UpdateRouteContractOptions as BackendUpdateRouteContractOptions,
+import {
+  runAddJob as runBackendAddJob,
+  runAddRoute as runBackendAddRoute,
+  runUpdateRouteContract as runBackendUpdateRouteContract,
+  type AddJobOptions,
+  type AddRouteOptions,
+  type UpdateRouteContractOptions as BackendUpdateRouteContractOptions,
 } from '@webstir-io/webstir-backend';
 
 import type { AddCommandResult } from './add.ts';
-
-import { monorepoRoot } from './paths.ts';
 
 export interface RunAddBackendOptions {
   readonly workspaceRoot: string;
@@ -27,8 +28,7 @@ export async function runAddRouteCommand(options: RunAddBackendOptions): Promise
 export async function runAddRouteScaffold(
   options: AddRouteScaffoldOptions,
 ): Promise<AddCommandResult> {
-  const backendAdd = await loadBackendAddModule();
-  const result = await backendAdd.runAddRoute(options);
+  const result = await runBackendAddRoute(options);
 
   return {
     workspaceRoot: options.workspaceRoot,
@@ -46,8 +46,7 @@ export async function runAddJobCommand(options: RunAddBackendOptions): Promise<A
 }
 
 export async function runAddJobScaffold(options: AddJobScaffoldOptions): Promise<AddCommandResult> {
-  const backendAdd = await loadBackendAddModule();
-  const result = await backendAdd.runAddJob(options);
+  const result = await runBackendAddJob(options);
 
   return {
     workspaceRoot: options.workspaceRoot,
@@ -60,8 +59,7 @@ export async function runAddJobScaffold(options: AddJobScaffoldOptions): Promise
 export async function runUpdateRouteContract(
   options: UpdateRouteContractOptions,
 ): Promise<AddCommandResult> {
-  const backendAdd = await loadBackendAddModule();
-  const result = await backendAdd.runUpdateRouteContract(options);
+  const result = await runBackendUpdateRouteContract(options);
 
   return {
     workspaceRoot: options.workspaceRoot,
@@ -165,66 +163,6 @@ interface ParsedBackendCommandArgs {
   readonly positionals: readonly string[];
   readonly values: ReadonlyMap<string, string>;
   readonly booleans: ReadonlySet<string>;
-}
-
-interface BackendAddResult {
-  readonly target: string;
-  readonly changes: readonly string[];
-}
-
-interface BackendAddModule {
-  readonly runAddRoute: (options: AddRouteOptions) => Promise<BackendAddResult>;
-  readonly runAddJob: (options: AddJobOptions) => Promise<BackendAddResult>;
-  readonly runUpdateRouteContract: (
-    options: UpdateRouteContractOptions,
-  ) => Promise<BackendAddResult>;
-}
-
-let backendAddModulePromise: Promise<BackendAddModule> | null = null;
-
-async function loadBackendAddModule(): Promise<BackendAddModule> {
-  if (backendAddModulePromise) {
-    return await backendAddModulePromise;
-  }
-
-  backendAddModulePromise = import('@webstir-io/webstir-backend').then(async (module) => {
-    if (
-      typeof module.runAddRoute === 'function' &&
-      typeof module.runAddJob === 'function' &&
-      typeof module.runUpdateRouteContract === 'function'
-    ) {
-      return module as BackendAddModule;
-    }
-
-    if (monorepoRoot) {
-      throw new Error(
-        'Installed @webstir-io/webstir-backend package does not export runAddRoute/runAddJob/runUpdateRouteContract.',
-      );
-    }
-
-    const compat = await import('./add-backend-compat.ts');
-    return {
-      async runAddRoute(options: AddRouteOptions): Promise<BackendAddResult> {
-        return await compat.runAddRoute(options);
-      },
-      async runAddJob(options: AddJobOptions): Promise<BackendAddResult> {
-        return await compat.runAddJob({
-          workspaceRoot: options.workspaceRoot,
-          name: options.name,
-          schedule: options.schedule,
-          description: options.description,
-          ...(options.priority !== undefined ? { priority: String(options.priority) } : {}),
-        });
-      },
-      async runUpdateRouteContract(): Promise<BackendAddResult> {
-        throw new Error(
-          'Installed @webstir-io/webstir-backend package does not export runUpdateRouteContract.',
-        );
-      },
-    };
-  });
-
-  return await backendAddModulePromise;
 }
 
 function parseBackendCommandArgs(

@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 type IncomingRequest = http.IncomingMessage;
 type ServerResponse = http.ServerResponse<IncomingRequest>;
 
-const DEMO_PATH = '/demo/auth-crud';
+const DEMO_PATH = '/api/demo/auth-crud';
 const SHELL_TARGET = 'backoffice-shell';
 const SESSION_COOKIE_NAME = 'webstir_demo_auth_crud';
 const SIGN_IN_ACTION = './auth-crud/session/sign-in';
@@ -154,6 +154,23 @@ const FORM_IDS = {
 } as const;
 
 const sessionStore = new Map<string, DemoSession>();
+
+const rootStatusRoute: DemoRoute = {
+  definition: {
+    name: 'rootStatusPage',
+    method: 'GET',
+    path: '/api',
+    summary: 'Render the default backend status page.',
+    interaction: 'navigation'
+  },
+  handler: () => ({
+    status: 200,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8'
+    },
+    body: 'API server running'
+  })
+};
 
 const pageRoute: DemoRoute = {
   definition: {
@@ -432,6 +449,7 @@ const deleteProjectRoute: DemoRoute = {
 };
 
 const routes: readonly DemoRoute[] = [
+  rootStatusRoute,
   pageRoute,
   signInRoute,
   signOutRoute,

@@ -1,8 +1,7 @@
-import { test } from 'node:test';
+import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
-import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -95,36 +94,6 @@ function publicJwk(keyPair, kid) {
   };
 }
 
-async function startJwksServer(handler) {
-  const server = http.createServer((req, res) => {
-    if ((req.url ?? '/') !== '/.well-known/jwks.json') {
-      res.statusCode = 404;
-      res.end('not found');
-      return;
-    }
-    handler(req, res);
-  });
-
-  await new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve());
-  });
-
-  const address = server.address();
-  if (!address || typeof address === 'string') {
-    throw new Error('Failed to read JWKS test server address.');
-  }
-
-  return {
-    url: `http://127.0.0.1:${address.port}/.well-known/jwks.json`,
-    async stop() {
-      await new Promise((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
-    },
-  };
-}
-
 test('auth adapter fails closed for invalid jwt algorithms, claims, and signatures', async () => {
   const { resolveRequestAuth } = await importAuthAdapter();
   const secret = 'jwt-secret';
@@ -178,23 +147,28 @@ test('auth adapter refreshes jwks on unknown kid without accepting wrong keys', 
   const { resolveRequestAuth } = await importAuthAdapter();
   const firstKeyPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
   const refreshedKeyPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const originalFetch = globalThis.fetch;
   let requests = 0;
 
-  const jwks = await startJwksServer((_req, res) => {
+  globalThis.fetch = async () => {
     requests += 1;
-    res.setHeader('content-type', 'application/json');
-    res.setHeader('cache-control', 'public, max-age=60');
     const keys =
       requests === 1
         ? [publicJwk(firstKeyPair, 'initial-key')]
         : [publicJwk(firstKeyPair, 'initial-key'), publicJwk(refreshedKeyPair, 'refreshed-key')];
-    res.end(JSON.stringify({ keys }));
-  });
+    return new Response(JSON.stringify({ keys }), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        'cache-control': 'public, max-age=60',
+      },
+    });
+  };
 
   try {
     const secrets = defaultSecrets({
       jwtSecret: undefined,
-      jwksUrl: jwks.url,
+      jwksUrl: 'https://jwks.example.test/.well-known/jwks.json',
     });
     const refreshedToken = signJwtToken(
       validPayload({ sub: 'refreshed-user' }),
@@ -216,17 +190,15 @@ test('auth adapter refreshes jwks on unknown kid without accepting wrong keys', 
     assert.equal(await resolveBearer(resolveRequestAuth, wrongKidToken, secrets), undefined);
     assert.equal(requests, 3);
   } finally {
-    await jwks.stop();
+    globalThis.fetch = originalFetch;
   }
 });
 
 test('auth adapter fails closed when jwks fetch fails', async () => {
   const { resolveRequestAuth } = await importAuthAdapter();
   const keyPair = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const jwks = await startJwksServer((_req, res) => {
-    res.statusCode = 500;
-    res.end('not available');
-  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('not available', { status: 500 });
 
   try {
     const token = signJwtToken(validPayload(), keyPair.privateKey, {
@@ -236,11 +208,11 @@ test('auth adapter fails closed when jwks fetch fails', async () => {
     const context = await resolveBearer(
       resolveRequestAuth,
       token,
-      defaultSecrets({ jwtSecret: undefined, jwksUrl: jwks.url }),
+      defaultSecrets({ jwtSecret: undefined, jwksUrl: 'https://jwks.example.test/failing.json' }),
     );
     assert.equal(context, undefined);
   } finally {
-    await jwks.stop();
+    globalThis.fetch = originalFetch;
   }
 });
 

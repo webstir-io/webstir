@@ -1,6 +1,6 @@
 import { assert, test } from '@webstir-io/webstir-testing';
 
-const DEMO_PATH = '/demo/auth-crud';
+const DEMO_PATH = '/api/demo/auth-crud';
 
 test('auth and CRUD demo page renders the document shell', async () => {
   const page = await requestDemoPage();

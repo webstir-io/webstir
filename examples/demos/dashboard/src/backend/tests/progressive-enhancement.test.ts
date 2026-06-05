@@ -1,6 +1,6 @@
 import { assert, test } from '@webstir-io/webstir-testing';
 
-const DEMO_PATH = '/demo/dashboard';
+const DEMO_PATH = '/api/demo/dashboard';
 
 test('dashboard demo page renders the document shell', async () => {
   const page = await requestDemoPage();

@@ -38,7 +38,7 @@ Canonical proof apps in this repo:
 
 ## Shipped HTML-First Runtime
 
-The default `src/backend/index.ts` entry is the supported runtime surface. Older workspaces can keep their explicit Bun shim/runtime wrapper files if they already exist:
+The package-managed default `src/backend/index.ts` entry is the supported runtime surface:
 
 - Route auto-mounting from compiled `module.ts`
 - Health probes at `/api/health`, `/healthz`, and `/readyz`

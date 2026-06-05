@@ -1,4 +1,3 @@
-import { readdir } from 'node:fs/promises';
 import type { AddPageCommandOptions, EnableFlags, FrontendCommandOptions } from './types.js';
 import { runPipeline } from './pipeline.js';
 import { createPageScaffold } from './html/pageScaffold.js';
@@ -10,8 +9,7 @@ import {
   generateSsgViewData,
 } from './modes/ssg/index.js';
 import path from 'node:path';
-import { FOLDERS } from './core/constants.js';
-import { pathExists, readJson, remove } from './utils/fs.js';
+import { readJson } from './utils/fs.js';
 
 export async function runBuild(options: FrontendCommandOptions): Promise<void> {
   const config = await prepareWorkspaceConfig(options.workspaceRoot);
@@ -42,7 +40,6 @@ export async function runPublish(options: FrontendCommandOptions): Promise<void>
   if (options.publishMode === 'ssg') {
     await generateSsgViewData(publishConfig);
     await applySsgRouting(publishConfig);
-    await removeLegacyPagesFolder(publishConfig);
   }
   console.info(`[webstir-frontend] ${modeLabel} pipeline completed.`);
 }
@@ -127,22 +124,4 @@ async function readWorkspaceEnableFlags(workspaceRoot: string): Promise<EnableFl
   const pkgPath = path.join(workspaceRoot, 'package.json');
   const pkg = await readJson<WorkspacePackageJsonEnable>(pkgPath);
   return pkg?.webstir?.enable;
-}
-
-async function removeLegacyPagesFolder(config: import('./types.js').FrontendConfig): Promise<void> {
-  const legacyPagesRoot = path.join(config.paths.dist.frontend, FOLDERS.pages);
-  if (legacyPagesRoot === config.paths.dist.pages) {
-    return;
-  }
-
-  if (!(await pathExists(legacyPagesRoot))) {
-    return;
-  }
-
-  const entries = await readdir(legacyPagesRoot);
-  if (entries.length > 0) {
-    return;
-  }
-
-  await remove(legacyPagesRoot);
 }

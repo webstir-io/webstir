@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { RouteHandlerResult } from '@webstir-io/webstir-backend/runtime/bun';
 
-const ROOT_PATH = '/';
-const DEMO_PATH = '/demo/progressive-enhancement';
+const ROOT_PATH = '/api';
+const DEMO_PATH = '/api/demo/progressive-enhancement';
 const FRAGMENT_TARGET = 'greeting-preview';
 const SESSION_PANEL_TARGET = 'session-panel';
 const SESSION_COOKIE_NAME = 'webstir_demo_session';
