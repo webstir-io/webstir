@@ -59,6 +59,7 @@ async function createFrontendWatchSession(
       workspaceRoot: workspace.root,
       host: options.host,
       port: options.port,
+      verbose: options.verbose,
     });
   }
 
