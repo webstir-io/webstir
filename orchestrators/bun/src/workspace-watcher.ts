@@ -4,7 +4,7 @@ import { readdir, stat } from 'node:fs/promises';
 
 export type WorkspaceWatchEvent =
   | { readonly type: 'change'; readonly path: string }
-  | { readonly type: 'reload'; readonly path?: string };
+  | { readonly type: 'reload'; readonly path?: string; readonly paths?: readonly string[] };
 
 export interface WorkspaceWatcherOptions {
   readonly workspaceRoot: string;
@@ -21,12 +21,15 @@ export class WorkspaceWatcher {
   private readonly onEvent: (event: WorkspaceWatchEvent) => void;
   private readonly debounceMs: number;
   private readonly treeWatchers = new Map<string, FSWatcher>();
+  private readonly treeDirectories = new Set<string>();
+  private readonly fileSnapshots = new Map<string, string>();
   private readonly pendingChanges = new Set<string>();
   private readonly pendingSyncs = new Map<string, NodeJS.Timeout>();
   private rootWatcher?: FSWatcher;
   private flushTimer?: NodeJS.Timeout;
   private reloadPending = false;
-  private reloadPath?: string;
+  private reloadPathUnknown = false;
+  private readonly pendingReloadPaths = new Set<string>();
 
   public constructor(options: WorkspaceWatcherOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
@@ -97,8 +100,11 @@ export class WorkspaceWatcher {
   }
 
   private async syncTree(root: string): Promise<void> {
-    const directories = await collectDirectories(root);
+    const collected = await collectTreeEntries(root);
+    const directories = collected.directories;
     const current = new Set(directories);
+    this.syncTreeDirectories(root, current);
+    this.syncFileSnapshots(root, collected.fileSnapshots);
 
     for (const directory of directories) {
       if (this.treeWatchers.has(directory)) {
@@ -131,8 +137,7 @@ export class WorkspaceWatcher {
         const absolutePath = filename ? path.join(directory, filename.toString()) : undefined;
 
         if (eventType === 'rename') {
-          this.queueReload(absolutePath);
-          this.scheduleTreeSync(root);
+          void this.handleRename(root, absolutePath);
           return;
         }
 
@@ -158,23 +163,101 @@ export class WorkspaceWatcher {
   }
 
   private async handleFileChange(root: string, absolutePath: string): Promise<void> {
-    const baseName = path.basename(absolutePath);
+    const resolvedPath = path.resolve(absolutePath);
+    const baseName = path.basename(resolvedPath);
     if (IGNORED_DIRECTORIES.has(baseName)) {
       return;
     }
 
-    this.scheduleTreeSync(root);
-
     try {
-      const details = await stat(absolutePath);
+      const details = await stat(resolvedPath);
       if (details.isDirectory()) {
-        this.queueReload(absolutePath);
+        this.queueReload(resolvedPath);
+        this.scheduleTreeSync(root);
         return;
       }
 
-      this.queueChange(absolutePath);
+      const snapshot = createFileSnapshot(details);
+      const previousSnapshot = this.fileSnapshots.get(resolvedPath);
+      this.fileSnapshots.set(resolvedPath, snapshot);
+      if (previousSnapshot === snapshot) {
+        return;
+      }
+
+      this.queueChange(resolvedPath);
     } catch {
-      this.queueReload(absolutePath);
+      this.fileSnapshots.delete(resolvedPath);
+      this.queueReload(resolvedPath);
+      this.scheduleTreeSync(root);
+    }
+  }
+
+  private async handleRename(root: string, absolutePath: string | undefined): Promise<void> {
+    if (!absolutePath) {
+      this.queueReload(root);
+      this.scheduleTreeSync(root);
+      return;
+    }
+
+    const resolvedPath = path.resolve(absolutePath);
+    const baseName = path.basename(resolvedPath);
+    if (IGNORED_DIRECTORIES.has(baseName)) {
+      return;
+    }
+
+    try {
+      const details = await stat(resolvedPath);
+      if (details.isDirectory()) {
+        if (!this.treeDirectories.has(resolvedPath)) {
+          this.queueReload(resolvedPath);
+        }
+        this.scheduleTreeSync(root);
+        return;
+      }
+
+      if (!details.isFile()) {
+        this.scheduleTreeSync(root);
+        return;
+      }
+
+      const snapshot = createFileSnapshot(details);
+      const previousSnapshot = this.fileSnapshots.get(resolvedPath);
+      this.fileSnapshots.set(resolvedPath, snapshot);
+      if (previousSnapshot !== snapshot) {
+        this.queueReload(resolvedPath);
+      }
+      this.scheduleTreeSync(root);
+    } catch {
+      const knownFile = this.fileSnapshots.delete(resolvedPath);
+      const knownDirectory = this.treeDirectories.has(resolvedPath);
+      if (knownFile || knownDirectory) {
+        this.queueReload(resolvedPath);
+      }
+      this.scheduleTreeSync(root);
+    }
+  }
+
+  private syncFileSnapshots(root: string, nextSnapshots: ReadonlyMap<string, string>): void {
+    for (const filePath of Array.from(this.fileSnapshots.keys())) {
+      if (isWithinDirectory(filePath, root) && !nextSnapshots.has(filePath)) {
+        this.fileSnapshots.delete(filePath);
+      }
+    }
+
+    for (const [filePath, snapshot] of nextSnapshots) {
+      this.fileSnapshots.set(filePath, snapshot);
+    }
+  }
+
+  private syncTreeDirectories(root: string, currentDirectories: ReadonlySet<string>): void {
+    for (const directory of Array.from(this.treeDirectories)) {
+      if (isDirectoryOrDescendant(directory, root) && !currentDirectories.has(directory)) {
+        this.treeDirectories.delete(directory);
+      }
+    }
+
+    for (const directory of currentDirectories) {
+      this.treeDirectories.add(directory);
     }
   }
 
@@ -189,7 +272,12 @@ export class WorkspaceWatcher {
 
   private queueReload(filePath?: string): void {
     this.reloadPending = true;
-    this.reloadPath = filePath ? path.resolve(filePath) : undefined;
+    if (filePath) {
+      this.pendingReloadPaths.add(path.resolve(filePath));
+    } else {
+      this.reloadPathUnknown = true;
+      this.pendingReloadPaths.clear();
+    }
     this.pendingChanges.clear();
     this.scheduleFlush();
   }
@@ -207,31 +295,63 @@ export class WorkspaceWatcher {
 
   private flush(): void {
     if (this.reloadPending) {
-      const reloadPath = this.reloadPath;
+      const reloadPaths = this.reloadPathUnknown ? [] : Array.from(this.pendingReloadPaths).sort();
       this.reloadPending = false;
-      this.reloadPath = undefined;
-      this.onEvent(reloadPath ? { type: 'reload', path: reloadPath } : { type: 'reload' });
+      this.reloadPathUnknown = false;
+      this.pendingReloadPaths.clear();
+      this.onEvent(createReloadEvent(reloadPaths));
       return;
     }
 
-    for (const filePath of Array.from(this.pendingChanges).sort()) {
-      this.onEvent({ type: 'change', path: filePath });
-    }
+    const changedPaths = Array.from(this.pendingChanges).sort();
     this.pendingChanges.clear();
+
+    if (changedPaths.length === 1) {
+      this.onEvent({ type: 'change', path: changedPaths[0] });
+      return;
+    }
+
+    if (changedPaths.length > 1) {
+      this.onEvent(createReloadEvent(changedPaths));
+    }
   }
 }
 
-async function collectDirectories(root: string): Promise<readonly string[]> {
+function createReloadEvent(paths: readonly string[]): WorkspaceWatchEvent {
+  if (paths.length === 0) {
+    return { type: 'reload' };
+  }
+
+  if (paths.length === 1) {
+    return { type: 'reload', path: paths[0], paths };
+  }
+
+  return { type: 'reload', paths };
+}
+
+interface CollectedTreeEntries {
+  readonly directories: readonly string[];
+  readonly fileSnapshots: ReadonlyMap<string, string>;
+}
+
+async function collectTreeEntries(root: string): Promise<CollectedTreeEntries> {
   try {
     const details = await stat(root);
     if (!details.isDirectory()) {
-      return [];
+      return {
+        directories: [],
+        fileSnapshots: new Map(),
+      };
     }
   } catch {
-    return [];
+    return {
+      directories: [],
+      fileSnapshots: new Map(),
+    };
   }
 
   const directories: string[] = [];
+  const fileSnapshots = new Map<string, string>();
   const stack = [path.resolve(root)];
 
   while (stack.length > 0) {
@@ -243,13 +363,39 @@ async function collectDirectories(root: string): Promise<readonly string[]> {
 
     const entries = await readdir(current, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name)) {
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (!IGNORED_DIRECTORIES.has(entry.name)) {
+          stack.push(entryPath);
+        }
         continue;
       }
 
-      stack.push(path.join(current, entry.name));
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      try {
+        const details = await stat(entryPath);
+        fileSnapshots.set(path.resolve(entryPath), createFileSnapshot(details));
+      } catch {
+        // The file can disappear between readdir and stat; the next watcher event will resync.
+      }
     }
   }
 
-  return directories;
+  return { directories, fileSnapshots };
+}
+
+function createFileSnapshot(details: { readonly size: number; readonly mtimeMs: number }): string {
+  return `${details.size}:${details.mtimeMs}`;
+}
+
+function isWithinDirectory(filePath: string, directory: string): boolean {
+  const relative = path.relative(directory, filePath);
+  return relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
+}
+
+function isDirectoryOrDescendant(filePath: string, directory: string): boolean {
+  return filePath === directory || isWithinDirectory(filePath, directory);
 }

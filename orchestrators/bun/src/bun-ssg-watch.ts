@@ -2,13 +2,14 @@ import path from 'node:path';
 
 import { DevServer, type DevServerAddress } from './dev-server.ts';
 import { ensureLocalPackageArtifacts } from './providers.ts';
-import { WorkspaceWatcher } from './workspace-watcher.ts';
+import { WorkspaceWatcher, type WorkspaceWatchEvent } from './workspace-watcher.ts';
 import type { HotUpdateAsset, HotUpdatePayload, HotUpdateTarget } from './watch-events.ts';
 
 export interface BunSsgFrontendWatchOptions {
   readonly workspaceRoot: string;
   readonly host?: string;
   readonly port?: number;
+  readonly verbose?: boolean;
 }
 
 export interface BunSsgFrontendWatchSession {
@@ -52,60 +53,49 @@ export async function startBunSsgFrontendWatch(
     exitResolver = resolve;
   });
 
-  let queue: Promise<void> = Promise.resolve();
-  const enqueue = (task: () => Promise<void>): Promise<void> => {
-    const runTask = async () => {
-      if (stopping) {
-        return;
-      }
+  let pendingEvent: WorkspaceWatchEvent | undefined;
+  let drainPromise: Promise<void> | null = null;
+  const drainEvents = async (): Promise<void> => {
+    while (pendingEvent && !stopping) {
+      const event = pendingEvent;
+      pendingEvent = undefined;
 
       try {
-        await task();
+        await runWatchEvent({
+          event,
+          server,
+          operations,
+          workspaceRoot,
+          frontendSourceRoot,
+          buildRoot,
+          verbose: options.verbose === true,
+        });
       } catch (error) {
         await reportBuildFailure(server, error);
       }
-    };
+    }
+  };
+  const ensureDrain = (): Promise<void> => {
+    if (!drainPromise) {
+      drainPromise = drainEvents().finally(() => {
+        drainPromise = null;
+        if (pendingEvent && !stopping) {
+          void ensureDrain();
+        }
+      });
+    }
 
-    queue = queue.then(runTask, runTask);
-    return queue;
+    return drainPromise;
+  };
+  const enqueueEvent = (event: WorkspaceWatchEvent): Promise<void> => {
+    pendingEvent = mergeWorkspaceWatchEvents(pendingEvent, event);
+    return ensureDrain();
   };
 
   const watcher = new WorkspaceWatcher({
     workspaceRoot,
     onEvent(event) {
-      void enqueue(async () => {
-        await server.publishStatus('building');
-
-        let hotUpdate: HotUpdatePayload | null = null;
-        const changedPath =
-          event.type === 'change' || event.type === 'reload' ? event.path : undefined;
-        if (event.type === 'change') {
-          await operations.runRebuild({
-            workspaceRoot,
-            changedFile: event.path,
-          });
-        } else {
-          await operations.runBuild({ workspaceRoot });
-        }
-
-        if (changedPath) {
-          hotUpdate = createHotUpdatePayload({
-            workspaceRoot,
-            frontendSourceRoot,
-            buildRoot,
-            changedFile: changedPath,
-          });
-        }
-
-        if (hotUpdate) {
-          await server.publishHotUpdate(hotUpdate);
-          await server.publishStatus('success');
-          return;
-        }
-
-        await server.publishStatus('hmr-fallback');
-        await server.publishReload();
-      });
+      void enqueueEvent(event);
     },
   });
 
@@ -113,7 +103,6 @@ export async function startBunSsgFrontendWatch(
     await watcher.start();
   } catch (error) {
     stopping = true;
-    await queue.catch(() => undefined);
     await server.stop();
     exitResolver?.(1);
     exitResolver = undefined;
@@ -134,7 +123,7 @@ export async function startBunSsgFrontendWatch(
       stopPromise = (async () => {
         stopping = true;
         await watcher.stop();
-        await queue.catch(() => undefined);
+        await drainPromise?.catch(() => undefined);
         await server.stop();
         exitResolver?.(0);
         exitResolver = undefined;
@@ -146,6 +135,103 @@ export async function startBunSsgFrontendWatch(
   };
 }
 
+interface RunWatchEventOptions {
+  readonly event: WorkspaceWatchEvent;
+  readonly server: DevServer;
+  readonly operations: FrontendOperationsModule;
+  readonly workspaceRoot: string;
+  readonly frontendSourceRoot: string;
+  readonly buildRoot: string;
+  readonly verbose: boolean;
+}
+
+async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
+  const { event, server, operations, workspaceRoot, frontendSourceRoot, buildRoot } = options;
+
+  if (options.verbose) {
+    console.info(`[webstir] watch trigger: ${formatWorkspaceWatchEvent(event, workspaceRoot)}`);
+  }
+
+  await server.publishStatus('building');
+
+  let hotUpdate: HotUpdatePayload | null = null;
+  const changedPath = getSingleWorkspaceWatchEventPath(event);
+  if (event.type === 'change') {
+    await operations.runRebuild({
+      workspaceRoot,
+      changedFile: event.path,
+    });
+  } else {
+    await operations.runBuild({ workspaceRoot });
+  }
+
+  if (changedPath) {
+    hotUpdate = createHotUpdatePayload({
+      workspaceRoot,
+      frontendSourceRoot,
+      buildRoot,
+      changedFile: changedPath,
+    });
+  }
+
+  if (hotUpdate) {
+    await server.publishHotUpdate(hotUpdate);
+    await server.publishStatus('success');
+    return;
+  }
+
+  await server.publishStatus('hmr-fallback');
+  await server.publishReload();
+}
+
+export function mergeWorkspaceWatchEvents(
+  current: WorkspaceWatchEvent | undefined,
+  incoming: WorkspaceWatchEvent,
+): WorkspaceWatchEvent {
+  if (!current) {
+    return incoming;
+  }
+
+  const currentPaths = getWorkspaceWatchEventPaths(current);
+  const incomingPaths = getWorkspaceWatchEventPaths(incoming);
+  if (
+    current.type === 'change' &&
+    incoming.type === 'change' &&
+    currentPaths.length === 1 &&
+    incomingPaths.length === 1 &&
+    currentPaths[0] === incomingPaths[0]
+  ) {
+    return current;
+  }
+
+  return createMergedReloadEvent([...currentPaths, ...incomingPaths]);
+}
+
+export function formatWorkspaceWatchEvent(
+  event: WorkspaceWatchEvent,
+  workspaceRoot: string,
+): string {
+  const paths = getWorkspaceWatchEventPaths(event).map((eventPath) =>
+    formatWorkspaceWatchPath(workspaceRoot, eventPath),
+  );
+
+  if (event.type === 'change' && paths.length === 1) {
+    return `changed ${paths[0]}`;
+  }
+
+  if (paths.length === 1) {
+    return `reload ${paths[0]}`;
+  }
+
+  if (paths.length > 1) {
+    const visiblePaths = paths.slice(0, 5).join(', ');
+    const suffix = paths.length > 5 ? `, ... ${paths.length - 5} more` : '';
+    return `reload ${paths.length} changes: ${visiblePaths}${suffix}`;
+  }
+
+  return 'reload workspace';
+}
+
 async function loadFrontendOperations(): Promise<FrontendOperationsModule> {
   await ensureLocalPackageArtifacts();
   return (await import('@webstir-io/webstir-frontend')) as FrontendOperationsModule;
@@ -155,6 +241,45 @@ async function reportBuildFailure(server: DevServer, error: unknown): Promise<vo
   await server.publishStatus('error');
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[webstir] frontend rebuild failed: ${message}`);
+}
+
+function getSingleWorkspaceWatchEventPath(event: WorkspaceWatchEvent): string | undefined {
+  const paths = getWorkspaceWatchEventPaths(event);
+  return paths.length === 1 ? paths[0] : undefined;
+}
+
+function getWorkspaceWatchEventPaths(event: WorkspaceWatchEvent): readonly string[] {
+  if (event.type === 'change') {
+    return [event.path];
+  }
+
+  if (event.paths && event.paths.length > 0) {
+    return event.paths;
+  }
+
+  return event.path ? [event.path] : [];
+}
+
+function createMergedReloadEvent(paths: readonly string[]): WorkspaceWatchEvent {
+  const mergedPaths = Array.from(new Set(paths)).sort();
+  if (mergedPaths.length === 0) {
+    return { type: 'reload' };
+  }
+
+  if (mergedPaths.length === 1) {
+    return { type: 'reload', path: mergedPaths[0], paths: mergedPaths };
+  }
+
+  return { type: 'reload', paths: mergedPaths };
+}
+
+function formatWorkspaceWatchPath(workspaceRoot: string, eventPath: string): string {
+  const relative = path.relative(workspaceRoot, eventPath);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    return normalizeForwardSlashes(eventPath);
+  }
+
+  return normalizeForwardSlashes(relative);
 }
 
 function createHotUpdatePayload(options: {
