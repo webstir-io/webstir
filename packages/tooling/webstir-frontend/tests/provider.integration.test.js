@@ -43,6 +43,58 @@ async function createWorkspace() {
   return root;
 }
 
+async function createWorkspaceWithExternalStylesheets() {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-workspace-'));
+  const appDir = path.join(root, 'src', 'frontend', 'app');
+  const pageDir = path.join(root, 'src', 'frontend', 'pages', 'home');
+  await fs.mkdir(appDir, { recursive: true });
+  await fs.mkdir(pageDir, { recursive: true });
+
+  await fs.writeFile(
+    path.join(root, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'webstir-project',
+        version: '1.0.0',
+        webstir: {
+          mode: 'ssg',
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(appDir, 'app.html'),
+    [
+      '<!DOCTYPE html>',
+      '<html>',
+      '<head>',
+      '<title>App</title>',
+      '<link rel="stylesheet" href="/app/app.css" />',
+      '</head>',
+      '<body><main></main></body>',
+      '</html>',
+    ].join(''),
+    'utf8',
+  );
+  await fs.writeFile(path.join(appDir, 'app.css'), 'body{font-family:sans-serif;}', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head><link rel="stylesheet" href="index.css" /></head><main><section>Home</section></main>',
+    'utf8',
+  );
+  await fs.writeFile(path.join(pageDir, 'index.ts'), 'console.log("home");', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.css'),
+    Array.from({ length: 420 }, (_, index) => `.page-rule-${index}{color:#101828}`).join('\n'),
+    'utf8',
+  );
+
+  return root;
+}
+
 async function createWorkspaceWithClientNav() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-workspace-'));
   const appDir = path.join(root, 'src', 'frontend', 'app');
@@ -126,6 +178,34 @@ test('frontend provider publish produces dist assets and preserves entry in mani
 
   // Manifest still reflects build/frontend entry points by design
   assert.ok(publishResult.manifest.entryPoints.some((e) => e.endsWith('pages/home/index.js')));
+});
+
+test('frontend provider publish keeps app stylesheet when page stylesheet stays external', async (t) => {
+  const frontendProvider = await loadProviderOrSkip(t);
+  if (!frontendProvider) return; // skip
+  const workspace = await createWorkspaceWithExternalStylesheets();
+
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'build' },
+    incremental: false,
+  });
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'publish' },
+    incremental: false,
+  });
+
+  const distHtml = await fs.readFile(
+    path.join(workspace, 'dist', 'frontend', 'index.html'),
+    'utf8',
+  );
+  assert.match(distHtml, /<link rel="preload" as="style" href="\/app\/app-[^"]+\.css">/);
+  assert.match(
+    distHtml,
+    /<link rel="stylesheet" href="\/app\/app-[^"]+\.css" fetchpriority="high">/,
+  );
+  assert.match(distHtml, /<link rel="stylesheet" href="\/home\/index-[^"]+\.css">/);
 });
 
 test('enable.clientNav uses feature module (no legacy helper injection)', async (t) => {
