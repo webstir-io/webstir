@@ -504,7 +504,7 @@ function dedupeHeadLinks(document: CheerioAPI, attribute: 'rel'): void {
       return;
     }
 
-    const key = value.toLowerCase();
+    const key = getLinkDedupeKey(element.attribs);
     const previous = seen.get(key);
     if (previous) {
       previous.remove();
@@ -512,6 +512,13 @@ function dedupeHeadLinks(document: CheerioAPI, attribute: 'rel'): void {
 
     seen.set(key, document(element));
   });
+}
+
+function getLinkDedupeKey(attributes: Record<string, string | undefined>): string {
+  const rel = attributes.rel?.toLowerCase() ?? '';
+  const href = attributes.href ?? '';
+  const as = attributes.as?.toLowerCase() ?? '';
+  return [rel, as, href].join('\u0000');
 }
 
 function removeDevScripts(document: CheerioAPI): void {
