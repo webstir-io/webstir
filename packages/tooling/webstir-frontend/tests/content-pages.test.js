@@ -23,9 +23,11 @@ async function createWorkspaceWithContent() {
   const appDir = path.join(root, 'src', 'frontend', 'app');
   const pageDir = path.join(root, 'src', 'frontend', 'pages', 'home');
   const contentDir = path.join(root, 'src', 'frontend', 'content');
+  const publicDir = path.join(root, 'src', 'frontend', 'public');
   await fs.mkdir(appDir, { recursive: true });
   await fs.mkdir(pageDir, { recursive: true });
   await fs.mkdir(contentDir, { recursive: true });
+  await fs.mkdir(publicDir, { recursive: true });
 
   await fs.writeFile(
     path.join(appDir, 'app.html'),
@@ -69,6 +71,13 @@ async function createWorkspaceWithContent() {
     ].join('\n'),
     'utf8',
   );
+  await fs.mkdir(path.join(contentDir, 'section'), { recursive: true });
+  await fs.writeFile(
+    path.join(contentDir, 'section', 'one.md'),
+    ['# One', '', 'See [Two](two/?ref=one#details) and [Root](../readme/).'].join('\n'),
+    'utf8',
+  );
+  await fs.writeFile(path.join(contentDir, 'section', 'two.md'), '# Two\n', 'utf8');
   await fs.writeFile(
     path.join(contentDir, '_sidebar.json'),
     JSON.stringify(
@@ -86,6 +95,7 @@ async function createWorkspaceWithContent() {
     ),
     'utf8',
   );
+  await fs.writeFile(path.join(publicDir, 'CNAME'), 'webstir.io\n', 'utf8');
 
   return root;
 }
@@ -128,6 +138,30 @@ test('content builder strips frontmatter and injects app styles', async (t) => {
     assert.ok(
       nav.some((entry) => entry.path === '/docs/readme/'),
       'expected docs-nav.json to include /docs/readme/',
+    );
+
+    const cnamePath = path.join(workspace, 'build', 'frontend', 'CNAME');
+    assert.equal(fssync.existsSync(cnamePath), true, `expected ${cnamePath}`);
+    assert.equal(await fs.readFile(cnamePath, 'utf8'), 'webstir.io\n');
+
+    const linkedHtmlPath = path.join(
+      workspace,
+      'build',
+      'frontend',
+      'pages',
+      'docs',
+      'section',
+      'one',
+      'index.html',
+    );
+    const linkedHtml = await fs.readFile(linkedHtmlPath, 'utf8');
+    assert.ok(
+      linkedHtml.includes('href="/docs/section/two/?ref=one#details"'),
+      'expected sibling docs link to resolve from source file directory and preserve query/hash',
+    );
+    assert.ok(
+      linkedHtml.includes('href="/docs/"'),
+      'expected parent-relative docs link to resolve from source file directory',
     );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });

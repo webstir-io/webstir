@@ -1,0 +1,8 @@
+@layer overrides {
+  .docs-layout {
+    --ws-docs-lead-size: 1.1rem;
+    --ws-docs-index-indent: 1.25rem;
+    --ws-docs-callout-margin: 1.2rem 0 1.6rem;
+    --ws-docs-callout-body-gap: 0.9rem;
+  }
+}

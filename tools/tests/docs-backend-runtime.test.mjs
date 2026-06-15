@@ -5,17 +5,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const portalContentRoot = 'apps/portal/src/frontend/content';
 
 function read(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
 test('portal docs match the Bun backend scaffold split', () => {
-  const firstAppDoc = read('apps/portal/docs/tutorials/first-app.md');
-  const templatesDoc = read('apps/portal/docs/reference/templates.md');
-  const contractsDoc = read('apps/portal/docs/reference/contracts.md');
-  const devServiceDoc = read('apps/portal/docs/explanations/devservice.md');
-  const workspaceDoc = read('apps/portal/docs/explanations/workspace.md');
+  const firstAppDoc = read(`${portalContentRoot}/tutorials/first-app.md`);
+  const templatesDoc = read(`${portalContentRoot}/reference/templates.md`);
+  const contractsDoc = read(`${portalContentRoot}/reference/contracts.md`);
+  const devServiceDoc = read(`${portalContentRoot}/explanations/devservice.md`);
+  const workspaceDoc = read(`${portalContentRoot}/explanations/workspace.md`);
   const fullTemplateIndex = read('orchestrators/bun/resources/templates/full/src/backend/index.ts');
   const fullTemplateModule = read(
     'orchestrators/bun/resources/templates/full/src/backend/module.ts',

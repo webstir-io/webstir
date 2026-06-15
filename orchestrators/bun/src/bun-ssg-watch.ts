@@ -39,13 +39,6 @@ export async function startBunSsgFrontendWatch(
 
   await operations.runBuild({ workspaceRoot });
 
-  const server = new DevServer({
-    buildRoot,
-    host: options.host,
-    port: options.port,
-  });
-  const address = await server.start();
-
   let stopping = false;
   let stopPromise: Promise<void> | null = null;
   let exitResolver: ((code: number | null) => void) | undefined;
@@ -103,7 +96,22 @@ export async function startBunSsgFrontendWatch(
     await watcher.start();
   } catch (error) {
     stopping = true;
-    await server.stop();
+    exitResolver?.(1);
+    exitResolver = undefined;
+    throw error;
+  }
+
+  const server = new DevServer({
+    buildRoot,
+    host: options.host,
+    port: options.port,
+  });
+  let address: DevServerAddress;
+  try {
+    address = await server.start();
+  } catch (error) {
+    stopping = true;
+    await watcher.stop();
     exitResolver?.(1);
     exitResolver = undefined;
     throw error;

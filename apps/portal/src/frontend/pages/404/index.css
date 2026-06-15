@@ -1,0 +1,25 @@
+@layer overrides {
+  .not-found {
+    min-height: 60vh;
+    display: grid;
+    align-items: center;
+    padding: 5rem 0;
+  }
+
+  .not-found__inner {
+    display: grid;
+    gap: var(--ws-space-4);
+    justify-items: start;
+  }
+
+  .not-found p {
+    margin: 0;
+    color: var(--ws-muted);
+    font-weight: 700;
+  }
+
+  .not-found h1 {
+    margin: 0;
+    font-size: clamp(2.25rem, 5vw, 4rem);
+  }
+}

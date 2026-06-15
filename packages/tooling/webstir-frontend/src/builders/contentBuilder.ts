@@ -115,7 +115,7 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
     const sourcePath = path.join(contentRoot, relative);
     const markdown = await readFile(sourcePath);
     const { frontmatter, content } = extractFrontmatter(markdown);
-    const htmlBody = (await renderMarkdownDoc(content)).html;
+    const htmlBody = (await renderMarkdownDoc(content, relative)).html;
 
     const segments = resolveDocsSegments(relative);
     const pagePath = path.join(...segments);
@@ -195,7 +195,7 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
     const href = `/${segments.join('/')}/`;
     const pageTitle = resolveTitle(frontmatter, content, segments);
 
-    const rendered = await renderMarkdownDoc(content);
+    const rendered = await renderMarkdownDoc(content, relative);
     const htmlBody = rendered.html;
 
     const mergedHtml = mergeContentIntoTemplate(
@@ -458,7 +458,7 @@ async function collectContentSearchEntries(context: BuilderContext): Promise<Sea
       continue;
     }
 
-    const html = (await renderMarkdownDoc(content)).html;
+    const html = (await renderMarkdownDoc(content, relative)).html;
     const document = load(html);
     const headings = document('h2, h3')
       .toArray()
@@ -1127,11 +1127,12 @@ function ensureMetaName(head: Cheerio<AnyNode>, name: string, content: string): 
 
 async function renderMarkdownDoc(
   markdown: string,
+  sourceRelative?: string,
 ): Promise<{ html: string; headingIds: ReadonlySet<string> }> {
   const renderer = getMarkdownRenderer();
   const expanded = await expandAdmonitions(markdown, renderer);
   const rawHtml = await marked.parse(expanded, { renderer });
-  const linked = rewriteMarkdownLinks(rawHtml);
+  const linked = rewriteMarkdownLinks(rawHtml, sourceRelative);
   const { html, headingIds } = ensureHeadingIds(linked);
   return { html, headingIds };
 }
@@ -1439,30 +1440,60 @@ async function rewriteContentForPublish(
   return document.root().html() ?? html;
 }
 
-function rewriteMarkdownLinks(html: string): string {
+function rewriteMarkdownLinks(html: string, sourceRelative?: string): string {
   const document = load(html);
   document('a[href]').each((_, element) => {
     const anchor = document(element);
     const href = anchor.attr('href');
     if (!href) return;
 
-    // Only rewrite local .md links (no protocol, no leading //)
-    if (/^[a-z]+:\/\//i.test(href) || href.startsWith('//')) {
+    if (href.startsWith('#') || href.startsWith('/') || href.startsWith('//')) {
       return;
     }
 
-    const mdMatch = href.match(/^(.*?)(\.md)(#.*)?$/i);
-    if (!mdMatch) return;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
+      return;
+    }
 
-    const base = mdMatch[1];
-    const hash = mdMatch[3] ?? '';
-    const normalizedBase = base.endsWith('/') ? base : `${base}/`;
-
-    // Preserve relative path segments; remove the .md extension and ensure trailing slash
-    anchor.attr('href', `${normalizedBase}${hash}`);
+    const rewritten = rewriteRelativeDocsHref(href, sourceRelative);
+    if (rewritten) {
+      anchor.attr('href', rewritten);
+    }
   });
 
   return document.root().html() ?? html;
+}
+
+function rewriteRelativeDocsHref(href: string, sourceRelative?: string): string | null {
+  const [rawTarget, rawHash = ''] = href.split('#', 2);
+  if (!rawTarget) {
+    return null;
+  }
+
+  const queryIndex = rawTarget.indexOf('?');
+  const targetWithoutQuery = queryIndex === -1 ? rawTarget : rawTarget.slice(0, queryIndex);
+  const query = queryIndex === -1 ? '' : rawTarget.slice(queryIndex);
+  if (/\.[a-z0-9]+$/i.test(targetWithoutQuery) && !targetWithoutQuery.endsWith('.md')) {
+    return null;
+  }
+
+  const normalizedTarget = targetWithoutQuery.replace(/\.md$/i, '').replace(/\/+$/, '');
+  const sourceDir = sourceRelative
+    ? path.posix.dirname(sourceRelative.split(path.sep).join('/'))
+    : '.';
+  const joined = path.posix.normalize(
+    path.posix.join('/', sourceDir === '.' ? '' : sourceDir, normalizedTarget),
+  );
+  const segments = joined
+    .split('/')
+    .filter(Boolean)
+    .filter((segment, index, all) => {
+      const isLast = index === all.length - 1;
+      return !(isLast && /^(readme|index)$/i.test(segment));
+    });
+  const route = segments.length === 0 ? '/docs/' : `/docs/${segments.join('/')}/`;
+  const hash = rawHash ? `#${rawHash}` : '';
+  return `${route}${query}${hash}`;
 }
 
 function escapeHtml(value: string): string {

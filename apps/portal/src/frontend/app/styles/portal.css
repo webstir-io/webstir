@@ -1,0 +1,87 @@
+@layer overrides {
+  .app-header {
+    background: color-mix(in srgb, var(--ws-bg) 94%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  .app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ws-space-2);
+  }
+
+  .app-brand__mark {
+    display: block;
+  }
+
+  .app-nav a[href^="https://"]::after {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-left: 0.25rem;
+    border-top: 1.5px solid currentColor;
+    border-right: 1.5px solid currentColor;
+    transform: translateY(-0.12rem);
+  }
+
+  .app-footer {
+    border-top: 1px solid var(--ws-border);
+    color: var(--ws-muted);
+    background: var(--ws-surface-1);
+  }
+
+  .app-footer__inner {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--ws-space-4);
+    padding-block: var(--ws-space-5);
+  }
+
+  .app-footer p {
+    margin: 0;
+  }
+
+  .app-footer nav {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: end;
+    gap: var(--ws-space-3);
+  }
+
+  .app-footer a {
+    color: var(--ws-muted);
+    text-decoration: none;
+  }
+
+  .app-footer a:hover {
+    color: var(--ws-fg);
+    text-decoration: none;
+  }
+
+  .docs-layout {
+    --ws-docs-layout-padding: 0 0 5rem;
+  }
+
+  .docs-panel__header {
+    padding-top: var(--ws-space-5);
+  }
+
+  .docs-main {
+    padding-top: var(--ws-space-6);
+  }
+
+  .docs-article {
+    padding-bottom: var(--ws-space-8);
+  }
+
+  @media (max-width: 40rem) {
+    .app-footer__inner {
+      display: block;
+    }
+
+    .app-footer nav {
+      justify-content: start;
+      margin-top: var(--ws-space-3);
+    }
+  }
+}

@@ -1,0 +1,40 @@
+@layer components {
+  /* Markdown content pages */
+  .ws-markdown h2,
+  .ws-markdown h3 {
+    scroll-margin-top: calc(var(--ws-header-sticky-offset, 0px) + var(--ws-sticky-gap, 16px) + 8px);
+  }
+  .ws-markdown .hljs-comment,
+  .ws-markdown .hljs-quote {
+    color: var(--ws-muted);
+    font-style: italic;
+  }
+
+  .ws-markdown .hljs-keyword,
+  .ws-markdown .hljs-selector-tag,
+  .ws-markdown .hljs-literal,
+  .ws-markdown .hljs-built_in {
+    color: var(--ws-syntax-keyword);
+  }
+
+  .ws-markdown .hljs-string,
+  .ws-markdown .hljs-attr,
+  .ws-markdown .hljs-symbol {
+    color: var(--ws-syntax-string);
+  }
+
+  .ws-markdown .hljs-number,
+  .ws-markdown .hljs-meta {
+    color: var(--ws-syntax-number);
+  }
+
+  .ws-markdown .hljs-title,
+  .ws-markdown .hljs-section,
+  .ws-markdown .hljs-function {
+    color: var(--ws-syntax-function);
+  }
+
+  .ws-markdown .hljs-type {
+    color: var(--ws-syntax-type);
+  }
+}

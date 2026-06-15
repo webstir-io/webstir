@@ -8,8 +8,8 @@
 - Webstir now has stable Bun-side operations, inspect/doctor/repair surfaces, and a thin agent contract.
 - The external-tooling, Bun-release, and unified-inspection slice has been completed and merged.
 - The agent-driven custom runtime hardening slice has been completed and merged.
-- The next useful slice is an agent app-build pressure test against a fresh generated workspace.
+- The current active slice is migrating the Webstir portal from Docusaurus to Webstir SSG.
 
 ## Immediate Next Step
 
-None. Start a new plan before the next implementation slice.
+Continue from [Portal Webstir Migration](./portal-webstir-migration/EXECMAP.md).

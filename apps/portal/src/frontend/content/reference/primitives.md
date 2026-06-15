@@ -50,7 +50,7 @@ Use request-time views when the backend owns the HTML response and the page depe
 - Default guard surface: `ctx.auth` and route/session metadata
 - Proof references:
   - `examples/demos/auth-crud`
-  - `apps/portal/docs/tutorials/backend-loop.md`
+  - `apps/portal/src/frontend/content/tutorials/backend-loop.md`
 
 Use an auth-gated route when the server, not the client, decides whether a request may proceed. The route should still preserve the same HTML-first fallback behavior as the rest of the golden path.
 
