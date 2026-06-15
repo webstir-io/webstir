@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const portalContentRoot = 'apps/portal/src/frontend/content';
 
 function read(relativePath) {
   return readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -12,10 +13,10 @@ function read(relativePath) {
 
 test('docs describe one supported Bun deployment contract', () => {
   const rootReadme = read('README.md');
-  const solutionDoc = read('apps/portal/docs/explanations/solution.md');
-  const dockerDoc = read('apps/portal/docs/how-to/docker.md');
-  const publishDoc = read('apps/portal/docs/how-to/publish.md');
-  const workflowsDoc = read('apps/portal/docs/reference/workflows.md');
+  const solutionDoc = read(`${portalContentRoot}/explanations/solution.md`);
+  const dockerDoc = read(`${portalContentRoot}/how-to/docker.md`);
+  const publishDoc = read(`${portalContentRoot}/how-to/publish.md`);
+  const workflowsDoc = read(`${portalContentRoot}/reference/workflows.md`);
   const backendReadme = read('packages/tooling/webstir-backend/README.md');
   const dockerReadme = read('orchestrators/bun/resources/deployment/docker/README.md');
 

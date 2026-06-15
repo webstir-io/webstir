@@ -50,6 +50,8 @@ export function createStaticAssetsBuilder(context: BuilderContext): Builder {
 
 async function copyStaticAssets(context: BuilderContext, isProduction: boolean): Promise<void> {
   const { config } = context;
+  await copyPublicRootAssets(context, isProduction);
+
   if (
     !shouldProcess(context, [
       { directory: config.paths.src.images, extensions: IMAGE_EXTENSIONS },
@@ -137,6 +139,30 @@ async function copyStaticAssets(context: BuilderContext, isProduction: boolean):
   }
 
   await syncRobotsTxt(config, isProduction);
+}
+
+async function copyPublicRootAssets(context: BuilderContext, isProduction: boolean): Promise<void> {
+  const { config } = context;
+  const sourceRoot = path.join(config.paths.src.frontend, 'public');
+  if (!(await pathExists(sourceRoot))) {
+    return;
+  }
+
+  const changedRelative = relativePathWithin(context.changedFile, sourceRoot);
+  const targets = isProduction
+    ? [config.paths.build.frontend, config.paths.dist.frontend]
+    : [config.paths.build.frontend];
+
+  if (!context.changedFile || !changedRelative) {
+    for (const targetRoot of targets) {
+      await copy(sourceRoot, targetRoot);
+    }
+    return;
+  }
+
+  for (const targetRoot of targets) {
+    await copySingleAsset(sourceRoot, targetRoot, changedRelative);
+  }
 }
 
 async function copySingleAsset(

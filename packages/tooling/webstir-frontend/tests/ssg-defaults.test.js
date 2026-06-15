@@ -152,6 +152,66 @@ test('ssg workspace defaults views to renderMode=ssg when omitted', async () => 
   }
 });
 
+test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-no-slash-'));
+  const distFrontend = path.join(workspace, 'dist', 'frontend');
+  const distPages = distFrontend;
+
+  await fs.mkdir(path.join(distPages, 'home'), { recursive: true });
+  await fs.mkdir(path.join(distPages, 'docs', 'guide'), { recursive: true });
+  await fs.mkdir(path.join(distPages, '404'), { recursive: true });
+  await fs.writeFile(
+    path.join(distPages, 'home', 'index.html'),
+    '<!doctype html><main>home</main>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(distPages, 'docs', 'guide', 'index.html'),
+    '<!doctype html><main>guide</main>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(distPages, '404', 'index.html'),
+    '<!doctype html><main>missing</main>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        name: 'webstir-project',
+        version: '1.0.0',
+        webstir: {
+          mode: 'ssg',
+          siteUrl: 'https://webstir.io',
+          trailingSlash: false,
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  const config = createFrontendConfig(workspace);
+  config.paths.dist.pages = distPages;
+  config.paths.dist.content = path.join(distFrontend, 'docs');
+
+  try {
+    await applySsgRouting(config);
+
+    assert.equal(fssync.existsSync(path.join(distFrontend, 'docs', 'guide.html')), true);
+    assert.equal(fssync.existsSync(path.join(distFrontend, '404.html')), true);
+
+    const sitemap = await fs.readFile(path.join(distFrontend, 'sitemap.xml'), 'utf8');
+    assert.match(sitemap, /<loc>https:\/\/webstir\.io\/docs\/guide<\/loc>/);
+    assert.doesNotMatch(sitemap, /<loc>https:\/\/webstir\.io\/docs\/guide\/<\/loc>/);
+    assert.doesNotMatch(sitemap, /<loc>https:\/\/webstir\.io\/404<\/loc>/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test('ssg workspace defaults staticPaths to [path] for view data', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-default-paths-'));
   const distFrontend = path.join(workspace, 'dist', 'frontend');

@@ -53,8 +53,11 @@ export async function applySsgRouting(config: FrontendConfig): Promise<void> {
 
   await applyStaticPathAliases(config, distRoot, distPagesRoot, pageIndexMap);
 
-  const siteUrl = await resolveWorkspaceSiteUrl(config.paths.workspace);
-  await runSsgSeo(distRoot, { siteUrl });
+  const seoOptions = await resolveWorkspaceSeoOptions(config.paths.workspace);
+  await runSsgSeo(distRoot, seoOptions);
+  if (seoOptions.trailingSlash === false) {
+    await applyNoTrailingSlashAliases(distRoot);
+  }
 }
 
 async function applyDocsContentAliases(distRoot: string, distPagesRoot: string): Promise<void> {
@@ -81,21 +84,50 @@ async function applyDocsContentAliases(distRoot: string, distPagesRoot: string):
   }
 }
 
-async function resolveWorkspaceSiteUrl(workspaceRoot: string): Promise<string | undefined> {
-  const fromEnv = process.env.WEBSTIR_SITE_URL?.trim();
-  if (fromEnv) {
-    return fromEnv;
-  }
+async function applyNoTrailingSlashAliases(distRoot: string): Promise<void> {
+  const indexes = (await scanGlob('**/index.html', { cwd: distRoot })).filter(
+    (relative) => !relative.split(path.sep).join('/').startsWith('pages/'),
+  );
 
+  for (const relativeIndex of indexes) {
+    const normalized = relativeIndex.split(path.sep).join('/');
+    if (normalized === FILES.indexHtml) {
+      continue;
+    }
+
+    const withoutIndex = normalized.slice(0, -`/${FILES.indexHtml}`.length);
+    const sourceIndex = path.join(distRoot, relativeIndex);
+    const targetHtml = path.join(distRoot, `${withoutIndex}${path.extname(FILES.indexHtml)}`);
+    if (path.resolve(sourceIndex) === path.resolve(targetHtml)) {
+      continue;
+    }
+
+    await ensureDir(path.dirname(targetHtml));
+    await copy(sourceIndex, targetHtml);
+  }
+}
+
+async function resolveWorkspaceSeoOptions(
+  workspaceRoot: string,
+): Promise<{ siteUrl?: string; trailingSlash?: boolean }> {
+  const fromEnv = process.env.WEBSTIR_SITE_URL?.trim();
   const pkgPath = path.join(workspaceRoot, 'package.json');
   const pkg = await readJson<Record<string, unknown>>(pkgPath);
   const webstir = pkg?.webstir;
   if (!webstir || typeof webstir !== 'object') {
-    return undefined;
+    return fromEnv ? { siteUrl: fromEnv } : {};
   }
 
-  const candidate = (webstir as Record<string, unknown>).siteUrl;
-  return typeof candidate === 'string' && candidate.trim() ? candidate.trim() : undefined;
+  const container = webstir as Record<string, unknown>;
+  const candidate = container.siteUrl;
+  const siteUrl = fromEnv
+    ? fromEnv
+    : typeof candidate === 'string' && candidate.trim()
+      ? candidate.trim()
+      : undefined;
+  const trailingSlash =
+    typeof container.trailingSlash === 'boolean' ? container.trailingSlash : undefined;
+  return { siteUrl, trailingSlash };
 }
 
 async function applyStaticPathAliases(

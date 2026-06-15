@@ -11,12 +11,13 @@ interface HtmlPage {
 
 export interface SsgSeoOptions {
   readonly siteUrl?: string;
+  readonly trailingSlash?: boolean;
 }
 
 export async function runSsgSeo(distRoot: string, options: SsgSeoOptions = {}): Promise<void> {
   const pages = await discoverHtmlPages(distRoot);
   await validateInternalLinks(pages, distRoot);
-  await writeSitemap(distRoot, pages, options.siteUrl);
+  await writeSitemap(distRoot, pages, options);
   await writeRobots(distRoot, options.siteUrl);
 }
 
@@ -204,12 +205,17 @@ async function targetExistsInDist(distRoot: string, pathname: string): Promise<b
 async function writeSitemap(
   distRoot: string,
   pages: readonly HtmlPage[],
-  siteUrl?: string,
+  options: SsgSeoOptions,
 ): Promise<void> {
-  const urls = pages.map((page) => page.urlPath).filter((url) => url.startsWith('/'));
-  const unique = Array.from(new Set(urls)).sort((a, b) => a.localeCompare(b));
+  const urls = pages
+    .map((page) => page.urlPath)
+    .filter((url) => url.startsWith('/'))
+    .filter((url) => !isNotFoundPath(url));
+  const unique = Array.from(
+    new Set(urls.map((url) => formatSitemapPath(url, options.trailingSlash))),
+  ).sort((a, b) => a.localeCompare(b));
 
-  const baseUrl = normalizeSiteUrl(siteUrl);
+  const baseUrl = normalizeSiteUrl(options.siteUrl);
   const comment = baseUrl ? '' : '<!-- Set WEBSTIR_SITE_URL to emit absolute <loc> entries. -->\n';
 
   const entries = unique
@@ -230,6 +236,22 @@ async function writeSitemap(
   const outputPath = path.join(distRoot, 'sitemap.xml');
   await ensureDir(path.dirname(outputPath));
   await writeFile(outputPath, xml);
+}
+
+function isNotFoundPath(pathname: string): boolean {
+  return pathname === '/404' || pathname === '/404/';
+}
+
+function formatSitemapPath(pathname: string, trailingSlash: boolean | undefined): string {
+  if (pathname === '/' || trailingSlash !== false) {
+    return pathname;
+  }
+
+  if (pathname.endsWith('/')) {
+    return pathname.slice(0, -1);
+  }
+
+  return pathname;
 }
 
 async function writeRobots(distRoot: string, siteUrl?: string): Promise<void> {

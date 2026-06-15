@@ -1,0 +1,39 @@
+{
+  "pages": [
+    {
+      "path": "/docs/tutorials/",
+      "title": "Tutorials",
+      "order": 0
+    },
+    {
+      "path": "/docs/tutorials/getting-started/",
+      "title": "Getting Started",
+      "order": 1
+    },
+    {
+      "path": "/docs/tutorials/first-app/",
+      "title": "First App",
+      "order": 2
+    },
+    {
+      "path": "/docs/tutorials/backend-loop/",
+      "title": "Backend Loop",
+      "order": 3
+    },
+    {
+      "path": "/docs/how-to/",
+      "title": "How-to Guides",
+      "order": 0
+    },
+    {
+      "path": "/docs/reference/",
+      "title": "Reference",
+      "order": 0
+    },
+    {
+      "path": "/docs/explanations/",
+      "title": "Explanations",
+      "order": 0
+    }
+  ]
+}

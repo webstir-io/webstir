@@ -1,5 +1,7 @@
 node_modules
 build
+dist
+.webstir
 .docusaurus
 .cache
 .plan-cycle
