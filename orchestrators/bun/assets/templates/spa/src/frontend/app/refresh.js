@@ -13,15 +13,15 @@ indicator.type = 'button';
 indicator.id = 'dev-server-indicator';
 indicator.setAttribute('aria-live', 'polite');
 indicator.innerHTML = `
-    <svg aria-hidden="true" viewBox="0 0 512 512" width="28" height="28" fill="none" stroke="currentColor" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M152 92h208c55 0 100 45 100 100v128c0 55-45 100-100 100H152c-55 0-100-45-100-100V192c0-55 45-100 100-100Z"></path>
-        <path d="M70 215H58c-20 0-36 16-36 36v10c0 20 16 36 36 36h12"></path>
-        <path d="M442 215h12c20 0 36 16 36 36v10c0 20-16 36-36 36h-12"></path>
-        <path d="M150 178c37 0 66 31 66 70s-29 70-66 70-66-31-66-70 29-70 66-70Z"></path>
-        <path d="M114 291 187 205"></path>
-        <path d="M362 178c37 0 66 31 66 70s-29 70-66 70-66-31-66-70 29-70 66-70Z"></path>
-        <path d="M326 291 399 205"></path>
-        <path d="m154 355 52 56 50-53 50 53 52-56"></path>
+    <svg aria-hidden="true" viewBox="0 0 512 512" width="40" height="40" fill="none">
+        <path fill="var(--webstir-dev-indicator-color)" stroke="currentColor" stroke-width="21.1286" d="m 249.65652,23.205994 h 12.98856 c 111.69719,0 201.61948,84.744156 201.61948,190.009326 v 85.56936 c 0,105.26517 -89.92229,190.00933 -201.61948,190.00933 h -12.98856 c -111.69719,0 -201.619472,-84.74416 -201.619472,-190.00933 v -85.56936 c 0,-105.26517 89.922282,-190.009326 201.619472,-190.009326 z"></path>
+        <path stroke="currentColor" stroke-width="18.2145" d="m 44.058391,191.97153 c -14.470037,0 -26.119524,9.07711 -26.119524,20.35258 v 75.32063 c 0,11.2755 11.649487,20.35261 26.119524,20.35261 0.93247,0 1.852137,-0.0404 2.7588,-0.1141 V 192.08544 c -0.906663,-0.0736 -1.826333,-0.11396 -2.7588,-0.11396 z"></path>
+        <path stroke="currentColor" stroke-width="18.2145" d="m 467.94159,307.9973 c 14.47005,0 26.11954,-9.07712 26.11954,-20.35259 v -75.32062 c 0,-11.27551 -11.64949,-20.35261 -26.11954,-20.35261 -0.93248,0 -1.85214,0.0404 -2.75881,0.11409 v 115.79781 c 0.90667,0.0736 1.82635,0.11397 2.75881,0.11397 z"></path>
+        <path stroke="currentColor" stroke-width="21.1286" d="m 160.69324,296.77823 a 65.878456,81.300491 0 0 1 -67.611696,-79.07673 65.878456,81.300491 0 0 1 64.054706,-83.46498 65.878456,81.300491 0 0 1 67.65302,79.02287 65.878456,81.300491 0 0 1 -64.01105,83.51598"></path>
+        <path stroke="currentColor" stroke-width="21.1286" d="M 114.77974,274.25154 200.01157,154.27256"></path>
+        <path stroke="currentColor" stroke-width="21.1286" d="m 354.84541,296.77823 a 65.878456,81.300491 0 0 1 -67.61169,-79.07673 65.878456,81.300491 0 0 1 64.05471,-83.46498 65.878456,81.300491 0 0 1 67.65302,79.02287 65.878456,81.300491 0 0 1 -64.01105,83.51598"></path>
+        <path stroke="currentColor" stroke-width="21.1286" d="M 308.93213,274.25154 394.16395,154.27256"></path>
+        <path stroke="currentColor" stroke-width="21.1286" stroke-linecap="round" stroke-linejoin="round" d="m 152.65356,346.81827 52.6043,61.04578 49.70484,-57.83284 50.94746,58.23445 52.1901,-60.64414"></path>
     </svg>
 `;
 indicator.style.cssText = `
@@ -34,17 +34,18 @@ indicator.style.cssText = `
     height: 44px;
     color: white;
     padding: 0;
-    border: 1px solid rgba(255,255,255,0.35);
+    --webstir-dev-indicator-color: #64748b;
+    border: 0;
     border-radius: 50%;
-    background: #64748b;
+    background: transparent;
     z-index: 10000;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+    filter: drop-shadow(0 3px 8px rgba(0,0,0,0.38));
     cursor: grab;
     opacity: 0;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
-    transition: opacity 0.3s ease, background 0.2s ease, box-shadow 0.2s ease;
+    transition: opacity 0.3s ease, filter 0.2s ease;
 `;
 
 document.body.appendChild(indicator);
@@ -52,7 +53,7 @@ restoreIndicatorPosition();
 
 function updateIndicator(background, text, shouldReset = false) {
     indicator.style.opacity = '1';
-    indicator.style.background = background;
+    indicator.style.setProperty('--webstir-dev-indicator-color', background);
     indicator.title = text;
     indicator.setAttribute('aria-label', `Webstir dev server: ${text}`);
 
