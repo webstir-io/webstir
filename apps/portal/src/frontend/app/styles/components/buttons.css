@@ -11,8 +11,12 @@
     color: var(--ws-fg);
     text-decoration: none;
     font-weight: 600;
+    box-shadow: 0 0 0 0 transparent;
+    transform: translateY(0);
     transition: background-color var(--ws-duration-fast) var(--ws-ease-standard),
       border-color var(--ws-duration-fast) var(--ws-ease-standard),
+      box-shadow var(--ws-duration-fast) var(--ws-ease-standard),
+      transform var(--ws-duration-fast) var(--ws-ease-standard),
       filter var(--ws-duration-fast) var(--ws-ease-standard);
     cursor: pointer;
   }
@@ -64,9 +68,23 @@
     outline-offset: 0.125rem;
   }
 
+  [data-theme="dark"] [data-ui="btn"]:not([data-variant]) {
+    border-color: var(--ws-border);
+    background: #171717;
+    color: var(--ws-fg);
+  }
+
   :where([data-ui="btn"]):hover {
     text-decoration: none;
-    background: var(--ws-hover);
+    border-color: color-mix(in srgb, var(--ws-accent) 38%, var(--ws-border));
+    background: color-mix(in srgb, var(--ws-accent) 7%, var(--ws-bg));
+    box-shadow: 0 0.875rem 1.75rem -1.25rem color-mix(in srgb, var(--ws-fg) 35%, transparent);
+    transform: translateY(-1px);
+  }
+
+  [data-theme="dark"] [data-ui="btn"]:not([data-variant]):hover {
+    border-color: color-mix(in srgb, var(--ws-accent) 45%, var(--ws-border));
+    background: #172033;
   }
 
   :where([data-ui="btn"][data-variant="solid"][data-tone="accent"]) {
@@ -78,6 +96,7 @@
   :where([data-ui="btn"][data-variant="solid"][data-tone="accent"]):hover {
     background: var(--ws-accent-hover);
     border-color: var(--ws-accent-hover);
+    box-shadow: 0 0.875rem 1.75rem -1.25rem color-mix(in srgb, var(--ws-accent) 55%, transparent);
   }
 
   :where([data-ui="btn"][data-variant="ghost"]) {
@@ -87,6 +106,8 @@
 
   :where([data-ui="btn"][data-variant="ghost"]):hover {
     background: var(--ws-hover);
+    border-color: transparent;
+    box-shadow: none;
   }
 
   :where([data-ui="btn"][data-size="sm"]) {
@@ -97,5 +118,15 @@
   :where([data-ui="btn"][data-size="lg"]) {
     padding: 0.875rem 1.125rem;
     font-size: 1.05rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :where([data-ui="btn"]) {
+      transition: none;
+    }
+
+    :where([data-ui="btn"]):hover {
+      transform: none;
+    }
   }
 }

@@ -1,64 +1,50 @@
 <head>
   <title>Webstir</title>
-  <meta name="description" content="Documentation for building with Webstir's HTML-first full-stack workflow.">
+  <meta name="description" content="A TypeScript web framework for Bun, built for agentic tools.">
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
   <main>
     <section class="portal-hero">
       <div class="ws-container portal-hero__inner">
-        <div class="portal-hero__brand">
-          <img src="/images/webstir.svg" alt="" width="56" height="56">
-          <span>Webstir</span>
-        </div>
-        <p class="portal-hero__kicker">HTML-first full-stack workflow</p>
-        <h1>Build server-rendered apps with just enough client polish.</h1>
+        <img class="portal-hero__mark" src="/images/webstir.svg" alt="" width="112" height="112">
+        <h1 aria-label="A framework for building TypeScript web apps.">
+          <span class="portal-hero__headline portal-hero__headline--desktop" aria-hidden="true">
+            <span>A framework</span> <span>for building</span> <span>TypeScript</span> <span>web apps.</span>
+          </span>
+          <span class="portal-hero__headline portal-hero__headline--mobile" aria-hidden="true">
+            <span>A framework</span> <span>for building</span> <span>TypeScript</span> <span>web apps.</span>
+          </span>
+        </h1>
         <p class="portal-hero__lead">
-          Install the CLI, scaffold a full app, and ship document-first flows that can add fragment updates,
-          search, content navigation, and static publishing where they earn their keep.
+          Webstir runs on Bun and keeps TypeScript apps easy for agentic tools to read, change, test, and ship.
         </p>
+        <pre class="portal-hero__terminal" aria-label="Webstir command workflow"><code><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir init full my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir watch --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir test --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir publish --workspace my-app</span></code></pre>
         <div class="portal-hero__actions">
-          <a data-ui="btn" data-variant="solid" data-tone="accent" data-size="lg" href="/docs/tutorials/getting-started">Start the quickstart</a>
-          <a data-ui="btn" data-size="lg" href="/docs/reference/cli">View CLI reference</a>
+          <a data-ui="btn" data-variant="solid" data-tone="accent" data-size="lg" href="/docs/tutorials/getting-started">Start guide</a>
+          <a data-ui="btn" data-size="lg" href="/docs/reference/cli">CLI reference</a>
         </div>
-      </div>
-    </section>
-
-    <section class="portal-strip">
-      <div class="ws-container portal-strip__grid">
-        <article>
-          <h2>HTML-first forms</h2>
-          <p>Start with server-rendered documents, then layer fragment updates and navigation polish where they help.</p>
-        </article>
-        <article>
-          <h2>Packaged CLI</h2>
-          <p>Scaffold, build, watch, test, and publish from one workspace-oriented command path.</p>
-        </article>
-        <article>
-          <h2>Static publishing</h2>
-          <p>Use the same page primitives for static docs and small sites when a server is unnecessary.</p>
-        </article>
       </div>
     </section>
 
     <section class="portal-section">
       <div class="ws-container">
         <div class="portal-section__header">
-          <h2>Jump in</h2>
-          <p>Pick the path that matches what you need to do next.</p>
+          <h2>Start building</h2>
+          <p>Go from a new Bun workspace to a tested, publishable app.</p>
         </div>
         <div class="portal-link-grid">
-          <a class="portal-link" href="/docs/tutorials/getting-started">
-            <span>External quickstart</span>
-            <p>Install the packaged CLI, scaffold a full app, and run it outside the monorepo.</p>
+          <a class="portal-link portal-link--primary" href="/docs/tutorials/getting-started">
+            <span>Start guide</span>
+            <p>Install Webstir, scaffold a full app, and start the Bun watcher.</p>
           </a>
           <a class="portal-link" href="/docs/tutorials/first-app">
-            <span>First app</span>
-            <p>Enable client navigation, inspect form flow, and adapt the scaffold into your own app.</p>
+            <span>Shape the app</span>
+            <p>Add client navigation, inspect form flow, and adapt the scaffold.</p>
           </a>
           <a class="portal-link" href="/docs/reference/workflows">
             <span>CLI workflows</span>
-            <p>Reference for build, watch, test, and publish flows in one place.</p>
+            <p>Build, watch, test, and publish from the same command surface.</p>
           </a>
           <a class="portal-link" href="/docs/how-to">
             <span>How-to guides</span>
@@ -67,10 +53,6 @@
           <a class="portal-link" href="/docs/reference">
             <span>Reference</span>
             <p>Commands, templates, manifests, and package contracts.</p>
-          </a>
-          <a class="portal-link" href="/docs/explanations">
-            <span>Explanations</span>
-            <p>How the engine, pipelines, services, and dev service fit together.</p>
           </a>
         </div>
       </div>

@@ -12,6 +12,7 @@
 
   .app-brand__mark {
     display: block;
+    filter: var(--ws-logo-filter);
   }
 
   .app-nav a[href^="https://"]::after {
