@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/webstir-frontend",
-  "version": "0.1.44",
+  "version": "0.1.45",
   "description": "Frontend build and publish tooling for Webstir workspaces.",
   "type": "module",
   "main": "dist/index.js",
@@ -38,7 +38,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "test": "tsc -p tsconfig.json && BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true BROWSERSLIST_IGNORE_OLD_DATA=true bun test tests",
+    "test": "tsc -p tsconfig.json && BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA=true BROWSERSLIST_IGNORE_OLD_DATA=true bun test tests/*.test.js",
     "release": "bash scripts/publish.sh"
   },
   "files": [

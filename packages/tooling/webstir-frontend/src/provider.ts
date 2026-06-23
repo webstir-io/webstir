@@ -79,7 +79,7 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
 function applySsgPublishLayout(config: FrontendConfig): FrontendConfig {
   const distFrontend = config.paths.dist.frontend;
   const distPages = distFrontend;
-  const distContent = path.join(distFrontend, 'docs');
+  const distContent = path.join(distFrontend, config.content.basePath.slice(1, -1));
 
   return {
     ...config,

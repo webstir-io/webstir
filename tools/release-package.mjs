@@ -135,8 +135,12 @@ if (!existsSync(packageJsonPath)) {
   fail(`package.json not found in ${relativePackageDir}`);
 }
 
-console.log(`› npm version ${options.bump} --no-git-tag-version`);
-run('npm', ['version', options.bump, '--no-git-tag-version'], options.packageDir);
+console.log(`› npm version ${options.bump} --no-git-tag-version --workspaces=false`);
+run(
+  'npm',
+  ['version', options.bump, '--no-git-tag-version', '--workspaces=false'],
+  options.packageDir,
+);
 
 const packageJson = readPackageJson(options.packageDir);
 const releaseTag = getFrameworkReleaseTag(frameworkPackage, packageJson.version);

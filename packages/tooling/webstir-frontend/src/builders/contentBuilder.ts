@@ -13,6 +13,7 @@ import { getPageDirectories } from '../core/pages.js';
 import { readPageManifest, readSharedAssets } from '../assets/assetManifest.js';
 import { resolvePageAssetUrl, resolvePagesUrlPrefix } from '../utils/pagePaths.js';
 import { ensureDocsShellCriticalCss } from '../html/criticalCss.js';
+import type { FrontendContentConfig } from '../types.js';
 
 interface ContentFrontmatter {
   title?: string;
@@ -20,7 +21,7 @@ interface ContentFrontmatter {
   order?: number;
 }
 
-interface DocsNavEntry {
+interface ContentNavEntry {
   readonly path: string;
   readonly title: string;
   readonly section?: string;
@@ -46,7 +47,7 @@ interface SearchEntry {
   readonly description?: string;
   readonly headings: readonly string[];
   readonly excerpt: string;
-  readonly kind: 'docs' | 'page';
+  readonly kind: 'content' | 'page';
 }
 
 interface RenderedContentPage {
@@ -115,9 +116,9 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
     const sourcePath = path.join(contentRoot, relative);
     const markdown = await readFile(sourcePath);
     const { frontmatter, content } = extractFrontmatter(markdown);
-    const htmlBody = (await renderMarkdownDoc(content, relative)).html;
+    const htmlBody = (await renderMarkdownDoc(content, relative, config.content)).html;
 
-    const segments = resolveDocsSegments(relative);
+    const segments = resolveContentSegments(relative, config.content);
     const pagePath = path.join(...segments);
     const href = `/${segments.join('/')}/`;
     const pageTitle = resolveTitle(frontmatter, content, segments);
@@ -131,6 +132,7 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
       buildPagesUrlPrefix,
       navEntries,
       href,
+      config.content,
     );
     const mergedWithOptIn = injectGlobalOptInScripts(mergedHtml, context.enable);
 
@@ -169,17 +171,22 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
     config.paths.build.frontend,
     config.paths.build.pages,
   );
-  await removeStaleContentOutputsForRoot(config.paths.dist.content, files, pagesUrlPrefix);
+  await removeStaleContentOutputsForRoot(
+    config.paths.dist.content,
+    files,
+    pagesUrlPrefix,
+    config.content,
+  );
 
   const shared = await readSharedAssets(config.paths.dist.frontend);
   const navEntries =
     context.enable?.contentNav === true ? await collectContentManifests(context) : [];
-  const docsManifestRoot = path.join(config.paths.dist.pages, 'docs');
-  const docsManifest = await readPageManifest(docsManifestRoot, 'docs');
+  const contentManifestRoot = path.join(config.paths.dist.pages, config.content.pageName);
+  const contentManifest = await readPageManifest(contentManifestRoot, config.content.pageName);
 
-  if (!docsManifest.css || !docsManifest.js) {
+  if (!contentManifest.css || !contentManifest.js) {
     throw new Error(
-      "Content pages require the docs hub assets. Ensure 'src/frontend/pages/docs/index.css' and 'src/frontend/pages/docs/index.(ts|js)' exist, then re-run publish.",
+      `Content pages require the content hub assets. Ensure 'src/frontend/pages/${config.content.pageName}/index.css' and 'src/frontend/pages/${config.content.pageName}/index.(ts|js)' exist, then re-run publish.`,
     );
   }
 
@@ -190,12 +197,12 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
     const markdown = await readFile(sourcePath);
     const { frontmatter, content } = extractFrontmatter(markdown);
 
-    const segments = resolveDocsSegments(relative);
+    const segments = resolveContentSegments(relative, config.content);
     const pagePath = path.join(...segments);
     const href = `/${segments.join('/')}/`;
     const pageTitle = resolveTitle(frontmatter, content, segments);
 
-    const rendered = await renderMarkdownDoc(content, relative);
+    const rendered = await renderMarkdownDoc(content, relative, config.content);
     const htmlBody = rendered.html;
 
     const mergedHtml = mergeContentIntoTemplate(
@@ -207,11 +214,13 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
       pagesUrlPrefix,
       navEntries,
       href,
+      config.content,
     );
     const mergedWithOptIn = injectGlobalOptInScripts(mergedHtml, context.enable);
-    const rewritten = await rewriteContentForPublish(mergedWithOptIn, shared, docsManifest, {
+    const rewritten = await rewriteContentForPublish(mergedWithOptIn, shared, contentManifest, {
       pagesUrlPrefix,
       buildPagesUrlPrefix,
+      content: config.content,
     });
 
     const distDir = path.join(config.paths.dist.pages, pagePath);
@@ -227,7 +236,7 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
     });
   }
 
-  validateRenderedContentPages(renderedPages);
+  validateRenderedContentPages(renderedPages, config.content);
 
   for (const page of renderedPages) {
     await ensureDir(page.outputDir);
@@ -244,31 +253,33 @@ async function removeStaleContentOutputs(
     context.config.paths.build.content,
     contentFiles,
     pagesUrlPrefix,
+    context.config.content,
   );
 }
 
 async function removeStaleContentOutputsForRoot(
-  docsRoot: string,
+  outputRoot: string,
   contentFiles: readonly string[],
   pagesUrlPrefix: string,
+  contentConfig: FrontendContentConfig,
 ): Promise<void> {
-  if (!(await pathExists(docsRoot))) {
+  if (!(await pathExists(outputRoot))) {
     return;
   }
 
   const expected = new Set<string>();
   for (const relative of contentFiles) {
-    const segments = resolveDocsSegments(relative);
+    const segments = resolveContentSegments(relative, contentConfig);
     expected.add(path.join(...segments.slice(1)));
   }
 
-  const candidateIndexes = await scanGlob('**/index.html', { cwd: docsRoot });
+  const candidateIndexes = await scanGlob('**/index.html', { cwd: outputRoot });
 
-  const docsPrefix = resolvePageAssetUrl(pagesUrlPrefix, 'docs', '');
-  const docsAssetToken = docsPrefix.endsWith('/') ? docsPrefix : `${docsPrefix}/`;
+  const contentPrefix = resolvePageAssetUrl(pagesUrlPrefix, contentConfig.pageName, '');
+  const contentAssetToken = contentPrefix.endsWith('/') ? contentPrefix : `${contentPrefix}/`;
 
   for (const relativeIndex of candidateIndexes) {
-    // Keep the docs hub at `/docs/` (index.html).
+    // Keep the content hub page at the configured content base.
     if (relativeIndex === FILES.indexHtml) {
       continue;
     }
@@ -278,17 +289,17 @@ async function removeStaleContentOutputsForRoot(
       continue;
     }
 
-    const absoluteIndex = path.join(docsRoot, relativeIndex);
+    const absoluteIndex = path.join(outputRoot, relativeIndex);
     const html = await readFile(absoluteIndex);
 
-    // Only remove pages that were generated by the content pipeline (avoid deleting user-owned pages under /docs).
+    // Only remove pages that were generated by the content pipeline.
     const looksLikeContentOutput =
-      html.includes('class="docs-article"') && html.includes(docsAssetToken);
+      html.includes('class="docs-article"') && html.includes(contentAssetToken);
     if (!looksLikeContentOutput) {
       continue;
     }
 
-    await remove(path.join(docsRoot, pageDir));
+    await remove(path.join(outputRoot, pageDir));
   }
 }
 
@@ -323,7 +334,7 @@ async function buildContentManifests(context: BuilderContext): Promise<void> {
     return;
   }
 
-  await writeContentNavManifest([config.paths.build.frontend], navEntries);
+  await writeContentNavManifest([config.paths.build.frontend], navEntries, config.content);
 
   if (context.enable?.search === true) {
     const [docEntries, pageEntries] = await Promise.all([
@@ -346,7 +357,7 @@ async function publishContentManifests(context: BuilderContext): Promise<void> {
   const navEntries = hasContent ? await collectContentManifests(context) : [];
 
   if (navEntries.length > 0) {
-    await writeContentNavManifest([config.paths.dist.frontend], navEntries);
+    await writeContentNavManifest([config.paths.dist.frontend], navEntries, config.content);
   }
 
   if (context.enable?.search === true) {
@@ -361,10 +372,10 @@ async function publishContentManifests(context: BuilderContext): Promise<void> {
   }
 }
 
-async function collectContentManifests(context: BuilderContext): Promise<DocsNavEntry[]> {
+async function collectContentManifests(context: BuilderContext): Promise<ContentNavEntry[]> {
   const { config } = context;
   const contentRoot = config.paths.src.content;
-  const overrides = await loadSidebarOverrides(contentRoot);
+  const overrides = await loadSidebarOverrides(contentRoot, config.content);
 
   const files = await scanGlob('**/*.md', { cwd: contentRoot });
 
@@ -372,14 +383,14 @@ async function collectContentManifests(context: BuilderContext): Promise<DocsNav
     return [];
   }
 
-  const navEntries: DocsNavEntry[] = [];
+  const navEntries: ContentNavEntry[] = [];
 
   for (const relative of files) {
     const sourcePath = path.join(contentRoot, relative);
     const markdown = await readFile(sourcePath);
     const { frontmatter, content } = extractFrontmatter(markdown);
 
-    const segments = resolveDocsSegments(relative);
+    const segments = resolveContentSegments(relative, config.content);
     const parsed = path.parse(relative);
     const section =
       parsed.dir && parsed.dir.trim().length > 0 ? parsed.dir.split(path.sep)[0] : undefined;
@@ -388,14 +399,14 @@ async function collectContentManifests(context: BuilderContext): Promise<DocsNav
     const title = resolveTitle(frontmatter, content, segments);
     const order = frontmatter.order;
 
-    const baseEntry: DocsNavEntry = {
+    const baseEntry: ContentNavEntry = {
       path: href,
       title,
       section,
       order,
     };
 
-    const merged = applySidebarOverride(baseEntry, overrides);
+    const merged = applySidebarOverride(baseEntry, overrides, config.content);
     if (merged) {
       navEntries.push(merged);
     }
@@ -422,20 +433,97 @@ async function collectContentManifests(context: BuilderContext): Promise<DocsNav
 
 async function writeContentNavManifest(
   outputRoots: readonly string[],
-  navEntries: readonly DocsNavEntry[],
+  navEntries: readonly ContentNavEntry[],
+  contentConfig: FrontendContentConfig,
 ): Promise<void> {
   for (const outputRoot of outputRoots) {
-    const navOutputPath = path.join(outputRoot, 'docs-nav.json');
+    await removeStaleContentNavManifests(outputRoot, contentConfig);
+
+    const navOutputPath = path.join(outputRoot, contentConfig.navManifest);
 
     await ensureDir(path.dirname(navOutputPath));
     await writeFile(navOutputPath, JSON.stringify(navEntries, undefined, 2));
   }
 }
 
+async function removeStaleContentNavManifests(
+  outputRoot: string,
+  contentConfig: FrontendContentConfig,
+): Promise<void> {
+  if (!(await pathExists(outputRoot))) {
+    return;
+  }
+
+  const manifests = await scanGlob('*-nav.json', { cwd: outputRoot });
+  for (const relative of manifests) {
+    if (relative === contentConfig.navManifest) {
+      continue;
+    }
+
+    const absolutePath = path.join(outputRoot, relative);
+    const generatedBase = resolveGeneratedNavBasePath(relative);
+
+    const raw = await readFile(absolutePath);
+    const entries = parseContentNavManifest(raw, absolutePath);
+
+    if (entries.length === 0 || entries.every((entry) => entry.path.startsWith(generatedBase))) {
+      await remove(absolutePath);
+    }
+  }
+}
+
+function resolveGeneratedNavBasePath(relative: string): string {
+  const filename = path.basename(relative);
+  const suffix = '-nav.json';
+  if (!filename.endsWith(suffix)) {
+    throw new Error(`Unexpected content nav manifest path: ${relative}`);
+  }
+
+  const pageName = filename.slice(0, -suffix.length);
+  if (!pageName) {
+    throw new Error(`Expected content nav manifest to include a page name: ${relative}`);
+  }
+
+  return `/${pageName}/`;
+}
+
+function parseContentNavManifest(
+  raw: string,
+  manifestPath: string,
+): readonly Pick<ContentNavEntry, 'path'>[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read content nav manifest ${manifestPath}: ${message}`);
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Expected content nav manifest to be an array: ${manifestPath}`);
+  }
+
+  const entries: Pick<ContentNavEntry, 'path'>[] = [];
+  for (const entry of parsed) {
+    if (!entry || typeof entry !== 'object') {
+      throw new Error(`Expected content nav manifest entries to be objects: ${manifestPath}`);
+    }
+
+    const pathValue = (entry as Record<string, unknown>).path;
+    if (typeof pathValue !== 'string') {
+      throw new Error(`Expected content nav manifest entries to include path: ${manifestPath}`);
+    }
+
+    entries.push({ path: pathValue });
+  }
+
+  return entries;
+}
+
 async function collectContentSearchEntries(context: BuilderContext): Promise<SearchEntry[]> {
   const { config } = context;
   const contentRoot = config.paths.src.content;
-  const overrides = await loadSidebarOverrides(contentRoot);
+  const overrides = await loadSidebarOverrides(contentRoot, config.content);
 
   const files = await scanGlob('**/*.md', { cwd: contentRoot });
 
@@ -450,15 +538,15 @@ async function collectContentSearchEntries(context: BuilderContext): Promise<Sea
     const markdown = await readFile(sourcePath);
     const { frontmatter, content } = extractFrontmatter(markdown);
 
-    const segments = resolveDocsSegments(relative);
+    const segments = resolveContentSegments(relative, config.content);
     const href = `/${segments.join('/')}/`;
     const rawTitle = resolveTitle(frontmatter, content, segments);
-    const title = applySidebarTitleOverride(href, rawTitle, overrides);
+    const title = applySidebarTitleOverride(href, rawTitle, overrides, config.content);
     if (!title) {
       continue;
     }
 
-    const html = (await renderMarkdownDoc(content, relative)).html;
+    const html = (await renderMarkdownDoc(content, relative, config.content)).html;
     const document = load(html);
     const headings = document('h2, h3')
       .toArray()
@@ -474,7 +562,7 @@ async function collectContentSearchEntries(context: BuilderContext): Promise<Sea
       description: frontmatter.description?.trim() ? frontmatter.description.trim() : undefined,
       headings,
       excerpt,
-      kind: 'docs',
+      kind: 'content',
     });
   }
 
@@ -484,6 +572,7 @@ async function collectContentSearchEntries(context: BuilderContext): Promise<Sea
 
 async function loadSidebarOverrides(
   contentRoot: string,
+  contentConfig: FrontendContentConfig,
 ): Promise<Map<string, SidebarOverrideEntry>> {
   const overridesPath = path.join(contentRoot, '_sidebar.json');
   if (!(await pathExists(overridesPath))) {
@@ -510,7 +599,10 @@ async function loadSidebarOverrides(
         continue;
       }
 
-      const normalized = normalizeDocsOverrideHref((entry as SidebarOverrideEntry).path);
+      const normalized = normalizeContentOverrideHref(
+        (entry as SidebarOverrideEntry).path,
+        contentConfig,
+      );
       if (!normalized) {
         continue;
       }
@@ -540,7 +632,7 @@ async function loadSidebarOverrides(
         typeof (value as { path?: unknown }).path === 'string'
           ? String((value as { path?: unknown }).path)
           : key;
-      const normalized = normalizeDocsOverrideHref(rawPath);
+      const normalized = normalizeContentOverrideHref(rawPath, contentConfig);
       if (!normalized) {
         continue;
       }
@@ -579,10 +671,11 @@ function isSidebarOverrideChange(context: BuilderContext, contentRoot: string): 
 }
 
 function applySidebarOverride(
-  entry: DocsNavEntry,
+  entry: ContentNavEntry,
   overrides: ReadonlyMap<string, SidebarOverrideEntry>,
-): DocsNavEntry | null {
-  const key = normalizeDocsOverrideHref(entry.path);
+  contentConfig: FrontendContentConfig,
+): ContentNavEntry | null {
+  const key = normalizeContentOverrideHref(entry.path, contentConfig);
   const override = key ? overrides.get(key) : undefined;
   if (!override) {
     return entry;
@@ -617,8 +710,9 @@ function applySidebarTitleOverride(
   href: string,
   fallbackTitle: string,
   overrides: ReadonlyMap<string, SidebarOverrideEntry>,
+  contentConfig: FrontendContentConfig,
 ): string | null {
-  const key = normalizeDocsOverrideHref(href);
+  const key = normalizeContentOverrideHref(href, contentConfig);
   const override = key ? overrides.get(key) : undefined;
   if (!override) {
     return fallbackTitle;
@@ -635,14 +729,17 @@ function applySidebarTitleOverride(
   return title;
 }
 
-function normalizeDocsOverrideHref(value: string): string | null {
+function normalizeContentOverrideHref(
+  value: string,
+  contentConfig: FrontendContentConfig,
+): string | null {
   const trimmed = String(value ?? '').trim();
   if (!trimmed) {
     return null;
   }
 
   const withSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-  if (!withSlash.startsWith('/docs/')) {
+  if (!isContentPath(withSlash, contentConfig)) {
     return null;
   }
 
@@ -720,9 +817,9 @@ async function writeSearchManifest(
   }
 }
 
-function resolveDocsSegments(relative: string): string[] {
+function resolveContentSegments(relative: string, contentConfig: FrontendContentConfig): string[] {
   const parsed = path.parse(relative);
-  const segments: string[] = ['docs'];
+  const segments = contentBaseSegments(contentConfig);
 
   if (parsed.dir) {
     segments.push(...parsed.dir.split(path.sep));
@@ -731,12 +828,16 @@ function resolveDocsSegments(relative: string): string[] {
   const isReadme = parsed.name.toLowerCase() === 'readme';
   const isFolderIndex = parsed.name === 'index' || isReadme;
 
-  // Reserve `/docs/` for a potential docs landing page; root docs become `/docs/<name>/`.
+  // Reserve the content base for a hub page; root content files become `/<base>/<name>/`.
   if (!isFolderIndex || !parsed.dir) {
     segments.push(parsed.name);
   }
 
   return segments;
+}
+
+function contentBaseSegments(contentConfig: FrontendContentConfig): string[] {
+  return contentConfig.basePath.split('/').filter(Boolean);
 }
 
 function extractFrontmatter(markdown: string): {
@@ -835,8 +936,9 @@ function mergeContentIntoTemplate(
   description: string | undefined,
   enableContentNav: boolean,
   pagesUrlPrefix: string,
-  navEntries: readonly DocsNavEntry[],
+  navEntries: readonly ContentNavEntry[],
   currentPath: string,
+  contentConfig: FrontendContentConfig,
 ): string {
   const document = load(appHtml);
 
@@ -875,23 +977,23 @@ function mergeContentIntoTemplate(
     head.append(`<link rel="stylesheet" href="${cssHref}" />`);
   }
 
-  // Ensure docs pages load the docs layout styles.
-  const docsCssHref = resolvePageAssetUrl(
+  // Ensure content pages load the content layout styles.
+  const contentCssHref = resolvePageAssetUrl(
     pagesUrlPrefix,
-    'docs',
+    contentConfig.pageName,
     `${FILES.index}${EXTENSIONS.css}`,
   );
-  const existingDocsStylesheet =
-    head.find(`link[rel="stylesheet"][href="${docsCssHref}"]`).first().length > 0 ||
+  const existingContentStylesheet =
+    head.find(`link[rel="stylesheet"][href="${contentCssHref}"]`).first().length > 0 ||
     head
       .find('link[rel="stylesheet"]')
       .toArray()
       .some((element) => {
         const href = document(element).attr('href');
-        return typeof href === 'string' && href.includes('/docs/index.css');
+        return typeof href === 'string' && href.includes(`/${contentConfig.pageName}/index.css`);
       });
-  if (!existingDocsStylesheet) {
-    head.append(`<link rel="stylesheet" href="${docsCssHref}" />`);
+  if (!existingContentStylesheet) {
+    head.append(`<link rel="stylesheet" href="${contentCssHref}" />`);
   }
 
   // Best-effort: ensure the document has a sensible title for the content page.
@@ -921,18 +1023,27 @@ function mergeContentIntoTemplate(
 
   const contentNav =
     enableContentNav && navEntries.length > 0
-      ? buildContentNavHtml(navEntries, currentPath)
+      ? buildContentNavHtml(navEntries, currentPath, contentConfig)
       : { navHtml: '', breadcrumbHtml: '', ready: false };
+
+  const layoutData = [
+    'data-scope="docs"',
+    'data-content-nav="true"',
+    `data-content-base="${escapeHtml(contentConfig.basePath)}"`,
+    `data-content-label="${escapeHtml(contentConfig.label)}"`,
+    `data-content-nav-url="/${escapeHtml(contentConfig.navManifest)}"`,
+    `data-content-nav-ready="${contentNav.ready ? 'true' : 'false'}"`,
+  ].join(' ');
 
   const docsLayoutHtml = enableContentNav
     ? [
-        `<section class="docs-layout" data-scope="docs" data-content-nav="true" data-content-nav-ready="${contentNav.ready ? 'true' : 'false'}">`,
+        `<section class="docs-layout" ${layoutData}>`,
         '  <div class="ws-container docs-layout__inner">',
         '    <aside class="docs-sidebar" id="docs-sidebar" data-docs-sidebar>',
         '      <div class="docs-panel__header">',
-        '        <a class="docs-panel__link" href="/docs/">Docs</a>',
+        `        <a class="docs-panel__link" href="${contentConfig.basePath}">${escapeHtml(contentConfig.label)}</a>`,
         '      </div>',
-        `      <nav class="docs-nav" data-docs-nav aria-label="Docs navigation">${contentNav.navHtml}</nav>`,
+        `      <nav class="docs-nav" data-docs-nav aria-label="${escapeHtml(contentConfig.label)} navigation">${contentNav.navHtml}</nav>`,
         '    </aside>',
         '    <div class="docs-main">',
         '      <div class="docs-toolbar" data-docs-toolbar>',
@@ -960,65 +1071,92 @@ function mergeContentIntoTemplate(
   return document.root().html() ?? '';
 }
 
-type DocsNavNode = {
+type ContentNavNode = {
   segment: string;
   path: string;
   title: string;
-  children: DocsNavNode[];
+  children: ContentNavNode[];
   isPage: boolean;
   position: number;
 };
 
 function buildContentNavHtml(
-  navEntries: readonly DocsNavEntry[],
+  navEntries: readonly ContentNavEntry[],
   currentPath: string,
+  contentConfig: FrontendContentConfig,
 ): { navHtml: string; breadcrumbHtml: string; ready: boolean } {
   if (navEntries.length === 0) {
     return { navHtml: '', breadcrumbHtml: '', ready: false };
   }
 
-  const normalizedPath = normalizeDocsPath(currentPath);
-  const tree = buildContentNavTree(navEntries);
+  const normalizedPath = normalizeContentPath(currentPath, contentConfig);
+  const tree = buildContentNavTree(navEntries, contentConfig);
   const titleByPath = new Map<string, string>(
-    navEntries.map((entry) => [normalizeDocsPath(entry.path), entry.title]),
+    navEntries.map((entry) => [normalizeContentPath(entry.path, contentConfig), entry.title]),
   );
-  titleByPath.set('/docs/', titleByPath.get('/docs/') ?? 'Docs');
+  titleByPath.set(
+    contentConfig.basePath,
+    titleByPath.get(contentConfig.basePath) ?? contentConfig.label,
+  );
 
   const navHtml = renderContentNavList(tree.children, normalizedPath);
-  const breadcrumbHtml = renderContentBreadcrumb(titleByPath, normalizedPath);
+  const breadcrumbHtml = renderContentBreadcrumb(titleByPath, normalizedPath, contentConfig);
   return { navHtml, breadcrumbHtml, ready: navHtml.length > 0 };
 }
 
-function normalizeDocsPath(pathname: string): string {
-  if (!pathname.startsWith('/docs')) {
+function normalizeContentPath(pathname: string, contentConfig: FrontendContentConfig): string {
+  if (!isContentPath(pathname, contentConfig)) {
     return pathname;
   }
-  if (pathname === '/docs') {
-    return '/docs/';
+  if (pathname === contentConfig.basePath.slice(0, -1)) {
+    return contentConfig.basePath;
   }
   return pathname.endsWith('/') ? pathname : `${pathname}/`;
 }
 
-function buildContentNavTree(entries: readonly DocsNavEntry[]): DocsNavNode {
+function isContentPath(pathname: string, contentConfig: FrontendContentConfig): boolean {
+  const baseWithoutSlash = contentConfig.basePath.slice(0, -1);
+  return (
+    pathname === baseWithoutSlash ||
+    pathname === contentConfig.basePath ||
+    pathname.startsWith(contentConfig.basePath)
+  );
+}
+
+function stripContentBase(pathname: string, contentConfig: FrontendContentConfig): string[] {
+  const normalized = normalizeContentPath(pathname, contentConfig);
+  if (normalized === contentConfig.basePath) {
+    return [];
+  }
+
+  return normalized.slice(contentConfig.basePath.length).split('/').filter(Boolean);
+}
+
+function buildContentNavTree(
+  entries: readonly ContentNavEntry[],
+  contentConfig: FrontendContentConfig,
+): ContentNavNode {
   let position = 0;
-  const root: DocsNavNode = {
-    segment: 'docs',
-    path: '/docs/',
-    title: 'Docs',
+  const [rootSegment] = contentBaseSegments(contentConfig);
+  const root: ContentNavNode = {
+    segment: rootSegment ?? contentConfig.pageName,
+    path: contentConfig.basePath,
+    title: contentConfig.label,
     children: [],
     isPage: false,
     position: position++,
   };
 
   for (const entry of entries) {
-    const normalizedPath = normalizeDocsPath(entry.path);
+    const normalizedPath = normalizeContentPath(entry.path, contentConfig);
     const segments = normalizedPath.split('/').filter(Boolean);
-    if (segments.length === 0) {
+    const rootLength = contentBaseSegments(contentConfig).length;
+    if (segments.length <= rootLength) {
       continue;
     }
 
     let current = root;
-    for (let index = 1; index < segments.length; index += 1) {
+    for (let index = rootLength; index < segments.length; index += 1) {
       const segment = segments[index];
       const nodePath = `/${segments.slice(0, index + 1).join('/')}/`;
       let child = current.children.find((node) => node.segment === segment);
@@ -1044,7 +1182,7 @@ function buildContentNavTree(entries: readonly DocsNavEntry[]): DocsNavNode {
 }
 
 function renderContentNavList(
-  nodes: readonly DocsNavNode[],
+  nodes: readonly ContentNavNode[],
   currentPath: string,
   depth = 0,
 ): string {
@@ -1075,20 +1213,18 @@ function renderContentNavList(
 function renderContentBreadcrumb(
   titleByPath: ReadonlyMap<string, string>,
   currentPath: string,
+  contentConfig: FrontendContentConfig,
 ): string {
-  if (!currentPath.startsWith('/docs/')) {
+  if (!isContentPath(currentPath, contentConfig)) {
     return '';
   }
 
   const crumbs: Array<{ title: string; href: string }> = [];
-  const rootTitle = titleByPath.get('/docs/') ?? 'Docs';
-  crumbs.push({ title: rootTitle, href: '/docs/' });
+  const rootTitle = titleByPath.get(contentConfig.basePath) ?? contentConfig.label;
+  crumbs.push({ title: rootTitle, href: contentConfig.basePath });
 
-  const segments = currentPath
-    .replace(/^\/docs\/?/, '')
-    .split('/')
-    .filter(Boolean);
-  let href = '/docs/';
+  const segments = stripContentBase(currentPath, contentConfig);
+  let href = contentConfig.basePath;
   for (const segment of segments) {
     href = `${href}${segment}/`;
     const title = titleByPath.get(href) ?? toTitleCase(segment.replace(/[-_]/g, ' '));
@@ -1127,12 +1263,13 @@ function ensureMetaName(head: Cheerio<AnyNode>, name: string, content: string): 
 
 async function renderMarkdownDoc(
   markdown: string,
-  sourceRelative?: string,
+  sourceRelative: string | undefined,
+  contentConfig: FrontendContentConfig,
 ): Promise<{ html: string; headingIds: ReadonlySet<string> }> {
   const renderer = getMarkdownRenderer();
   const expanded = await expandAdmonitions(markdown, renderer);
   const rawHtml = await marked.parse(expanded, { renderer });
-  const linked = rewriteMarkdownLinks(rawHtml, sourceRelative);
+  const linked = rewriteMarkdownLinks(rawHtml, sourceRelative, contentConfig);
   const { html, headingIds } = ensureHeadingIds(linked);
   return { html, headingIds };
 }
@@ -1288,7 +1425,10 @@ function slugifyHeading(value: string): string {
     .replace(/-+/g, '-');
 }
 
-function validateRenderedContentPages(pages: readonly RenderedContentPage[]): void {
+function validateRenderedContentPages(
+  pages: readonly RenderedContentPage[],
+  contentConfig: FrontendContentConfig,
+): void {
   if (pages.length === 0) {
     return;
   }
@@ -1297,7 +1437,7 @@ function validateRenderedContentPages(pages: readonly RenderedContentPage[]): vo
     pages.map((page) => [page.href, page.headingIds]),
   );
   const knownHrefs = new Set<string>(pages.map((page) => page.href));
-  knownHrefs.add('/docs/');
+  knownHrefs.add(contentConfig.basePath);
 
   const errors: string[] = [];
 
@@ -1320,17 +1460,13 @@ function validateRenderedContentPages(pages: readonly RenderedContentPage[]): vo
         continue;
       }
 
-      const isDocsPage =
-        resolved.pathname === '/docs' ||
-        resolved.pathname === '/docs/' ||
-        resolved.pathname.startsWith('/docs/');
-      if (!isDocsPage) {
+      if (!isContentPath(resolved.pathname, contentConfig)) {
         continue;
       }
 
-      const targetHref = normalizeDocsHref(resolved.pathname);
+      const targetHref = normalizeContentHref(resolved.pathname, contentConfig);
       if (!knownHrefs.has(targetHref)) {
-        errors.push(`${page.sourcePath}: broken docs link '${href}' → '${targetHref}'`);
+        errors.push(`${page.sourcePath}: broken content link '${href}' → '${targetHref}'`);
         continue;
       }
 
@@ -1370,16 +1506,21 @@ function resolveHref(baseHref: string, href: string): URL | null {
   }
 }
 
-function normalizeDocsHref(pathname: string): string {
-  if (pathname === '/docs' || pathname === '/docs/' || pathname === '/docs/index.html') {
-    return '/docs/';
+function normalizeContentHref(pathname: string, contentConfig: FrontendContentConfig): string {
+  const contentIndexPath = `${contentConfig.basePath}index.html`;
+  if (
+    pathname === contentConfig.basePath.slice(0, -1) ||
+    pathname === contentConfig.basePath ||
+    pathname === contentIndexPath
+  ) {
+    return contentConfig.basePath;
   }
 
   if (pathname.endsWith('/index.html')) {
     return pathname.slice(0, -'index.html'.length);
   }
 
-  if (pathname.startsWith('/docs') && !pathname.endsWith('/')) {
+  if (isContentPath(pathname, contentConfig) && !pathname.endsWith('/')) {
     return `${pathname}/`;
   }
 
@@ -1396,14 +1537,15 @@ function injectGlobalOptInScripts(html: string, enable: BuilderContext['enable']
 async function rewriteContentForPublish(
   html: string,
   shared: { css?: string; js?: string } | null,
-  docsManifest: { js?: string; css?: string },
+  contentManifest: { js?: string; css?: string },
   options: {
     readonly pagesUrlPrefix: string;
     readonly buildPagesUrlPrefix: string;
+    readonly content: FrontendContentConfig;
   },
 ): Promise<string> {
   const document = load(html);
-  const { pagesUrlPrefix, buildPagesUrlPrefix } = options;
+  const { content, pagesUrlPrefix, buildPagesUrlPrefix } = options;
 
   document('script[src="/hmr.js"]').remove();
   document('script[src="/refresh.js"]').remove();
@@ -1415,21 +1557,24 @@ async function rewriteContentForPublish(
     document(`script[src="/app/app.js"]`).attr('src', `/app/${shared.js}`).attr('type', 'module');
   }
 
-  if (docsManifest.css) {
+  if (contentManifest.css) {
     const selector = [
-      `link[href="${resolvePageAssetUrl(pagesUrlPrefix, 'docs', `${FILES.index}${EXTENSIONS.css}`)}"]`,
-      `link[href="${resolvePageAssetUrl(buildPagesUrlPrefix, 'docs', `${FILES.index}${EXTENSIONS.css}`)}"]`,
+      `link[href="${resolvePageAssetUrl(pagesUrlPrefix, content.pageName, `${FILES.index}${EXTENSIONS.css}`)}"]`,
+      `link[href="${resolvePageAssetUrl(buildPagesUrlPrefix, content.pageName, `${FILES.index}${EXTENSIONS.css}`)}"]`,
     ].join(', ');
-    document(selector).attr('href', resolvePageAssetUrl(pagesUrlPrefix, 'docs', docsManifest.css));
+    document(selector).attr(
+      'href',
+      resolvePageAssetUrl(pagesUrlPrefix, content.pageName, contentManifest.css),
+    );
   }
 
-  if (docsManifest.js) {
+  if (contentManifest.js) {
     const selector = [
-      `script[src="${resolvePageAssetUrl(pagesUrlPrefix, 'docs', `${FILES.index}${EXTENSIONS.js}`)}"]`,
-      `script[src="${resolvePageAssetUrl(buildPagesUrlPrefix, 'docs', `${FILES.index}${EXTENSIONS.js}`)}"]`,
+      `script[src="${resolvePageAssetUrl(pagesUrlPrefix, content.pageName, `${FILES.index}${EXTENSIONS.js}`)}"]`,
+      `script[src="${resolvePageAssetUrl(buildPagesUrlPrefix, content.pageName, `${FILES.index}${EXTENSIONS.js}`)}"]`,
     ].join(', ');
     document(selector)
-      .attr('src', resolvePageAssetUrl(pagesUrlPrefix, 'docs', docsManifest.js))
+      .attr('src', resolvePageAssetUrl(pagesUrlPrefix, content.pageName, contentManifest.js))
       .attr('type', 'module');
   }
 
@@ -1440,7 +1585,11 @@ async function rewriteContentForPublish(
   return document.root().html() ?? html;
 }
 
-function rewriteMarkdownLinks(html: string, sourceRelative?: string): string {
+function rewriteMarkdownLinks(
+  html: string,
+  sourceRelative: string | undefined,
+  contentConfig: FrontendContentConfig,
+): string {
   const document = load(html);
   document('a[href]').each((_, element) => {
     const anchor = document(element);
@@ -1455,7 +1604,7 @@ function rewriteMarkdownLinks(html: string, sourceRelative?: string): string {
       return;
     }
 
-    const rewritten = rewriteRelativeDocsHref(href, sourceRelative);
+    const rewritten = rewriteRelativeContentHref(href, sourceRelative, contentConfig);
     if (rewritten) {
       anchor.attr('href', rewritten);
     }
@@ -1464,7 +1613,11 @@ function rewriteMarkdownLinks(html: string, sourceRelative?: string): string {
   return document.root().html() ?? html;
 }
 
-function rewriteRelativeDocsHref(href: string, sourceRelative?: string): string | null {
+function rewriteRelativeContentHref(
+  href: string,
+  sourceRelative: string | undefined,
+  contentConfig: FrontendContentConfig,
+): string | null {
   const [rawTarget, rawHash = ''] = href.split('#', 2);
   if (!rawTarget) {
     return null;
@@ -1491,7 +1644,10 @@ function rewriteRelativeDocsHref(href: string, sourceRelative?: string): string 
       const isLast = index === all.length - 1;
       return !(isLast && /^(readme|index)$/i.test(segment));
     });
-  const route = segments.length === 0 ? '/docs/' : `/docs/${segments.join('/')}/`;
+  const route =
+    segments.length === 0
+      ? contentConfig.basePath
+      : `${contentConfig.basePath}${segments.join('/')}/`;
   const hash = rawHash ? `#${rawHash}` : '';
   return `${route}${query}${hash}`;
 }

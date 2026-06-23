@@ -11,6 +11,7 @@ export interface FrontendConfig {
   readonly version: 1;
   readonly paths: FrontendPathConfig;
   readonly features: FrontendFeatureFlags;
+  readonly content: FrontendContentConfig;
 }
 
 export interface EnableFlags {
@@ -60,6 +61,13 @@ export interface FrontendFeatureFlags {
   readonly externalResourceIntegrity: boolean;
   readonly imageOptimization: boolean;
   readonly precompression: boolean;
+}
+
+export interface FrontendContentConfig {
+  readonly basePath: string;
+  readonly label: string;
+  readonly navManifest: string;
+  readonly pageName: string;
 }
 
 export interface AddPageCommandOptions extends FrontendCommandOptions {

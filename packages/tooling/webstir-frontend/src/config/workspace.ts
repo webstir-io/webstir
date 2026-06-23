@@ -1,25 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FrontendConfig, FrontendFeatureFlags } from '../types.js';
+import type { FrontendConfig, FrontendContentConfig, FrontendFeatureFlags } from '../types.js';
 import { FOLDERS } from '../core/constants.js';
 import { frontendFeatureFlagsSchema } from './schema.js';
-
-const DEFAULT_FEATURE_FLAGS: FrontendFeatureFlags = {
-  htmlSecurity: true,
-  externalResourceIntegrity: false,
-  imageOptimization: true,
-  precompression: true,
-};
 
 export function buildConfig(workspaceRoot: string): FrontendConfig {
   const srcRoot = path.join(workspaceRoot, FOLDERS.src);
   const frontendRoot = path.join(srcRoot, FOLDERS.frontend);
   const buildRoot = path.join(workspaceRoot, FOLDERS.build);
   const distRoot = path.join(workspaceRoot, FOLDERS.dist);
+  const rawConfig = loadFrontendConfig(frontendRoot);
+  const contentConfig = resolveContentConfig(rawConfig);
 
   const buildFrontend = path.join(buildRoot, FOLDERS.frontend);
   const distFrontend = path.join(distRoot, FOLDERS.frontend);
-  const srcContentRoot = resolveContentRoot(workspaceRoot, frontendRoot);
+  const srcContentRoot = resolveContentRoot(workspaceRoot, frontendRoot, rawConfig);
+  const contentPath = contentConfig.basePath.slice(1, -1);
 
   return {
     version: 1,
@@ -40,7 +36,7 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
         frontend: buildFrontend,
         app: path.join(buildFrontend, FOLDERS.app),
         pages: path.join(buildFrontend, FOLDERS.pages),
-        content: path.join(buildFrontend, FOLDERS.pages, 'docs'),
+        content: path.join(buildFrontend, FOLDERS.pages, contentPath),
         images: path.join(buildFrontend, FOLDERS.images),
         fonts: path.join(buildFrontend, FOLDERS.fonts),
         media: path.join(buildFrontend, FOLDERS.media),
@@ -50,27 +46,40 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
         frontend: distFrontend,
         app: path.join(distFrontend, FOLDERS.app),
         pages: path.join(distFrontend, FOLDERS.pages),
-        content: path.join(distFrontend, FOLDERS.pages, 'docs'),
+        content: path.join(distFrontend, FOLDERS.pages, contentPath),
         images: path.join(distFrontend, FOLDERS.images),
         fonts: path.join(distFrontend, FOLDERS.fonts),
         media: path.join(distFrontend, FOLDERS.media),
       },
     },
-    features: loadFeatureFlags(frontendRoot),
+    features: loadFeatureFlags(frontendRoot, rawConfig),
+    content: contentConfig,
   };
 }
 
-function resolveContentRoot(workspaceRoot: string, frontendRoot: string): string {
-  const defaultContentRoot = path.join(frontendRoot, 'content');
+function loadFrontendConfig(frontendRoot: string): unknown {
   const configPath = path.join(frontendRoot, 'frontend.config.json');
   if (!fs.existsSync(configPath)) {
-    return defaultContentRoot;
+    return {};
   }
 
   try {
     const raw = fs.readFileSync(configPath, 'utf8');
-    const parsed = JSON.parse(raw) as unknown;
-    const override = extractContentRoot(parsed);
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read frontend config from ${configPath}: ${message}`);
+  }
+}
+
+function resolveContentRoot(
+  workspaceRoot: string,
+  frontendRoot: string,
+  rawConfig: unknown,
+): string {
+  const defaultContentRoot = path.join(frontendRoot, 'content');
+  try {
+    const override = extractContentRoot(rawConfig);
 
     if (override === undefined) {
       return defaultContentRoot;
@@ -92,8 +101,76 @@ function resolveContentRoot(workspaceRoot: string, frontendRoot: string): string
     return path.join(workspaceRoot, trimmed);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read frontend content root from ${configPath}: ${message}`);
+    throw new Error(`Failed to read frontend content root: ${message}`);
   }
+}
+
+function resolveContentConfig(rawConfig: unknown): FrontendContentConfig {
+  const rawContent = extractContentConfig(rawConfig);
+  const basePathValue =
+    rawContent && typeof rawContent === 'object'
+      ? (rawContent as Record<string, unknown>).basePath
+      : undefined;
+  const labelValue =
+    rawContent && typeof rawContent === 'object'
+      ? (rawContent as Record<string, unknown>).label
+      : undefined;
+
+  const basePath =
+    typeof basePathValue === 'string' && basePathValue.trim()
+      ? normalizeContentBasePath(basePathValue)
+      : '/docs/';
+  const pageName = resolveContentPageName(basePath);
+  const label =
+    typeof labelValue === 'string' && labelValue.trim()
+      ? labelValue.trim()
+      : pageName === 'docs'
+        ? 'Docs'
+        : toTitleCase(pageName.replace(/[-_]/g, ' '));
+
+  return {
+    basePath,
+    label,
+    navManifest: `${pageName}-nav.json`,
+    pageName,
+  };
+}
+
+function extractContentConfig(value: unknown): unknown {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const container = value as Record<string, unknown>;
+  return container.content;
+}
+
+function normalizeContentBasePath(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('/')) {
+    throw new Error(`Expected frontend content.basePath to start with "/": ${value}`);
+  }
+
+  const withoutTrailingIndex = trimmed.replace(/\/index\.html$/i, '/');
+  const normalized = withoutTrailingIndex.endsWith('/')
+    ? withoutTrailingIndex
+    : `${withoutTrailingIndex}/`;
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length !== 1) {
+    throw new Error(
+      `Expected frontend content.basePath to be one path segment such as "/docs/" or "/company/": ${value}`,
+    );
+  }
+
+  return `/${segments[0]}/`;
+}
+
+function resolveContentPageName(basePath: string): string {
+  const [segment] = basePath.split('/').filter(Boolean);
+  if (!segment) {
+    throw new Error(`Expected frontend content.basePath to include a page segment: ${basePath}`);
+  }
+  return segment;
 }
 
 function extractContentRoot(value: unknown): unknown {
@@ -117,16 +194,9 @@ function extractContentRoot(value: unknown): unknown {
   return undefined;
 }
 
-function loadFeatureFlags(frontendRoot: string): FrontendFeatureFlags {
-  const configPath = path.join(frontendRoot, 'frontend.config.json');
-  if (!fs.existsSync(configPath)) {
-    return DEFAULT_FEATURE_FLAGS;
-  }
-
+function loadFeatureFlags(frontendRoot: string, rawConfig: unknown): FrontendFeatureFlags {
   try {
-    const raw = fs.readFileSync(configPath, 'utf8');
-    const parsed = JSON.parse(raw) as unknown;
-    const overridesSource = extractOverrideSource(parsed);
+    const overridesSource = extractOverrideSource(rawConfig);
     const overrides = frontendFeatureFlagsSchema.parse(overridesSource);
     return {
       htmlSecurity: overrides.htmlSecurity,
@@ -136,7 +206,7 @@ function loadFeatureFlags(frontendRoot: string): FrontendFeatureFlags {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to read frontend feature flags from ${configPath}: ${message}`);
+    throw new Error(`Failed to read frontend feature flags from ${frontendRoot}: ${message}`);
   }
 }
 
@@ -149,4 +219,12 @@ function extractOverrideSource(value: unknown): Record<string, unknown> {
   }
 
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }

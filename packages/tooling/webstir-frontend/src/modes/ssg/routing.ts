@@ -48,7 +48,7 @@ export async function applySsgRouting(config: FrontendConfig): Promise<void> {
       await copy(homeIndexPath, rootIndexPath);
     }
 
-    await applyDocsContentAliases(distRoot, distPagesRoot);
+    await applyContentAliases(config, distRoot, distPagesRoot);
   }
 
   await applyStaticPathAliases(config, distRoot, distPagesRoot, pageIndexMap);
@@ -60,17 +60,22 @@ export async function applySsgRouting(config: FrontendConfig): Promise<void> {
   }
 }
 
-async function applyDocsContentAliases(distRoot: string, distPagesRoot: string): Promise<void> {
+async function applyContentAliases(
+  config: FrontendConfig,
+  distRoot: string,
+  distPagesRoot: string,
+): Promise<void> {
   if (path.resolve(distRoot) === path.resolve(distPagesRoot)) {
     return;
   }
 
-  const docsRoot = path.join(distPagesRoot, 'docs');
-  if (!(await pathExists(docsRoot))) {
+  const contentRelativeRoot = config.content.basePath.slice(1, -1);
+  const contentRoot = path.join(distPagesRoot, contentRelativeRoot);
+  if (!(await pathExists(contentRoot))) {
     return;
   }
 
-  const indexes = await scanGlob('docs/**/index.html', { cwd: distPagesRoot });
+  const indexes = await scanGlob(`${contentRelativeRoot}/**/index.html`, { cwd: distPagesRoot });
 
   for (const relativeIndex of indexes) {
     const sourceIndex = path.join(distPagesRoot, relativeIndex);
