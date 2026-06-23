@@ -302,3 +302,62 @@ test('content builder supports configured content base path and nav manifest', a
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+test('content nav manifest respects sidebar order across content folders', async (t) => {
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { runBuild } = frontend;
+  const workspace = await createWorkspaceWithContent({
+    content: {
+      basePath: '/company/',
+      label: 'Company',
+    },
+  });
+
+  try {
+    const contentDir = path.join(workspace, 'src', 'frontend', 'content');
+    const sections = [
+      ['what-we-do', 'What we do', 1],
+      ['what-we-build', 'What we build', 2],
+      ['who-we-are', 'Who we are', 3],
+      ['how-we-work', 'How we work', 4],
+    ];
+
+    for (const [slug, title] of sections) {
+      const sectionDir = path.join(contentDir, slug);
+      await fs.mkdir(sectionDir, { recursive: true });
+      await fs.writeFile(path.join(sectionDir, 'index.md'), `# ${title}\n`, 'utf8');
+    }
+
+    await fs.writeFile(
+      path.join(contentDir, '_sidebar.json'),
+      JSON.stringify(
+        {
+          pages: sections.map(([slug, title, order]) => ({
+            path: `/company/${slug}/`,
+            title,
+            order,
+          })),
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    await runBuild({ workspaceRoot: workspace });
+
+    const navPath = path.join(workspace, 'build', 'frontend', 'company-nav.json');
+    const nav = JSON.parse(await fs.readFile(navPath, 'utf8'));
+    const orderedSectionPaths = nav
+      .map((entry) => entry.path)
+      .filter((pathValue) => sections.some(([slug]) => pathValue === `/company/${slug}/`));
+
+    assert.deepEqual(
+      orderedSectionPaths,
+      sections.map(([slug]) => `/company/${slug}/`),
+    );
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
