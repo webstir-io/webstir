@@ -9,13 +9,16 @@ import {
   generateSsgViewData,
 } from './modes/ssg/index.js';
 import path from 'node:path';
-import { readJson } from './utils/fs.js';
+import { emptyDir, readJson } from './utils/fs.js';
 
 export async function runBuild(options: FrontendCommandOptions): Promise<void> {
   const config = await prepareWorkspaceConfig(options.workspaceRoot);
   const enable = await readWorkspaceEnableFlags(options.workspaceRoot);
 
   console.info('[webstir-frontend] Running build pipeline...');
+  if (!options.changedFile) {
+    await emptyOutputRoot(config, 'build');
+  }
   await runPipeline(config, 'build', {
     changedFile: options.changedFile,
     enable,
@@ -36,6 +39,7 @@ export async function runPublish(options: FrontendCommandOptions): Promise<void>
     await assertNoSsgRoutes(config.paths.workspace);
   }
 
+  await emptyOutputRoot(publishConfig, 'publish');
   await runPipeline(publishConfig, 'publish', { enable, env: process.env });
   if (options.publishMode === 'ssg') {
     await generateSsgViewData(publishConfig);
@@ -55,6 +59,14 @@ export async function runRebuild(options: FrontendCommandOptions): Promise<void>
     env: process.env,
   });
   console.info('[webstir-frontend] Rebuild pipeline completed.');
+}
+
+async function emptyOutputRoot(
+  config: import('./types.js').FrontendConfig,
+  mode: 'build' | 'publish',
+): Promise<void> {
+  const outputRoot = mode === 'publish' ? config.paths.dist.frontend : config.paths.build.frontend;
+  await emptyDir(outputRoot);
 }
 
 export async function runAddPage(options: AddPageCommandOptions): Promise<void> {

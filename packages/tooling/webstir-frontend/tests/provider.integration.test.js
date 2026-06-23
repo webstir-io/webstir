@@ -154,6 +154,30 @@ test('frontend provider build emits JS bundle and manifest entry', async (t) => 
   assert.ok(result.manifest.entryPoints.some((e) => e.endsWith('pages/home/index.js')));
 });
 
+test('frontend provider non-incremental build removes stale build output', async (t) => {
+  const frontendProvider = await loadProviderOrSkip(t);
+  if (!frontendProvider) return; // skip
+  const workspace = await createWorkspace();
+
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'build' },
+    incremental: false,
+  });
+
+  const staleDir = path.join(workspace, 'build', 'frontend', 'pages', 'removed');
+  await fs.mkdir(staleDir, { recursive: true });
+  await fs.writeFile(path.join(staleDir, 'index.html'), '<main>Removed</main>', 'utf8');
+
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'build' },
+    incremental: false,
+  });
+
+  assert.equal(fssync.existsSync(staleDir), false, 'expected stale build page to be removed');
+});
+
 test('frontend provider publish produces dist assets and preserves entry in manifest', async (t) => {
   const frontendProvider = await loadProviderOrSkip(t);
   if (!frontendProvider) return; // skip
@@ -178,6 +202,35 @@ test('frontend provider publish produces dist assets and preserves entry in mani
 
   // Manifest still reflects build/frontend entry points by design
   assert.ok(publishResult.manifest.entryPoints.some((e) => e.endsWith('pages/home/index.js')));
+});
+
+test('frontend provider non-incremental publish removes stale dist output', async (t) => {
+  const frontendProvider = await loadProviderOrSkip(t);
+  if (!frontendProvider) return; // skip
+  const workspace = await createWorkspace();
+
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'build' },
+    incremental: false,
+  });
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'publish' },
+    incremental: false,
+  });
+
+  const staleDir = path.join(workspace, 'dist', 'frontend', 'removed');
+  await fs.mkdir(staleDir, { recursive: true });
+  await fs.writeFile(path.join(staleDir, 'index.html'), '<main>Removed</main>', 'utf8');
+
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'publish' },
+    incremental: false,
+  });
+
+  assert.equal(fssync.existsSync(staleDir), false, 'expected stale dist page to be removed');
 });
 
 test('frontend provider publish keeps app stylesheet when page stylesheet stays external', async (t) => {
