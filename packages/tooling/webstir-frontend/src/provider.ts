@@ -16,7 +16,7 @@ import { runPipeline } from './pipeline.js';
 import type { PipelineMode } from './pipeline.js';
 import { prepareWorkspaceConfig } from './config/setup.js';
 import type { FrontendConfig } from './types.js';
-import { readJson } from './utils/fs.js';
+import { emptyDir, readJson } from './utils/fs.js';
 import { scanGlob } from './utils/glob.js';
 import { applySsgRouting, assertNoSsgRoutes, generateSsgViewData } from './modes/ssg/index.js';
 
@@ -53,6 +53,9 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
   if (shouldRunSsgPublish) {
     await assertNoSsgRoutes(config.paths.workspace);
   }
+  if (!options.incremental) {
+    await emptyOutputRoot(publishConfig, mode);
+  }
   await runPipeline(publishConfig, mode, {
     changedFile: undefined,
     enable: workspaceMode.enable,
@@ -74,6 +77,11 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
     artifacts,
     manifest,
   };
+}
+
+async function emptyOutputRoot(config: FrontendConfig, mode: PipelineMode): Promise<void> {
+  const outputRoot = mode === 'publish' ? config.paths.dist.frontend : config.paths.build.frontend;
+  await emptyDir(outputRoot);
 }
 
 function applySsgPublishLayout(config: FrontendConfig): FrontendConfig {
