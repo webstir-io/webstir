@@ -413,16 +413,19 @@ async function collectContentManifests(context: BuilderContext): Promise<Content
   }
 
   navEntries.sort((a, b) => {
+    const aHasOrder = typeof a.order === 'number';
+    const bHasOrder = typeof b.order === 'number';
+    if (aHasOrder && bHasOrder && a.order !== b.order) {
+      return a.order - b.order;
+    }
+    if (aHasOrder !== bHasOrder) {
+      return aHasOrder ? -1 : 1;
+    }
+
     const aSection = a.section ?? '';
     const bSection = b.section ?? '';
     if (aSection !== bSection) {
       return aSection.localeCompare(bSection);
-    }
-
-    const aOrder = typeof a.order === 'number' ? a.order : 0;
-    const bOrder = typeof b.order === 'number' ? b.order : 0;
-    if (aOrder !== bOrder) {
-      return aOrder - bOrder;
     }
 
     return a.path.localeCompare(b.path);
