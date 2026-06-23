@@ -136,7 +136,11 @@ if (!existsSync(packageJsonPath)) {
 }
 
 console.log(`› npm version ${options.bump} --no-git-tag-version --workspaces=false`);
-run('npm', ['version', options.bump, '--no-git-tag-version', '--workspaces=false'], options.packageDir);
+run(
+  'npm',
+  ['version', options.bump, '--no-git-tag-version', '--workspaces=false'],
+  options.packageDir,
+);
 
 const packageJson = readPackageJson(options.packageDir);
 const releaseTag = getFrameworkReleaseTag(frameworkPackage, packageJson.version);
