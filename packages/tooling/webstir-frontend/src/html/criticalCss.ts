@@ -208,7 +208,10 @@ export function ensureDocsShellCriticalCss(document: CheerioAPI): void {
   const docsStylesheet = document('link[rel="stylesheet"]')
     .filter((_, element) => {
       const href = document(element).attr('href');
-      return typeof href === 'string' && href.includes('/docs/');
+      return (
+        typeof href === 'string' &&
+        (href.includes('/docs/') || /^\/[^/]+\/index(?:\.[^.]+)?\.css$/i.test(href))
+      );
     })
     .first();
 

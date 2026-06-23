@@ -48,7 +48,8 @@ async function createWorkspace() {
   return root;
 }
 
-function createFrontendConfig(workspace) {
+function createFrontendConfig(workspace, content = createContentConfig()) {
+  const contentPath = content.basePath.slice(1, -1);
   const distFrontend = path.join(workspace, 'dist', 'frontend');
   const distPages = path.join(distFrontend, 'pages');
 
@@ -61,7 +62,7 @@ function createFrontendConfig(workspace) {
         frontend: distFrontend,
         app: path.join(distFrontend, 'app'),
         pages: distPages,
-        content: path.join(distPages, 'docs'),
+        content: path.join(distPages, contentPath),
         images: path.join(distFrontend, 'images'),
         fonts: path.join(distFrontend, 'fonts'),
         media: path.join(distFrontend, 'media'),
@@ -71,7 +72,7 @@ function createFrontendConfig(workspace) {
         frontend: path.join(workspace, 'build', 'frontend'),
         app: path.join(workspace, 'build', 'frontend', 'app'),
         pages: path.join(workspace, 'build', 'frontend', 'pages'),
-        content: path.join(workspace, 'build', 'frontend', 'pages', 'docs'),
+        content: path.join(workspace, 'build', 'frontend', 'pages', contentPath),
         images: path.join(workspace, 'build', 'frontend', 'images'),
         fonts: path.join(workspace, 'build', 'frontend', 'fonts'),
         media: path.join(workspace, 'build', 'frontend', 'media'),
@@ -93,60 +94,59 @@ function createFrontendConfig(workspace) {
       imageOptimization: true,
       precompression: true,
     },
+    content,
+  };
+}
+
+function createContentConfig(basePath = '/docs/', label = 'Docs') {
+  const pageName = basePath.split('/').filter(Boolean)[0];
+  return {
+    basePath,
+    label,
+    navManifest: `${pageName}-nav.json`,
+    pageName,
   };
 }
 
 test('ssg workspace defaults views to renderMode=ssg when omitted', async () => {
   const workspace = await createWorkspace();
   const distFrontend = path.join(workspace, 'dist', 'frontend');
-  const distPages = path.join(distFrontend, 'pages');
 
   try {
-    await applySsgRouting({
-      version: 1,
-      paths: {
-        workspace,
-        dist: {
-          root: path.join(workspace, 'dist'),
-          frontend: distFrontend,
-          app: path.join(distFrontend, 'app'),
-          pages: distPages,
-          content: path.join(distPages, 'docs'),
-          images: path.join(distFrontend, 'images'),
-          fonts: path.join(distFrontend, 'fonts'),
-          media: path.join(distFrontend, 'media'),
-        },
-        build: {
-          root: path.join(workspace, 'build'),
-          frontend: path.join(workspace, 'build', 'frontend'),
-          app: path.join(workspace, 'build', 'frontend', 'app'),
-          pages: path.join(workspace, 'build', 'frontend', 'pages'),
-          content: path.join(workspace, 'build', 'frontend', 'pages', 'docs'),
-          images: path.join(workspace, 'build', 'frontend', 'images'),
-          fonts: path.join(workspace, 'build', 'frontend', 'fonts'),
-          media: path.join(workspace, 'build', 'frontend', 'media'),
-        },
-        src: {
-          root: path.join(workspace, 'src'),
-          frontend: path.join(workspace, 'src', 'frontend'),
-          app: path.join(workspace, 'src', 'frontend', 'app'),
-          pages: path.join(workspace, 'src', 'frontend', 'pages'),
-          content: path.join(workspace, 'src', 'frontend', 'content'),
-          images: path.join(workspace, 'src', 'frontend', 'images'),
-          fonts: path.join(workspace, 'src', 'frontend', 'fonts'),
-          media: path.join(workspace, 'src', 'frontend', 'media'),
-        },
-      },
-      features: {
-        htmlSecurity: true,
-        externalResourceIntegrity: false,
-        imageOptimization: true,
-        precompression: true,
-      },
-    });
+    await applySsgRouting(createFrontendConfig(workspace));
 
     const nestedAlias = path.join(distFrontend, 'about', 'team', 'index.html');
     assert.equal(fssync.existsSync(nestedAlias), true, `expected nested alias at ${nestedAlias}`);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('ssg routing aliases configured content pages outside the pages root', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-content-'));
+  const distFrontend = path.join(workspace, 'dist', 'frontend');
+  const distPages = path.join(distFrontend, 'pages');
+  const sourcePage = path.join(distPages, 'company', 'what-we-do', 'index.html');
+
+  await fs.mkdir(path.dirname(sourcePage), { recursive: true });
+  await fs.writeFile(sourcePage, '<!doctype html><main>what we do</main>', 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      { name: 'webstir-project', version: '1.0.0', webstir: { mode: 'ssg' } },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  try {
+    await applySsgRouting(
+      createFrontendConfig(workspace, createContentConfig('/company/', 'Company')),
+    );
+
+    const aliasPath = path.join(distFrontend, 'company', 'what-we-do', 'index.html');
+    assert.equal(fssync.existsSync(aliasPath), true, `expected content alias at ${aliasPath}`);
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

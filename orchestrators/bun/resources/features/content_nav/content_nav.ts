@@ -17,15 +17,25 @@ type NavNode = {
 };
 
 type ContentNavState = {
-    navEntries?: DocsNavEntry[];
+    navEntriesByUrl?: Map<string, DocsNavEntry[]>;
+};
+
+type ContentNavConfig = {
+    basePath: string;
+    label: string;
+    navUrl: string;
 };
 
 const STATE_KEY = '__webstirContentNavState';
 const BASE_PATH = resolveBasePath();
-const NAV_URL = withBasePath('/docs-nav.json');
 const NAV_LAYOUT_SELECTOR = '[data-content-nav="true"]';
 const APP_NAV_SELECTOR = '.app-nav';
-const APP_NAV_DOCS_SELECTOR = '[data-docs-nav-menu]';
+const APP_NAV_DOCS_SELECTOR = '[data-content-nav-menu], [data-docs-nav-menu]';
+const DEFAULT_CONTENT_CONFIG: ContentNavConfig = {
+    basePath: '/docs/',
+    label: 'Docs',
+    navUrl: withBasePath('/docs-nav.json')
+};
 
 function getState(): ContentNavState {
     const w = window as unknown as Record<string, ContentNavState | undefined>;
@@ -35,15 +45,20 @@ function getState(): ContentNavState {
     return w[STATE_KEY] as ContentNavState;
 }
 
-function normalizeDocsPath(pathname: string): string {
+function normalizeContentPath(pathname: string, config: ContentNavConfig): string {
     const normalized = stripBasePath(pathname);
-    if (!normalized.startsWith('/docs')) {
+    if (!isContentPath(normalized, config)) {
         return normalized;
     }
-    if (normalized === '/docs') {
-        return '/docs/';
+    if (normalized === config.basePath.slice(0, -1)) {
+        return config.basePath;
     }
     return normalized.endsWith('/') ? normalized : `${normalized}/`;
+}
+
+function isContentPath(pathname: string, config: ContentNavConfig): boolean {
+    const baseWithoutSlash = config.basePath.slice(0, -1);
+    return pathname === baseWithoutSlash || pathname === config.basePath || pathname.startsWith(config.basePath);
 }
 
 function resolveBasePath(): string {
@@ -88,22 +103,43 @@ function stripBasePath(value: string): string {
     return value;
 }
 
-async function fetchDocsNav(): Promise<DocsNavEntry[]> {
+function resolveLayoutConfig(layout: HTMLElement): ContentNavConfig {
+    const basePath = normalizeContentBasePath(layout.dataset.contentBase ?? DEFAULT_CONTENT_CONFIG.basePath);
+    const label = layout.dataset.contentLabel?.trim() || DEFAULT_CONTENT_CONFIG.label;
+    const navUrl = withBasePath(layout.dataset.contentNavUrl?.trim() || DEFAULT_CONTENT_CONFIG.navUrl);
+    return { basePath, label, navUrl };
+}
+
+function normalizeContentBasePath(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === '/') {
+        return DEFAULT_CONTENT_CONFIG.basePath;
+    }
+
+    const withLeading = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    const withTrailing = withLeading.endsWith('/') ? withLeading : `${withLeading}/`;
+    const segments = withTrailing.split('/').filter(Boolean);
+    return `/${segments[0] ?? 'docs'}/`;
+}
+
+async function fetchDocsNav(config: ContentNavConfig): Promise<DocsNavEntry[]> {
     const state = getState();
-    if (state.navEntries) {
-        return state.navEntries;
+    state.navEntriesByUrl ??= new Map<string, DocsNavEntry[]>();
+    const cached = state.navEntriesByUrl.get(config.navUrl);
+    if (cached) {
+        return cached;
     }
 
     try {
-        const response = await fetch(NAV_URL, { headers: { Accept: 'application/json' } });
+        const response = await fetch(config.navUrl, { headers: { Accept: 'application/json' } });
         if (!response.ok) {
-            state.navEntries = [];
+            state.navEntriesByUrl.set(config.navUrl, []);
             return [];
         }
 
         const payload = await response.json();
         if (!Array.isArray(payload)) {
-            state.navEntries = [];
+            state.navEntriesByUrl.set(config.navUrl, []);
             return [];
         }
 
@@ -116,34 +152,35 @@ async function fetchDocsNav(): Promise<DocsNavEntry[]> {
                 order: typeof entry.order === 'number' ? entry.order : undefined
             }));
 
-        state.navEntries = entries;
+        state.navEntriesByUrl.set(config.navUrl, entries);
         return entries;
     } catch {
-        state.navEntries = [];
+        state.navEntriesByUrl.set(config.navUrl, []);
         return [];
     }
 }
 
-function buildNavTree(entries: readonly DocsNavEntry[]): NavNode {
+function buildNavTree(entries: readonly DocsNavEntry[], config: ContentNavConfig): NavNode {
     let position = 0;
+    const baseSegments = config.basePath.split('/').filter(Boolean);
     const root: NavNode = {
-        segment: 'docs',
-        path: '/docs/',
-        title: 'Docs',
+        segment: baseSegments[0] ?? 'docs',
+        path: config.basePath,
+        title: config.label,
         children: [],
         isPage: false,
         position: position++
     };
 
     for (const entry of entries) {
-        const normalizedPath = normalizeDocsPath(entry.path);
+        const normalizedPath = normalizeContentPath(entry.path, config);
         const segments = normalizedPath.split('/').filter(Boolean);
-        if (segments.length === 0) {
+        if (segments.length <= baseSegments.length) {
             continue;
         }
 
         let current = root;
-        for (let index = 1; index < segments.length; index += 1) {
+        for (let index = baseSegments.length; index < segments.length; index += 1) {
             const segment = segments[index];
             const nodePath = `/${segments.slice(0, index + 1).join('/')}/`;
             let child = current.children.find((node) => node.segment === segment);
@@ -217,7 +254,7 @@ function clearAppMenuDocsNav(): void {
     existing?.remove();
 }
 
-function renderAppMenuDocsNav(tree: NavNode, currentPath: string): void {
+function renderAppMenuDocsNav(tree: NavNode, currentPath: string, config: ContentNavConfig): void {
     const appNav = document.querySelector<HTMLElement>(APP_NAV_SELECTOR);
     if (!appNav) {
         return;
@@ -225,7 +262,7 @@ function renderAppMenuDocsNav(tree: NavNode, currentPath: string): void {
 
     const section = document.createElement('div');
     section.className = 'app-nav__docs';
-    section.dataset.docsNavMenu = 'true';
+    section.dataset.contentNavMenu = 'true';
 
     const topNodes = tree.children;
     const nodes =
@@ -236,11 +273,11 @@ function renderAppMenuDocsNav(tree: NavNode, currentPath: string): void {
     const list = renderNavList(nodes, currentPath);
     section.appendChild(list);
 
-    const docsHref = withBasePath('/docs/');
-    const docsHrefNoSlash = docsHref.endsWith('/') ? docsHref.slice(0, -1) : docsHref;
-    const docsLink = appNav.querySelector<HTMLAnchorElement>(`a[href="${docsHref}"], a[href="${docsHrefNoSlash}"]`);
-    if (docsLink) {
-        docsLink.insertAdjacentElement('afterend', section);
+    const contentHref = withBasePath(config.basePath);
+    const contentHrefNoSlash = contentHref.endsWith('/') ? contentHref.slice(0, -1) : contentHref;
+    const contentLink = appNav.querySelector<HTMLAnchorElement>(`a[href="${contentHref}"], a[href="${contentHrefNoSlash}"]`);
+    if (contentLink) {
+        contentLink.insertAdjacentElement('afterend', section);
     } else {
         appNav.appendChild(section);
     }
@@ -249,9 +286,10 @@ function renderAppMenuDocsNav(tree: NavNode, currentPath: string): void {
 function renderBreadcrumb(
     root: HTMLElement,
     titleByPath: ReadonlyMap<string, string>,
-    currentPath: string
+    currentPath: string,
+    config: ContentNavConfig
 ): boolean {
-    if (!currentPath.startsWith('/docs/')) {
+    if (!isContentPath(currentPath, config)) {
         root.setAttribute('aria-hidden', 'true');
         root.dataset.breadcrumbVisible = 'false';
         root.innerHTML = '';
@@ -261,13 +299,14 @@ function renderBreadcrumb(
     const list = document.createElement('ol');
     list.className = 'docs-breadcrumb__list';
 
-    const segments = currentPath.replace(/^\/docs\/?/, '').split('/').filter(Boolean);
+    const segments =
+        currentPath === config.basePath ? [] : currentPath.slice(config.basePath.length).split('/').filter(Boolean);
     const crumbs: Array<{ title: string; href: string }> = [];
 
-    const rootTitle = titleByPath.get('/docs/') ?? 'Docs';
-    crumbs.push({ title: rootTitle, href: '/docs/' });
+    const rootTitle = titleByPath.get(config.basePath) ?? config.label;
+    crumbs.push({ title: rootTitle, href: config.basePath });
 
-    let current = '/docs/';
+    let current = config.basePath;
     for (const segment of segments) {
         current = `${current}${segment}/`;
         const title = titleByPath.get(current) ?? toTitleCase(segment.replace(/[-_]/g, ' '));
@@ -317,18 +356,20 @@ async function initContentNav(): Promise<void> {
         return;
     }
 
-    const navEntries = await fetchDocsNav();
-    const titleByPath = new Map<string, string>(
-        navEntries.map((entry) => [normalizeDocsPath(entry.path), entry.title])
-    );
-
-    const tree = buildNavTree(navEntries);
-    const currentPath = normalizeDocsPath(window.location.pathname);
-    if (navEntries.length > 0) {
-        renderAppMenuDocsNav(tree, currentPath);
-    }
-
     for (const layout of layouts) {
+        const config = resolveLayoutConfig(layout);
+        const navEntries = await fetchDocsNav(config);
+        const titleByPath = new Map<string, string>(
+            navEntries.map((entry) => [normalizeContentPath(entry.path, config), entry.title])
+        );
+        titleByPath.set(config.basePath, titleByPath.get(config.basePath) ?? config.label);
+
+        const tree = buildNavTree(navEntries, config);
+        const currentPath = normalizeContentPath(window.location.pathname, config);
+        if (navEntries.length > 0) {
+            renderAppMenuDocsNav(tree, currentPath, config);
+        }
+
         const sidebar = layout.querySelector<HTMLElement>('[data-docs-sidebar]');
         const navRoot = layout.querySelector<HTMLElement>('[data-docs-nav]');
         const breadcrumb = layout.querySelector<HTMLElement>('[data-docs-breadcrumb]');
@@ -341,7 +382,7 @@ async function initContentNav(): Promise<void> {
         }
 
         if (breadcrumb) {
-            renderBreadcrumb(breadcrumb, titleByPath, currentPath);
+            renderBreadcrumb(breadcrumb, titleByPath, currentPath, config);
         }
 
         if (hasNav) {
