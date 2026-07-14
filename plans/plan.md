@@ -9,8 +9,9 @@
 - The external-tooling, Bun-release, and unified-inspection slice has been completed and merged.
 - The agent-driven custom runtime hardening slice has been completed and merged.
 - The Webstir portal migration from Docusaurus to Webstir SSG is complete.
-- Current portal work is homepage positioning and design polish on top of the Webstir SSG site.
+- Repository review found additional safety boundaries not covered by the completed hardening slice.
+- The destructive `refresh` correction is implemented and verified for delivery.
 
 ## Immediate Next Step
 
-Finish the homepage polish delivery, then choose the next bounded Webstir slice before opening a new execmap.
+Select the next bounded repository-review finding after the `refresh` correction; scaffold output containment is the highest-value candidate.
