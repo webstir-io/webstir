@@ -1,6 +1,7 @@
 export { test, run } from './runtime.js';
 export { assert, AssertionError, equal, fail, isTrue } from './assert.js';
-export { runAddTest } from './add.js';
+export { resolveAddTestTarget, runAddTest } from './add.js';
+export type { AddTestTarget } from './add.js';
 export {
   applyRuntimeFilter,
   describeRuntimeFilter,

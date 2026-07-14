@@ -7,6 +7,8 @@ test('exports runtime helpers', async () => {
   assert.equal(typeof module.run, 'function');
   assert.equal(typeof module.discoverTestManifest, 'function');
   assert.equal(typeof module.createDefaultProviderRegistry, 'function');
+  assert.equal(typeof module.runAddTest, 'function');
+  assert.equal(typeof module.resolveAddTestTarget, 'function');
 });
 
 test('exports assertions', async () => {

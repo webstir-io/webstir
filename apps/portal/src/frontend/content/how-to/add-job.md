@@ -11,6 +11,7 @@ Scaffold a job stub and record it in the module manifest.
    - `webstir add-job cleanup --workspace "$PWD"`
    - Creates `src/backend/jobs/cleanup/index.ts` with a `run()` function.
    - Adds `{ name: "cleanup" }` to `webstir.moduleManifest.jobs` in `package.json`.
+   - Job names are portable single directory names; path separators, `.`/`..`, control characters, and platform-reserved names or characters are rejected.
 2. Add metadata as needed:
    - Schedule: `webstir add-job nightly --workspace "$PWD" --schedule "0 0 * * *"`
    - Description: `--description "Nightly maintenance window"`

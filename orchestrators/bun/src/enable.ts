@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, mkdir, stat } from 'node:fs/promises';
+import { chmod, mkdir, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +15,7 @@ import {
   type StaticFeatureAsset,
 } from './enable-assets.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
+import { assertNoExistingSymlinkComponents, normalizeScaffoldSegment } from './scaffold-path.ts';
 
 type EnableFeature =
   | 'scripts'
@@ -132,22 +133,31 @@ async function enableScripts(
   args: readonly string[],
   changes: string[],
 ): Promise<void> {
-  const pageName = args[0];
-  if (!pageName) {
+  const rawPageName = args[0];
+  if (!rawPageName) {
     throw new Error('Usage: webstir enable scripts <page> --workspace <path>.');
   }
+  const pageName = normalizeScaffoldSegment(rawPageName, 'page');
 
   const pageDir = path.join(workspaceRoot, 'src', 'frontend', 'pages', pageName);
+  const targetPath = path.join(pageDir, 'index.ts');
+  await assertNoExistingSymlinkComponents(workspaceRoot, targetPath, 'write a page script');
   if (!existsSync(pageDir)) {
     throw new Error(`Page "${pageName}" does not exist. Create it first.`);
   }
 
-  const targetPath = path.join(pageDir, 'index.ts');
   if (existsSync(targetPath)) {
     throw new Error(`Page "${pageName}" already has an index.ts script.`);
   }
 
-  await writeTextFile(targetPath, pageScriptTemplate);
+  try {
+    await writeFile(targetPath, pageScriptTemplate, { encoding: 'utf8', flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(`Page "${pageName}" already has an index.ts script.`, { cause: error });
+    }
+    throw error;
+  }
   changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
 }
 

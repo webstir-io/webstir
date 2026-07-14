@@ -1,8 +1,11 @@
 import { expect, test } from 'bun:test';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
+import { resolveAddTestTarget } from '@webstir-io/webstir-testing';
+import { resolvePublishedAddTestTarget } from '../src/add-test-target.ts';
+import { assertNoExistingSymlinkComponents } from '../src/scaffold-path.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
@@ -119,6 +122,112 @@ test('CLI add-page scaffolds an SSG page without a page script', async () => {
   }
 });
 
+test('CLI add-page rejects traversal before inspecting derived page paths', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-add-page-containment-');
+  const outsideRoot = path.join(copiedWorkspace.cleanupRoot, 'outside');
+  const outsideSentinel = path.join(outsideRoot, 'index.html');
+
+  try {
+    await mkdir(outsideRoot, { recursive: true });
+    await writeFile(outsideSentinel, 'keep', 'utf8');
+    const result = await runCli([
+      'add-page',
+      '../../../../outside',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Page name must be a non-empty single path segment');
+    expect(await readFile(outsideSentinel, 'utf8')).toBe('keep');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI add-page rejects page-tree and package.json symlinks before capture', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-add-page-symlink-');
+  const pagesRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'pages');
+  const outsidePagesRoot = path.join(copiedWorkspace.cleanupRoot, 'outside-pages');
+  const outsidePageSentinel = path.join(outsidePagesRoot, 'about', 'index.html');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const outsidePackageJsonPath = path.join(copiedWorkspace.cleanupRoot, 'outside-package.json');
+
+  try {
+    await mkdir(path.dirname(outsidePageSentinel), { recursive: true });
+    await writeFile(outsidePageSentinel, 'outside page sentinel', 'utf8');
+    await rm(pagesRoot, { recursive: true, force: true });
+    await symlink(outsidePagesRoot, pagesRoot, 'dir');
+
+    const pageTreeResult = await runCli([
+      'add-page',
+      'about',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(pageTreeResult.exitCode).toBe(1);
+    expect(pageTreeResult.stderr).toContain(
+      'Refusing to inspect page scaffold files through symbolic link',
+    );
+    expect(await readFile(outsidePageSentinel, 'utf8')).toBe('outside page sentinel');
+
+    await rm(pagesRoot, { force: true });
+    await mkdir(pagesRoot, { recursive: true });
+    const existingPageRoot = path.join(pagesRoot, 'about');
+    await mkdir(existingPageRoot, { recursive: true });
+    await symlink(outsidePageSentinel, path.join(existingPageRoot, 'index.html'), 'file');
+
+    const existingPageResult = await runCli([
+      'add-page',
+      'about',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(existingPageResult.exitCode).toBe(1);
+    expect(existingPageResult.stderr).toContain("Page 'about' already exists.");
+    expect(await readFile(outsidePageSentinel, 'utf8')).toBe('outside page sentinel');
+
+    await rm(existingPageRoot, { recursive: true, force: true });
+    const packageJsonSentinel = await readFile(packageJsonPath, 'utf8');
+    await writeFile(outsidePackageJsonPath, packageJsonSentinel, 'utf8');
+    await rm(packageJsonPath, { force: true });
+    await symlink(outsidePackageJsonPath, packageJsonPath, 'file');
+
+    const packageJsonResult = await runCli([
+      'add-page',
+      'about',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(packageJsonResult.exitCode).toBe(1);
+    expect(packageJsonResult.stderr).toContain(
+      'Refusing to inspect workspace package.json through symbolic link',
+    );
+    expect(await readFile(outsidePackageJsonPath, 'utf8')).toBe(packageJsonSentinel);
+    expect(existsSync(path.join(pagesRoot, 'about'))).toBe(false);
+
+    await rm(packageJsonPath, { force: true });
+    await mkdir(packageJsonPath);
+    const nonRegularPackageResult = await runCli([
+      'add-page',
+      'about',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(nonRegularPackageResult.exitCode).toBe(1);
+    expect(nonRegularPackageResult.stderr).toContain(
+      'inspect workspace package.json; path is not a regular file',
+    );
+    expect(existsSync(path.join(pagesRoot, 'about'))).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI add-test scaffolds a root-level test file', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-add-spa-');
 
@@ -187,6 +296,148 @@ test('CLI add-test scaffolds a nested test file and reports duplicate no-op runs
     expect(secondRun.stdout).toContain(
       'File already exists: src/frontend/pages/home/tests/page.test.ts',
     );
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI add-test rejects traversal without writing outside src', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-add-test-containment-');
+  const outsideSentinel = path.join(copiedWorkspace.cleanupRoot, 'sentinel.txt');
+
+  try {
+    await writeFile(outsideSentinel, 'keep', 'utf8');
+    const result = await runCli([
+      'add-test',
+      '../escape',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid test name or path');
+    expect(existsSync(path.join(copiedWorkspace.workspaceRoot, 'tests', 'escape.test.ts'))).toBe(
+      false,
+    );
+    expect(await readFile(outsideSentinel, 'utf8')).toBe('keep');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('published add-test fallback resolver preserves safe nesting and rejects unsafe paths', () => {
+  const workspaceRoot = path.join(repoRoot, '.webstir-add-test-published-fallback');
+  const target = resolvePublishedAddTestTarget(
+    workspaceRoot,
+    'frontend\\pages\\home\\page.test.ts',
+  );
+
+  expect(target).toEqual({
+    normalizedName: 'frontend/pages/home/page',
+    relativePath: path.join('src', 'frontend', 'pages', 'home', 'tests', 'page.test.ts'),
+    absolutePath: path.join(
+      workspaceRoot,
+      'src',
+      'frontend',
+      'pages',
+      'home',
+      'tests',
+      'page.test.ts',
+    ),
+  });
+  expect(resolveAddTestTarget(workspaceRoot, 'frontend\\pages\\home\\page.test.ts')).toEqual(
+    target,
+  );
+
+  const invalidNames = [
+    '',
+    '.test.ts',
+    '/tmp/escape',
+    'C:\\temp\\escape',
+    '\\\\server\\share\\escape',
+    'frontend//escape',
+    'frontend/./escape',
+    'frontend/../escape',
+    'escape\0name',
+    'control/\u0001name',
+    'control/name\u007f',
+    'bad<name',
+    'bad>name',
+    'bad:name',
+    'bad"name',
+    'bad|name',
+    'bad?name',
+    'bad*name',
+    'frontend./page',
+    'frontend /page',
+    'page.',
+    'page .test.ts',
+    'CON.txt',
+    'CON .txt',
+    'prn.test.ts',
+    'frontend/AUX.data/page',
+    'NUL.json',
+    'COM1.log',
+    'com9',
+    'COM¹',
+    'com².log',
+    'COM³.txt',
+    'LPT1.foo',
+    'lpt9',
+    'LPT¹',
+    'lpt².log',
+    'LPT³.txt',
+    'CONIN$',
+    'conout$.json',
+  ];
+  for (const name of invalidNames) {
+    expect(() => resolvePublishedAddTestTarget(workspaceRoot, name)).toThrow(
+      'Invalid test name or path',
+    );
+    expect(() => resolveAddTestTarget(workspaceRoot, name)).toThrow('Invalid test name or path');
+  }
+
+  const validNames = [
+    'frontend/页面/über test',
+    'devices/COM10/report name',
+    'devices/LPT0/report',
+    'devices/foo.CON/report',
+    'devices/CON-file/report',
+  ];
+  for (const name of validNames) {
+    expect(resolvePublishedAddTestTarget(workspaceRoot, name)).toEqual(
+      resolveAddTestTarget(workspaceRoot, name),
+    );
+  }
+});
+
+test('published add-test fallback rejects existing symlink components', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-add-test-fallback-symlink-');
+  const outsideRoot = path.join(copiedWorkspace.cleanupRoot, 'outside');
+  const linkedRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'linked');
+
+  try {
+    await mkdir(outsideRoot, { recursive: true });
+    await symlink(outsideRoot, linkedRoot, 'dir');
+    const target = resolvePublishedAddTestTarget(copiedWorkspace.workspaceRoot, 'linked/escape');
+
+    await expect(
+      assertNoExistingSymlinkComponents(
+        copiedWorkspace.workspaceRoot,
+        target.absolutePath,
+        'scaffold a test',
+      ),
+    ).rejects.toThrow('Refusing to scaffold a test through symbolic link');
+    const result = await runCli([
+      'add-test',
+      'linked/escape',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Refusing to scaffold a test through symbolic link');
+    expect(existsSync(path.join(outsideRoot, 'tests', 'escape.test.ts'))).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

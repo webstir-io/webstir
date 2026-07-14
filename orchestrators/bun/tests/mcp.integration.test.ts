@@ -154,6 +154,44 @@ test('MCP scaffold_page uses a typed input contract and creates the page', async
   }
 });
 
+test('MCP scaffold tools reject path traversal before mutating the workspace', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-mcp-scaffold-safety-');
+  const { client, transport } = await connectClient({
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
+  });
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const packageJsonBefore = await readFile(packageJsonPath, 'utf8');
+
+  try {
+    const pageResult = await client.callTool({
+      name: 'scaffold_page',
+      arguments: {
+        workspace: copiedWorkspace.workspaceRoot,
+        name: '../../../../escaped-page',
+      },
+    });
+    const jobResult = await client.callTool({
+      name: 'scaffold_job',
+      arguments: {
+        workspace: copiedWorkspace.workspaceRoot,
+        name: '../../../../escaped-job',
+      },
+    });
+
+    expect(pageResult.isError).toBe(true);
+    expect(JSON.stringify(pageResult.content)).toContain('single path segment');
+    expect(jobResult.isError).toBe(true);
+    expect(JSON.stringify(jobResult.content)).toContain('Invalid job name');
+    expect(existsSync(path.join(copiedWorkspace.cleanupRoot, 'escaped-page'))).toBe(false);
+    expect(existsSync(path.join(copiedWorkspace.cleanupRoot, 'escaped-job'))).toBe(false);
+    expect(existsSync(path.join(copiedWorkspace.workspaceRoot, '.webstir'))).toBe(false);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJsonBefore);
+  } finally {
+    await transport.close();
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('MCP scaffold_route keeps the route creation flow narrow and typed', async () => {
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-mcp-route-api-');
   const { client, transport } = await connectClient({

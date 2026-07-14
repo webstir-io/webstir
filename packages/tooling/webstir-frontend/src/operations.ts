@@ -1,6 +1,6 @@
 import type { AddPageCommandOptions, EnableFlags, FrontendCommandOptions } from './types.js';
 import { runPipeline } from './pipeline.js';
-import { createPageScaffold } from './html/pageScaffold.js';
+import { createPageScaffold, preflightPageScaffold } from './html/pageScaffold.js';
 import { prepareWorkspaceConfig } from './config/setup.js';
 import {
   applySsgRouting,
@@ -70,14 +70,18 @@ async function emptyOutputRoot(
 }
 
 export async function runAddPage(options: AddPageCommandOptions): Promise<void> {
+  const { pageName } = await preflightPageScaffold({
+    workspaceRoot: options.workspaceRoot,
+    pageName: options.pageName,
+  });
+  const isSsgWorkspace = await detectSsgWorkspace(options.workspaceRoot);
+  const effectiveSsg = options.ssg ?? isSsgWorkspace;
   const config = await prepareWorkspaceConfig(options.workspaceRoot);
   console.info('[webstir-frontend] Creating page scaffold...');
 
-  const isSsgWorkspace = await detectSsgWorkspace(options.workspaceRoot);
-  const effectiveSsg = options.ssg ?? isSsgWorkspace;
   await createPageScaffold({
     workspaceRoot: options.workspaceRoot,
-    pageName: options.pageName,
+    pageName,
     mode: effectiveSsg ? 'ssg' : 'standard',
     paths: {
       pages: config.paths.src.pages,
@@ -87,7 +91,7 @@ export async function runAddPage(options: AddPageCommandOptions): Promise<void> 
   if (effectiveSsg) {
     await ensureSsgViewMetadataForPage({
       workspaceRoot: options.workspaceRoot,
-      pageName: options.pageName,
+      pageName,
     });
   }
   console.info('[webstir-frontend] Page scaffold created.');
