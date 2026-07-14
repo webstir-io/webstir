@@ -4,7 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { runAddPage } from '@webstir-io/webstir-frontend';
+import { resolvePublishedAddTestTarget } from './add-test-target.ts';
 import { monorepoRoot, packageRoot } from './paths.ts';
+import { assertNoExistingSymlinkComponents, normalizeScaffoldSegment } from './scaffold-path.ts';
 
 export interface RunAddPageOptions {
   readonly workspaceRoot: string;
@@ -30,19 +32,45 @@ interface AddTestInvocationResult {
   readonly relativePath: string;
 }
 
+interface PublishedAddTestModule {
+  readonly runAddTest?: AddTestRunner;
+  readonly resolveAddTestTarget?: unknown;
+}
+
+type AddTestRunner = (options: {
+  readonly workspaceRoot: string;
+  readonly name: string;
+}) => Promise<AddTestInvocationResult>;
+
 export async function runAddPageCommand(options: RunAddPageOptions): Promise<AddCommandResult> {
-  const pageName = options.args[0];
-  if (!pageName) {
+  const rawPageName = options.args[0];
+  if (!rawPageName) {
     throw new Error('Usage: webstir add-page <name> --workspace <path>.');
   }
+  const pageName = normalizeScaffoldSegment(rawPageName, 'page');
 
   const pageRoot = path.join(options.workspaceRoot, 'src', 'frontend', 'pages', pageName);
+  const packageJsonPath = path.join(options.workspaceRoot, 'package.json');
+  await assertNoExistingSymlinkComponents(
+    options.workspaceRoot,
+    pageRoot,
+    'inspect page scaffold files',
+  );
+  if (existsSync(pageRoot)) {
+    throw new Error(`Page '${pageName}' already exists.`);
+  }
+  await assertNoExistingSymlinkComponents(
+    options.workspaceRoot,
+    packageJsonPath,
+    'inspect workspace package.json',
+    'regular-file',
+  );
   const trackedPaths = [
     path.join(pageRoot, 'index.html'),
     path.join(pageRoot, 'index.css'),
     path.join(pageRoot, 'index.ts'),
     path.join(pageRoot, 'tests', `${path.basename(pageName)}.test.ts`),
-    path.join(options.workspaceRoot, 'package.json'),
+    packageJsonPath,
   ];
   const before = await captureFileState(trackedPaths);
 
@@ -66,7 +94,6 @@ export async function runAddTestCommand(options: RunAddTestOptions): Promise<Add
   if (!nameArg) {
     throw new Error('Usage: webstir add-test <name-or-path> --workspace <path>.');
   }
-
   const runAddTest = await loadAddTestRunner();
   const result = await runAddTest({
     workspaceRoot: options.workspaceRoot,
@@ -84,20 +111,13 @@ export async function runAddTestCommand(options: RunAddTestOptions): Promise<Add
   };
 }
 
-async function loadAddTestRunner(): Promise<
-  (options: {
-    readonly workspaceRoot: string;
-    readonly name: string;
-  }) => Promise<AddTestInvocationResult>
-> {
-  const mod = (await import('@webstir-io/webstir-testing')) as {
-    runAddTest?: (options: {
-      readonly workspaceRoot: string;
-      readonly name: string;
-    }) => Promise<AddTestInvocationResult>;
-  };
-  if (typeof mod.runAddTest === 'function') {
-    return mod.runAddTest;
+async function loadAddTestRunner(): Promise<AddTestRunner> {
+  const mod = (await import('@webstir-io/webstir-testing')) as PublishedAddTestModule;
+  const runAddTest = mod.runAddTest;
+  if (typeof runAddTest === 'function') {
+    return typeof mod.resolveAddTestTarget === 'function'
+      ? runAddTest
+      : withPublishedAddTestTargetGuards((options) => runAddTest(options));
   }
 
   if (monorepoRoot) {
@@ -105,14 +125,42 @@ async function loadAddTestRunner(): Promise<
   }
 
   // The published regular-install path exposes the add-test binary before it exposes the helper.
-  return async (options) => await runPublishedAddTestCli(options.workspaceRoot, options.name);
+  return withPublishedAddTestTargetGuards(
+    async (options, target) =>
+      await runPublishedAddTestCli(options.workspaceRoot, options.name, target),
+  );
+}
+
+function withPublishedAddTestTargetGuards(
+  run: (
+    options: Parameters<AddTestRunner>[0],
+    target: ReturnType<typeof resolvePublishedAddTestTarget>,
+  ) => ReturnType<AddTestRunner>,
+): AddTestRunner {
+  return async (options) => {
+    const target = resolvePublishedAddTestTarget(options.workspaceRoot, options.name);
+    await assertNoExistingSymlinkComponents(
+      options.workspaceRoot,
+      target.absolutePath,
+      'scaffold a test',
+      'regular-file',
+    );
+    const result = await run(options, target);
+    await assertNoExistingSymlinkComponents(
+      options.workspaceRoot,
+      target.absolutePath,
+      'scaffold a test',
+      'regular-file',
+    );
+    return result;
+  };
 }
 
 async function runPublishedAddTestCli(
   workspaceRoot: string,
   name: string,
+  target: ReturnType<typeof resolvePublishedAddTestTarget>,
 ): Promise<AddTestInvocationResult> {
-  const target = resolveAddTestTarget(workspaceRoot, name);
   const existedBefore = existsSync(target.absolutePath);
   const binaryPath = path.join(
     packageRoot,
@@ -146,36 +194,6 @@ async function runPublishedAddTestCli(
     normalizedName: target.normalizedName,
     created: !existedBefore,
     relativePath: target.relativePath,
-  };
-}
-
-function resolveAddTestTarget(
-  workspaceRoot: string,
-  rawName: string,
-): {
-  readonly normalizedName: string;
-  readonly relativePath: string;
-  readonly absolutePath: string;
-} {
-  const normalizedName = rawName
-    .trim()
-    .replace(/\\/g, '/')
-    .replace(/(\.test\.ts)$/i, '');
-  const hasSlash = normalizedName.includes('/');
-
-  const relativePath = hasSlash
-    ? path.join(
-        'src',
-        path.posix.dirname(normalizedName),
-        'tests',
-        `${path.posix.basename(normalizedName)}.test.ts`,
-      )
-    : path.join('src', 'tests', `${normalizedName}.test.ts`);
-
-  return {
-    normalizedName,
-    relativePath,
-    absolutePath: path.join(workspaceRoot, relativePath),
   };
 }
 

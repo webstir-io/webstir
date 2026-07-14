@@ -1,10 +1,11 @@
 import { expect, test } from 'bun:test';
+import os from 'node:os';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
-import { copyDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
@@ -265,7 +266,10 @@ test('CLI enables gh-deploy with Bun-native deploy scaffolding', async () => {
 
 test('CLI enables page scripts once and rejects duplicate scaffold attempts', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
-  const firstRun = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['scripts', 'home']);
+  const firstRun = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, [
+    'scripts',
+    '  home  ',
+  ]);
 
   expect(firstRun.exitCode).toBe(0);
   expect(firstRun.stderr).toBe('');
@@ -278,4 +282,94 @@ test('CLI enables page scripts once and rejects duplicate scaffold attempts', as
   const secondRun = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['scripts', 'home']);
   expect(secondRun.exitCode).toBe(1);
   expect(secondRun.stderr).toContain('already has an index.ts script');
+});
+
+test('CLI rejects unsafe page script names without touching the workspace or outside files', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-scripts-safe-');
+  const externalRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-enable-scripts-outside-'));
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  const pagesRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'pages');
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+
+  try {
+    const traversalName = path.relative(pagesRoot, externalRoot).split(path.sep).join('/');
+    for (const pageName of [
+      traversalName,
+      traversalName.replaceAll('/', '\\'),
+      '.',
+      '..',
+      'bad\nname',
+      'home\n',
+      '\thome',
+      'foo:bar',
+      'NUL',
+      'COM¹.txt',
+    ]) {
+      const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, [
+        'scripts',
+        pageName,
+      ]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('Invalid page name');
+    }
+
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
+    expect(existsSync(path.join(externalRoot, 'index.ts'))).toBe(false);
+    expect(
+      existsSync(
+        path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'pages', 'home', 'index.ts'),
+      ),
+    ).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI rejects symlinked page script ancestors and targets without following them', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-scripts-symlink-');
+  const externalRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'webstir-enable-scripts-symlink-outside-'),
+  );
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  const linkedTargetPath = path.join(externalRoot, 'linked-index.ts');
+  await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+  await writeFile(linkedTargetPath, 'target-sentinel', 'utf8');
+
+  try {
+    const pagesRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'pages');
+    const linkedPagePath = path.join(pagesRoot, 'linked-page');
+    await symlink(externalRoot, linkedPagePath, 'dir');
+
+    const ancestorResult = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, [
+      'scripts',
+      'linked-page',
+    ]);
+    expect(ancestorResult.exitCode).toBe(1);
+    expect(ancestorResult.stderr).toContain('symbolic link');
+    expect(existsSync(path.join(externalRoot, 'index.ts'))).toBe(false);
+
+    const homeRoot = path.join(pagesRoot, 'home');
+    await mkdir(homeRoot, { recursive: true });
+    await symlink(linkedTargetPath, path.join(homeRoot, 'index.ts'), 'file');
+
+    const targetResult = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, [
+      'scripts',
+      'home',
+    ]);
+    expect(targetResult.exitCode).toBe(1);
+    expect(targetResult.stderr).toContain('symbolic link');
+
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
+    expect(await readFile(linkedTargetPath, 'utf8')).toBe('target-sentinel');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
+  }
 });

@@ -20,7 +20,7 @@ Typical frontend scaffold:
 
 - `src/frontend/app/app.html`
 - `src/frontend/app/**`
-- `src/frontend/pages/<page>/index.html|css|ts`
+- `src/frontend/pages/<page>/index.html|css` plus `index.ts` for standard pages
 - `src/frontend/{content,images,fonts,media}/**`
 
 Typical backend scaffold:
@@ -32,8 +32,8 @@ Typical backend scaffold:
 
 ## Conventions
 - Base HTML requires a `<main>` in `src/frontend/app/app.html` for page merge.
-- Page folder names must be URL-safe: letters, numbers, `_` and `-`.
-- Each page has `index.html`, `index.css`, `index.ts`.
+- Page folder names must be one non-empty path segment without separators, `.` / `..`, NUL bytes, or platform-reserved names and characters.
+- Each page has `index.html` and `index.css`; standard pages also have `index.ts`, while SSG page scaffolds omit it by default.
 - Backend entry is `src/backend/index.ts`.
 - Fresh `api` and `full` scaffolds keep `src/backend/index.ts` thin and use it to boot the package-managed Bun runtime.
 - Manifest-backed route and demo logic lives in `src/backend/module.ts`.
@@ -68,13 +68,14 @@ Typical backend scaffold:
 
 ### add-page
 - Command: `webstir add-page <name> --workspace <path>`
-- Delegates to `webstir-frontend add-page` (TypeScript CLI) to scaffold `index.html|css|ts`.
+- Calls the canonical `@webstir-io/webstir-frontend` helper to scaffold `index.html|css` plus `index.ts` for standard pages.
 - Does not modify existing pages or `app.html`.
-- Name normalization: trims, lowercases, replaces spaces with `-`.
+- Name validation: rejects control characters, trims surrounding spacing, preserves case and internal spaces, and requires one portable non-empty path segment (not `.` or `..`, a platform-reserved name, or a name containing reserved characters).
 
 ### add-test
 - Command: `webstir add-test <name-or-path> --workspace <path>`
-- Delegates to `webstir-testing-add` (TypeScript CLI) to create `<name>.test.ts` under the nearest `tests/` directory.
+- Uses the canonical `@webstir-io/webstir-testing` helper to create `<name>.test.ts` under the nearest `tests/` directory; older published installs fall back to `webstir-testing-add`.
+- Validates every path segment for portable filenames before creating directories or files.
 - Works for both frontend and backend tests.
 
 ## Backend Template

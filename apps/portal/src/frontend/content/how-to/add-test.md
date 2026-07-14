@@ -14,7 +14,7 @@ Scaffold a new `.test.ts` in the nearest `tests/` folder so it runs with the `te
 - In this repo: `bun run webstir -- add-test <name-or-path> --workspace "$PWD/<workspace>"`
 
 ## Inputs
-- `<name-or-path>`: file name or relative path. The workflow resolves the closest `tests/` folder from the provided context.
+- `<name-or-path>`: portable file name or relative path. Absolute paths, empty or `.`/`..` segments, control characters, and platform-reserved names or characters are rejected. The workflow resolves the closest `tests/` folder from the provided context.
 
 ## Steps
 1. Resolve the target `tests/` folder from the provided path.
@@ -25,7 +25,7 @@ Scaffold a new `.test.ts` in the nearest `tests/` folder so it runs with the `te
 - New test file: `<resolved-tests-folder>/<name>.test.ts`.
 
 ## Errors & Exit Codes
-- Non-zero if the path is invalid, the file exists, or file IO fails.
+- Non-zero if the path is invalid or file IO fails. Existing files are reported as a successful no-op.
 
 ## Related Docs
 - Workflows — [workflows](../reference/workflows.md)

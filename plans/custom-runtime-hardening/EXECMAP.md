@@ -83,6 +83,12 @@ Use coding agents to make Webstir's custom runtime pieces technically sound by t
   - Prove missing, malformed, unsupported, and non-Webstir targets remain unchanged while valid refresh and mode conversion continue to work.
   - Progress: `refresh` now resolves an existing target, rejects filesystem/home roots and external manifest symlinks, validates the Webstir descriptor, fully stages the replacement before isolating the target, reserves the destination exclusively, and verifies directory/manifest identity before cleanup. Focused invalid-target, failed-preparation, destination-conflict, mode-conversion, metadata-preservation, orchestrator, and required repository gates pass.
 
+- [x] Contain name-derived scaffold output paths found by repository review.
+  - Keep page and job names to one safe directory segment while preserving documented nested `add-test` paths.
+  - Reject traversal, absolute paths, non-portable path segments, symlink ancestors, and non-regular fixed metadata inputs before scaffold mutation.
+  - Cover direct package, CLI, `enable scripts`, agent, and MCP entry points through canonical implementations plus the published add-test compatibility fallback.
+  - Progress: page, test, job, and page-script scaffolds now validate portable names before derived-path access; reject escaping output paths, metadata symlinks, and non-regular fixed inputs; escape generated page text; and use exclusive leaf creation where applicable. Focused package, CLI, enable, and MCP regressions prove rejected inputs leave outside sentinels and workspace metadata unchanged.
+
 ## Done When
 
 - Each custom subsystem has explicit soundness criteria and focused failure-mode coverage.
@@ -91,4 +97,5 @@ Use coding agents to make Webstir's custom runtime pieces technically sound by t
 - `inspect`, `doctor`, `repair`, or `agent validate` expose enough subsystem truth for agents to work without guessing.
 - One generated-app trial demonstrates whether an agent can safely make app-level changes without modifying Webstir internals.
 - `refresh` cannot delete an unverified directory or a filesystem/home root.
+- Name-derived page, test, job, and page-script scaffolds cannot escape their documented workspace subtrees through traversal or existing symlink components.
 - The repo's required gate passes, and `plans/plan.md` accurately reflects the active or completed state.

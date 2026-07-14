@@ -11,7 +11,8 @@
 - The Webstir portal migration from Docusaurus to Webstir SSG is complete.
 - Repository review found additional safety boundaries not covered by the completed hardening slice.
 - The destructive `refresh` correction is implemented and verified for delivery.
+- Name-derived scaffold output containment is implemented and verified for delivery.
 
 ## Immediate Next Step
 
-Select the next bounded repository-review finding after the `refresh` correction; scaffold output containment is the highest-value candidate.
+Select the next bounded repository-review finding; provider-authored asset containment and fail-closed provider diagnostics are the leading candidates.

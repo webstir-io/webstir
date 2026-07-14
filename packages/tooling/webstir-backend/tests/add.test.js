@@ -206,6 +206,65 @@ test('runAddRoute preserves interaction, session, form, and fragment metadata', 
   ]);
 });
 
+test('route metadata operations reject a symlinked workspace manifest', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-route-manifest-symlink-');
+  const externalRoot = await createTempWorkspace('webstir-backend-route-manifest-symlink-outside-');
+  const externalPackageJsonPath = path.join(externalRoot, 'package.json');
+  const packageJson = `${JSON.stringify(
+    {
+      name: '@demo/api',
+      version: '1.0.0',
+      type: 'module',
+      webstir: {
+        mode: 'api',
+        moduleManifest: {
+          routes: [{ name: 'health', method: 'GET', path: '/api/health' }],
+        },
+      },
+    },
+    null,
+    2,
+  )}\n`;
+  await fs.writeFile(externalPackageJsonPath, packageJson, 'utf8');
+  await fs.symlink(externalPackageJsonPath, path.join(workspace, 'package.json'), 'file');
+
+  await assert.rejects(
+    runAddRoute({ workspaceRoot: workspace, name: 'status' }),
+    /workspace manifest path through symbolic link/,
+  );
+  await assert.rejects(
+    runUpdateRouteContract({
+      workspaceRoot: workspace,
+      method: 'GET',
+      path: '/api/health',
+      summary: 'Health status',
+    }),
+    /workspace manifest path through symbolic link/,
+  );
+
+  assert.equal(await fs.readFile(externalPackageJsonPath, 'utf8'), packageJson);
+});
+
+test('route metadata operations reject a non-regular workspace manifest', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-route-manifest-directory-');
+  const packageJsonPath = path.join(workspace, 'package.json');
+  await fs.mkdir(packageJsonPath);
+
+  await assert.rejects(
+    runAddRoute({ workspaceRoot: workspace, name: 'status' }),
+    /workspace manifest path; path is not a regular file/,
+  );
+  await assert.rejects(
+    runUpdateRouteContract({
+      workspaceRoot: workspace,
+      method: 'GET',
+      path: '/api/health',
+      summary: 'Health status',
+    }),
+    /workspace manifest path; path is not a regular file/,
+  );
+});
+
 test('runAddJob writes a job scaffold and preserves description in a valid manifest', async () => {
   const workspace = await createTempWorkspace('webstir-backend-add-job-');
 
@@ -227,7 +286,7 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
 
   const result = await runAddJob({
     workspaceRoot: workspace,
-    name: 'nightly',
+    name: '  nightly  ',
     schedule: 'rate(5 minutes)',
     description: 'Nightly maintenance run',
     priority: '5',
@@ -276,6 +335,181 @@ test('runAddJob writes a job scaffold and preserves description in a valid manif
   ]);
 });
 
+test('runAddJob rejects unsafe path segments before mutating the workspace', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-containment-');
+  const externalRoot = await createTempWorkspace('webstir-backend-add-job-outside-');
+  const packageJsonPath = path.join(workspace, 'package.json');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  const packageJson = `${JSON.stringify(
+    {
+      name: '@demo/api',
+      version: '1.0.0',
+      type: 'module',
+      webstir: { mode: 'api', moduleManifest: {} },
+    },
+    null,
+    2,
+  )}\n`;
+  await fs.writeFile(packageJsonPath, packageJson, 'utf8');
+  await fs.writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+
+  const jobsRoot = path.join(workspace, 'src', 'backend', 'jobs');
+  const traversalName = path.relative(jobsRoot, externalRoot).split(path.sep).join('/');
+  const invalidNames = [
+    '',
+    '   ',
+    '.',
+    '..',
+    traversalName,
+    traversalName.replaceAll('/', '\\'),
+    `bad\0name`,
+    'bad\nname',
+    'nightly\n',
+    '\tnightly',
+    'bad\u007fname',
+    'foo:bar',
+    'foo?bar',
+    'foo*bar',
+    'foo<bar',
+    'foo|bar',
+    'name.',
+    'NUL',
+    'nul.txt',
+    'CON',
+    'CON .txt',
+    'PRN.log',
+    'COM1',
+    'COM¹.txt',
+    'LPT9',
+    'LPT³',
+    'CONIN$',
+    'CONOUT$',
+  ];
+
+  for (const name of invalidNames) {
+    await assert.rejects(
+      runAddJob({ workspaceRoot: workspace, name }),
+      /Missing job name|Invalid job name/,
+    );
+  }
+
+  assert.equal(await fs.readFile(packageJsonPath, 'utf8'), packageJson);
+  assert.equal(await fs.readFile(sentinelPath, 'utf8'), 'outside-sentinel');
+  assert.equal(await pathExists(path.join(externalRoot, 'index.ts')), false);
+  assert.equal(await pathExists(jobsRoot), false);
+});
+
+test('runAddJob rejects a symlinked job path without touching its target or manifest', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-symlink-');
+  const externalRoot = await createTempWorkspace('webstir-backend-add-job-symlink-outside-');
+  const packageJsonPath = path.join(workspace, 'package.json');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  const packageJson = `${JSON.stringify(
+    {
+      name: '@demo/api',
+      version: '1.0.0',
+      type: 'module',
+      webstir: { mode: 'api', moduleManifest: {} },
+    },
+    null,
+    2,
+  )}\n`;
+  await fs.writeFile(packageJsonPath, packageJson, 'utf8');
+  await fs.writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+
+  const backendRoot = path.join(workspace, 'src', 'backend');
+  const jobsRoot = path.join(backendRoot, 'jobs');
+  await fs.mkdir(backendRoot, { recursive: true });
+  await fs.symlink(externalRoot, jobsRoot, 'dir');
+
+  await assert.rejects(runAddJob({ workspaceRoot: workspace, name: 'nightly' }), /symbolic link/);
+
+  assert.equal(await fs.readFile(packageJsonPath, 'utf8'), packageJson);
+  assert.equal(await fs.readFile(sentinelPath, 'utf8'), 'outside-sentinel');
+  assert.equal(await pathExists(path.join(externalRoot, 'nightly', 'index.ts')), false);
+});
+
+test('runAddJob rejects an existing job before reading a symlinked job file', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-existing-');
+  const externalRoot = await createTempWorkspace('webstir-backend-add-job-existing-outside-');
+  const packageJsonPath = path.join(workspace, 'package.json');
+  const externalJobPath = path.join(externalRoot, 'index.ts');
+  const jobDirectory = path.join(workspace, 'src', 'backend', 'jobs', 'nightly');
+  const packageJson = `${JSON.stringify(
+    {
+      name: '@demo/api',
+      version: '1.0.0',
+      type: 'module',
+      webstir: { mode: 'api', moduleManifest: {} },
+    },
+    null,
+    2,
+  )}\n`;
+  await fs.writeFile(packageJsonPath, packageJson, 'utf8');
+  await fs.writeFile(externalJobPath, 'outside-job-sentinel', 'utf8');
+  await fs.mkdir(jobDirectory, { recursive: true });
+  await fs.symlink(externalJobPath, path.join(jobDirectory, 'index.ts'), 'file');
+
+  await assert.rejects(runAddJob({ workspaceRoot: workspace, name: 'nightly' }), /already exists/);
+
+  assert.equal(await fs.readFile(packageJsonPath, 'utf8'), packageJson);
+  assert.equal(await fs.readFile(externalJobPath, 'utf8'), 'outside-job-sentinel');
+});
+
+test('runAddJob rejects a symlinked manifest before creating the jobs root', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-manifest-symlink-');
+  const externalRoot = await createTempWorkspace(
+    'webstir-backend-add-job-manifest-symlink-outside-',
+  );
+  const externalPackageJsonPath = path.join(externalRoot, 'package.json');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  const jobsRoot = path.join(workspace, 'src', 'backend', 'jobs');
+  const packageJson = `${JSON.stringify(
+    {
+      name: '@demo/api',
+      version: '1.0.0',
+      type: 'module',
+      webstir: { mode: 'api', moduleManifest: {} },
+    },
+    null,
+    2,
+  )}\n`;
+  await fs.writeFile(externalPackageJsonPath, packageJson, 'utf8');
+  await fs.writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+  await fs.symlink(externalPackageJsonPath, path.join(workspace, 'package.json'), 'file');
+
+  await assert.rejects(runAddJob({ workspaceRoot: workspace, name: 'nightly' }), /symbolic link/);
+
+  assert.equal(await fs.readFile(externalPackageJsonPath, 'utf8'), packageJson);
+  assert.equal(await fs.readFile(sentinelPath, 'utf8'), 'outside-sentinel');
+  assert.equal(await pathExists(jobsRoot), false);
+});
+
+test('runAddJob rejects malformed package metadata before creating the jobs root', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-malformed-manifest-');
+  const packageJsonPath = path.join(workspace, 'package.json');
+  const jobsRoot = path.join(workspace, 'src', 'backend', 'jobs');
+  const packageSentinel = '{ deliberately invalid package JSON }\n';
+  await fs.writeFile(packageJsonPath, packageSentinel, 'utf8');
+
+  await assert.rejects(runAddJob({ workspaceRoot: workspace, name: 'nightly' }));
+
+  assert.equal(await fs.readFile(packageJsonPath, 'utf8'), packageSentinel);
+  assert.equal(await pathExists(jobsRoot), false);
+});
+
+test('runAddJob rejects a missing package manifest before creating the jobs root', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-add-job-missing-manifest-');
+  const jobsRoot = path.join(workspace, 'src', 'backend', 'jobs');
+
+  await assert.rejects(
+    runAddJob({ workspaceRoot: workspace, name: 'nightly' }),
+    /package\.json not found/,
+  );
+
+  assert.equal(await pathExists(jobsRoot), false);
+});
+
 test('runAddJob rejects malformed rate schedules before writing files', async () => {
   const workspace = await createTempWorkspace('webstir-backend-add-job-rate-');
 
@@ -288,6 +522,18 @@ test('runAddJob rejects malformed rate schedules before writing files', async ()
     /Expected rate\(<positive integer> second\(s\)\|minute\(s\)\|hour\(s\)\)/,
   );
 });
+
+async function pathExists(filePath) {
+  try {
+    await fs.lstat(filePath);
+    return true;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return false;
+    }
+    throw error;
+  }
+}
 
 test('runUpdateRouteContract merges advanced metadata onto an existing route', async () => {
   const workspace = await createTempWorkspace('webstir-backend-update-route-contract-');
