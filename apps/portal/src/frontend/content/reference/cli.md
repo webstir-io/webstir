@@ -50,11 +50,14 @@ Notes:
 Usage: `webstir refresh <mode> --workspace <path>`
 
 What it does:
-- Clears and re-scaffolds an existing workspace directory for the selected mode
+- Clears and re-scaffolds an existing, valid Webstir workspace for the selected mode
 - Restores the canonical workspace structure without routing through the archived CLI
 
 Notes:
-- This is destructive to generated workspace contents inside the target directory
+- The target must already contain a valid `package.json` with a supported `webstir.mode`; use `init` for a missing directory
+- This is destructive to all contents inside the target directory
+- Filesystem roots and the user home directory are always rejected
+- Package name and description are preserved, and the selected mode may differ from the current mode
 - Demo refresh helper scripts in `examples/demos/utils/*.sh` use this Bun path now
 
 ### doctor

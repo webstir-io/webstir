@@ -38,7 +38,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
   },
   {
     id: 'refresh',
-    summary: 'Reset and re-scaffold an existing workspace directory.',
+    summary: 'Reset and re-scaffold an existing valid Webstir workspace.',
     requiresWorkspace: true,
     mutatesWorkspace: true,
     supportsJson: false,

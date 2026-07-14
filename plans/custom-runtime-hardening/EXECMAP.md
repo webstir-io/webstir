@@ -77,6 +77,12 @@ Use coding agents to make Webstir's custom runtime pieces technically sound by t
   - Update `plans/plan.md` so it truthfully reflects whether this hardening slice is still active.
   - Progress: focused subsystem checks, `bun audit --audit-level=high`, `git diff --check`, and `bun run check:required` pass locally. `plans/plan.md` now reflects no active next step for this slice.
 
+- [x] Close the destructive `refresh` workspace boundary found by repository review.
+  - Require an existing, valid Webstir workspace before `refresh` performs any filesystem mutation.
+  - Reject filesystem roots and the user home directory even if they contain a matching manifest.
+  - Prove missing, malformed, unsupported, and non-Webstir targets remain unchanged while valid refresh and mode conversion continue to work.
+  - Progress: `refresh` now resolves an existing target, rejects filesystem/home roots and external manifest symlinks, validates the Webstir descriptor, fully stages the replacement before isolating the target, reserves the destination exclusively, and verifies directory/manifest identity before cleanup. Focused invalid-target, failed-preparation, destination-conflict, mode-conversion, metadata-preservation, orchestrator, and required repository gates pass.
+
 ## Done When
 
 - Each custom subsystem has explicit soundness criteria and focused failure-mode coverage.
@@ -84,4 +90,5 @@ Use coding agents to make Webstir's custom runtime pieces technically sound by t
 - Data, auth, sessions/forms, jobs, and frontend navigation have documented supported behavior and limits.
 - `inspect`, `doctor`, `repair`, or `agent validate` expose enough subsystem truth for agents to work without guessing.
 - One generated-app trial demonstrates whether an agent can safely make app-level changes without modifying Webstir internals.
+- `refresh` cannot delete an unverified directory or a filesystem/home root.
 - The repo's required gate passes, and `plans/plan.md` accurately reflects the active or completed state.

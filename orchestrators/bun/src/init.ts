@@ -34,6 +34,12 @@ interface ScaffoldMetadata {
   readonly description?: string;
 }
 
+interface ScaffoldWorkspaceOptions {
+  readonly force: boolean;
+  readonly metadata?: ScaffoldMetadata;
+  readonly dependencyWorkspaceRoot?: string;
+}
+
 let repoWorkspacePatternsPromise: Promise<readonly string[]> | undefined;
 
 export async function runInit(options: RunInitOptions): Promise<InitResult> {
@@ -48,7 +54,7 @@ export async function runInit(options: RunInitOptions): Promise<InitResult> {
 export async function scaffoldWorkspace(
   mode: WorkspaceMode,
   workspaceRoot: string,
-  options: { readonly force: boolean; readonly metadata?: ScaffoldMetadata },
+  options: ScaffoldWorkspaceOptions,
 ): Promise<InitResult> {
   if (existsSync(workspaceRoot) && !options.force && !(await isDirectoryEmpty(workspaceRoot))) {
     throw new Error(`Refusing to initialize non-empty directory: ${workspaceRoot}`);
@@ -57,7 +63,9 @@ export async function scaffoldWorkspace(
   await mkdir(workspaceRoot, { recursive: true });
 
   const packageName = resolvePackageName(workspaceRoot, options.metadata);
-  const dependencySpecs = await resolveDependencySpecs(workspaceRoot);
+  const dependencySpecs = await resolveDependencySpecs(
+    options.dependencyWorkspaceRoot ?? workspaceRoot,
+  );
   const changes: string[] = [];
 
   for (const asset of getRootScaffoldAssets()) {

@@ -1,9 +1,18 @@
 import path from 'node:path';
-import { mkdir, readFile, readdir, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import os from 'node:os';
+import type { BigIntStats } from 'node:fs';
+import { lstat, readFile, realpath } from 'node:fs/promises';
 
 import { scaffoldWorkspace } from './init.ts';
+import {
+  assertRefreshIdentity,
+  assertSafeRefreshRoot,
+  toRefreshIdentity,
+  type RefreshIdentity,
+} from './refresh-safety.ts';
+import { replaceRefreshWorkspace } from './refresh-transaction.ts';
 import type { WorkspaceMode } from './types.ts';
+import { readWorkspaceDescriptor } from './workspace.ts';
 
 export interface RunRefreshOptions {
   readonly workspaceRoot: string;
@@ -18,30 +27,116 @@ export interface RefreshResult {
 }
 
 export async function runRefresh(options: RunRefreshOptions): Promise<RefreshResult> {
-  const workspaceRoot = path.resolve(options.cwd ?? process.cwd(), options.workspaceRoot);
+  const requestedWorkspaceRoot = path.resolve(options.cwd ?? process.cwd(), options.workspaceRoot);
   const modeToken = options.args[0];
   if (!modeToken) {
     throw new Error('Usage: webstir refresh <mode> --workspace <path>.');
   }
 
   const mode = parseWorkspaceMode(modeToken);
-  const metadata = await readWorkspaceManifestMetadata(workspaceRoot);
-  await mkdir(workspaceRoot, { recursive: true });
-  await emptyDirectory(workspaceRoot);
+  const workspaceRoot = await resolveExistingRefreshRoot(requestedWorkspaceRoot);
+  const homeRoot = await realpath(os.userInfo().homedir);
+  assertSafeRefreshRoot(workspaceRoot, homeRoot);
+  const snapshot = await inspectRefreshWorkspace(workspaceRoot);
 
-  const result = await scaffoldWorkspace(mode, workspaceRoot, { force: true, metadata });
+  const result = await replaceRefreshWorkspace({
+    workspaceRoot,
+    prepareReplacement: async (replacementWorkspaceRoot) =>
+      await scaffoldWorkspace(mode, replacementWorkspaceRoot, {
+        force: false,
+        metadata: snapshot.metadata,
+        dependencyWorkspaceRoot: workspaceRoot,
+      }),
+    verifyIsolatedWorkspace: async (isolatedWorkspaceRoot) =>
+      await verifyRefreshWorkspace(isolatedWorkspaceRoot, workspaceRoot, snapshot),
+  });
+
   return {
-    workspaceRoot: result.workspaceRoot,
+    workspaceRoot,
     mode: result.mode,
     changes: result.changes,
   };
 }
 
-async function emptyDirectory(directoryPath: string): Promise<void> {
-  const entries = await readdir(directoryPath, { withFileTypes: true });
-  for (const entry of entries) {
-    await rm(path.join(directoryPath, entry.name), { recursive: true, force: true });
+async function resolveExistingRefreshRoot(workspaceRoot: string): Promise<string> {
+  try {
+    return await realpath(workspaceRoot);
+  } catch (error) {
+    throw new Error(
+      `Refresh requires an existing Webstir workspace at ${workspaceRoot}. Use "webstir init" to create a workspace.`,
+      { cause: error },
+    );
   }
+}
+
+interface RefreshWorkspaceSnapshot {
+  readonly workspaceIdentity: RefreshIdentity;
+  readonly manifestIdentity: RefreshIdentity;
+  readonly metadata: {
+    readonly packageName: string;
+    readonly description?: string;
+  };
+}
+
+async function inspectRefreshWorkspace(workspaceRoot: string): Promise<RefreshWorkspaceSnapshot> {
+  const workspaceStats = await lstat(workspaceRoot, { bigint: true });
+  if (!workspaceStats.isDirectory() || workspaceStats.isSymbolicLink()) {
+    throw new Error(`Refresh target must be a real directory: ${workspaceRoot}`);
+  }
+
+  const packageJsonPath = path.join(workspaceRoot, 'package.json');
+  let manifestStats: BigIntStats;
+  try {
+    manifestStats = await lstat(packageJsonPath, { bigint: true });
+  } catch (error) {
+    throw new Error(`Workspace package.json not found at ${packageJsonPath}.`, { cause: error });
+  }
+  if (!manifestStats.isFile() || manifestStats.isSymbolicLink()) {
+    throw new Error(`Workspace package.json must be a regular file inside ${workspaceRoot}.`);
+  }
+
+  await readWorkspaceDescriptor(workspaceRoot);
+  const metadata = await readWorkspaceManifestMetadata(workspaceRoot);
+
+  return {
+    workspaceIdentity: toRefreshIdentity(workspaceStats),
+    manifestIdentity: toRefreshIdentity(manifestStats),
+    metadata: {
+      packageName: metadata.packageName?.trim()
+        ? metadata.packageName
+        : path.basename(workspaceRoot),
+      description: metadata.description,
+    },
+  };
+}
+
+async function verifyRefreshWorkspace(
+  isolatedWorkspaceRoot: string,
+  requestedWorkspaceRoot: string,
+  snapshot: RefreshWorkspaceSnapshot,
+): Promise<void> {
+  const workspaceStats = await lstat(isolatedWorkspaceRoot, { bigint: true });
+  if (!workspaceStats.isDirectory() || workspaceStats.isSymbolicLink()) {
+    throw new Error(
+      `Refresh target changed before it could be isolated: ${requestedWorkspaceRoot}`,
+    );
+  }
+  assertRefreshIdentity(
+    snapshot.workspaceIdentity,
+    toRefreshIdentity(workspaceStats),
+    'workspace directory',
+  );
+
+  const manifestPath = path.join(isolatedWorkspaceRoot, 'package.json');
+  const manifestStats = await lstat(manifestPath, { bigint: true });
+  if (!manifestStats.isFile() || manifestStats.isSymbolicLink()) {
+    throw new Error(`Workspace package.json changed before refresh: ${requestedWorkspaceRoot}`);
+  }
+  assertRefreshIdentity(
+    snapshot.manifestIdentity,
+    toRefreshIdentity(manifestStats),
+    'workspace package.json',
+  );
 }
 
 function parseWorkspaceMode(value: string): WorkspaceMode {
@@ -64,12 +159,8 @@ function parseWorkspaceMode(value: string): WorkspaceMode {
 
 async function readWorkspaceManifestMetadata(
   workspaceRoot: string,
-): Promise<{ readonly packageName?: string; readonly description?: string } | undefined> {
+): Promise<{ readonly packageName?: string; readonly description?: string }> {
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
-  if (!existsSync(packageJsonPath)) {
-    return undefined;
-  }
-
   const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
     readonly name?: string;
     readonly description?: string;

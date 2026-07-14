@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -137,6 +137,118 @@ test('CLI refresh clears and re-scaffolds an existing workspace', async () => {
     expect(refreshResult.stdout).toContain('[webstir] refresh complete');
     expect(await readFile(appHtmlPath, 'utf8')).toBe(originalHtml);
     expect(existsSync(path.join(workspaceRoot, 'junk.txt'))).toBe(false);
+    expect((await readdir(tempRoot)).some((entry) => entry.startsWith('.webstir-refresh-'))).toBe(
+      false,
+    );
+    await assertPackageManagedBackendScaffold(workspaceRoot, { expectModule: true });
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI refresh refuses to create a missing workspace', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-refresh-missing-'));
+  const workspaceRoot = path.join(tempRoot, 'missing-workspace');
+
+  try {
+    const refreshResult = await runCli(['refresh', 'full', '--workspace', workspaceRoot]);
+
+    expect(refreshResult.exitCode).toBe(1);
+    expect(refreshResult.stderr).toContain('Refresh requires an existing Webstir workspace');
+    expect(existsSync(workspaceRoot)).toBe(false);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI refresh preserves invalid workspace contents', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-refresh-invalid-'));
+  const invalidWorkspaces = [
+    {
+      name: 'missing-package',
+      expectedError: 'Workspace package.json not found',
+    },
+    {
+      name: 'malformed-package',
+      packageJson: '{ invalid json\n',
+      expectedError: 'is not valid JSON',
+    },
+    {
+      name: 'missing-mode',
+      packageJson: `${JSON.stringify({ name: 'missing-mode' }, null, 2)}\n`,
+      expectedError: 'is missing webstir.mode',
+    },
+    {
+      name: 'unsupported-mode',
+      packageJson: `${JSON.stringify({ name: 'unsupported-mode', webstir: { mode: 'legacy' } }, null, 2)}\n`,
+      expectedError: 'Unsupported webstir.mode',
+    },
+  ] as const;
+
+  try {
+    for (const invalidWorkspace of invalidWorkspaces) {
+      const workspaceRoot = path.join(tempRoot, invalidWorkspace.name);
+      const sentinelPath = path.join(workspaceRoot, 'user-data.txt');
+      await mkdir(workspaceRoot);
+      await writeFile(sentinelPath, `preserve ${invalidWorkspace.name}\n`);
+
+      if ('packageJson' in invalidWorkspace) {
+        await writeFile(path.join(workspaceRoot, 'package.json'), invalidWorkspace.packageJson);
+      }
+
+      const refreshResult = await runCli(['refresh', 'full', '--workspace', workspaceRoot]);
+
+      expect(refreshResult.exitCode).toBe(1);
+      expect(refreshResult.stderr).toContain(invalidWorkspace.expectedError);
+      expect(await readFile(sentinelPath, 'utf8')).toBe(`preserve ${invalidWorkspace.name}\n`);
+      if ('packageJson' in invalidWorkspace) {
+        expect(await readFile(path.join(workspaceRoot, 'package.json'), 'utf8')).toBe(
+          invalidWorkspace.packageJson,
+        );
+      }
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI refresh rejects a symlinked workspace manifest without changing contents', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-refresh-symlink-'));
+  const validWorkspaceRoot = path.join(tempRoot, 'valid-workspace');
+  const targetRoot = path.join(tempRoot, 'target');
+  const sentinelPath = path.join(targetRoot, 'user-data.txt');
+  const packageJsonPath = path.join(targetRoot, 'package.json');
+
+  try {
+    expect((await runCli(['init', 'full', validWorkspaceRoot])).exitCode).toBe(0);
+    await mkdir(targetRoot);
+    await writeFile(sentinelPath, 'preserve symlink target\n');
+    await symlink(path.join(validWorkspaceRoot, 'package.json'), packageJsonPath);
+
+    const refreshResult = await runCli(['refresh', 'full', '--workspace', targetRoot]);
+
+    expect(refreshResult.exitCode).toBe(1);
+    expect(refreshResult.stderr).toContain('package.json must be a regular file');
+    expect(await readFile(sentinelPath, 'utf8')).toBe('preserve symlink target\n');
+    expect((await lstat(packageJsonPath)).isSymbolicLink()).toBe(true);
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI refresh can change a valid workspace mode', async () => {
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-refresh-mode-'));
+  const workspaceRoot = path.join(tempRoot, 'mode-workspace');
+
+  try {
+    const initResult = await runCli(['init', 'spa', workspaceRoot]);
+    expect(initResult.exitCode).toBe(0);
+
+    const refreshResult = await runCli(['refresh', 'full', '--workspace', workspaceRoot]);
+
+    expect(refreshResult.exitCode).toBe(0);
+    expect(refreshResult.stderr).toBe('');
+    expect((await readJson(path.join(workspaceRoot, 'package.json'))).webstir.mode).toBe('full');
     await assertPackageManagedBackendScaffold(workspaceRoot, { expectModule: true });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
