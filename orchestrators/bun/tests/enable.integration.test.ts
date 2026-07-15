@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -368,6 +368,118 @@ test('CLI rejects symlinked page script ancestors and targets without following 
     expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
     expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
     expect(await readFile(linkedTargetPath, 'utf8')).toBe('target-sentinel');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI enable backend rejects a symlinked scaffold ancestor before external writes', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-enable-backend-symlink-');
+  const externalRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'webstir-enable-backend-symlink-outside-'),
+  );
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+
+  try {
+    await rm(path.join(copiedWorkspace.workspaceRoot, 'src'), { recursive: true, force: true });
+    await symlink(externalRoot, path.join(copiedWorkspace.workspaceRoot, 'src'), 'dir');
+
+    const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['backend']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('symbolic link');
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
+    expect(existsSync(path.join(externalRoot, 'backend', 'index.ts'))).toBe(false);
+    expect(existsSync(path.join(externalRoot, 'backend', 'env.ts'))).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI enable search rejects symlinked overwrite targets before changing any asset', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-search-symlink-');
+  const externalRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'webstir-enable-search-symlink-outside-'),
+  );
+  const externalStyles = path.join(externalRoot, 'styles');
+  const externalStyle = path.join(externalStyles, 'search.css');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const appRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app');
+  const appTsPath = path.join(appRoot, 'app.ts');
+  const appCssPath = path.join(appRoot, 'app.css');
+  const appHtmlPath = path.join(appRoot, 'app.html');
+  const before = {
+    packageJson: await readFile(packageJsonPath, 'utf8'),
+    appTs: await readFile(appTsPath, 'utf8'),
+    appCss: await readFile(appCssPath, 'utf8'),
+    appHtml: await readFile(appHtmlPath, 'utf8'),
+  };
+
+  await mkdir(externalStyles, { recursive: true });
+  await writeFile(externalStyle, 'style-sentinel', 'utf8');
+
+  try {
+    const stylesTarget = path.join(appRoot, 'styles', 'features');
+    await rm(stylesTarget, { recursive: true, force: true });
+    await symlink(externalStyles, stylesTarget, 'dir');
+
+    const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['search']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('symbolic link');
+    expect(existsSync(path.join(appRoot, 'scripts', 'features', 'search.ts'))).toBe(false);
+    expect(await readFile(externalStyle, 'utf8')).toBe('style-sentinel');
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(before.packageJson);
+    expect(await readFile(appTsPath, 'utf8')).toBe(before.appTs);
+    expect(await readFile(appCssPath, 'utf8')).toBe(before.appCss);
+    expect(await readFile(appHtmlPath, 'utf8')).toBe(before.appHtml);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('CLI enable search rejects hard-linked overwrite targets before changing any asset', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-search-hardlink-');
+  const externalRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'webstir-enable-search-hardlink-outside-'),
+  );
+  const externalStyle = path.join(externalRoot, 'search.css');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const appRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app');
+  const appTsPath = path.join(appRoot, 'app.ts');
+  const appCssPath = path.join(appRoot, 'app.css');
+  const appHtmlPath = path.join(appRoot, 'app.html');
+  const targetStyle = path.join(appRoot, 'styles', 'features', 'search.css');
+  const before = {
+    packageJson: await readFile(packageJsonPath, 'utf8'),
+    appTs: await readFile(appTsPath, 'utf8'),
+    appCss: await readFile(appCssPath, 'utf8'),
+    appHtml: await readFile(appHtmlPath, 'utf8'),
+  };
+
+  try {
+    await writeFile(externalStyle, 'hard-link-sentinel', 'utf8');
+    await mkdir(path.dirname(targetStyle), { recursive: true });
+    await rm(targetStyle, { force: true });
+    await link(externalStyle, targetStyle);
+
+    const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['search']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('multiple hard links');
+    expect(existsSync(path.join(appRoot, 'scripts', 'features', 'search.ts'))).toBe(false);
+    expect(await readFile(externalStyle, 'utf8')).toBe('hard-link-sentinel');
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(before.packageJson);
+    expect(await readFile(appTsPath, 'utf8')).toBe(before.appTs);
+    expect(await readFile(appCssPath, 'utf8')).toBe(before.appCss);
+    expect(await readFile(appHtmlPath, 'utf8')).toBe(before.appHtml);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
     await rm(externalRoot, { recursive: true, force: true });

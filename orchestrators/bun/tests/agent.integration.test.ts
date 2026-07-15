@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
+import os from 'node:os';
 import path from 'node:path';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -244,5 +245,42 @@ test('CLI agent scaffold-route records backend route metadata and inspects it', 
     expect(Array.isArray(parsed.inspect?.manifest.routes)).toBe(true);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI agent repair rejects unsafe asset destinations without partial repair', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-agent-repair-symlink-');
+  const externalRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'webstir-agent-repair-symlink-outside-'),
+  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+
+  try {
+    await rm(missingRootAsset, { force: true });
+    const appRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app');
+    await rm(appRoot, { recursive: true, force: true });
+    await symlink(externalRoot, appRoot, 'dir');
+
+    const result = await runCli([
+      'agent',
+      'repair',
+      '--json',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('symbolic link');
+    expect(existsSync(missingRootAsset)).toBe(false);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
+    expect(existsSync(path.join(externalRoot, 'app.ts'))).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });

@@ -13,7 +13,8 @@
 - The destructive `refresh` correction is implemented and verified for delivery.
 - Name-derived scaffold output containment is implemented and verified for delivery.
 - Fail-closed provider diagnostics is implemented and verified for delivery.
+- Provider-authored asset containment is implemented and verified for delivery.
 
 ## Immediate Next Step
 
-Contain provider-authored enable and repair asset destinations before filesystem mutation.
+Review the remaining fixed enable and repair write destinations for the next containment slice.
