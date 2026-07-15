@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import { createBuildPlan } from './build-plan.ts';
 import { loadProvider } from './providers.ts';
+import { assertNoProviderErrorDiagnostics } from './provider-diagnostics.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import type {
   BuildProvider,
@@ -39,7 +40,7 @@ export async function runCommand(
       env: createWorkspaceRuntimeEnv(workspace.root, mode, options.env),
       incremental: false,
     });
-    assertNoFatalDiagnostics(kind, mode, result);
+    assertNoProviderErrorDiagnostics(kind, mode, result);
 
     targets.push({
       kind,
@@ -72,7 +73,7 @@ async function prepareCommandTarget(
     env: createWorkspaceRuntimeEnv(workspaceRoot, 'build', env),
     incremental: false,
   });
-  assertNoFatalDiagnostics(kind, 'prebuild', result);
+  assertNoProviderErrorDiagnostics(kind, 'prebuild', result);
 }
 
 function resolveOutputRoot(
@@ -86,26 +87,4 @@ function resolveOutputRoot(
   }
 
   return buildRoot;
-}
-
-function assertNoFatalDiagnostics(
-  kind: BuildTargetKind,
-  phase: CommandMode | 'prebuild',
-  result: CommandExecutionResult['targets'][number]['result'],
-): void {
-  const errors = result.manifest.diagnostics.filter(
-    (diagnostic) => diagnostic.severity === 'error',
-  );
-  if (errors.length === 0) {
-    return;
-  }
-
-  const summary = errors
-    .slice(0, 3)
-    .map((diagnostic) => diagnostic.message)
-    .join(' | ');
-  const extra = errors.length > 3 ? ` (+${errors.length - 3} more)` : '';
-  throw new Error(
-    `${kind} ${phase} reported ${errors.length} error diagnostic(s): ${summary}${extra}`,
-  );
 }

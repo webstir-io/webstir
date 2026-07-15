@@ -12,7 +12,8 @@
 - Repository review found additional safety boundaries not covered by the completed hardening slice.
 - The destructive `refresh` correction is implemented and verified for delivery.
 - Name-derived scaffold output containment is implemented and verified for delivery.
+- Fail-closed provider diagnostics is implemented and verified for delivery.
 
 ## Immediate Next Step
 
-Select the next bounded repository-review finding; provider-authored asset containment and fail-closed provider diagnostics are the leading candidates.
+Contain provider-authored enable and repair asset destinations before filesystem mutation.

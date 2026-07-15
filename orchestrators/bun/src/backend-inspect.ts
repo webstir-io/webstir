@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 
 import { loadProvider } from './providers.ts';
+import { assertNoProviderErrorDiagnostics } from './provider-diagnostics.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 
@@ -61,6 +62,7 @@ export async function runBackendInspect(
     env: createWorkspaceRuntimeEnv(workspace.root, 'build', options.env),
     incremental: false,
   });
+  assertNoProviderErrorDiagnostics('backend', 'inspect', result);
   const manifest = result.manifest.module;
   if (!manifest) {
     throw new Error('Backend manifest was not produced by the backend build.');
