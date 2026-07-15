@@ -517,3 +517,45 @@ test('MCP repair tools reject unsafe fixed destinations without reporting a repa
     await rm(externalRoot, { recursive: true, force: true });
   }
 });
+
+test('MCP repair tools reject malformed frontend config without reporting a repair plan', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-mcp-invalid-config-', {
+    workspaceName: 'site',
+  });
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const configPath = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'frontend.config.json',
+  );
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const malformedConfig = '{ invalid-json\n';
+  const { client, transport } = await connectClient();
+
+  try {
+    await rm(missingRootAsset, { force: true });
+    await writeFile(configPath, malformedConfig, 'utf8');
+
+    for (const name of ['repair_dry_run', 'repair_workspace']) {
+      const result = await client.callTool({
+        name,
+        arguments: {
+          workspace: copiedWorkspace.workspaceRoot,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toBeUndefined();
+      expect(JSON.stringify(result.content)).toContain('not valid JSON');
+    }
+
+    expect(existsSync(missingRootAsset)).toBe(false);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(configPath, 'utf8')).toBe(malformedConfig);
+  } finally {
+    await transport.close();
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});

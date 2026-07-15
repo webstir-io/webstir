@@ -286,3 +286,41 @@ test('CLI agent repair rejects unsafe fixed destinations without partial repair'
     await rm(externalRoot, { recursive: true, force: true });
   }
 });
+
+test('CLI agent repair rejects malformed frontend config without partial repair', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-agent-invalid-config-', {
+    workspaceName: 'site',
+  });
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const configPath = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'frontend.config.json',
+  );
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const malformedConfig = '{ invalid-json\n';
+
+  try {
+    await rm(missingRootAsset, { force: true });
+    await writeFile(configPath, malformedConfig, 'utf8');
+
+    const result = await runCli([
+      'agent',
+      'repair',
+      '--json',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('not valid JSON');
+    expect(result.stdout).toBe('');
+    expect(existsSync(missingRootAsset)).toBe(false);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(configPath, 'utf8')).toBe(malformedConfig);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});

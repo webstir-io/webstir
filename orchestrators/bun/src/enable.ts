@@ -21,6 +21,7 @@ import {
   preflightScaffoldAssets,
   preflightWorkspaceWriteTargets,
 } from './scaffold-path.ts';
+import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
 
 type EnableFeature =
   | 'scripts'
@@ -270,6 +271,7 @@ async function enableGithubPages(
   changes: string[],
 ): Promise<void> {
   const resolvedBasePath = resolveGithubPagesBasePath(basePathArg, workspaceName);
+  const frontendConfig = await readFrontendConfigDocument(workspaceRoot);
   const deployScriptPath = path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh');
   await writeTextFile(deployScriptPath, renderGithubPagesDeployScript(), 0o755);
   changes.push(relativeWorkspacePath(workspaceRoot, deployScriptPath));
@@ -282,7 +284,7 @@ async function enableGithubPages(
     }
   }
 
-  await updateFrontendConfig(workspaceRoot, resolvedBasePath, changes);
+  await updateFrontendConfig(workspaceRoot, frontendConfig, resolvedBasePath, changes);
   await updatePackageJson(
     workspaceRoot,
     { enableGithubPages: true, ensureDeployScript: true },
@@ -464,32 +466,21 @@ async function readInstalledPackageVersion(packageName: string): Promise<string>
 
 async function updateFrontendConfig(
   workspaceRoot: string,
+  document: FrontendConfigDocument,
   basePath: string,
   changes: string[],
 ): Promise<void> {
-  const configPath = path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json');
-  let root: Record<string, unknown> = {};
-
-  if (existsSync(configPath)) {
-    try {
-      root = JSON.parse(await readTextFile(configPath)) as Record<string, unknown>;
-    } catch {
-      root = {};
-    }
-  }
-
-  const publish = asRecord(root.publish);
+  const publish = asRecord(document.root.publish);
   publish.basePath = basePath;
-  root.publish = publish;
+  document.root.publish = publish;
 
-  const updated = `${JSON.stringify(root, null, 2)}\n`;
-  const current = existsSync(configPath) ? await readTextFile(configPath) : null;
-  if (current === updated) {
+  const updated = `${JSON.stringify(document.root, null, 2)}\n`;
+  if (document.source === updated) {
     return;
   }
 
-  await writeTextFile(configPath, updated);
-  changes.push(relativeWorkspacePath(workspaceRoot, configPath));
+  await writeTextFile(document.filePath, updated);
+  changes.push(relativeWorkspacePath(workspaceRoot, document.filePath));
 }
 
 async function ensureTsReference(

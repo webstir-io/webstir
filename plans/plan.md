@@ -15,7 +15,8 @@
 - Fail-closed provider diagnostics is implemented and verified for delivery.
 - Provider-authored asset containment is implemented and verified for delivery.
 - Fixed `enable` and `repair` write destination containment is implemented and verified for delivery.
+- Fail-closed frontend config updates are implemented and verified for delivery.
 
 ## Immediate Next Step
 
-Review the remaining Bun mutation sinks, including the fail-open frontend config parse fallback, before selecting the next bounded slice.
+Audit the remaining Bun mutation sinks for another reproduced unsafe write before considering descriptor-relative write hardening.
