@@ -156,6 +156,7 @@ test('MCP scaffold_page uses a typed input contract and creates the page', async
 
 test('MCP scaffold tools reject path traversal before mutating the workspace', async () => {
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-mcp-scaffold-safety-');
+  await rm(path.join(copiedWorkspace.workspaceRoot, '.webstir'), { recursive: true, force: true });
   const { client, transport } = await connectClient({
     WEBSTIR_BACKEND_TYPECHECK: 'skip',
   });
