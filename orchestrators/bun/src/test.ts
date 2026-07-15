@@ -13,6 +13,7 @@ import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 import { compileTestModules } from './compile-tests.ts';
 import { materializeRepoLocalWorkspaceDependencies } from './external-workspace.ts';
 import { loadProvider } from './providers.ts';
+import { assertNoProviderErrorDiagnostics } from './provider-diagnostics.ts';
 import {
   applyRuntimeFilter,
   describeRuntimeFilter,
@@ -61,6 +62,7 @@ export async function runTest(options: RunTestOptions): Promise<TestCommandResul
       ),
       incremental: false,
     });
+    assertNoProviderErrorDiagnostics(target, 'test', result);
 
     if (target === 'backend' && result.manifest.module) {
       await persistBackendManifest(workspace.root, result.manifest.module);

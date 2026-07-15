@@ -63,7 +63,9 @@ test('runBuild composes frontend and backend providers for full workspaces', asy
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
   const providers: Record<BuildTargetKind, BuildProvider> = {
-    frontend: createFakeProvider('frontend', calls),
+    frontend: createFakeProvider('frontend', calls, {
+      diagnosticsForMode: () => [{ severity: 'warn', message: 'nonfatal warning' }],
+    }),
     backend: createFakeProvider('backend', calls),
   };
 
@@ -81,6 +83,9 @@ test('runBuild composes frontend and backend providers for full workspaces', asy
   expect(calls.map((call) => call.kind)).toEqual(['frontend', 'backend']);
   expect(calls.every((call) => call.env.WEBSTIR_MODULE_MODE === 'build')).toBe(true);
   expect(calls.every((call) => call.env.CUSTOM_FLAG === 'on')).toBe(true);
+  expect(result.targets[0]?.result.manifest.diagnostics).toEqual([
+    { severity: 'warn', message: 'nonfatal warning' },
+  ]);
 });
 
 test('runPublish prebuilds frontend targets before publish and reports dist output', async () => {
