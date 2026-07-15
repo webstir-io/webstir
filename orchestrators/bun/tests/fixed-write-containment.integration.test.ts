@@ -163,6 +163,45 @@ test('CLI enable gh-deploy preflights late config targets before deploy scaffold
   }
 });
 
+test('CLI enable gh-deploy rejects malformed frontend config before deploy scaffolding', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-invalid-config-');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const configPath = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'frontend.config.json',
+  );
+  const deployScriptPath = path.join(copiedWorkspace.workspaceRoot, 'utils', 'deploy-gh-pages.sh');
+  const workflowPath = path.join(
+    copiedWorkspace.workspaceRoot,
+    '.github',
+    'workflows',
+    'webstir-gh-pages.yml',
+  );
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const malformedConfig = '{ invalid-json\n';
+
+  try {
+    await writeFile(configPath, malformedConfig, 'utf8');
+
+    const result = await runCli(copiedWorkspace.workspaceRoot, [
+      'enable',
+      'gh-deploy',
+      'demo-site',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('not valid JSON');
+    expect(await readFile(configPath, 'utf8')).toBe(malformedConfig);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(existsSync(deployScriptPath)).toBe(false);
+    expect(existsSync(workflowPath)).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI repair preflights late fixed config targets before dry-run or asset restoration', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-fixed-config-', {
     workspaceName: 'site',
@@ -193,6 +232,41 @@ test('CLI repair preflights late fixed config targets before dry-run or asset re
       expect(existsSync(missingRootAsset)).toBe(false);
       expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
       expect(await readFile(externalConfigPath, 'utf8')).toBe(externalConfig);
+    }
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI repair rejects invalid frontend config before dry-run or asset restoration', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-invalid-config-', {
+    workspaceName: 'site',
+  });
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const configPath = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'frontend.config.json',
+  );
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+
+  try {
+    await rm(missingRootAsset);
+
+    for (const invalidConfig of ['{ invalid-json\n', '[]\n']) {
+      await writeFile(configPath, invalidConfig, 'utf8');
+
+      for (const extraArgs of [['--dry-run'], []] as const) {
+        const result = await runCli(copiedWorkspace.workspaceRoot, ['repair', ...extraArgs]);
+
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toMatch(/not valid JSON|must contain a JSON object/);
+        expect(existsSync(missingRootAsset)).toBe(false);
+        expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+        expect(await readFile(configPath, 'utf8')).toBe(invalidConfig);
+      }
     }
   } finally {
     await removeDemoWorkspace(copiedWorkspace);

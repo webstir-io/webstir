@@ -19,6 +19,7 @@ import {
   type ScaffoldAssetDescriptor,
 } from './scaffold-path.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
+import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
 
 interface RepairAsset extends ScaffoldAssetDescriptor {
   readonly executable?: boolean;
@@ -98,6 +99,9 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     getFixedRepairWriteTargets(workspace.root, workspace.mode, enable),
     'repair workspace files',
   );
+  const frontendConfig = enable.githubPages
+    ? await readFrontendConfigDocument(workspace.root)
+    : undefined;
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
 
   if (enable.clientNav) {
@@ -129,10 +133,10 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
     await ensureBackendTsReference(workspace.root, changes, dryRun);
   }
-  if (enable.githubPages) {
+  if (frontendConfig) {
     await ensureGithubPagesDeployScript(workspace.root, changes, dryRun);
     await ensureDeployScriptEntry(packageJsonPath, changes, dryRun);
-    await ensureFrontendConfigBasePath(workspace.root, changes, dryRun);
+    await ensureFrontendConfigBasePath(workspace.root, frontendConfig, changes, dryRun);
   }
 
   return {
@@ -399,34 +403,24 @@ async function ensureDeployScriptEntry(
 
 async function ensureFrontendConfigBasePath(
   workspaceRoot: string,
+  document: FrontendConfigDocument,
   changes: string[],
   dryRun: boolean,
 ): Promise<void> {
-  const configPath = path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json');
-  let root: Record<string, unknown> = {};
-
-  if (existsSync(configPath)) {
-    try {
-      root = JSON.parse(await readTextFile(configPath)) as Record<string, unknown>;
-    } catch {
-      root = {};
-    }
-  }
-
-  const publish = asRecord(root.publish);
+  const publish = asRecord(document.root.publish);
   if (typeof publish.basePath === 'string' && publish.basePath.length > 0) {
     return;
   }
 
   publish.basePath = `/${path.basename(workspaceRoot)}`;
-  root.publish = publish;
-  const updated = `${JSON.stringify(root, null, 2)}\n`;
+  document.root.publish = publish;
+  const updated = `${JSON.stringify(document.root, null, 2)}\n`;
 
   if (!dryRun) {
-    await mkdir(path.dirname(configPath), { recursive: true });
-    await Bun.write(configPath, updated);
+    await mkdir(path.dirname(document.filePath), { recursive: true });
+    await Bun.write(document.filePath, updated);
   }
-  changes.push(relativeWorkspacePath(workspaceRoot, configPath));
+  changes.push(relativeWorkspacePath(workspaceRoot, document.filePath));
 }
 
 async function readTextFile(filePath: string): Promise<string> {
