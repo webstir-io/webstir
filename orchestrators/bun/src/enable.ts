@@ -19,6 +19,7 @@ import {
   assertNoExistingSymlinkComponents,
   normalizeScaffoldSegment,
   preflightScaffoldAssets,
+  preflightWorkspaceWriteTargets,
 } from './scaffold-path.ts';
 
 type EnableFeature =
@@ -54,6 +55,11 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
 
   const feature = parseEnableFeature(featureToken);
   const changes: string[] = [];
+  await preflightWorkspaceWriteTargets(
+    workspace.root,
+    getFixedEnableWriteTargets(workspace.root, feature),
+    'write enable feature files',
+  );
 
   switch (feature) {
     case 'scripts':
@@ -129,6 +135,48 @@ function parseEnableFeature(value: string): EnableFeature {
       throw new Error(
         `Unknown feature "${value}". Expected scripts, spa, client-nav, search, content-nav, backend, github-pages, or gh-deploy.`,
       );
+  }
+}
+
+function getFixedEnableWriteTargets(
+  workspaceRoot: string,
+  feature: EnableFeature,
+): readonly string[] {
+  const packageJsonPath = path.join(workspaceRoot, 'package.json');
+  const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
+
+  switch (feature) {
+    case 'scripts':
+      return [];
+    case 'spa':
+      return [packageJsonPath];
+    case 'client-nav':
+      return [path.join(appRoot, 'app.ts'), packageJsonPath];
+    case 'search':
+      return [
+        path.join(appRoot, 'app.css'),
+        path.join(appRoot, 'app.html'),
+        path.join(appRoot, 'app.ts'),
+        packageJsonPath,
+      ];
+    case 'content-nav':
+      return [path.join(appRoot, 'app.css'), path.join(appRoot, 'app.ts'), packageJsonPath];
+    case 'backend':
+      return [packageJsonPath, path.join(workspaceRoot, 'base.tsconfig.json')];
+    case 'github-pages':
+    case 'gh-pages':
+      return [
+        path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh'),
+        path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json'),
+        packageJsonPath,
+      ];
+    case 'gh-deploy':
+      return [
+        path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh'),
+        path.join(workspaceRoot, '.github', 'workflows', 'webstir-gh-pages.yml'),
+        path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json'),
+        packageJsonPath,
+      ];
   }
 }
 

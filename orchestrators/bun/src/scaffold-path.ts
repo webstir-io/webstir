@@ -110,6 +110,16 @@ export async function assertNoExistingSymlinkComponents(
   }
 }
 
+export async function preflightWorkspaceWriteTargets(
+  workspaceRoot: string,
+  targetPaths: readonly string[],
+  operation: string,
+): Promise<void> {
+  for (const targetPath of targetPaths) {
+    await assertNoExistingSymlinkComponents(workspaceRoot, targetPath, operation, 'regular-file');
+  }
+}
+
 export async function preflightScaffoldAssets<T extends ScaffoldAssetDescriptor>(
   workspaceRoot: string,
   assets: readonly T[],

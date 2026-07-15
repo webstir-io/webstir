@@ -476,8 +476,10 @@ test('MCP scaffold_job uses typed job fields instead of raw CLI args', async () 
   }
 });
 
-test('MCP repair tools reject unsafe asset destinations without reporting a repair plan', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-mcp-repair-symlink-');
+test('MCP repair tools reject unsafe fixed destinations without reporting a repair plan', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-mcp-repair-symlink-', {
+    workspaceName: 'site',
+  });
   const externalRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-mcp-repair-symlink-outside-'));
   const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
@@ -488,9 +490,9 @@ test('MCP repair tools reject unsafe asset destinations without reporting a repa
 
   try {
     await rm(missingRootAsset, { force: true });
-    const appRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app');
-    await rm(appRoot, { recursive: true, force: true });
-    await symlink(externalRoot, appRoot, 'dir');
+    const utilsRoot = path.join(copiedWorkspace.workspaceRoot, 'utils');
+    await rm(utilsRoot, { recursive: true, force: true });
+    await symlink(externalRoot, utilsRoot, 'dir');
 
     for (const name of ['repair_dry_run', 'repair_workspace']) {
       const result = await client.callTool({
@@ -508,7 +510,7 @@ test('MCP repair tools reject unsafe asset destinations without reporting a repa
     expect(existsSync(missingRootAsset)).toBe(false);
     expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
     expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
-    expect(existsSync(path.join(externalRoot, 'app.ts'))).toBe(false);
+    expect(existsSync(path.join(externalRoot, 'deploy-gh-pages.sh'))).toBe(false);
   } finally {
     await transport.close();
     await removeDemoWorkspace(copiedWorkspace);

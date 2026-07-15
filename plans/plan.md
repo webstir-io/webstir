@@ -14,7 +14,8 @@
 - Name-derived scaffold output containment is implemented and verified for delivery.
 - Fail-closed provider diagnostics is implemented and verified for delivery.
 - Provider-authored asset containment is implemented and verified for delivery.
+- Fixed `enable` and `repair` write destination containment is implemented and verified for delivery.
 
 ## Immediate Next Step
 
-Review the remaining fixed enable and repair write destinations for the next containment slice.
+Review the remaining Bun mutation sinks, including the fail-open frontend config parse fallback, before selecting the next bounded slice.

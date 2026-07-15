@@ -14,6 +14,7 @@ import {
 } from './enable-assets.ts';
 import {
   preflightScaffoldAssets,
+  preflightWorkspaceWriteTargets,
   type PreflightedScaffoldAsset,
   type ScaffoldAssetDescriptor,
 } from './scaffold-path.ts';
@@ -92,6 +93,11 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     assets,
     'restore scaffold assets',
   );
+  await preflightWorkspaceWriteTargets(
+    workspace.root,
+    getFixedRepairWriteTargets(workspace.root, workspace.mode, enable),
+    'repair workspace files',
+  );
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
 
   if (enable.clientNav) {
@@ -135,6 +141,37 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     dryRun,
     changes: uniqueSorted(changes),
   };
+}
+
+function getFixedRepairWriteTargets(
+  workspaceRoot: string,
+  mode: string,
+  enable: RepairEnableFlags,
+): readonly string[] {
+  const targets: string[] = [];
+  const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
+
+  if (enable.clientNav || enable.search || enable.contentNav) {
+    targets.push(path.join(appRoot, 'app.ts'));
+  }
+  if (enable.search || enable.contentNav) {
+    targets.push(path.join(appRoot, 'app.css'));
+  }
+  if (enable.search) {
+    targets.push(path.join(appRoot, 'app.html'));
+  }
+  if (enable.backend || mode === 'api' || mode === 'full') {
+    targets.push(path.join(workspaceRoot, 'base.tsconfig.json'));
+  }
+  if (enable.githubPages) {
+    targets.push(
+      path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh'),
+      path.join(workspaceRoot, 'package.json'),
+      path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json'),
+    );
+  }
+
+  return targets;
 }
 
 function appendFeatureAssets(

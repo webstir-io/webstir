@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 
-import { preflightScaffoldAssets } from '../src/scaffold-path.ts';
+import { preflightScaffoldAssets, preflightWorkspaceWriteTargets } from '../src/scaffold-path.ts';
 
 test('preflightScaffoldAssets returns canonical paths for regular assets', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-asset-preflight-valid-'));
@@ -152,6 +152,34 @@ test('preflightScaffoldAssets rejects unsafe existing target leaves', async () =
         'write test assets',
       ),
     ).rejects.toThrow('multiple hard links');
+    expect(await readFile(externalPath, 'utf8')).toBe('outside');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('preflightWorkspaceWriteTargets validates every fixed destination before returning', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-fixed-target-preflight-'));
+  const workspaceRoot = path.join(root, 'workspace');
+  const externalPath = path.join(root, 'external.txt');
+
+  try {
+    await mkdir(path.join(workspaceRoot, 'src'), { recursive: true });
+    await writeFile(path.join(workspaceRoot, 'src', 'safe.txt'), 'safe', 'utf8');
+    await writeFile(externalPath, 'outside', 'utf8');
+    await symlink(externalPath, path.join(workspaceRoot, 'src', 'unsafe.txt'), 'file');
+
+    await expect(
+      preflightWorkspaceWriteTargets(
+        workspaceRoot,
+        [
+          path.join(workspaceRoot, 'src', 'safe.txt'),
+          path.join(workspaceRoot, 'src', 'unsafe.txt'),
+        ],
+        'write test files',
+      ),
+    ).rejects.toThrow('symbolic link');
+
     expect(await readFile(externalPath, 'utf8')).toBe('outside');
   } finally {
     await rm(root, { recursive: true, force: true });

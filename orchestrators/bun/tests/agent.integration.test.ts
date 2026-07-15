@@ -248,8 +248,10 @@ test('CLI agent scaffold-route records backend route metadata and inspects it', 
   }
 });
 
-test('CLI agent repair rejects unsafe asset destinations without partial repair', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-agent-repair-symlink-');
+test('CLI agent repair rejects unsafe fixed destinations without partial repair', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-agent-repair-symlink-', {
+    workspaceName: 'site',
+  });
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-agent-repair-symlink-outside-'),
   );
@@ -261,9 +263,9 @@ test('CLI agent repair rejects unsafe asset destinations without partial repair'
 
   try {
     await rm(missingRootAsset, { force: true });
-    const appRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app');
-    await rm(appRoot, { recursive: true, force: true });
-    await symlink(externalRoot, appRoot, 'dir');
+    const utilsRoot = path.join(copiedWorkspace.workspaceRoot, 'utils');
+    await rm(utilsRoot, { recursive: true, force: true });
+    await symlink(externalRoot, utilsRoot, 'dir');
 
     const result = await runCli([
       'agent',
@@ -278,7 +280,7 @@ test('CLI agent repair rejects unsafe asset destinations without partial repair'
     expect(existsSync(missingRootAsset)).toBe(false);
     expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
     expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
-    expect(existsSync(path.join(externalRoot, 'app.ts'))).toBe(false);
+    expect(existsSync(path.join(externalRoot, 'deploy-gh-pages.sh'))).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
     await rm(externalRoot, { recursive: true, force: true });
