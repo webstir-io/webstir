@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
+import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -472,5 +473,45 @@ test('MCP scaffold_job uses typed job fields instead of raw CLI args', async () 
   } finally {
     await transport.close();
     await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('MCP repair tools reject unsafe asset destinations without reporting a repair plan', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-mcp-repair-symlink-');
+  const externalRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-mcp-repair-symlink-outside-'));
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
+  await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+  const { client, transport } = await connectClient();
+
+  try {
+    await rm(missingRootAsset, { force: true });
+    const appRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app');
+    await rm(appRoot, { recursive: true, force: true });
+    await symlink(externalRoot, appRoot, 'dir');
+
+    for (const name of ['repair_dry_run', 'repair_workspace']) {
+      const result = await client.callTool({
+        name,
+        arguments: {
+          workspace: copiedWorkspace.workspaceRoot,
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(result.structuredContent).toBeUndefined();
+      expect(JSON.stringify(result.content)).toContain('symbolic link');
+    }
+
+    expect(existsSync(missingRootAsset)).toBe(false);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
+    expect(existsSync(path.join(externalRoot, 'app.ts'))).toBe(false);
+  } finally {
+    await transport.close();
+    await removeDemoWorkspace(copiedWorkspace);
+    await rm(externalRoot, { recursive: true, force: true });
   }
 });

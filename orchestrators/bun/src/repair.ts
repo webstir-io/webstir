@@ -12,7 +12,23 @@ import {
   renderGithubPagesDeployScript,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
+import {
+  preflightScaffoldAssets,
+  type PreflightedScaffoldAsset,
+  type ScaffoldAssetDescriptor,
+} from './scaffold-path.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
+
+interface RepairAsset extends ScaffoldAssetDescriptor {
+  readonly executable?: boolean;
+}
+
+const SPA_MODE_OWNED_FEATURE_TARGETS = new Set([path.join('src', 'frontend', 'app', 'router.ts')]);
+const FULL_MODE_OWNED_CLIENT_NAV_TARGETS = new Set([
+  path.join('src', 'frontend', 'app', 'scripts', 'features', 'client-nav.ts'),
+  path.join('src', 'frontend', 'app', 'scripts', 'features', 'document-navigation.ts'),
+  path.join('src', 'frontend', 'app', 'scripts', 'features', 'form-enhancement.ts'),
+]);
 
 interface RepairEnableFlags {
   spa?: boolean;
@@ -50,24 +66,38 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as RepairPackageJson;
   const enable = packageJson.webstir?.enable ?? {};
   const changes: string[] = [];
-
-  await restoreScaffoldAssets(workspace.root, getRootScaffoldAssets(), changes, dryRun);
-  await restoreScaffoldAssets(
-    workspace.root,
-    filterModeScaffoldAssets(await getModeScaffoldAssets(workspace.mode), enable),
-    changes,
-    dryRun,
-  );
+  const assets: RepairAsset[] = [
+    ...getRootScaffoldAssets(),
+    ...filterModeScaffoldAssets(await getModeScaffoldAssets(workspace.mode), enable),
+  ];
 
   if (enable.spa) {
-    await restoreFeatureAssets(workspace.root, getSpaAssets(), changes, dryRun);
+    appendFeatureAssets(assets, getSpaAssets(), SPA_MODE_OWNED_FEATURE_TARGETS);
   }
   if (enable.clientNav) {
-    await restoreFeatureAssets(workspace.root, getClientNavAssets(), changes, dryRun);
+    appendFeatureAssets(assets, getClientNavAssets(), FULL_MODE_OWNED_CLIENT_NAV_TARGETS);
+  }
+  if (enable.search) {
+    appendFeatureAssets(assets, getSearchAssets());
+  }
+  if (enable.contentNav) {
+    appendFeatureAssets(assets, getContentNavAssets());
+  }
+  if (enable.backend) {
+    assets.push(...(await getBackendScaffoldAssets()));
+  }
+
+  const preparedAssets = await preflightScaffoldAssets(
+    workspace.root,
+    assets,
+    'restore scaffold assets',
+  );
+  await restoreScaffoldAssets(preparedAssets, changes, dryRun);
+
+  if (enable.clientNav) {
     await ensureAppImport(workspace.root, './scripts/features/client-nav.js', changes, dryRun);
   }
   if (enable.search) {
-    await restoreFeatureAssets(workspace.root, getSearchAssets(), changes, dryRun);
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
     await ensureAppCssImport(
       workspace.root,
@@ -80,7 +110,6 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     await ensureHtmlSearchMode(workspace.root, changes, dryRun);
   }
   if (enable.contentNav) {
-    await restoreFeatureAssets(workspace.root, getContentNavAssets(), changes, dryRun);
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
     await ensureAppCssImport(
       workspace.root,
@@ -90,9 +119,6 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
       dryRun,
     );
     await ensureAppImport(workspace.root, './scripts/features/content-nav.js', changes, dryRun);
-  }
-  if (enable.backend) {
-    await restoreBackendAssets(workspace.root, changes, dryRun);
   }
   if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
     await ensureBackendTsReference(workspace.root, changes, dryRun);
@@ -111,6 +137,21 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   };
 }
 
+function appendFeatureAssets(
+  assets: RepairAsset[],
+  featureAssets: readonly StaticFeatureAsset[],
+  knownModeOwnedTargets: ReadonlySet<string> = new Set(),
+): void {
+  const previouslyOwnedTargets = new Set(assets.map((asset) => asset.targetPath));
+  assets.push(
+    ...featureAssets.filter(
+      (asset) =>
+        !knownModeOwnedTargets.has(asset.targetPath) ||
+        !previouslyOwnedTargets.has(asset.targetPath),
+    ),
+  );
+}
+
 function filterModeScaffoldAssets(
   assets: readonly { sourcePath: string; targetPath: string }[],
   enable: RepairEnableFlags,
@@ -125,68 +166,25 @@ function filterModeScaffoldAssets(
 }
 
 async function restoreScaffoldAssets(
-  workspaceRoot: string,
-  assets: readonly { sourcePath: string; targetPath: string }[],
+  assets: readonly PreflightedScaffoldAsset<RepairAsset>[],
   changes: string[],
   dryRun: boolean,
 ): Promise<void> {
   for (const asset of assets) {
-    const targetPath = path.join(workspaceRoot, asset.targetPath);
+    const { sourcePath, targetPath } = asset;
     if (existsSync(targetPath)) {
       continue;
     }
 
     if (!dryRun) {
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await Bun.write(targetPath, Bun.file(asset.sourcePath));
-    }
-
-    changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
-  }
-}
-
-async function restoreFeatureAssets(
-  workspaceRoot: string,
-  assets: readonly StaticFeatureAsset[],
-  changes: string[],
-  dryRun: boolean,
-): Promise<void> {
-  for (const asset of assets) {
-    const targetPath = path.join(workspaceRoot, asset.targetPath);
-    if (existsSync(targetPath)) {
-      continue;
-    }
-
-    if (!dryRun) {
-      await mkdir(path.dirname(targetPath), { recursive: true });
-      await Bun.write(targetPath, Bun.file(asset.sourcePath));
-      if (asset.executable) {
+      await Bun.write(targetPath, Bun.file(sourcePath));
+      if (asset.asset.executable) {
         await chmod(targetPath, 0o755);
       }
     }
 
-    changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
-  }
-}
-
-async function restoreBackendAssets(
-  workspaceRoot: string,
-  changes: string[],
-  dryRun: boolean,
-): Promise<void> {
-  const assets = await getBackendScaffoldAssets();
-  for (const asset of assets) {
-    const targetPath = path.join(workspaceRoot, asset.targetPath);
-    if (existsSync(targetPath)) {
-      continue;
-    }
-
-    if (!dryRun) {
-      await mkdir(path.dirname(targetPath), { recursive: true });
-      await Bun.write(targetPath, Bun.file(asset.sourcePath));
-    }
-
-    changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
+    changes.push(asset.relativeTargetPath);
   }
 }
 

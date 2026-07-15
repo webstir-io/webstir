@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, mkdir, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -15,7 +15,11 @@ import {
   type StaticFeatureAsset,
 } from './enable-assets.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
-import { assertNoExistingSymlinkComponents, normalizeScaffoldSegment } from './scaffold-path.ts';
+import {
+  assertNoExistingSymlinkComponents,
+  normalizeScaffoldSegment,
+  preflightScaffoldAssets,
+} from './scaffold-path.ts';
 
 type EnableFeature =
   | 'scripts'
@@ -166,35 +170,39 @@ async function copyStaticAssets(
   assets: readonly StaticFeatureAsset[],
   changes: string[],
 ): Promise<void> {
-  for (const asset of assets) {
-    const targetPath = path.join(workspaceRoot, asset.targetPath);
-    const sourceStats = await stat(asset.sourcePath);
-    if (!sourceStats.isFile()) {
-      throw new Error(`Feature asset not found: ${asset.sourcePath}`);
-    }
-
+  const preparedAssets = await preflightScaffoldAssets(
+    workspaceRoot,
+    assets,
+    'write feature scaffold assets',
+  );
+  for (const prepared of preparedAssets) {
+    const { asset, sourcePath, targetPath } = prepared;
     await mkdir(path.dirname(targetPath), { recursive: true });
     if (!asset.overwrite && existsSync(targetPath)) {
       continue;
     }
 
-    await Bun.write(targetPath, Bun.file(asset.sourcePath));
+    await Bun.write(targetPath, Bun.file(sourcePath));
     if (asset.executable) {
       await chmod(targetPath, 0o755);
     }
-    changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
+    changes.push(prepared.relativeTargetPath);
   }
 }
 
 async function enableBackend(workspaceRoot: string, changes: string[]): Promise<void> {
   const backendRoot = path.join(workspaceRoot, 'src', 'backend');
+  const assets = await preflightScaffoldAssets(
+    workspaceRoot,
+    await getBackendScaffoldAssets(),
+    'write backend scaffold assets',
+  );
   if (!existsSync(backendRoot)) {
-    const assets = await getBackendScaffoldAssets();
     for (const asset of assets) {
-      const targetPath = path.join(workspaceRoot, asset.targetPath);
+      const { sourcePath, targetPath } = asset;
       await mkdir(path.dirname(targetPath), { recursive: true });
-      await Bun.write(targetPath, Bun.file(asset.sourcePath));
-      changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
+      await Bun.write(targetPath, Bun.file(sourcePath));
+      changes.push(asset.relativeTargetPath);
     }
   }
 
