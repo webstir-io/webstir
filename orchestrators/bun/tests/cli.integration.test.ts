@@ -46,6 +46,8 @@ function runCli(
     cwd: repoRoot,
     env: {
       ...process.env,
+      BASELINE_BROWSER_MAPPING_IGNORE_OLD_DATA: 'true',
+      BROWSERSLIST_IGNORE_OLD_DATA: 'true',
       ...envOverrides,
     },
     stdout: 'pipe',

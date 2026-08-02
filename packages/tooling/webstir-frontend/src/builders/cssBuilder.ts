@@ -17,6 +17,15 @@ import {
 import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
+import {
+  inlineCssImports,
+  inlineSourceAppImports,
+  isLocalCssImport,
+  isWithinOrEqual,
+  parseCssImport,
+  serializeCssImport,
+  stripUrlSuffix,
+} from './cssImports.js';
 
 const MODULE_SUFFIX = '.module';
 const APP_CSS_BASENAME = 'app';
@@ -427,59 +436,21 @@ function isWithin(candidate: string, root: string): boolean {
   return relative.length > 0 && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-async function inlineAppImports(
-  css: string,
-  distRoot: string,
-  seen: Set<string> = new Set(),
-): Promise<string> {
-  const importPattern = /@import\s+(?:url\()?[\s]*['"]\/app\/([^'"]+)['"][\s]*\)?;?/g;
-  const segments: string[] = [];
-  let lastIndex = 0;
-
-  for (const match of css.matchAll(importPattern)) {
-    const index = match.index ?? 0;
-    segments.push(css.slice(lastIndex, index));
-
-    const relative = normalizeForwardSlashes(match[1] ?? '');
-    const inlined = await inlineAppImport(relative, distRoot, seen);
-    if (inlined !== null) {
-      segments.push(inlined);
-    } else {
-      segments.push(match[0]);
+async function inlineAppImports(css: string, distRoot: string): Promise<string> {
+  const appRoot = path.join(distRoot, FOLDERS.app);
+  await ensureDir(appRoot);
+  const entryPath = path.join(distRoot, '__app-import-entry.css');
+  return inlineCssImports(css, entryPath, appRoot, (importPath, containingPath) => {
+    if (importPath.startsWith('/app/')) {
+      return path.resolve(appRoot, stripUrlSuffix(importPath.slice('/app/'.length)));
     }
 
-    lastIndex = index + match[0].length;
-  }
+    if (isWithinOrEqual(containingPath, appRoot) && isLocalCssImport(importPath)) {
+      return path.resolve(path.dirname(containingPath), stripUrlSuffix(importPath));
+    }
 
-  segments.push(css.slice(lastIndex));
-  return segments.join('');
-}
-
-async function inlineAppImport(
-  relativePath: string,
-  distRoot: string,
-  seen: Set<string>,
-): Promise<string | null> {
-  if (relativePath.length === 0 || relativePath.includes('..')) {
     return null;
-  }
-
-  const resolved = path.join(distRoot, FOLDERS.app, relativePath);
-  if (!(await pathExists(resolved))) {
-    return null;
-  }
-
-  const key = resolved;
-  if (seen.has(key)) {
-    return '';
-  }
-
-  seen.add(key);
-  const content = await readFile(resolved);
-  const inlined = await inlineAppImports(content, distRoot, seen);
-  seen.delete(key);
-
-  return inlined;
+  });
 }
 
 async function emitAppStylesProduction(
@@ -502,7 +473,8 @@ async function emitAppStylesProduction(
   const files = await scanGlob('**/*.css', { cwd: sourceDir });
   for (const relative of files) {
     const sourcePath = path.join(sourceDir, relative);
-    const source = applyCustomMediaPrelude(await readFile(sourcePath), customMediaPrelude);
+    const bundled = await inlineSourceAppImports(await readFile(sourcePath), sourcePath, sourceDir);
+    const source = applyCustomMediaPrelude(bundled, customMediaPrelude);
     const processed = await processor.process(source, { from: sourcePath, map: false });
     const minified = csso.minify(processed.css).css;
     const hash = hashContent(minified);
@@ -532,27 +504,34 @@ async function emitAppStylesProduction(
 }
 
 function rewriteAppStyleImports(css: string, stylesMap: Map<string, string>): string {
-  if (stylesMap.size === 0) {
-    return css;
-  }
+  const root = postcss.parse(css);
+  root.walkAtRules('import', (rule) => {
+    const parsed = parseCssImport(rule.params);
+    if (!parsed || !isLocalCssImport(parsed.path)) {
+      return;
+    }
 
-  let result = css;
-  for (const [original, hashed] of stylesMap.entries()) {
-    const normalizedOriginal = original.startsWith('styles/') ? original : `styles/${original}`;
-    const escaped = escapeRegExp(normalizedOriginal);
-    const pattern = new RegExp(`(@import\\s+['"])(?:\\./)?${escaped}(['"];?)`, 'g');
-    result = result.replace(pattern, `$1/app/${hashed}$2`);
-  }
+    const normalized = path.posix.normalize(
+      normalizeForwardSlashes(stripUrlSuffix(parsed.path)).replace(/^\.\//, ''),
+    );
+    if (!normalized.startsWith('styles/')) {
+      throw new Error(`CSS @import escapes the permitted app styles root: ${parsed.path}`);
+    }
 
-  return result;
+    const relative = normalized.slice('styles/'.length);
+    const hashed = stylesMap.get(relative);
+    if (!hashed) {
+      throw new Error(`Unable to resolve local CSS @import from app.css: ${parsed.path}`);
+    }
+
+    rule.params = serializeCssImport(`/app/${hashed}`, parsed.qualifiers);
+  });
+
+  return root.toString();
 }
 
 function normalizeForwardSlashes(value: string): string {
   return value.replace(/\\/g, '/');
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
 }
 
 function stripAppLayerOrderStatement(css: string): { css: string; layerOrder?: string } {
