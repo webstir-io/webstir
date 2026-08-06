@@ -11,7 +11,7 @@ import {
   writeWorkspaceTest,
 } from './support.js';
 
-test('CLI watch reruns after a source change', async () => {
+test('CLI watch reruns after a source change', { timeout: 15_000 }, async () => {
   const workspaceRoot = await createTempWorkspace('webstir-testing-watch-');
   const fixture = await writeWorkspaceTest(workspaceRoot, 'frontend', 'watch', {
     testName: 'watch passes',

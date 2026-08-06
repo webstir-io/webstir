@@ -1,5 +1,5 @@
 import path from 'node:path';
-import chokidar from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
 
 import { discoverTestManifest } from '../discovery.js';
 import { emitEvent, createRunId } from '../events.js';
@@ -135,6 +135,8 @@ export async function runWatchCommand(options: WatchCommandOptions): Promise<voi
   watcher.on('change', addChangedPath);
   watcher.on('unlink', addChangedPath);
 
+  const watcherReady = waitForWatcherReady(watcher);
+
   const shutdown = async (): Promise<void> => {
     if (scheduled) {
       clearTimeout(scheduled);
@@ -157,7 +159,24 @@ export async function runWatchCommand(options: WatchCommandOptions): Promise<voi
     process.exit();
   });
 
+  await watcherReady;
   await runIteration([]);
+}
+
+function waitForWatcherReady(watcher: FSWatcher): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onReady = (): void => {
+      watcher.removeListener('error', onError);
+      resolve();
+    };
+    const onError = (error: Error): void => {
+      watcher.removeListener('ready', onReady);
+      reject(error);
+    };
+
+    watcher.once('ready', onReady);
+    watcher.once('error', onError);
+  });
 }
 
 const emptySummary: RunnerSummary = {
