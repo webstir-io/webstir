@@ -1,8 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { FrontendConfig, FrontendContentConfig, FrontendFeatureFlags } from '../types.js';
+import type {
+  FrontendConfig,
+  FrontendContentConfig,
+  FrontendFeatureFlags,
+  FrontendShellConfig,
+} from '../types.js';
 import { FOLDERS } from '../core/constants.js';
-import { frontendFeatureFlagsSchema } from './schema.js';
+import { frontendFeatureFlagsSchema, frontendShellConfigSchema } from './schema.js';
 
 export function buildConfig(workspaceRoot: string): FrontendConfig {
   const srcRoot = path.join(workspaceRoot, FOLDERS.src);
@@ -53,6 +58,7 @@ export function buildConfig(workspaceRoot: string): FrontendConfig {
       },
     },
     features: loadFeatureFlags(frontendRoot, rawConfig),
+    shell: loadShellConfig(frontendRoot, rawConfig),
     content: contentConfig,
   };
 }
@@ -207,6 +213,21 @@ function loadFeatureFlags(frontendRoot: string, rawConfig: unknown): FrontendFea
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to read frontend feature flags from ${frontendRoot}: ${message}`);
+  }
+}
+
+function loadShellConfig(frontendRoot: string, rawConfig: unknown): FrontendShellConfig {
+  try {
+    const source =
+      rawConfig &&
+      typeof rawConfig === 'object' &&
+      'shell' in (rawConfig as Record<string, unknown>)
+        ? (rawConfig as Record<string, unknown>).shell
+        : undefined;
+    return frontendShellConfigSchema.parse(source ?? {});
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to read frontend shell config from ${frontendRoot}: ${message}`);
   }
 }
 

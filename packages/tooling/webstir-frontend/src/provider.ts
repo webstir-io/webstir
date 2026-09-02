@@ -19,6 +19,7 @@ import type { FrontendConfig } from './types.js';
 import { emptyDir, readJson } from './utils/fs.js';
 import { scanGlob } from './utils/glob.js';
 import { applySsgRouting, assertNoSsgRoutes, generateSsgViewData } from './modes/ssg/index.js';
+import { validatePublishedHtml } from './html/publishValidation.js';
 
 interface PackageJson {
   readonly name: string;
@@ -68,6 +69,9 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
   if (shouldRunSsgPublish) {
     await generateSsgViewData(publishConfig);
     await applySsgRouting(publishConfig);
+  }
+  if (mode === 'publish') {
+    await validatePublishedHtml(publishConfig.paths.dist.frontend);
   }
 
   const artifacts = await collectArtifacts(config);

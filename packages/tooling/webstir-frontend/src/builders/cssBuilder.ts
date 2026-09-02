@@ -88,7 +88,11 @@ async function processCss(context: BuilderContext, isProduction: boolean): Promi
     );
 
     if (isProduction) {
-      const inlined = await inlineAppImports(normalized, config.paths.dist.frontend);
+      const inlined = await inlineAppImports(
+        normalized,
+        config.paths.dist.frontend,
+        path.join(config.paths.dist.pages, page.name, '__page-entry.css'),
+      );
       await emitProductionCss(config, page.name, inlined);
     } else {
       await emitDevelopmentCss(config, page.name, normalized);
@@ -189,7 +193,11 @@ async function processAppCss(
     const stylesMap = await emitAppStylesProduction(config, processor, customMediaPrelude);
     const processed = await processor.process(source, { from: appCssPath, map: false });
     const rewritten = rewriteAppStyleImports(processed.css, stylesMap);
-    const inlined = await inlineAppImports(rewritten, config.paths.dist.frontend);
+    const inlined = await inlineAppImports(
+      rewritten,
+      config.paths.dist.frontend,
+      path.join(config.paths.dist.app, '__app-entry.css'),
+    );
     const fileName = await emitAppProductionCss(config, inlined);
     await updateSharedAssets(config.paths.dist.frontend, (shared) => {
       shared.css = fileName;
@@ -436,11 +444,14 @@ function isWithin(candidate: string, root: string): boolean {
   return relative.length > 0 && !relative.startsWith('..') && !path.isAbsolute(relative);
 }
 
-async function inlineAppImports(css: string, distRoot: string): Promise<string> {
+async function inlineAppImports(
+  css: string,
+  distRoot: string,
+  outputPath: string,
+): Promise<string> {
   const appRoot = path.join(distRoot, FOLDERS.app);
   await ensureDir(appRoot);
-  const entryPath = path.join(distRoot, '__app-import-entry.css');
-  return inlineCssImports(css, entryPath, appRoot, (importPath, containingPath) => {
+  return inlineCssImports(css, outputPath, appRoot, (importPath, containingPath) => {
     if (importPath.startsWith('/app/')) {
       return path.resolve(appRoot, stripUrlSuffix(importPath.slice('/app/'.length)));
     }

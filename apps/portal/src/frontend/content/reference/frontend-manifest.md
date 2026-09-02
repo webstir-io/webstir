@@ -29,8 +29,10 @@
 | `paths.dist.fonts` | `dist/frontend/fonts` directory containing fonts. |
 | `paths.dist.media` | `dist/frontend/media` directory containing media assets. |
 | `features.htmlSecurity` | Enables CSP/SRI/transformers when `true`. |
+| `features.externalResourceIntegrity` | Allows publish to fetch external resources when computing SRI. |
 | `features.imageOptimization` | Enables WebP/AVIF generation and sanitization when `true`. |
 | `features.precompression` | Enables `.br`/`.gz` precompressed outputs when `true`. |
+| `shell.stickyHeader` | Explicitly reserves the standard sticky-header offset when custom shell markup does not use `.app-header`; defaults to `false`. |
 
 ## Location
 The manifest is emitted to:

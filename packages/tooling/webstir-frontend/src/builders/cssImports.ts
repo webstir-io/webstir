@@ -33,7 +33,7 @@ export async function inlineCssImports(
   const canonicalRoot = await realpath(permittedRoot);
   const canonicalContaining = (await pathExists(containingPath))
     ? await realpath(containingPath)
-    : path.resolve(containingPath);
+    : await canonicalizePotentialPath(containingPath);
   const stack = importStack.length > 0 ? importStack : [canonicalContaining];
   const root = postcss.parse(css, { from: containingPath });
   const imports: postcss.AtRule[] = [];
@@ -76,10 +76,139 @@ export async function inlineCssImports(
     importedRoot.walkAtRules('charset', (charset) => {
       charset.remove();
     });
+    rebaseRelativeUrls(importedRoot, canonicalImport, canonicalContaining);
     rule.replaceWith(...applyCssImportQualifiers(importedRoot.nodes, parsed.qualifiers));
   }
 
   return root.toString();
+}
+
+async function canonicalizePotentialPath(filePath: string): Promise<string> {
+  let existingAncestor = path.dirname(path.resolve(filePath));
+  let suffix = path.basename(filePath);
+
+  while (!(await pathExists(existingAncestor))) {
+    const parent = path.dirname(existingAncestor);
+    if (parent === existingAncestor) break;
+    suffix = path.join(path.basename(existingAncestor), suffix);
+    existingAncestor = parent;
+  }
+
+  return path.join(await realpath(existingAncestor), suffix);
+}
+
+function rebaseRelativeUrls(
+  root: postcss.Root,
+  importedPath: string,
+  containingPath: string,
+): void {
+  root.walkDecls((declaration) => {
+    declaration.value = rewriteCssUrls(declaration.value, importedPath, containingPath);
+  });
+  root.walkAtRules((rule) => {
+    if (rule.name.toLowerCase() !== 'import') {
+      rule.params = rewriteCssUrls(rule.params, importedPath, containingPath);
+    }
+  });
+}
+
+function rewriteCssUrls(value: string, importedPath: string, containingPath: string): string {
+  let result = '';
+  let cursor = 0;
+  let scanIndex = 0;
+
+  while (scanIndex < value.length) {
+    const functionMatch = findNextCssUrlFunction(value, scanIndex);
+    if (!functionMatch) {
+      result += value.slice(cursor);
+      break;
+    }
+
+    const { functionStart, openIndex } = functionMatch;
+    const parsed = readCssFunction(value, openIndex);
+    if (!parsed) {
+      result += value.slice(cursor);
+      break;
+    }
+
+    result += value.slice(cursor, functionStart);
+    const rawValue = parsed.value;
+    const leadingWhitespace = rawValue.match(/^\s*/)?.[0] ?? '';
+    const trailingWhitespace = rawValue.match(/\s*$/)?.[0] ?? '';
+    const trimmed = rawValue.trim();
+    const quote = trimmed[0] === '"' || trimmed[0] === "'" ? trimmed[0] : '';
+    const url = quote && trimmed.endsWith(quote) ? trimmed.slice(1, -1) : trimmed;
+
+    if (!isRebasableAssetUrl(url)) {
+      result += value.slice(functionStart, parsed.end);
+    } else {
+      const suffixIndex = url.search(/[?#]/);
+      const pathname = suffixIndex === -1 ? url : url.slice(0, suffixIndex);
+      const suffix = suffixIndex === -1 ? '' : url.slice(suffixIndex);
+      const absoluteAssetPath = path.resolve(path.dirname(importedPath), pathname);
+      let rebased = normalizeForwardSlashes(
+        path.relative(path.dirname(containingPath), absoluteAssetPath),
+      );
+      if (!rebased.startsWith('.')) {
+        rebased = `./${rebased}`;
+      }
+      result += `url(${leadingWhitespace}${quote}${rebased}${suffix}${quote}${trailingWhitespace})`;
+    }
+    cursor = parsed.end;
+    scanIndex = parsed.end;
+  }
+
+  return result;
+}
+
+function findNextCssUrlFunction(
+  value: string,
+  startIndex: number,
+): { functionStart: number; openIndex: number } | null {
+  let quote: string | null = null;
+
+  for (let index = startIndex; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote) {
+      if (character === '\\') index += 1;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+      continue;
+    }
+    if (character === '/' && value[index + 1] === '*') {
+      const commentEnd = value.indexOf('*/', index + 2);
+      if (commentEnd === -1) return null;
+      index = commentEnd + 1;
+      continue;
+    }
+    if (value.slice(index, index + 3).toLowerCase() !== 'url') continue;
+
+    const previous = value[index - 1];
+    if (previous && /[-_a-z0-9]/i.test(previous)) continue;
+    let openIndex = index + 3;
+    while (isWhitespace(value[openIndex])) openIndex += 1;
+    if (value[openIndex] === '(') return { functionStart: index, openIndex };
+  }
+
+  return null;
+}
+
+function isRebasableAssetUrl(url: string): boolean {
+  return (
+    url.length > 0 &&
+    !url.startsWith('/') &&
+    !url.startsWith('//') &&
+    !url.startsWith('#') &&
+    !url.startsWith('?') &&
+    !/^[a-z][a-z0-9+.-]*:/i.test(url)
+  );
+}
+
+function normalizeForwardSlashes(value: string): string {
+  return value.replace(/\\/g, '/');
 }
 
 export function parseCssImport(params: string): ParsedCssImport | null {

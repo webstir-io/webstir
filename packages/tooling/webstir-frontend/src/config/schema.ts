@@ -41,6 +41,10 @@ export const frontendFeatureFlagsSchema = z.object({
   precompression: z.boolean().default(true),
 });
 
+export const frontendShellConfigSchema = z.object({
+  stickyHeader: z.boolean().default(false),
+});
+
 export const frontendContentConfigSchema = z.object({
   basePath: z.string(),
   label: z.string(),
@@ -52,6 +56,7 @@ export const frontendConfigSchema = z.object({
   version: z.literal(1),
   paths: frontendPathSchema,
   features: frontendFeatureFlagsSchema,
+  shell: frontendShellConfigSchema.default({}),
   content: frontendContentConfigSchema,
 });
 

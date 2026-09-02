@@ -123,11 +123,18 @@ Binary name: `webstir-frontend`. All commands require `--workspace`.
     "externalResourceIntegrity": false,
     "imageOptimization": true,
     "precompression": false
+  },
+  "shell": {
+    "stickyHeader": false
   }
 }
 ```
 
 `externalResourceIntegrity` stays `false` by default so publish does not fetch third-party script or stylesheet URLs just to compute SRI. Enable it only when you explicitly want remote fetches during publish; otherwise, add `integrity` and `crossorigin` attributes yourself for external CDN assets.
+
+Publish always injects the small app-shell reset and typography critical CSS. Sticky-header variables, fixed `.app-header` geometry, and the matching body offset are added only when the composed document contains `.app-header`. Set `shell.stickyHeader` to `true` only for a custom header shell that needs the same reserved top space without using the standard class.
+
+Standard pages keep TypeScript in `src/frontend/pages/<page>/index.ts`, while their HTML references `index.js`; publish rewrites that browser-safe reference to the fingerprinted bundle. Publishing fails if emitted HTML still references `.ts`, `.tsx`, or `.jsx`, or if an emitted document points at a local asset that is absent from `dist/frontend`.
 
 ## Lifecycle Hooks
 

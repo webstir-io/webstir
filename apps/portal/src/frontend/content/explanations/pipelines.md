@@ -18,7 +18,8 @@ Build and publish stages for HTML, CSS, JS/TS, and static assets (Images, Fonts,
 - Publish: rewrite asset references using the per-page `manifest.json`,
   run HTML minifier (removes comments, collapses inter-tag whitespace,
   safe attribute optimizations), and emit precompressed `.html.br`.
-- Errors: fail if base HTML is missing or lacks `<main>`.
+- App-shell critical CSS always supplies the reset and typography baseline. The standard sticky-header offset is included only when the composed document uses `.app-header`, or when `frontend.config.json` explicitly sets `shell.stickyHeader` to `true` for equivalent custom shell markup.
+- Errors: fail if base HTML is missing or lacks `<main>`, if emitted HTML retains a browser-invalid `.ts`/`.tsx`/`.jsx` script reference, or if a local emitted-document asset reference does not resolve inside `dist/frontend`.
 
 ## CSS
 - **Bundler**: esbuild handles CSS processing alongside JavaScript for unified pipeline.
@@ -26,6 +27,7 @@ Build and publish stages for HTML, CSS, JS/TS, and static assets (Images, Fonts,
 - Publish: esbuild minifies CSS with `--minify`; writes fingerprinted `index-<hash>.css`.
 - Features:
   - Automatic `@import` resolution and bundling
+  - Relative `url(...)` rebasing when shared app styles are flattened into page output
   - CSS Modules support via `.module.css` extension
   - URL rewriting for assets (images, fonts)
   - Modern CSS syntax support including nesting
@@ -45,7 +47,7 @@ Build and publish stages for HTML, CSS, JS/TS, and static assets (Images, Fonts,
   - Production: `--bundle --minify --format=esm --drop:console --splitting --chunk-names=chunks/[name]-[hash] --entry-names=[dir]/index-[hash] --metafile --define:process.env.NODE_ENV="production"`
 - Code-splitting (production): Automatically extracts shared dependencies into `chunks/` folder; entry points import chunks via ESM; browser handles chunk loading transparently.
 - Content hashing: esbuild manages hashes for both entries and chunks via `--entry-names` and `--chunk-names` patterns.
-- Entry points: Automatically discovered from `build/frontend/pages/*/index.js` (tsc output).
+- Entry points: authored as `src/frontend/pages/*/index.ts`, referenced as `index.js` from page HTML, and automatically discovered from `build/frontend/pages/*/index.js` (compiler output). Publish rewrites the HTML reference under both supported bundlers.
 
 ### Backend (Node)
 - Source: `src/backend/**` compiled to `build/backend/**` in dev.
