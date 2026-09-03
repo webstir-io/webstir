@@ -24,7 +24,7 @@ permissions:
 
 env:
   BUN_VERSION: 1.3.11
-  NODE_VERSION: 20.18.1
+  NODE_VERSION: 22.14.0
 
 jobs:
   publish:
