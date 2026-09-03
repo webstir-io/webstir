@@ -20,6 +20,7 @@ import {
   type PublishedWorkspaceServerOptions,
 } from './deploy-shared.js';
 import { servePublishedStaticFile } from './deploy-static.js';
+import { readWorkspacePageRoutes, type PageRoute } from './page-routes.js';
 
 export type { DeploymentIo, PublishedWorkspaceServer, PublishedWorkspaceServerOptions };
 
@@ -37,6 +38,7 @@ export async function startPublishedWorkspaceServer(
   if (frontendRoot) {
     await assertExists(frontendRoot, 'published frontend output');
   }
+  const pageRoutes = frontendRoot ? await readWorkspacePageRoutes(workspaceRoot) : [];
 
   const internalPort = await getOpenPort();
   const processRecord = startBackendProcess({
@@ -70,6 +72,7 @@ export async function startPublishedWorkspaceServer(
         mode,
         frontendRoot,
         backendOrigin,
+        pageRoutes,
       }),
     error: (error) => textResponse(500, error.message),
   });
@@ -116,6 +119,7 @@ async function handlePublishedWorkspaceRequest(options: {
   readonly mode: PublishedWorkspaceMode;
   readonly frontendRoot?: string;
   readonly backendOrigin: string;
+  readonly pageRoutes: readonly PageRoute[];
 }): Promise<Response> {
   const requestUrl = new URL(options.request.url);
   const pathname = requestUrl.pathname;
@@ -139,5 +143,7 @@ async function handlePublishedWorkspaceRequest(options: {
     return textResponse(500, 'Published frontend output is not available.');
   }
 
-  return await servePublishedStaticFile(options.request, options.frontendRoot);
+  return await servePublishedStaticFile(options.request, options.frontendRoot, {
+    pageRoutes: options.pageRoutes,
+  });
 }

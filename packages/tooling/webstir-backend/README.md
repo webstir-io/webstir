@@ -452,3 +452,23 @@ If you use `getScaffoldAssets()` programmatically, these templates are included 
 - The orchestrator's dev server waits for that readiness line and proxies `/api/*` to your Node server.
 - Health probes: `/api/health` (orchestrator compatibility) mirrors `/healthz`, while `/readyz` exposes the readiness state plus the current manifest summary for external monitors.
 - If you replace the default runtime locally, keep the same behavior: listen on `process.env.PORT`, expose the same endpoints, and print `API server running` once the server is listening.
+
+## Page views
+
+A view can route a dynamic path to a built frontend page instead of a backend-rendered document. Declare it in `package.json` under `webstir.moduleManifest.views` with a `page` and a `:param` path pattern:
+
+```json
+{
+  "webstir": {
+    "moduleManifest": {
+      "views": [
+        { "name": "proposal", "path": "/clients/:client/proposals/:proposal", "page": "proposal", "renderMode": "spa" }
+      ]
+    }
+  }
+}
+```
+
+- `webstir watch` registers each pattern as a Bun route for `src/frontend/pages/<page>/index.html`; `webstir-backend-deploy` serves `dist/frontend/pages/<page>/index.html` when no static file matches. A real file always wins over a pattern, and a static segment beats a `:param` in the same position.
+- Parameters are whole segments (`/:version`, not `/v:version`). The page reads them from `location.pathname`.
+- A pattern cannot end in a file name such as `/download.json`; a `:param` matches any single segment, including one containing a dot, exactly as in watch. When nothing matches and the request accepts HTML, `pages/404/index.html` is served with a 404 status if the workspace has one.

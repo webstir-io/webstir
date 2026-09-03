@@ -578,6 +578,7 @@ export type LooseRouteSpec<TContext extends RequestContext = RequestContext> = R
 export const viewDefinitionSchema = z.object({
   name: z.string().min(1),
   path: z.string().min(1),
+  page: z.string().min(1).optional(),
   summary: z.string().optional(),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),

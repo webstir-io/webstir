@@ -3,6 +3,7 @@ export type RenderMode = 'ssg' | 'ssr' | 'spa';
 export interface WorkspaceModuleView {
   readonly name?: string;
   readonly path?: string;
+  readonly page?: string;
   readonly renderMode?: RenderMode;
   readonly staticPaths?: readonly string[];
 }
