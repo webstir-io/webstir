@@ -30,7 +30,7 @@ async function createWorkspace(prefix = 'webstir-frontend-bundler-parity-') {
   );
   await fs.writeFile(
     path.join(pageDir, 'index.html'),
-    '<head></head><main><section>Home</section></main>',
+    '<head><script type="module" src="index.ts"></script></head><main><section>Home</section></main>',
     'utf8',
   );
   await fs.writeFile(path.join(pageDir, 'message.ts'), 'export const message = "home";\n', 'utf8');
@@ -97,11 +97,20 @@ async function snapshotWorkspace(workspace, entryPoints) {
 
   const sharedJs = sharedManifest?.shared?.js;
   const pageJs = pageManifest?.pages?.home?.js;
+  const publishedHtml = await fs.readFile(
+    path.join(distRoot, 'pages', 'home', 'index.html'),
+    'utf8',
+  );
 
   assert.match(sharedJs ?? '', /^app-[a-z0-9]+\.js$/i, 'expected hashed shared app bundle');
   assert.match(pageJs ?? '', /^index-[a-z0-9]+\.js$/i, 'expected hashed page bundle');
   await fs.access(path.join(distRoot, 'app', sharedJs));
   await fs.access(path.join(distRoot, 'pages', 'home', pageJs));
+  assert.match(
+    publishedHtml,
+    /<script type="module" src="\/pages\/home\/index-[^"]+\.js"><\/script>/,
+  );
+  assert.doesNotMatch(publishedHtml, /(?:\.ts|\.tsx|\.jsx)(?:[?#][^"]*)?"/);
 
   return {
     entryPoints: [...entryPoints].sort(),
@@ -109,6 +118,9 @@ async function snapshotWorkspace(workspace, entryPoints) {
     distFiles: (await listRelativeFiles(distRoot)).map(normalizeHashedPath),
     sharedJs: normalizeHashedName(sharedJs),
     pageJs: normalizeHashedName(pageJs),
+    publishedHtml: publishedHtml
+      .replace(/index-[a-z0-9]+\.js/gi, 'index-[hash].js')
+      .replace(/app-[a-z0-9]+\.js/gi, 'app-[hash].js'),
   };
 }
 
@@ -248,5 +260,10 @@ test('publish mode Bun bundler preserves frontend filename/hash resolution parit
     bunSnapshot.pageJs,
     esbuildSnapshot.pageJs,
     'page bundle name should keep the same hashed shape',
+  );
+  assert.equal(
+    bunSnapshot.publishedHtml,
+    esbuildSnapshot.publishedHtml,
+    'published HTML entry rewriting should stay aligned',
   );
 });

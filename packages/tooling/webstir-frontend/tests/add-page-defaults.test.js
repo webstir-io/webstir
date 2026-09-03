@@ -63,6 +63,8 @@ test('add-page defaults to standard scaffold when webstir.mode is not ssg', asyn
       html.includes('<script type="module"'),
       'standard scaffold should include module script tag',
     );
+    assert.match(html, /<script type="module" src="index\.js" async><\/script>/);
+    assert.doesNotMatch(html, /src="index\.ts"/);
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

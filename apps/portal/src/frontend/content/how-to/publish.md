@@ -16,6 +16,8 @@ webstir publish --workspace /absolute/path/to/workspace
 ## Runtime Expectations
 
 - Frontend assets are fingerprinted and rewritten for publish mode.
+- Local stylesheet `url(...)` references are rebased when shared app CSS is flattened into page CSS.
+- Page HTML references the browser-safe `index.js` entry name even when source is authored in `index.ts`; publish rewrites it to the fingerprinted bundle and rejects leftover source-file references or missing local document assets.
 - Backend routes still own HTML, redirect, and fragment behavior.
 - Request-time views continue to serve document HTML and expose `x-webstir-document-cache`.
 - Fragment responses stay uncached and continue to emit `x-webstir-fragment-*` headers.

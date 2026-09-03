@@ -11,6 +11,7 @@ export interface FrontendConfig {
   readonly version: 1;
   readonly paths: FrontendPathConfig;
   readonly features: FrontendFeatureFlags;
+  readonly shell: FrontendShellConfig;
   readonly content: FrontendContentConfig;
 }
 
@@ -61,6 +62,10 @@ export interface FrontendFeatureFlags {
   readonly externalResourceIntegrity: boolean;
   readonly imageOptimization: boolean;
   readonly precompression: boolean;
+}
+
+export interface FrontendShellConfig {
+  readonly stickyHeader: boolean;
 }
 
 export interface FrontendContentConfig {

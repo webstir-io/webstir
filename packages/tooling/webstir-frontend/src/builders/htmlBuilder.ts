@@ -228,9 +228,12 @@ function injectOptInScripts(
     (candidate) => fs.existsSync(candidate),
   );
   if (pageScriptExists) {
-    const hasScript =
-      document(`script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`)
-        .length > 0;
+    const hasScript = document('script[src]')
+      .toArray()
+      .some((element) => {
+        const src = document(element).attr('src');
+        return typeof src === 'string' && isPageEntryScript(src, pageName, `/${FOLDERS.pages}`);
+      });
     if (!hasScript) {
       document('head').append(
         `<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`,
@@ -308,7 +311,7 @@ async function rewriteForPublish(
     document(`link[href="/app/app.css"]`).attr('href', appCssHref);
   }
   ensureStylesheetPreload(document, appCssHref);
-  ensureAppShellCriticalCss(document, appCssHref);
+  ensureAppShellCriticalCss(document, appCssHref, context.config.shell.stickyHeader);
   if (document('[data-scope="docs"]').length > 0) {
     ensureDocsShellCriticalCss(document);
   }
@@ -316,16 +319,20 @@ async function rewriteForPublish(
     document(`script[src="/app/app.js"]`).attr('src', `/app/${shared.js}`).attr('type', 'module');
   }
 
-  const scriptSelector = [
-    `script[src="${FILES.index}${EXTENSIONS.js}"]`,
-    `script[src="${buildScriptHref}"]`,
-  ].join(', ');
+  const pageEntryScripts = document('script[src]').filter((_, element) => {
+    const src = document(element).attr('src');
+    return typeof src === 'string' && isPageEntryScript(src, pageName, buildPagesUrlPrefix);
+  });
   if (manifest.js) {
-    document(scriptSelector)
+    pageEntryScripts
       .attr('src', resolvePageAssetUrl(pagesUrlPrefix, pageName, manifest.js))
       .attr('type', 'module');
   } else {
-    document(scriptSelector).remove();
+    document(
+      [`script[src="${FILES.index}${EXTENSIONS.js}"]`, `script[src="${buildScriptHref}"]`].join(
+        ', ',
+      ),
+    ).remove();
   }
 
   const cssSelector = [
@@ -409,6 +416,21 @@ async function rewriteForPublish(
   return await minifyHtml(htmlOutput);
 }
 
+function isPageEntryScript(src: string, pageName: string, buildPagesUrlPrefix: string): boolean {
+  const pathOnly = src.split(/[?#]/, 1)[0] ?? src;
+  for (const extension of [EXTENSIONS.js, EXTENSIONS.ts, '.tsx', '.jsx']) {
+    if (pathOnly === `${FILES.index}${extension}`) {
+      return true;
+    }
+    if (
+      pathOnly === resolvePageAssetUrl(buildPagesUrlPrefix, pageName, `${FILES.index}${extension}`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function handlePrecompression(context: BuilderContext, outputPath: string): Promise<void> {
   if (context.config.features.precompression) {
     await createCompressedVariants(outputPath);
@@ -457,15 +479,12 @@ function ensureStylesheetPreload(document: CheerioAPI, href: string): void {
   }
 
   const stylesheet = document(`link[rel="stylesheet"][href="${href}"]`).first();
-  if (stylesheet.length > 0) {
-    stylesheet.attr('fetchpriority', 'high');
+  if (stylesheet.length === 0) {
+    return;
   }
+  stylesheet.attr('fetchpriority', 'high');
   const preloadTag = `<link rel="preload" as="style" href="${href}">`;
-  if (stylesheet.length > 0) {
-    stylesheet.before(preloadTag);
-  } else {
-    head.append(preloadTag);
-  }
+  stylesheet.before(preloadTag);
 }
 
 function dedupeHeadMeta(document: CheerioAPI, attribute: 'name' | 'property'): void {

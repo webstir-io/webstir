@@ -176,6 +176,84 @@ test('production app CSS recursively inlines relative imports with qualifiers', 
   }
 });
 
+for (const [label, workspaceMode, expectedAssetUrl] of [
+  ['nested bundle', 'full', '../../images/shell.svg?v=1#mark'],
+  ['root SSG', 'ssg', '../images/shell.svg?v=1#mark'],
+]) {
+  test(`shared CSS rebases relative assets for ${label} page output`, async (t) => {
+    const frontendProvider = await loadProviderOrSkip(t);
+    if (!frontendProvider) return;
+    const workspace = await createWorkspace();
+    const appDir = path.join(workspace, 'src', 'frontend', 'app');
+    const stylesDir = path.join(appDir, 'styles');
+    const imagesDir = path.join(workspace, 'src', 'frontend', 'images');
+
+    try {
+      await fs.mkdir(imagesDir, { recursive: true });
+      await fs.writeFile(
+        path.join(workspace, 'package.json'),
+        JSON.stringify({ name: 'css-assets', version: '1.0.0', webstir: { mode: workspaceMode } }),
+      );
+      await fs.writeFile(
+        path.join(imagesDir, 'shell.svg'),
+        '<svg xmlns="http://www.w3.org/2000/svg"/>',
+      );
+      await fs.writeFile(
+        path.join(appDir, 'app.css'),
+        [
+          '@import "./styles/base.css";',
+          '.app-shell { background-image: url("../images/shell.svg?v=1#mark"); }',
+        ].join('\n'),
+      );
+      await fs.writeFile(
+        path.join(stylesDir, 'base.css'),
+        [
+          '.shell {',
+          '  mask-image: url(/images/absolute.svg);',
+          '  cursor: url(data:image/svg+xml;base64,AAAA), auto;',
+          '  border-image-source: url(#fragment);',
+          '  list-style-image: url(?variant=compact);',
+          '  content: url(https://cdn.example.com/external.svg);',
+          '  offset-path: url(//cdn.example.com/protocol-relative.svg);',
+          '}',
+          '.shell::before { content: "url(../images/not-an-asset.svg)"; }',
+        ].join('\n'),
+      );
+
+      await frontendProvider.build({
+        workspaceRoot: workspace,
+        env: { WEBSTIR_MODULE_MODE: 'publish' },
+        incremental: false,
+      });
+
+      const pageRoot = path.join(
+        workspace,
+        'dist',
+        'frontend',
+        workspaceMode === 'ssg' ? 'home' : path.join('pages', 'home'),
+      );
+      const cssFile = (await fs.readdir(pageRoot)).find((file) =>
+        /^index-[a-f0-9]+\.css$/i.test(file),
+      );
+      assert.ok(cssFile, 'expected hashed page stylesheet');
+      const css = await fs.readFile(path.join(pageRoot, cssFile), 'utf8');
+      assert.ok(
+        css.includes(`url(${expectedAssetUrl})`) || css.includes(`url("${expectedAssetUrl}")`),
+        css,
+      );
+      assert.match(css, /url\(\/images\/absolute\.svg\)/);
+      assert.match(css, /url\(data:image\/svg\+xml;base64,AAAA\)/);
+      assert.match(css, /url\(#fragment\)/);
+      assert.match(css, /url\(\?variant=compact\)/);
+      assert.match(css, /url\(https:\/\/cdn\.example\.com\/external\.svg\)/);
+      assert.match(css, /url\(\/\/cdn\.example\.com\/protocol-relative\.svg\)/);
+      assert.match(css, /["']url\(\.\.\/images\/not-an-asset\.svg\)["']/);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+}
+
 test('production app CSS rejects circular local imports', async (t) => {
   const frontendProvider = await loadProviderOrSkip(t);
   if (!frontendProvider) return;

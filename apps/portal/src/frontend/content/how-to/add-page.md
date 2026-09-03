@@ -17,6 +17,7 @@ Scaffold a new frontend page with `index.html|css` and, for standard pages, `ind
 - In the default `full` workflow, document pages live here while form handlers, redirects, and auth stay in `src/backend/module.ts`.
 - Internals: the CLI calls the canonical `@webstir-io/webstir-frontend` scaffold helper so generated files stay in sync with the framework templates.
 - SSG default: when `webstir.mode` is `ssg`, scaffolds a JS-free page by default (no `index.ts` and no module script tag); add `index.ts` later if you want JS sprinkles.
+- Standard page source lives in `index.ts`, but the HTML module script must reference `index.js`. Build and publish resolve that browser-safe name to the compiled or fingerprinted bundle; do not point HTML directly at `index.ts`.
 
 ## Inputs
 - `<name>`: one portable page-directory name, without path separators. Empty names, `.`/`..`, control characters, and platform-reserved names or characters are rejected. If the page already exists, the workflow fails.
@@ -28,6 +29,7 @@ Scaffold a new frontend page with `index.html|css` and, for standard pages, `ind
 
 ## Outputs
 - New page folder and files under `src/frontend/pages/<name>/`.
+- Standard pages contain `index.ts` and `<script type="module" src="index.js">`.
 - Picked up automatically by `build`, `watch`, and `publish`.
 
 ## Errors & Exit Codes

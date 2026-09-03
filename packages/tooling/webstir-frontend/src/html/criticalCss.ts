@@ -13,13 +13,10 @@ function minifyCriticalCss(css: string): string {
   return csso.minify(css).css;
 }
 
-const APP_SHELL_CRITICAL_CSS = minifyCriticalCss(
+const APP_SHELL_BASE_CRITICAL_CSS = minifyCriticalCss(
   `
 @layer tokens {
     :root {
-        --ws-header-control-size: 2.6rem;
-        --ws-header-block-padding: 0.75rem;
-        --ws-header-sticky-offset: calc(var(--ws-header-control-size) + (var(--ws-header-block-padding) * 2) + 1px);
         --ws-font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
             Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", Arial, sans-serif;
     }
@@ -44,7 +41,6 @@ const APP_SHELL_CRITICAL_CSS = minifyCriticalCss(
         font-family: var(--ws-font-sans);
         font-size: 16px;
         line-height: 1.6;
-        padding-top: var(--ws-header-sticky-offset, 0px);
     }
 
     h1,
@@ -73,6 +69,24 @@ const APP_SHELL_CRITICAL_CSS = minifyCriticalCss(
 
     p {
         margin: 0 0 1rem 0;
+    }
+}
+
+`.trim(),
+);
+const APP_SHELL_STICKY_HEADER_CRITICAL_CSS = minifyCriticalCss(
+  `
+@layer tokens {
+    :root {
+        --ws-header-control-size: 2.6rem;
+        --ws-header-block-padding: 0.75rem;
+        --ws-header-sticky-offset: calc(var(--ws-header-control-size) + (var(--ws-header-block-padding) * 2) + 1px);
+    }
+}
+
+@layer base {
+    body {
+        padding-top: var(--ws-header-sticky-offset, 0px);
     }
 }
 
@@ -174,7 +188,11 @@ export async function inlineCriticalCss(
   head.append(`\n<style data-critical>\n${cssContent}\n</style>\n`);
 }
 
-export function ensureAppShellCriticalCss(document: CheerioAPI, appCssHref: string): void {
+export function ensureAppShellCriticalCss(
+  document: CheerioAPI,
+  appCssHref: string,
+  stickyHeaderRequested = false,
+): void {
   const head = document('head').first();
   if (head.length === 0) {
     return;
@@ -186,7 +204,11 @@ export function ensureAppShellCriticalCss(document: CheerioAPI, appCssHref: stri
   }
 
   const stylesheet = document(`link[rel="stylesheet"][href="${appCssHref}"]`).first();
-  const styleTag = `<style data-critical="app">\n${APP_SHELL_CRITICAL_CSS}\n</style>`;
+  const usesStickyHeader = stickyHeaderRequested || document('.app-header').length > 0;
+  const css = usesStickyHeader
+    ? `${APP_SHELL_BASE_CRITICAL_CSS}${APP_SHELL_STICKY_HEADER_CRITICAL_CSS}`
+    : APP_SHELL_BASE_CRITICAL_CSS;
+  const styleTag = `<style data-critical="app">\n${css}\n</style>`;
   if (stylesheet.length > 0) {
     stylesheet.before(styleTag);
   } else {
