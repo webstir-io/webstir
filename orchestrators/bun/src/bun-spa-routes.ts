@@ -7,6 +7,8 @@ export type ReloadableServeServer = ReturnType<typeof Bun.serve> & {
 
 export interface BunFrontendFetchHandlerOptions {
   readonly apiProxyOrigin?: string;
+  /** Route of a page to serve, with a 404 status, when an HTML request matches nothing. */
+  readonly notFoundRoutePath?: string;
 }
 
 export interface BunSpaRouteEntry {
@@ -52,8 +54,24 @@ export function createBunFrontendFetchHandler(options: BunFrontendFetchHandlerOp
       return new Response('Method not allowed.', { status: 405 });
     }
 
+    if (options.notFoundRoutePath && acceptsHtml(request)) {
+      const notFoundPage = await fetch(new URL(options.notFoundRoutePath, requestUrl.origin));
+      if (notFoundPage.ok) {
+        return new Response(request.method === 'HEAD' ? null : notFoundPage.body, {
+          status: 404,
+          headers: {
+            'Content-Type': notFoundPage.headers.get('content-type') ?? 'text/html; charset=utf-8',
+          },
+        });
+      }
+    }
+
     return new Response('Not found.', { status: 404 });
   };
+}
+
+function acceptsHtml(request: Request): boolean {
+  return (request.headers.get('accept') ?? '').includes('text/html');
 }
 
 function getApiProxyPath(pathname: string): string | null {

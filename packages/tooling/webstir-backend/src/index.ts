@@ -11,3 +11,11 @@ export type {
   RuntimeLogger,
 } from './runtime/bun.js';
 export { startPublishedWorkspaceServer } from './runtime/deploy.js';
+export {
+  compareSpecificity,
+  matchPageRoute,
+  normalizePagePattern,
+  normalizePageRoutes,
+  readWorkspacePageRoutes,
+} from './runtime/page-routes.js';
+export type { PageRoute, PageRouteMatch } from './runtime/page-routes.js';

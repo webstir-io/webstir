@@ -1,5 +1,7 @@
 import { watch, type FSWatcher } from 'node:fs';
 
+import { readWorkspacePageRoutes, type PageRoute } from '@webstir-io/webstir-backend';
+
 import {
   prepareBunSpaGeneratedEntries,
   regenerateBunSpaEntry,
@@ -10,6 +12,7 @@ import {
   type BunSpaPageDetails,
 } from './bun-spa-document.ts';
 import {
+  type BunFrontendFetchHandlerOptions,
   createBunFrontendFetchHandler,
   createBunSpaRoutes,
   type BunSpaRouteEntry,
@@ -36,19 +39,25 @@ export async function startBunGeneratedFrontendWatch(
 ): Promise<BunGeneratedFrontendWatchSession> {
   const paths = resolveBunSpaEntryPaths(options.workspaceRoot);
   const pages = await resolveBunSpaPages(paths.workspaceRoot);
+  const pageRoutes = await readWorkspacePageRoutes(paths.workspaceRoot);
+  assertPageRoutesCompatible(pageRoutes, pages);
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? 8088;
+  const fetchOptions = {
+    apiProxyOrigin: options.apiProxyOrigin,
+    notFoundRoutePath: resolveNotFoundRoutePath(pages),
+  };
 
   await prepareBunSpaGeneratedEntries({ paths, pages });
 
-  const servedEntries = await loadServedEntries(paths, pages);
+  const servedEntries = await loadServedEntries(paths, pages, pageRoutes);
   const servedAddress = createServedAddress(
     host,
-    startFrontendServer(host, port, servedEntries, options.apiProxyOrigin),
+    startFrontendServer(host, port, servedEntries, fetchOptions),
   );
-  const watchers = watchRegenerationTargets(paths, pages, async (nextEntries) => {
+  const watchers = watchRegenerationTargets(paths, pages, pageRoutes, async (nextEntries) => {
     const reloadOptions: Parameters<ReloadableServeServer['reload']>[0] = {
-      fetch: createBunFrontendFetchHandler({ apiProxyOrigin: options.apiProxyOrigin }),
+      fetch: createBunFrontendFetchHandler(fetchOptions),
       routes: createBunSpaRoutes(nextEntries),
     };
     servedAddress.server.reload(reloadOptions);
@@ -66,13 +75,13 @@ function startFrontendServer(
   host: string,
   port: number,
   spaEntries: readonly BunSpaRouteEntry[],
-  apiProxyOrigin?: string,
+  fetchOptions: BunFrontendFetchHandlerOptions,
 ): ReloadableServeServer {
   const serverOptions = {
     hostname: host,
     port,
     routes: createBunSpaRoutes(spaEntries),
-    fetch: createBunFrontendFetchHandler({ apiProxyOrigin }),
+    fetch: createBunFrontendFetchHandler(fetchOptions),
   };
   return Bun.serve(
     serverOptions as unknown as Parameters<typeof Bun.serve>[0],
@@ -94,6 +103,7 @@ function createServedAddress(host: string, server: ReloadableServeServer): Serve
 function watchRegenerationTargets(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
+  pageRoutes: readonly PageRoute[],
   onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>,
 ): Set<FSWatcher> {
   const watchers = new Set<FSWatcher>();
@@ -114,11 +124,14 @@ function watchRegenerationTargets(
           return;
         }
 
-        pendingRegeneration = regenerateAndReloadSpaEntries(paths, pages, onEntriesReload).finally(
-          () => {
-            pendingRegeneration = null;
-          },
-        );
+        pendingRegeneration = regenerateAndReloadSpaEntries(
+          paths,
+          pages,
+          pageRoutes,
+          onEntriesReload,
+        ).finally(() => {
+          pendingRegeneration = null;
+        });
       }),
     );
   }
@@ -129,31 +142,42 @@ function watchRegenerationTargets(
 async function regenerateAndReloadSpaEntries(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
+  pageRoutes: readonly PageRoute[],
   onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>,
 ): Promise<void> {
   for (const page of pages) {
     await regenerateBunSpaEntry({ paths, page });
   }
 
-  await onEntriesReload(await loadServedEntries(paths, pages));
+  await onEntriesReload(await loadServedEntries(paths, pages, pageRoutes));
 }
 
 async function loadServedEntries(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
+  pageRoutes: readonly PageRoute[],
 ): Promise<readonly BunSpaRouteEntry[]> {
   return await Promise.all(
     pages.map(async (page, index) => {
       const generatedPaths = resolveBunSpaGeneratedPagePaths(paths, page);
       return {
-        routes: resolvePageRoutes(page, index === 0),
+        routes: resolvePageRoutes(page, index === 0, pageRoutes),
         entry: await loadBunSpaEntry(generatedPaths.generatedEntryPath),
       } satisfies BunSpaRouteEntry;
     }),
   );
 }
 
-function resolvePageRoutes(page: BunSpaPageDetails, isRootPage: boolean): readonly string[] {
+/**
+ * Bun route keys for one page: its directory path plus every view pattern that names it.
+ * Bun matches exact keys before `:param` keys and never matches a trailing slash, so each
+ * pattern is registered with and without one.
+ */
+export function resolvePageRoutes(
+  page: Pick<BunSpaPageDetails, 'name' | 'routePath'>,
+  isRootPage: boolean,
+  pageRoutes: readonly PageRoute[] = [],
+): readonly string[] {
   const routes = new Set<string>();
 
   if (isRootPage) {
@@ -165,13 +189,58 @@ function resolvePageRoutes(page: BunSpaPageDetails, isRootPage: boolean): readon
     routes.add(page.routePath);
     routes.add(`${page.routePath}/`);
     routes.add(`${page.routePath}/index.html`);
-    return Array.from(routes);
+  } else {
+    routes.add('/home');
+    routes.add('/home/');
+    routes.add('/home/index.html');
   }
 
-  routes.add('/home');
-  routes.add('/home/');
-  routes.add('/home/index.html');
+  for (const route of pageRoutes) {
+    if (route.page !== page.name) {
+      continue;
+    }
+    routes.add(route.pattern);
+    routes.add(`${route.pattern}/`);
+  }
+
   return Array.from(routes);
+}
+
+/**
+ * Every view must name an existing page, and none may claim a route a page already owns
+ * by its directory name. Bun's route table is last-write-wins, so without this check a
+ * view declared by a later page would silently replace a real page in watch, while the
+ * published server would keep serving the file.
+ */
+export function assertPageRoutesCompatible(
+  pageRoutes: readonly PageRoute[],
+  pages: readonly Pick<BunSpaPageDetails, 'name' | 'routePath'>[],
+): void {
+  const pageNames = new Set(pages.map((page) => page.name));
+  const naturalRoutes = new Map<string, string>();
+  pages.forEach((page, index) => {
+    for (const route of resolvePageRoutes(page, index === 0)) {
+      naturalRoutes.set(route, page.name);
+    }
+  });
+
+  for (const route of pageRoutes) {
+    if (!pageNames.has(route.page)) {
+      throw new Error(
+        `[webstir] view path ${route.pattern} routes to page "${route.page}", but src/frontend/pages/${route.page} does not exist.`,
+      );
+    }
+    const owner = naturalRoutes.get(route.pattern) ?? naturalRoutes.get(`${route.pattern}/`);
+    if (owner !== undefined && owner !== route.page) {
+      throw new Error(
+        `[webstir] view path ${route.pattern} for page "${route.page}" is already the address of page "${owner}".`,
+      );
+    }
+  }
+}
+
+function resolveNotFoundRoutePath(pages: readonly BunSpaPageDetails[]): string | undefined {
+  return pages.some((page) => page.name === '404') ? '/404' : undefined;
 }
 
 function createSession(

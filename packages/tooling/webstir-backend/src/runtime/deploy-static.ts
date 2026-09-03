@@ -2,6 +2,7 @@ import path from 'node:path';
 import { access } from 'node:fs/promises';
 
 import { requireBunRuntime, textResponse } from './deploy-shared.js';
+import { matchPageRoute, type PageRoute } from './page-routes.js';
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -55,9 +56,20 @@ const STATIC_EXTENSIONS = new Set([
 const CONTENT_HASH_PATTERN =
   /\.[a-f0-9]{8,64}\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|mp3|m4a|wav|ogg|mp4|webm|mov)$/i;
 
+export interface ServePublishedStaticFileOptions {
+  /** Views that route dynamic paths to built pages; consulted only when no file matches. */
+  readonly pageRoutes?: readonly PageRoute[];
+}
+
+interface ResolvedStaticFile {
+  readonly absolutePath: string;
+  readonly relativePath: string;
+}
+
 export async function servePublishedStaticFile(
   request: Request,
   frontendRoot: string,
+  options: ServePublishedStaticFileOptions = {},
 ): Promise<Response> {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return textResponse(405, 'Method not allowed.');
@@ -65,11 +77,55 @@ export async function servePublishedStaticFile(
 
   const requestUrl = new URL(request.url);
   const candidates = getStaticCandidatePaths(requestUrl.pathname);
-  const resolved = await resolveStaticFile(frontendRoot, candidates);
+  const resolved =
+    (await resolveStaticFile(frontendRoot, candidates)) ??
+    (await resolvePageRouteDocument(frontendRoot, requestUrl.pathname, options.pageRoutes));
   if (!resolved) {
-    return textResponse(404, 'Not found.');
+    return await notFoundResponse(request, frontendRoot);
   }
 
+  return serveResolvedFile(request, resolved, 200);
+}
+
+async function resolvePageRouteDocument(
+  frontendRoot: string,
+  pathname: string,
+  pageRoutes: readonly PageRoute[] = [],
+): Promise<ResolvedStaticFile | null> {
+  if (pageRoutes.length === 0) {
+    return null;
+  }
+
+  const match = matchPageRoute(pageRoutes, pathname);
+  if (!match) {
+    return null;
+  }
+
+  return await resolveStaticFile(frontendRoot, [
+    path.posix.join('pages', match.route.page, 'index.html'),
+  ]);
+}
+
+async function notFoundResponse(request: Request, frontendRoot: string): Promise<Response> {
+  if (acceptsHtml(request)) {
+    const notFoundPage = await resolveStaticFile(frontendRoot, ['pages/404/index.html']);
+    if (notFoundPage) {
+      return serveResolvedFile(request, notFoundPage, 404);
+    }
+  }
+
+  return textResponse(404, 'Not found.');
+}
+
+function acceptsHtml(request: Request): boolean {
+  return (request.headers.get('accept') ?? '').includes('text/html');
+}
+
+function serveResolvedFile(
+  request: Request,
+  resolved: ResolvedStaticFile,
+  status: number,
+): Response {
   const lowerRelativePath = resolved.relativePath.toLowerCase();
   const extension = path.extname(lowerRelativePath).toLowerCase();
   const headers = new Headers({
@@ -78,16 +134,10 @@ export async function servePublishedStaticFile(
   setCacheHeaders(headers, lowerRelativePath);
 
   if (request.method === 'HEAD') {
-    return new Response(null, {
-      status: 200,
-      headers,
-    });
+    return new Response(null, { status, headers });
   }
 
-  return new Response(requireBunRuntime().file(resolved.absolutePath), {
-    status: 200,
-    headers,
-  });
+  return new Response(requireBunRuntime().file(resolved.absolutePath), { status, headers });
 }
 
 export function getStaticCandidatePaths(pathname: string): readonly string[] {
@@ -115,7 +165,7 @@ export function getStaticCandidatePaths(pathname: string): readonly string[] {
 async function resolveStaticFile(
   buildRoot: string,
   relativePaths: readonly string[],
-): Promise<{ absolutePath: string; relativePath: string } | null> {
+): Promise<ResolvedStaticFile | null> {
   for (const relativePath of relativePaths) {
     const absolutePath = path.resolve(buildRoot, relativePath);
     if (!absolutePath.startsWith(buildRoot + path.sep) && absolutePath !== buildRoot) {
