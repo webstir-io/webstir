@@ -90,13 +90,12 @@ bun run clean          # remove dist artifacts
 bun run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
 bun run test
 bun run smoke
-# Release helper (bumps version and pushes a package-scoped release tag)
-bun run release -- patch
+# From the repository root, prepare the synchronized testing release set
+bun run release:prepare -- testing patch
 ```
 
 - Regenerate schema files whenever TypeScript interfaces change.
-- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` before publishing.
-- Publishing targets npm and is triggered by the monorepo release workflow.
+- Publishing targets npm through one exact-commit, trusted-publishing release-set workflow.
 
 ## License
 

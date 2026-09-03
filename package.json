@@ -52,6 +52,8 @@
     "check:required": "bun tools/run-checks.mjs required",
     "check:release": "bun tools/run-checks.mjs release",
     "check:with-watch-browser": "bun tools/run-checks.mjs with-watch-browser",
+    "release:prepare": "bun tools/prepare-release-set.mjs",
+    "release:plan": "bun tools/release-set.mjs --plan",
     "clean": "bun run --workspaces --if-present clean",
     "smoke": "bun run --workspaces --if-present smoke",
     "build:contracts": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build",

@@ -1,17 +1,18 @@
-import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  chmodSync,
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import {
+  frameworkPackages,
+  getReleaseGroupByName,
+  getReleaseSetTag,
+  parseReleaseSetTag,
+} from '../framework-packages.mjs';
+import { prepareReleaseSet, resolveTargetVersion } from '../prepare-release-set.mjs';
+import { classifyRegistryVersion, createReleasePlan } from '../release-set.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const textDecoder = new TextDecoder();
@@ -25,32 +26,24 @@ function withTempWorkspace(setup) {
   }
 }
 
-function copyTree(relativePath, tempRoot) {
-  const source = path.join(repoRoot, relativePath);
-  const target = path.join(tempRoot, relativePath);
-  cpSync(source, target, { recursive: true });
+function copyManifest(relativeDir, tempRoot) {
+  const targetDir = path.join(tempRoot, relativeDir);
+  mkdirSync(targetDir, { recursive: true });
+  cpSync(path.join(repoRoot, relativeDir, 'package.json'), path.join(targetDir, 'package.json'));
 }
 
-function runRuntime(relativeScript, args, cwd) {
-  return run(process.execPath, [relativeScript, ...args], cwd);
+function readJson(root, relativePath) {
+  return JSON.parse(readFileSync(path.join(root, relativePath), 'utf8'));
 }
 
-function runRuntimeWithEnv(relativeScript, args, cwd, env) {
-  return run(process.execPath, [relativeScript, ...args], cwd, env);
-}
-
-function run(command, args, cwd, extraEnv) {
+function run(command, args, cwd) {
   const result = Bun.spawnSync({
     cmd: [command, ...args],
     cwd,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: {
-      ...process.env,
-      ...(extraEnv ?? {}),
-    },
+    env: process.env,
   });
-
   return {
     status: result.exitCode,
     stdout: textDecoder.decode(result.stdout),
@@ -58,132 +51,146 @@ function run(command, args, cwd, extraEnv) {
   };
 }
 
-function readJson(relativePath) {
-  return JSON.parse(readFileSync(path.join(repoRoot, relativePath), 'utf8'));
-}
+test('release-set tags resolve only synchronized release groups', () => {
+  const group = getReleaseGroupByName('webstir');
 
-function writeExecutable(root, name, content) {
-  const binDir = path.join(root, 'bin');
-  mkdirSync(binDir, { recursive: true });
-  const filePath = path.join(binDir, name);
-  writeFileSync(filePath, content);
-  chmodSync(filePath, 0o755);
-  return filePath;
-}
+  assert.equal(getReleaseSetTag(group, '1.2.3'), 'release-set/webstir/v1.2.3');
+  assert.equal(parseReleaseSetTag('release-set/webstir/v1.2.3')?.group.name, 'webstir');
+  assert.equal(parseReleaseSetTag('release/webstir/v1.2.3'), null);
+  assert.equal(parseReleaseSetTag('release-set/webstir/vnext'), null);
+});
 
-test('resolve-release-package rejects mismatched tag versions', () => {
+test('patch preparation advances from the highest current group version', () => {
+  assert.equal(resolveTargetVersion('patch', ['0.1.18', '0.1.20', '0.1.51']), '0.1.52');
+  assert.equal(resolveTargetVersion('minor', ['0.1.18', '0.1.51']), '0.2.0');
+  assert.throws(() => resolveTargetVersion('0.1.51', ['0.1.18', '0.1.51']), /must be newer/i);
+  assert.equal(resolveTargetVersion('0.2.0', ['0.2.0', '0.2.0']), '0.2.0');
+});
+
+test('prepare-release-set synchronizes production manifests and internal ranges', () => {
   withTempWorkspace((tempRoot) => {
-    copyTree('tools', tempRoot);
-    copyTree('packages/contracts/module-contract', tempRoot);
+    for (const packageName of getReleaseGroupByName('webstir').packageNames) {
+      const frameworkPackage = frameworkPackages.find((entry) => entry.packageName === packageName);
+      copyManifest(frameworkPackage.canonicalDir, tempRoot);
+    }
 
-    const result = runRuntime(
-      'tools/resolve-release-package.mjs',
-      ['--tag', 'release/module-contract/v9.9.9'],
-      tempRoot,
-    );
+    const result = prepareReleaseSet({
+      repoRoot: tempRoot,
+      groupName: 'webstir',
+      versionSpec: '0.2.0',
+    });
 
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /tag version 9\.9\.9 does not match/i);
+    assert.equal(result.targetVersion, '0.2.0');
+    assert.equal(result.releaseTag, 'release-set/webstir/v0.2.0');
+    assert.equal(result.changedFiles.length, 4);
+
+    const backend = readJson(tempRoot, 'packages/tooling/webstir-backend/package.json');
+    const frontend = readJson(tempRoot, 'packages/tooling/webstir-frontend/package.json');
+    const webstir = readJson(tempRoot, 'orchestrators/bun/package.json');
+
+    assert.equal(backend.version, '0.2.0');
+    assert.equal(frontend.version, '0.2.0');
+    assert.equal(webstir.version, '0.2.0');
+    assert.equal(backend.dependencies['@webstir-io/module-contract'], '^0.2.0');
+    assert.equal(frontend.dependencies['@webstir-io/module-contract'], '^0.2.0');
+    assert.equal(webstir.dependencies['@webstir-io/module-contract'], '^0.2.0');
+    assert.equal(webstir.dependencies['@webstir-io/webstir-backend'], '^0.2.0');
+    assert.equal(webstir.dependencies['@webstir-io/webstir-frontend'], '^0.2.0');
   });
 });
 
-test('resolve-release-package resolves canonical package metadata', () => {
-  const result = runRuntime(
-    'tools/resolve-release-package.mjs',
-    ['--package-dir', 'packages/tooling/webstir-backend'],
-    repoRoot,
-  );
-
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
-  assert.match(result.stdout, /package_name=@webstir-io\/webstir-backend/);
-  assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
-});
-
-test('resolve-release-package resolves package metadata by package name', () => {
-  const result = runRuntime(
-    'tools/resolve-release-package.mjs',
-    ['--package-name', '@webstir-io/webstir-backend'],
-    repoRoot,
-  );
-
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /package_dir=packages\/tooling\/webstir-backend/);
-  assert.match(result.stdout, /package_name=@webstir-io\/webstir-backend/);
-  assert.match(result.stdout, /release_tag=release\/webstir-backend\/v/);
-});
-
-test('resolve-release-package resolves orchestrator package metadata', () => {
-  const result = runRuntime(
-    'tools/resolve-release-package.mjs',
-    ['--package-name', '@webstir-io/webstir'],
-    repoRoot,
-  );
-
-  assert.equal(result.status, 0);
-  assert.match(result.stdout, /package_dir=orchestrators\/bun/);
-  assert.match(result.stdout, /package_name=@webstir-io\/webstir/);
-  assert.match(result.stdout, /release_tag=release\/webstir\/v/);
-});
-
-test('release-package stages only the canonical package manifest', () => {
+test('release plan builds the dependency closure once and publishes in dependency order', () => {
   withTempWorkspace((tempRoot) => {
-    copyTree('tools', tempRoot);
-    copyTree('packages/tooling/webstir-backend', tempRoot);
+    for (const frameworkPackage of frameworkPackages) {
+      copyManifest(frameworkPackage.canonicalDir, tempRoot);
+    }
+    prepareReleaseSet({
+      repoRoot: tempRoot,
+      groupName: 'webstir',
+      versionSpec: '0.2.0',
+    });
 
-    const fakeToolLog = path.join(tempRoot, 'fake-tools.log');
-    writeExecutable(
-      tempRoot,
-      'git',
-      `#!/usr/bin/env bash
-set -euo pipefail
-printf 'git %s\\n' "$*" >> "$FAKE_TOOL_LOG"
-if [[ "$1" == "diff" ]]; then
-  exit 0
-fi
-exit 0
-`,
-    );
-    writeExecutable(
-      tempRoot,
-      'bun',
-      `#!/usr/bin/env bash
-set -euo pipefail
-printf 'bun %s\\n' "$*" >> "$FAKE_TOOL_LOG"
-exit 0
-`,
-    );
-    writeExecutable(
-      tempRoot,
-      'npm',
-      `#!/usr/bin/env bash
-set -euo pipefail
-printf 'npm %s\\n' "$*" >> "$FAKE_TOOL_LOG"
-if [[ "$1" == "version" ]]; then
-  bun -e 'const fs = require("node:fs"); const file = process.argv[1]; const version = process.argv[2]; const pkg = JSON.parse(fs.readFileSync(file, "utf8")); pkg.version = version; fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\\n");' package.json "$2"
-fi
-exit 0
-`,
-    );
+    const plan = createReleasePlan({
+      repoRoot: tempRoot,
+      groupName: 'webstir',
+      version: '0.2.0',
+    });
+    const buildNames = plan.buildPackages.map((entry) => entry.packageName);
+    const publishNames = plan.publishPackages.map((entry) => entry.packageName);
 
-    const result = runRuntimeWithEnv(
-      'tools/release-package.mjs',
-      ['1.2.3', '--no-push', '--package-dir', 'packages/tooling/webstir-backend'],
-      tempRoot,
-      {
-        FAKE_TOOL_LOG: fakeToolLog,
-        PATH: `${path.join(tempRoot, 'bin')}${path.delimiter}${process.env.PATH ?? ''}`,
-      },
+    assert.deepEqual(publishNames, [
+      '@webstir-io/module-contract',
+      '@webstir-io/webstir-backend',
+      '@webstir-io/webstir-frontend',
+      '@webstir-io/webstir',
+    ]);
+    assert.equal(new Set(buildNames).size, buildNames.length);
+    assert.ok(
+      buildNames.indexOf('@webstir-io/testing-contract') <
+        buildNames.indexOf('@webstir-io/webstir-testing'),
     );
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.doesNotMatch(result.stdout, /sync-framework-embedded/);
-
-    const toolLog = readFileSync(fakeToolLog, 'utf8');
-    assert.match(toolLog, /git add packages\/tooling\/webstir-backend\/package\.json/);
-    assert.doesNotMatch(toolLog, /orchestrators\/dotnet/);
-    assert.doesNotMatch(toolLog, /git push/);
+    assert.ok(
+      buildNames.indexOf('@webstir-io/webstir-testing') < buildNames.indexOf('@webstir-io/webstir'),
+    );
   });
+});
+
+test('release plan rejects unsynchronized package versions before publication', () => {
+  assert.throws(
+    () => createReleasePlan({ groupName: 'webstir', version: '9.9.9' }),
+    /run release:prepare/i,
+  );
+});
+
+test('registry state distinguishes missing, partial, and complete publication', () => {
+  assert.deepEqual(
+    classifyRegistryVersion({
+      exactStatus: 404,
+      exactBody: null,
+      packumentStatus: 200,
+      packumentBody: { versions: {} },
+      version: '1.2.3',
+    }),
+    { kind: 'missing' },
+  );
+
+  const partial = classifyRegistryVersion({
+    exactStatus: 200,
+    exactBody: { version: '1.2.3' },
+    packumentStatus: 200,
+    packumentBody: { versions: {} },
+    version: '1.2.3',
+  });
+  assert.equal(partial.kind, 'partial');
+  assert.match(partial.detail, /package index does not expose it/);
+
+  const metadata = { version: '1.2.3', gitHead: 'abc' };
+  assert.deepEqual(
+    classifyRegistryVersion({
+      exactStatus: 200,
+      exactBody: metadata,
+      packumentStatus: 200,
+      packumentBody: { versions: { '1.2.3': metadata } },
+      version: '1.2.3',
+    }),
+    { kind: 'published', metadata },
+  );
+});
+
+test('release workflow delegates validation to exact-SHA CI', () => {
+  const workflow = readFileSync(
+    path.join(repoRoot, '.github/workflows/release-package.yml'),
+    'utf8',
+  );
+
+  assert.match(workflow, /release-set\/\*\*/);
+  assert.match(workflow, /Verify exact commit passed main CI/);
+  assert.match(workflow, /bun tools\/release-set\.mjs\s+--publish/);
+  assert.doesNotMatch(workflow, /--version "\$\{\{ inputs\.version \}\}"/);
+  assert.match(workflow, /--version "\$\{RELEASE_VERSION\}"/);
+  assert.doesNotMatch(workflow, /bun audit/);
+  assert.doesNotMatch(workflow, /playwright install/);
+  assert.doesNotMatch(workflow, /bun run (?:test|smoke)/);
 });
 
 test('publishable package manifests use concrete internal dependency ranges', () => {
@@ -211,7 +218,7 @@ test('publishable package manifests use concrete internal dependency ranges', ()
   ];
 
   for (const { packageJsonPath, dependencyName, expectedRange } of cases) {
-    const packageJson = readJson(packageJsonPath);
+    const packageJson = readJson(repoRoot, packageJsonPath);
 
     assert.equal(packageJson.dependencies?.[dependencyName], expectedRange);
     assert.doesNotMatch(packageJson.dependencies?.[dependencyName] ?? '', /^workspace:/);
@@ -239,9 +246,9 @@ test('packed publishable tooling packages do not ship workspace protocol depende
     ];
 
     for (const { packageDir, dependencyName, expectedRange } of cases) {
-      copyTree(packageDir, tempRoot);
-
       const copiedPackageDir = path.join(tempRoot, packageDir);
+      cpSync(path.join(repoRoot, packageDir), copiedPackageDir, { recursive: true });
+
       const packResult = run(
         'bun',
         ['pm', 'pack', '--ignore-scripts', '--quiet'],
@@ -253,7 +260,7 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       const tarballPath = path.join(copiedPackageDir, filename);
       const packedManifestResult = run(
         'tar',
-        ['-xOf', path.join(copiedPackageDir, filename), 'package/package.json'],
+        ['-xOf', tarballPath, 'package/package.json'],
         copiedPackageDir,
       );
       assert.equal(packedManifestResult.status, 0, packedManifestResult.stderr);

@@ -7,8 +7,8 @@ usage() {
 Usage: scripts/update-contract.sh [x.y.z|--latest] [--exact] [--fast]
 
 Updates @webstir-io/module-contract (defaults to latest when no version is provided),
-installs deps, then builds and tests the frontend package. Does NOT publish. If
-everything passes, run scripts/publish.sh <bump> separately.
+installs deps, then builds and tests the frontend package. Does NOT publish. Prepare
+the next synchronized release set from the repository root separately.
 
 Examples:
   scripts/update-contract.sh                # use latest

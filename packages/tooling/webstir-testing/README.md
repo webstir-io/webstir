@@ -77,13 +77,12 @@ bun run clean          # remove dist artifacts
 bun run build          # TypeScript → dist/
 bun run test
 bun run smoke
-# Release helper (bumps version and pushes a package-scoped release tag)
-bun run release -- patch
+# From the repository root, prepare the synchronized testing release set
+bun run release:prepare -- testing patch
 ```
 
 - Add integration fixtures under `tests/` before enabling automated suites.
-- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` prior to publishing.
-- The release workflow publishes to npm using trusted publishing (`id-token: write` + provenance).
+- The release-set workflow consumes exact-commit CI proof and publishes with trusted provenance.
 
 ## Troubleshooting
 

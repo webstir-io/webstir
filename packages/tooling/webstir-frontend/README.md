@@ -196,7 +196,8 @@ bun install
 bun run clean
 bun run build
 bun run test
-bun run release -- patch
+# From the repository root
+bun run release:prepare -- webstir patch
 ```
 
 Recommended package validation before release:

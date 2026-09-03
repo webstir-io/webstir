@@ -1,6 +1,8 @@
 # Webstir Plan
 
 > This is the repo planning checkpoint. Keep it short. If current code or active docs conflict with this file, current code wins.
+>
+> Active execution is indexed from [`PLAN.md`](../PLAN.md).
 
 ## Context
 
@@ -19,4 +21,4 @@
 
 ## Immediate Next Step
 
-Audit the remaining Bun mutation sinks for another reproduced unsafe write before considering descriptor-relative write hardening.
+Complete the active release-pipeline simplification plan before returning to additional runtime hardening.
