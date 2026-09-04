@@ -7,7 +7,6 @@
     "lib": ["ES2022"],
     "outDir": "../../build/backend",
     "rootDir": ".",
-    "baseUrl": ".",
     "incremental": true,
     "tsBuildInfoFile": "../../build/backend/.tsbuildinfo",
     "types": ["node"],

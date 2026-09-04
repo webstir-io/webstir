@@ -7,8 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "outDir": "../../build/frontend",
-    "rootDir": ".",
-    "baseUrl": "."
+    "rootDir": "."
   },
   "include": ["**/*.ts"],
   "exclude": ["node_modules", "../../build", "../../dist"]

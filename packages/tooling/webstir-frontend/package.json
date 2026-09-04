@@ -92,6 +92,6 @@
     "@types/csso": "^5.0.4",
     "@types/html-minifier-terser": "^7.0.2",
     "@types/node": "^25.5.0",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   }
 }

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 
 import type { TestModule } from '@webstir-io/webstir-testing';
 
