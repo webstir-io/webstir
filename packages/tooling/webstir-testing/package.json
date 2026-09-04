@@ -75,7 +75,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.21",
-    "typescript": "^5.9.3"
+    "typescript": "^7.0.2"
   },
   "dependencies": {
     "@webstir-io/testing-contract": "^0.1.8",

@@ -90,6 +90,9 @@ test('CLI init scaffolds an external SSG workspace with published package versio
     ).toBe(true);
     expect(existsSync(path.join(workspaceRoot, 'src', 'backend'))).toBe(false);
     expect(baseTsconfig.references).toEqual([{ path: 'src/frontend' }]);
+    expect(packageJson.devDependencies.typescript).toBe('^7.0.2');
+    expect(baseTsconfig.compilerOptions.moduleResolution).toBe('Bundler');
+    expect(baseTsconfig.compilerOptions.types).toEqual(['node']);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }

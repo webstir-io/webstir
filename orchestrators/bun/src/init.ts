@@ -226,7 +226,7 @@ function createPackageJson(
       '@types/node': '^20.0.0',
       autoprefixer: '^10.4.20',
       esbuild: '^0.25.0',
-      typescript: '^5.4.0',
+      typescript: '^7.0.2',
     },
     packageManager: PACKAGE_MANAGER,
     browserslist: [
@@ -267,7 +267,7 @@ function createBaseTsconfig(mode: WorkspaceMode): Record<string, unknown> {
     compilerOptions: {
       target: 'ES2022',
       module: 'esnext',
-      moduleResolution: 'node',
+      moduleResolution: 'Bundler',
       strict: true,
       esModuleInterop: true,
       skipLibCheck: true,
@@ -275,6 +275,7 @@ function createBaseTsconfig(mode: WorkspaceMode): Record<string, unknown> {
       sourceMap: true,
       declaration: false,
       removeComments: true,
+      types: ['node'],
       typeRoots: ['./types', './node_modules/@types'],
       inlineSources: true,
     },

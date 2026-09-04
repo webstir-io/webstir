@@ -2,6 +2,10 @@
 
 Bun-first CLI for Webstir.
 
+Builds and new workspaces use TypeScript 7. Test transpilation uses the official
+`@typescript/typescript6` API package because TypeScript 7.0 does not expose a
+compiler API. This preserves TypeScript import rewriting and ESM output.
+
 Primary command name: `webstir`
 
 Current command surface:

@@ -31,5 +31,5 @@ test('core and browser test inventories are complete and non-overlapping', () =>
   expect(browserFiles).toHaveLength(5);
   expect(browserFiles).toContain('tests/progressive-enhancement.browser.integration.test.ts');
   expect(browserFiles).toContain('tests/full-watch.integration.test.ts');
-  expect(new Set([...files, ...browserFiles]).size).toBe(38);
+  expect(new Set([...files, ...browserFiles]).size).toBe(39);
 });
