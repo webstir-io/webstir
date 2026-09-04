@@ -361,3 +361,87 @@ test('content nav manifest respects sidebar order across content folders', async
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+test('Markdown code, callouts, and GFM content survive build and publish', async () => {
+  const { load } = await import('cheerio');
+  const { runBuild, runPublish } = await import('../dist/index.js');
+  const workspace = await createWorkspaceWithContent();
+  const code = 'const html = "<img src=x onerror=alert(1)> & text";';
+  const markdown = [
+    '# Rendering',
+    '',
+    '## Repeated heading',
+    '',
+    '## Repeated heading',
+    '',
+    '```JS title="example"',
+    code,
+    '```',
+    '',
+    '```unknown-language',
+    '<tag> & unknown',
+    '```',
+    '',
+    '```',
+    '<plain> & text',
+    '```',
+    '',
+    '    <indented> & text',
+    '',
+    '```js',
+    '```',
+    '',
+    ':::note Code example',
+    '```html',
+    '<script>alert("callout")</script>',
+    '```',
+    ':::',
+    '',
+    '| Feature | Result |',
+    '| --- | --- |',
+    '| **Table** | ~~old~~ |',
+    '',
+    '- [x] Complete',
+    '- [ ] Pending',
+    '',
+    'See [Details](section/two.md?mode=read#details).',
+  ].join('\n');
+
+  try {
+    await fs.writeFile(path.join(workspace, 'src/frontend/content/readme.md'), markdown);
+    await runBuild({ workspaceRoot: workspace });
+    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+
+    for (const output of ['build/frontend/pages/docs/readme', 'dist/frontend/docs/readme']) {
+      const $ = load(await fs.readFile(path.join(workspace, output, 'index.html'), 'utf8'));
+      const article = $('article');
+      const blocks = article.find('pre code');
+      assert.equal(blocks.length, 6, output);
+      assert.equal(blocks.eq(0).text(), code, output);
+      assert.equal(blocks.eq(0).hasClass('language-js'), true, output);
+      assert.ok(blocks.eq(0).find('.hljs-keyword').length > 0, output);
+      assert.equal(blocks.eq(1).text(), '<tag> & unknown', output);
+      assert.equal(blocks.eq(2).text(), '<plain> & text', output);
+      assert.equal(blocks.eq(3).text(), '<indented> & text', output);
+      assert.equal(blocks.eq(4).text(), '', output);
+      assert.equal(blocks.eq(5).text(), '<script>alert("callout")</script>', output);
+      assert.equal(blocks.find('img, script, tag, plain, indented').length, 0, output);
+      assert.equal(article.find('.docs-callout--note pre code').length, 1, output);
+      assert.equal(article.find('table tbody tr').length, 1, output);
+      assert.equal(article.find('del').text(), 'old', output);
+      assert.equal(article.find('input[type="checkbox"]:checked').length, 1, output);
+      assert.equal(article.find('h2').eq(0).attr('id'), 'repeated-heading', output);
+      assert.equal(article.find('h2').eq(1).attr('id'), 'repeated-heading-2', output);
+      assert.equal(
+        article
+          .find('a')
+          .filter((_, el) => $(el).text() === 'Details')
+          .attr('href'),
+        '/docs/section/two/?mode=read#details',
+        output,
+      );
+    }
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});

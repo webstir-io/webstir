@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { marked } from 'marked';
+import { marked, type Renderer } from 'marked';
 import { load } from 'cheerio';
 import type { Cheerio } from 'cheerio';
 import type { AnyNode } from 'domhandler';
@@ -59,7 +59,7 @@ interface RenderedContentPage {
   readonly sourcePath: string;
 }
 
-type MarkdownRenderer = InstanceType<typeof marked.Renderer>;
+type MarkdownRenderer = Renderer;
 
 export function createContentBuilder(context: BuilderContext): Builder {
   return {
@@ -1287,11 +1287,7 @@ function getMarkdownRenderer(): MarkdownRenderer {
 
   const renderer = new marked.Renderer();
 
-  // Marked v12 renderer signature is not stable in TS types; keep it permissive.
-  (renderer as unknown as { code: (code: string, infostring?: string) => string }).code = (
-    code: string,
-    infostring?: string,
-  ): string => {
+  renderer.code = ({ text: code, lang: infostring }): string => {
     const rawLang = typeof infostring === 'string' ? infostring.trim().split(/\s+/)[0] : '';
     const lang = rawLang ? rawLang.toLowerCase() : '';
 
