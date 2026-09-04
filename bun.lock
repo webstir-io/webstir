@@ -121,7 +121,7 @@
     },
     "orchestrators/bun": {
       "name": "@webstir-io/webstir",
-      "version": "0.1.52",
+      "version": "0.1.53",
       "bin": {
         "webstir": "src/cli.ts",
       },
@@ -143,7 +143,7 @@
     },
     "packages/contracts/module-contract": {
       "name": "@webstir-io/module-contract",
-      "version": "0.1.52",
+      "version": "0.1.53",
       "dependencies": {
         "@ts-rest/core": "^3.40.0",
         "zod": "^3.23.8",
@@ -156,7 +156,7 @@
     },
     "packages/contracts/testing-contract": {
       "name": "@webstir-io/testing-contract",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "devDependencies": {
         "@types/node": "^20.19.21",
         "typescript": "^7.0.2",
@@ -164,7 +164,7 @@
     },
     "packages/tooling/webstir-backend": {
       "name": "@webstir-io/webstir-backend",
-      "version": "0.1.52",
+      "version": "0.1.53",
       "bin": {
         "webstir-backend-deploy": "dist/deploy-cli.js",
       },
@@ -181,7 +181,7 @@
     },
     "packages/tooling/webstir-frontend": {
       "name": "@webstir-io/webstir-frontend",
-      "version": "0.1.52",
+      "version": "0.1.53",
       "bin": {
         "webstir-frontend": "dist/cli.js",
       },
@@ -211,7 +211,7 @@
     },
     "packages/tooling/webstir-testing": {
       "name": "@webstir-io/webstir-testing",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "bin": {
         "webstir-testing": "dist/cli.js",
         "webstir-testing-runner": "dist/cli.js",
