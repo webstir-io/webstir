@@ -26,21 +26,6 @@ async function copyFile(src, dest) {
   await fs.copyFile(src, dest);
 }
 
-async function installPackages(workspace, packages, options = { dev: false }) {
-  if (!packages || packages.length === 0) return;
-  const args = ['add', '--silent', ...packages];
-  if (options.dev) {
-    args.push('-D');
-  }
-  await new Promise((resolve, reject) => {
-    const child = spawn('bun', args, { cwd: workspace, stdio: 'ignore' });
-    child.on('error', reject);
-    child.on('close', (code) =>
-      code === 0 ? resolve() : reject(new Error(`bun add failed (${code})`)),
-    );
-  });
-}
-
 async function pathExists(target) {
   try {
     await fs.access(target);
@@ -303,8 +288,6 @@ async function main() {
     },
   };
   await fs.writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-
-  await installPackages(workspace, ['pino']);
 
   await linkWorkspaceNodeModules(workspace);
 

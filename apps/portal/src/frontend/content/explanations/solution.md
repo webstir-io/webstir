@@ -67,7 +67,7 @@ The canonical primitive breakdown for those behaviors lives in [Primitives](../r
 - `webstir operations --json` lists the stable framework operations that wrappers and MCP adapters should call.
 - `webstir inspect --json` is the direct combined inspection contract for workspace-aware wrappers.
 - `webstir agent` is intentionally thin: it orchestrates inspect, scaffold, validate, and repair flows by composing those stable operations instead of inventing architecture from scratch.
-- The benchmark runner at `bun run benchmark:agent-tasks` stays pinned to the recipe apps so the agent-facing story stays tied to real framework behavior.
+- Required integration and browser suites exercise those operations against the canonical recipe apps.
 
 ## Related Docs
 

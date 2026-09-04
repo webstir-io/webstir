@@ -19,9 +19,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.json && node --test tests/*.test.js",
-    "clean": "rm -rf dist",
-    "smoke": "bun -e \"console.log('[smoke] no smoke tests configured');\""
+    "test": "bun run build && bun run test:built",
+    "test:built": "node --test tests/*.test.js",
+    "clean": "rm -rf dist"
   },
   "keywords": [
     "webstir",

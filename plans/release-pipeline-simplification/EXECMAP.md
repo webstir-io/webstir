@@ -34,14 +34,14 @@ Make Webstir validation and package publishing fast, deterministic, resumable, a
   - Run the repository-required gate.
   - Review and deliver the first PR without creating a release tag or publishing a package.
 
-- [ ] Simplify the CI execution graph without weakening product coverage.
+- [x] Simplify the CI execution graph without weakening product coverage.
   - Build affected package layers once rather than inside nested test and smoke scripts.
   - Group compatible test files while retaining isolation for suites that require it.
   - Remove no-op smoke scripts, redundant command aliases, and unconsumed coverage artifacts.
-  - Run browser, installation, audit, and benchmark lanes only at their relevant boundaries.
+  - Keep browser and package-install proofs at their behavior boundaries, move dependency auditing to lockfile changes and a schedule, and remove the duplicate recipe command runner mislabeled as a benchmark.
   - Align testing documentation with the remaining commands and gates.
 
-- [ ] Verify and deliver the CI simplification.
+- [x] Verify and deliver the CI simplification.
   - Run focused package and orchestration tests first, then the resulting required gate.
   - Compare the test inventory and wall-clock behavior before and after.
   - Review and deliver the second PR without publishing packages.

@@ -18,12 +18,6 @@ bun run build
 bun run test
 ```
 
-### Run smoke checks where configured
-
-```bash
-bun run smoke
-```
-
 ### Format the supported Bun/TypeScript surfaces
 
 ```bash
@@ -63,7 +57,8 @@ bun run webstir -- --help
 ## Notes
 
 - Run commands from the repo root unless a package README says otherwise.
-- `bun run check:required` is the CI mirror for the required gate, `bun run check:with-watch-browser` adds the watch-browser proof lane, and `bun run check:release` extends the required gate with `bun run benchmark:agent-tasks`.
+- `bun run test` and `bun run check:required` are aliases for the same required CI mirror.
+- Use package-local `smoke` scripts only for focused backend or testing-provider diagnosis; the required gate invokes their already-built variants after one shared framework build.
 - The archived `.NET` tree has its own historical tooling, but it is not part of the active Bun workflow.
 
 ## Related Docs

@@ -89,7 +89,6 @@ bun install
 bun run clean          # remove dist artifacts
 bun run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
 bun run test
-bun run smoke
 # From the repository root, prepare the synchronized testing release set
 bun run release:prepare -- testing patch
 ```

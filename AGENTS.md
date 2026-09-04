@@ -31,7 +31,7 @@ Monorepo baseline for Webstir.
 
 ### `packages/tooling/webstir-frontend`
 - Start with `README.md` and the package exports before changing public surfaces.
-- Validate with `bun run build`, `bun run test`, and `bun run smoke` as needed.
+- Validate with `bun run build` and `bun run test`; use the repo required gate for cross-package changes.
 - The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
 - Prepare synchronized production releases from the repo root with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>`.
 

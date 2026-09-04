@@ -1,44 +1,35 @@
 import { expect, test } from 'bun:test';
 
-import { buildTestPlan, listCoreTestFiles } from '../scripts/run-tests.mjs';
+import { buildTestPlan, listBrowserTestFiles, listCoreTestFiles } from '../scripts/run-tests.mjs';
 
-test('required orchestrator plan includes watch browser proofs in the default gate', () => {
+test('required orchestrator plan runs the complete inventory in two isolated worker pools', () => {
   const plan = buildTestPlan('required');
   const coreFiles = listCoreTestFiles();
+  const browserFiles = listBrowserTestFiles();
 
-  expect(plan).toHaveLength(coreFiles.length + 6);
-  expect(plan[0]?.args).toContain('tests/add.integration.test.ts');
-  expect(plan[0]?.args).not.toContain('tests/progressive-enhancement.browser.integration.test.ts');
-  expect(plan.slice(0, coreFiles.length).map((step) => step.args.at(-1))).toEqual(coreFiles);
-  expect(plan[coreFiles.length]?.args).toEqual([
+  expect(plan).toHaveLength(2);
+  expect(plan[0]?.label).toBe('core orchestrator tests');
+  expect(plan[0]?.args.slice(0, 4)).toEqual([
     'test',
     '--bail=1',
-    'tests/progressive-enhancement.browser.integration.test.ts',
-    '-t',
-    'publish mode',
+    '--parallel=2',
+    '--max-concurrency=1',
   ]);
-  expect(plan.slice(coreFiles.length + 1, coreFiles.length + 5).map((step) => step.args)).toEqual([
-    ['test', '--bail=1', 'tests/runtime-boundary.integration.test.ts'],
-    ['test', '--bail=1', 'tests/bun-first-spa.integration.test.ts'],
-    ['test', '--bail=1', 'tests/ssg-watch.integration.test.ts'],
-    ['test', '--bail=1', 'tests/full-watch.integration.test.ts'],
-  ]);
-  expect(plan[coreFiles.length + 5]?.args).toEqual([
-    'test',
-    '--bail=1',
-    'tests/progressive-enhancement.browser.integration.test.ts',
-    '-t',
-    'watch mode',
-  ]);
+  expect(plan[0]?.args.slice(4)).toEqual(coreFiles);
+  expect(plan[1]?.label).toBe('browser publish and watch proofs');
+  expect(plan[1]?.args.slice(4)).toEqual(browserFiles);
+  expect(buildTestPlan('core')).toEqual([plan[0]]);
+  expect(buildTestPlan('browser')).toEqual([plan[1]]);
 });
 
-test('with-watch-browser orchestrator plan remains an alias for the default required plan', () => {
-  expect(buildTestPlan('with-watch-browser')).toEqual(buildTestPlan('required'));
-});
-
-test('core orchestrator file list remains sorted for deterministic runs', () => {
+test('core and browser test inventories are complete and non-overlapping', () => {
   const files = listCoreTestFiles();
+  const browserFiles = listBrowserTestFiles();
   const sorted = [...files].sort();
 
   expect(files).toEqual(sorted);
+  expect(browserFiles).toHaveLength(5);
+  expect(browserFiles).toContain('tests/progressive-enhancement.browser.integration.test.ts');
+  expect(browserFiles).toContain('tests/full-watch.integration.test.ts');
+  expect(new Set([...files, ...browserFiles]).size).toBe(37);
 });

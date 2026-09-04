@@ -3,42 +3,41 @@ import { describe, expect, test } from 'bun:test';
 import { buildCheckPlan } from '../run-checks.mjs';
 
 describe('buildCheckPlan', () => {
-  test('required gate stays deterministic and relies on the orchestrator required suite for watch coverage', () => {
+  test('required gate builds the framework graph once before testing built output', () => {
     const plan = buildCheckPlan('required');
 
     expect(plan.map((step) => step.label)).toEqual([
       'repo biome check',
       'repo biome lint',
       'repo tool contracts',
-      'module contract',
-      'testing contract',
-      'backend tooling tests',
-      'backend tooling smoke',
-      'frontend tooling tests',
-      'testing tooling',
-      'testing tooling smoke',
       'bun asset sources',
       'bun feature projections',
       'bun full demo sync',
+      'framework package graph build',
+      'module contract tests',
+      'testing contract tests',
+      'backend tooling tests',
+      'backend tooling smoke',
+      'frontend tooling tests',
+      'testing tooling tests',
+      'testing tooling smoke',
       'bun orchestrator required suite',
       'bun package install smoke',
-      'bun standalone install smoke',
+      'portal build',
     ]);
-    expect(plan.some((step) => step.command.includes('test:watch-browser'))).toBe(false);
-  });
-
-  test('with-watch-browser plan remains an alias for the required gate', () => {
-    expect(buildCheckPlan('with-watch-browser')).toEqual(buildCheckPlan('required'));
-  });
-
-  test('release gate extends the required gate with the recipe-app benchmark', () => {
-    const requiredPlan = buildCheckPlan('required');
-    const releasePlan = buildCheckPlan('release');
-
-    expect(releasePlan.slice(0, requiredPlan.length)).toEqual(requiredPlan);
-    expect(releasePlan.at(-1)).toEqual({
-      label: 'recipe-app benchmark',
-      command: ['bun', 'run', 'benchmark:agent-tasks'],
-    });
+    expect(plan.filter((step) => step.command.includes('build'))).toHaveLength(2);
+    expect(plan.find((step) => step.label === 'framework package graph build')?.command).toEqual([
+      'bun',
+      'run',
+      '--filter',
+      '@webstir-io/webstir',
+      'build',
+    ]);
+    expect(
+      plan
+        .filter((step) => step.label.endsWith('tests'))
+        .every((step) => step.command.includes('test:built')),
+    ).toBe(true);
+    expect(plan.some((step) => step.command.includes('test:install:standalone'))).toBe(false);
   });
 });
