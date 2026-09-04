@@ -198,12 +198,12 @@ test('publishable package manifests use concrete internal dependency ranges', ()
     {
       packageJsonPath: 'packages/tooling/webstir-backend/package.json',
       dependencyName: '@webstir-io/module-contract',
-      expectedRange: '^0.1.17',
+      expectedRange: '^0.1.52',
     },
     {
       packageJsonPath: 'packages/tooling/webstir-frontend/package.json',
       dependencyName: '@webstir-io/module-contract',
-      expectedRange: '^0.1.17',
+      expectedRange: '^0.1.52',
     },
     {
       packageJsonPath: 'packages/tooling/webstir-testing/package.json',
@@ -213,7 +213,7 @@ test('publishable package manifests use concrete internal dependency ranges', ()
     {
       packageJsonPath: 'orchestrators/bun/package.json',
       dependencyName: '@webstir-io/module-contract',
-      expectedRange: '^0.1.17',
+      expectedRange: '^0.1.52',
     },
   ];
 
@@ -231,12 +231,12 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       {
         packageDir: 'packages/tooling/webstir-backend',
         dependencyName: '@webstir-io/module-contract',
-        expectedRange: '^0.1.17',
+        expectedRange: '^0.1.52',
       },
       {
         packageDir: 'packages/tooling/webstir-frontend',
         dependencyName: '@webstir-io/module-contract',
-        expectedRange: '^0.1.17',
+        expectedRange: '^0.1.52',
       },
       {
         packageDir: 'packages/tooling/webstir-testing',

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 
 export interface BunSpaEntryPaths {
   readonly workspaceRoot: string;
@@ -180,6 +181,12 @@ interface WriteGeneratedPageCssOptions {
   readonly appCssPath: string;
 }
 
+interface CssBuildOutput {
+  readonly success: boolean;
+  readonly logs: readonly unknown[];
+  readonly outputs: readonly (Blob & { readonly type: string })[];
+}
+
 async function writeGeneratedPageCss(options: WriteGeneratedPageCssOptions): Promise<string> {
   const appCssImport = `@import "${toRelativeModulePath(options.generatedCssPath, options.appCssPath)}";`;
   let css = appCssImport;
@@ -192,8 +199,32 @@ async function writeGeneratedPageCss(options: WriteGeneratedPageCssOptions): Pro
     css = `${appCssImport}\n`;
   }
 
-  await writeFile(options.generatedCssPath, css, 'utf8');
-  return toRelativeModulePath(options.generatedEntryPath, options.generatedCssPath);
+  const sourcePath = `${options.generatedCssPath}.source.css`;
+  await writeFile(sourcePath, css, 'utf8');
+  const buildCss = (
+    Bun as typeof Bun & {
+      build(options: Record<string, unknown>): Promise<CssBuildOutput>;
+    }
+  ).build;
+  const build = await buildCss({
+    entrypoints: [sourcePath],
+    target: 'browser',
+    write: false,
+  }).finally(() => rm(sourcePath, { force: true }));
+  if (!build.success) {
+    throw new AggregateError(build.logs, `Failed to generate ${options.generatedCssPath}.`);
+  }
+
+  const bundledCss = build.outputs.find((output) => output.type.startsWith('text/css'));
+  if (!bundledCss) {
+    throw new Error(`CSS generation produced no stylesheet for ${options.generatedCssPath}.`);
+  }
+  const bundledSource = await bundledCss.text();
+  const version = createHash('sha256').update(bundledSource).digest('hex').slice(0, 12);
+  const parsedPath = path.parse(options.generatedCssPath);
+  const versionedPath = path.join(parsedPath.dir, `${parsedPath.name}-${version}${parsedPath.ext}`);
+  await writeFile(versionedPath, bundledSource, 'utf8');
+  return toRelativeModulePath(options.generatedEntryPath, versionedPath);
 }
 
 function extractTagContents(html: string, tagName: string): string | null {

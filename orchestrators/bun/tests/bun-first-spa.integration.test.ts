@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { chromium, type Browser } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -200,6 +200,72 @@ test('Bun-first SPA watch hot-applies CSS edits without a full page reload', asy
   }
 }, 120_000);
 
+test('Bun-first SPA watch rebuilds transitive CSS imports and refreshes their graph', async () => {
+  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa-css-');
+  const workspace = workspaceCopy.workspaceRoot;
+  const appRoot = path.join(workspace, 'src', 'frontend', 'app');
+  const stylesRoot = path.join(appRoot, 'styles');
+  const appCssPath = path.join(appRoot, 'app.css');
+  const firstLevelPath = path.join(stylesRoot, 'watch-first.css');
+  const secondLevelPath = path.join(stylesRoot, 'watch-second.css');
+  const addedPath = path.join(stylesRoot, 'watch-added.css');
+
+  await mkdir(stylesRoot, { recursive: true });
+  const appCss = await readFile(appCssPath, 'utf8');
+  await Promise.all([
+    writeFile(appCssPath, `@import "./styles/watch-first.css";\n${appCss}`, 'utf8'),
+    writeFile(firstLevelPath, '@import "./watch-second.css";\n', 'utf8'),
+    writeFile(secondLevelPath, ':root { --watch-state: nested-before; }\n', 'utf8'),
+  ]);
+
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
+
+  try {
+    await waitFor(async () => {
+      expect(await fetchServedCss(port)).toContain('--watch-state: nested-before');
+    }, 30_000);
+    await writeFile(secondLevelPath, ':root { --watch-state: nested-after; }\n', 'utf8');
+    await waitFor(async () => {
+      expect(await fetchServedCss(port)).toContain('--watch-state: nested-after');
+    }, 20_000);
+    const initialGeneratedHtml = await readGeneratedHtml(workspace);
+
+    await writeFile(addedPath, ':root { --watch-added: added-before; }\n', 'utf8');
+    await writeFile(
+      appCssPath,
+      `@import "./styles/watch-added.css";\n@import "./styles/watch-first.css";\n${appCss}`,
+      'utf8',
+    );
+    await waitFor(async () => {
+      expect(await fetchServedCss(port)).toContain('--watch-added: added-before');
+    }, 20_000);
+    await waitFor(async () => {
+      const generatedHtml = await readGeneratedHtml(workspace);
+      expect(generatedHtml).not.toBe(initialGeneratedHtml);
+      expect(await readGeneratedCss(workspace, generatedHtml)).toContain(
+        '--watch-added: added-before',
+      );
+    }, 20_000);
+
+    await writeFile(addedPath, ':root { --watch-added: added-after; }\n', 'utf8');
+    await waitFor(async () => {
+      expect(await fetchServedCss(port)).toContain('--watch-added: added-after');
+    }, 20_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
+
 async function fetchText(port: number, requestPath: string): Promise<string> {
   const response = await fetch(`http://127.0.0.1:${port}${requestPath}`);
   if (!response.ok) {
@@ -207,6 +273,35 @@ async function fetchText(port: number, requestPath: string): Promise<string> {
   }
 
   return await response.text();
+}
+
+async function fetchServedCss(port: number): Promise<string> {
+  const html = await fetchText(port, '/');
+  const stylesheetPath = html.match(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)/i)?.[1];
+  if (!stylesheetPath) {
+    throw new Error('Expected generated page to include a stylesheet.');
+  }
+
+  const stylesheetUrl = new URL(stylesheetPath, `http://127.0.0.1:${port}`);
+  return await fetchText(port, `${stylesheetUrl.pathname}${stylesheetUrl.search}`);
+}
+
+async function readGeneratedHtml(workspace: string): Promise<string> {
+  return await readFile(
+    path.join(workspace, '.webstir', 'bun-first-spa', 'home', 'index.html'),
+    'utf8',
+  );
+}
+
+async function readGeneratedCss(workspace: string, html: string): Promise<string> {
+  const stylesheetPath = html.match(/<link[^>]+href=["']([^"']+\.css)["']/i)?.[1];
+  if (!stylesheetPath) {
+    throw new Error('Expected generated page to reference generated CSS.');
+  }
+  return await readFile(
+    path.resolve(workspace, '.webstir', 'bun-first-spa', 'home', stylesheetPath),
+    'utf8',
+  );
 }
 
 function spawnBunFirstWatch(
