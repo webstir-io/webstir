@@ -16,9 +16,12 @@ export interface BunSpaRouteEntry {
   readonly entry: BodyInit;
 }
 
+let spaEntryLoadVersion = 0;
+
 export async function loadBunSpaEntry(generatedEntryPath: string): Promise<BodyInit> {
+  spaEntryLoadVersion += 1;
   const routeModule = (await import(
-    `${pathToFileURL(generatedEntryPath).href}?t=${Date.now()}`
+    `${pathToFileURL(generatedEntryPath).href}?v=${spaEntryLoadVersion}`
   )) as { default: unknown };
   return routeModule.default as BodyInit;
 }

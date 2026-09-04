@@ -20,6 +20,7 @@ import {
   type ReloadableServeServer,
 } from './bun-spa-routes.ts';
 import type { DevServerAddress } from './dev-server.ts';
+import { resolveLocalCssDependencyGraph } from './css-import-graph.ts';
 
 export interface BunGeneratedFrontendWatchOptions {
   readonly workspaceRoot: string;
@@ -55,7 +56,7 @@ export async function startBunGeneratedFrontendWatch(
     host,
     startFrontendServer(host, port, servedEntries, fetchOptions),
   );
-  const watchers = watchRegenerationTargets(paths, pages, pageRoutes, async (nextEntries) => {
+  const watchers = await watchRegenerationTargets(paths, pages, pageRoutes, async (nextEntries) => {
     const reloadOptions: Parameters<ReloadableServeServer['reload']>[0] = {
       fetch: createBunFrontendFetchHandler(fetchOptions),
       routes: createBunSpaRoutes(nextEntries),
@@ -100,55 +101,121 @@ function createServedAddress(host: string, server: ReloadableServeServer): Serve
   };
 }
 
-function watchRegenerationTargets(
+async function watchRegenerationTargets(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
   pageRoutes: readonly PageRoute[],
   onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>,
-): Set<FSWatcher> {
+): Promise<Set<FSWatcher>> {
   const watchers = new Set<FSWatcher>();
+  const watchersByTarget = new Map<string, FSWatcher>();
+  let pagesByTarget = new Map<string, Set<string>>();
+  const pendingPageNames = new Set<string>();
   let pendingRegeneration: Promise<void> | null = null;
 
-  const regenerationTargets = new Set<string>([paths.appTemplatePath, paths.appCssPath]);
+  const refreshWatchedGraph = async () => {
+    const nextPagesByTarget = await resolveRegenerationTargets(paths, pages);
+
+    for (const [target, watcher] of watchersByTarget) {
+      if (!nextPagesByTarget.has(target)) {
+        watcher.close();
+        watchers.delete(watcher);
+        watchersByTarget.delete(target);
+      }
+    }
+
+    for (const target of nextPagesByTarget.keys()) {
+      if (!watchersByTarget.has(target)) {
+        const watcher = watch(target, () => {
+          for (const pageName of pagesByTarget.get(target) ?? []) {
+            pendingPageNames.add(pageName);
+          }
+
+          if (!pendingRegeneration) {
+            pendingRegeneration = drainPendingRegenerations().finally(() => {
+              pendingRegeneration = null;
+            });
+          }
+        });
+        watchers.add(watcher);
+        watchersByTarget.set(target, watcher);
+      }
+    }
+
+    pagesByTarget = nextPagesByTarget;
+  };
+
+  const drainPendingRegenerations = async () => {
+    while (pendingPageNames.size > 0) {
+      const affectedPageNames = new Set(pendingPageNames);
+      pendingPageNames.clear();
+      const affectedPages = pages.filter((page) => affectedPageNames.has(page.name));
+
+      await refreshWatchedGraph();
+      await regenerateAndReloadSpaEntries(
+        paths,
+        pages,
+        affectedPages,
+        pageRoutes,
+        onEntriesReload,
+        refreshWatchedGraph,
+      );
+    }
+  };
+
+  await refreshWatchedGraph();
+  return watchers;
+}
+
+async function resolveRegenerationTargets(
+  paths: BunSpaEntryPaths,
+  pages: readonly BunSpaPageDetails[],
+): Promise<Map<string, Set<string>>> {
+  const pagesByTarget = new Map<string, Set<string>>();
+  const allPageNames = pages.map((page) => page.name);
+  addTargetPages(pagesByTarget, paths.appTemplatePath, allPageNames);
+
+  for (const dependency of await resolveLocalCssDependencyGraph(paths.appCssPath)) {
+    addTargetPages(pagesByTarget, dependency, allPageNames);
+  }
+
   for (const page of pages) {
-    regenerationTargets.add(page.htmlPath);
+    addTargetPages(pagesByTarget, page.htmlPath, [page.name]);
     if (page.cssPath) {
-      regenerationTargets.add(page.cssPath);
+      for (const dependency of await resolveLocalCssDependencyGraph(page.cssPath)) {
+        addTargetPages(pagesByTarget, dependency, [page.name]);
+      }
     }
   }
 
-  for (const target of regenerationTargets) {
-    watchers.add(
-      watch(target, () => {
-        if (pendingRegeneration) {
-          return;
-        }
+  return pagesByTarget;
+}
 
-        pendingRegeneration = regenerateAndReloadSpaEntries(
-          paths,
-          pages,
-          pageRoutes,
-          onEntriesReload,
-        ).finally(() => {
-          pendingRegeneration = null;
-        });
-      }),
-    );
+function addTargetPages(
+  pagesByTarget: Map<string, Set<string>>,
+  target: string,
+  pageNames: readonly string[],
+): void {
+  const owners = pagesByTarget.get(target) ?? new Set<string>();
+  for (const pageName of pageNames) {
+    owners.add(pageName);
   }
-
-  return watchers;
+  pagesByTarget.set(target, owners);
 }
 
 async function regenerateAndReloadSpaEntries(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
+  affectedPages: readonly BunSpaPageDetails[],
   pageRoutes: readonly PageRoute[],
   onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>,
+  onEntriesRegenerated: () => Promise<void>,
 ): Promise<void> {
-  for (const page of pages) {
+  for (const page of affectedPages) {
     await regenerateBunSpaEntry({ paths, page });
   }
 
+  await onEntriesRegenerated();
   await onEntriesReload(await loadServedEntries(paths, pages, pageRoutes));
 }
 
