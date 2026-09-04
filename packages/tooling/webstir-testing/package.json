@@ -41,9 +41,11 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "tsc -p tsconfig.json && bun test tests/*.test.js",
+    "test": "bun run build && bun run test:built",
+    "test:built": "bun test tests/*.test.js",
     "clean": "rm -rf dist",
-    "smoke": "bun scripts/smoke.mjs"
+    "smoke": "bun run build && bun run smoke:built",
+    "smoke:built": "bun scripts/smoke.mjs"
   },
   "files": [
     "dist"

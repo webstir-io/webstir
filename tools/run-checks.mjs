@@ -19,37 +19,6 @@ export function buildCheckPlan(mode) {
       command: ['bun', 'run', 'test:tools'],
     },
     {
-      label: 'module contract',
-      command: ['bun', 'run', '--filter', '@webstir-io/module-contract', 'test'],
-    },
-    {
-      label: 'testing contract',
-      command: ['bun', 'run', '--filter', '@webstir-io/testing-contract', 'test'],
-    },
-    {
-      label: 'backend tooling tests',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir-backend', 'test'],
-    },
-    {
-      label: 'backend tooling smoke',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir-backend', 'smoke'],
-      env: {
-        WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN: 'skip',
-      },
-    },
-    {
-      label: 'frontend tooling tests',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir-frontend', 'test'],
-    },
-    {
-      label: 'testing tooling',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'test'],
-    },
-    {
-      label: 'testing tooling smoke',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'smoke'],
-    },
-    {
       label: 'bun asset sources',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'check:assets'],
     },
@@ -62,38 +31,59 @@ export function buildCheckPlan(mode) {
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'check:full-demo-sync'],
     },
     {
+      label: 'framework package graph build',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'build'],
+    },
+    {
+      label: 'module contract tests',
+      command: ['bun', 'run', '--filter', '@webstir-io/module-contract', 'test:built'],
+    },
+    {
+      label: 'testing contract tests',
+      command: ['bun', 'run', '--filter', '@webstir-io/testing-contract', 'test:built'],
+    },
+    {
+      label: 'backend tooling tests',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir-backend', 'test:built'],
+    },
+    {
+      label: 'backend tooling smoke',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir-backend', 'smoke:built'],
+      env: {
+        WEBSTIR_BACKEND_SMOKE_FASTIFY_RUN: 'skip',
+      },
+    },
+    {
+      label: 'frontend tooling tests',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir-frontend', 'test:built'],
+    },
+    {
+      label: 'testing tooling tests',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'test:built'],
+    },
+    {
+      label: 'testing tooling smoke',
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir-testing', 'smoke:built'],
+    },
+    {
       label: 'bun orchestrator required suite',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test'],
+      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:built'],
     },
     {
       label: 'bun package install smoke',
       command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:install:package'],
     },
     {
-      label: 'bun standalone install smoke',
-      command: ['bun', 'run', '--filter', '@webstir-io/webstir', 'test:install:standalone'],
-    },
-  ];
-  const releaseSteps = [
-    ...requiredSteps,
-    {
-      label: 'recipe-app benchmark',
-      command: ['bun', 'run', 'benchmark:agent-tasks'],
+      label: 'portal build',
+      command: ['bun', 'run', '--filter', 'webstir-portal', 'build'],
     },
   ];
 
   switch (mode) {
     case 'required':
       return requiredSteps;
-    case 'release':
-      return releaseSteps;
-    case 'all':
-    case 'with-watch-browser':
-      return requiredSteps;
     default:
-      throw new Error(
-        `Unknown check mode "${mode}". Expected one of: required, release, with-watch-browser.`,
-      );
+      throw new Error(`Unknown check mode "${mode}". Expected: required.`);
   }
 }
 

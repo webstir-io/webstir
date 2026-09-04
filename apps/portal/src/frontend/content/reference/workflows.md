@@ -93,16 +93,16 @@ If you want to see the workflows exercised against real applications, use:
 
 Together those demos cover the current HTML-first runtime across redirect-after-post, fragment updates, sessions, auth gates, and publish-mode validation.
 
-## Recipe Benchmarks
+## Recipe Proof Apps
 
-Use the pinned recipe apps and benchmark runner when you want to prove the current agent-facing lane instead of just describing it:
+Use the pinned recipe apps when you want to exercise the current agent-facing lane instead of just describing it:
 
 - `examples/demos/full` is the scaffold-aligned golden-path recipe
 - `examples/demos/auth-crud` is the richer auth and CRUD proof recipe
 - `examples/demos/dashboard` is the fragment-refresh proof recipe
-- `bun run benchmark:agent-tasks` runs the current benchmark plan across those recipes
+- `bun run test` exercises their required integration and browser behavior
 
-That benchmark intentionally stays close to the real framework operations: `doctor`, `backend-inspect`, `test`, and `publish`.
+The required suites stay close to the real framework operations: `doctor`, `backend-inspect`, `test`, and `publish`.
 
 ## Related Docs
 

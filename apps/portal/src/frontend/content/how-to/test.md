@@ -36,7 +36,7 @@ The canonical repo reference for `webstir test` is the full demo:
 - `bun run webstir -- test --workspace "$PWD/examples/demos/full"`
 - `bun run webstir -- test --workspace "$PWD/examples/demos/full" --runtime backend`
 
-`auth-crud` and `dashboard` remain the browser proof apps for richer consumer-path validation: both publish-mode and watch-mode browser coverage now run in the required gate, and the `Watch Browser Tests` workflow remains available for focused reruns. Their app-local tests are reference coverage, not the canonical required `webstir test` path.
+`auth-crud` and `dashboard` remain the browser proof apps for richer consumer-path validation: both publish-mode and watch-mode browser coverage run in the required gate. For a focused rerun, use `bun run --filter @webstir-io/webstir test:browser`. Their app-local tests are reference coverage, not the canonical required `webstir test` path.
 
 ## Related Docs
 

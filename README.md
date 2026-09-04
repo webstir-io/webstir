@@ -53,7 +53,8 @@ bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 
 - `Biome` is the active repo formatter baseline: use `bun run format` to rewrite supported files and `bun run check:biome` to enforce the required formatting gate.
 - `bun run lint` is part of the required repo gate alongside `bun run check:biome`.
-- `bun run check:required` mirrors the CI gate; `bun run check:release` extends that gate with the recipe-app benchmark so release readiness is a concrete pass/fail state.
+- `bun run test` and `bun run check:required` run the same required gate: repository checks, one framework graph build, package tests, browser proofs, the npm-package install smoke, and the portal build.
+- Dependency auditing runs when `bun.lock` changes and on a weekly schedule, so registry availability cannot stall unrelated pull requests or package publishing.
 - Published npm package names remain unchanged.
 - `orchestrators/dotnet` remains in-tree as a frozen historical snapshot only; active local workflows, releases, and package maintenance go through the Bun monorepo.
 - For Bun scaffolds and bundled feature assets, edit `orchestrators/bun/resources/**`; `orchestrators/bun/assets/**` is generated package content and is verified by `bun run --filter @webstir-io/webstir check:assets`.
