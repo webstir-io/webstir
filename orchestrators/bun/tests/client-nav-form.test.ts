@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict';
 import { expect, test } from 'bun:test';
 
 import {
@@ -23,13 +24,13 @@ test('buildEnhancedFormRequest serializes form-urlencoded POST bodies', () => {
     formData,
   });
 
-  expect(request).not.toBeNull();
-  expect(request?.url).toBe('https://example.com/actions/fragment');
-  expect(request?.init.method).toBe('POST');
-  expect((request?.init.headers as Headers).get('content-type')).toBe(
+  assert(request);
+  expect(request.url).toBe('https://example.com/actions/fragment');
+  expect(request.init.method).toBe('POST');
+  expect((request.init.headers as Headers).get('content-type')).toBe(
     'application/x-www-form-urlencoded',
   );
-  expect(String(request?.init.body)).toBe('name=Webstir&mode=replace');
+  expect(String(request.init.body)).toBe('name=Webstir&mode=replace');
 });
 
 test('buildEnhancedFormRequest preserves multipart form bodies', () => {
@@ -43,9 +44,9 @@ test('buildEnhancedFormRequest preserves multipart form bodies', () => {
     formData,
   });
 
-  expect(request).not.toBeNull();
-  expect(request?.init.body).toBe(formData);
-  expect((request?.init.headers as Headers).get('content-type')).toBeNull();
+  assert(request);
+  expect(request.init.body).toBe(formData);
+  expect((request.init.headers as Headers).get('content-type')).toBeNull();
 });
 
 test('buildEnhancedFormRequest rejects unsupported text/plain submissions', () => {
