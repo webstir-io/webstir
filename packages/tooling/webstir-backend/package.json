@@ -68,8 +68,7 @@
     "watch": "tsc -p tsconfig.json && bun -e \"import('./dist/watch.js').then(m=>m.startBackendWatch({env:{WEBSTIR_MODULE_MODE:'build'}}));\"",
     "dev": "bun run watch",
     "dev:fast": "WEBSTIR_BACKEND_TYPECHECK=skip bun run watch",
-    "smoke": "tsc -p tsconfig.json && bun scripts/smoke.mjs",
-    "release": "bash scripts/publish.sh"
+    "smoke": "tsc -p tsconfig.json && bun scripts/smoke.mjs"
   },
   "files": [
     "dist",

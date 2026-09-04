@@ -14,8 +14,9 @@
     "check:assets": "bun scripts/sync-assets.mjs --check",
     "check:feature-projections": "bun scripts/check-feature-projections.mjs",
     "check:full-demo-sync": "bun scripts/check-full-demo-sync.mjs",
-    "build": "bun scripts/sync-assets.mjs && bun run build:deps && tsc -p tsconfig.json",
+    "build": "bun run build:deps && bun run build:self",
     "build:deps": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build && bun run --filter @webstir-io/webstir-frontend build && bun run --filter @webstir-io/webstir-backend build && bun run --filter @webstir-io/webstir-testing build",
+    "build:self": "bun scripts/sync-assets.mjs && tsc -p tsconfig.json",
     "test": "bun run test:required",
     "test:required": "bun run build && bun scripts/run-tests.mjs required",
     "test:with-watch-browser": "bun run build && bun scripts/run-tests.mjs with-watch-browser",
@@ -26,8 +27,7 @@
     "clean": "rm -rf dist",
     "prepack": "bun scripts/sync-assets.mjs",
     "pack:local": "bun pm pack",
-    "pack:standalone": "bun scripts/pack-standalone.mjs",
-    "release": "bash scripts/publish.sh"
+    "pack:standalone": "bun scripts/pack-standalone.mjs"
   },
   "files": [
     "assets",

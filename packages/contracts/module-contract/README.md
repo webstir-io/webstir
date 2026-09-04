@@ -346,12 +346,12 @@ bun install
 bun run clean          # remove dist/schema artifacts
 bun run build          # compiles TypeScript, regenerates schema/*.schema.json
 bun run test           # type-checks the Accounts example module
-# Release helper (bumps version and pushes a package-scoped release tag)
-bun run release -- patch
+# From the repository root, prepare the synchronized production release set
+bun run release:prepare -- webstir patch
 ```
 
 - The `schema/` folder contains `*-definition.schema.json` files derived from the exported Zod schemas. Commit them with contract changes.
-- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, and `bun run test` before publish.
+- The release-set workflow publishes the contract, backend, frontend, and CLI together after exact-commit CI succeeds.
 
 ## License
 

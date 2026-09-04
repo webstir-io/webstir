@@ -33,7 +33,7 @@ Monorepo baseline for Webstir.
 - Start with `README.md` and the package exports before changing public surfaces.
 - Validate with `bun run build`, `bun run test`, and `bun run smoke` as needed.
 - The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
-- Use `bun run release -- <patch|minor|major>` for version bumps.
+- Prepare synchronized production releases from the repo root with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>`.
 
 ### `orchestrators/dotnet`
 - Read `.codex/instructions.md`, `.codex/style.md`, and `.codex/testing.md` before edits.

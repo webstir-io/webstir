@@ -3,22 +3,27 @@ name: Release Package
 on:
   push:
     tags:
-      - release/**
+      - release-set/**
   workflow_dispatch:
     inputs:
-      package:
-        description: Package to publish
+      group:
+        description: Compatible package set to publish
         required: true
         type: choice
         options:
-          - '@webstir-io/module-contract'
-          - '@webstir-io/testing-contract'
-          - '@webstir-io/webstir-backend'
-          - '@webstir-io/webstir-frontend'
-          - '@webstir-io/webstir-testing'
-          - '@webstir-io/webstir'
+          - webstir
+          - testing
+      version:
+        description: Exact synchronized package version
+        required: true
+        type: string
+
+concurrency:
+  group: webstir-package-release
+  cancel-in-progress: false
 
 permissions:
+  actions: read
   contents: read
   id-token: write
 
@@ -28,10 +33,13 @@ env:
 
 jobs:
   publish:
+    name: Publish release set
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout exact release commit
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -44,92 +52,61 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
 
-      - name: Resolve release package
-        id: package
+      - name: Resolve and validate release set
+        id: release
+        env:
+          RELEASE_GROUP: ${{ inputs.group }}
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            bun tools/resolve-release-package.mjs --tag "${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            bun tools/release-set.mjs --plan --tag "${GITHUB_REF_NAME}" --github-output "${GITHUB_OUTPUT}"
           else
-            bun tools/resolve-release-package.mjs --package-name "${{ inputs.package }}" >> "$GITHUB_OUTPUT"
+            bun tools/release-set.mjs --plan --group "${RELEASE_GROUP}" --version "${RELEASE_VERSION}" --github-output "${GITHUB_OUTPUT}"
           fi
 
-      - name: Set up npm
+      - name: Verify release commit belongs to main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
+            echo "Release commit ${GITHUB_SHA} is not on main." >&2
+            exit 1
+          fi
+
+      - name: Verify exact commit passed main CI
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'ci.yml',
+              head_sha: context.sha,
+              event: 'push',
+              status: 'success',
+              per_page: 100,
+            });
+            const successfulMainRun = response.data.workflow_runs.find(
+              (run) => run.head_branch === 'main' && run.conclusion === 'success',
+            );
+            if (!successfulMainRun) {
+              core.setFailed(`Exact release commit ${context.sha} has no successful main CI run.`);
+              return;
+            }
+            core.info(`Using CI proof ${successfulMainRun.html_url}`);
+
+      - name: Set up trusted npm publishing
         run: npm install --global npm@11.5.1
 
       - name: Install workspace dependencies
         run: bun ci
 
-      - name: Audit workspace dependencies
-        run: bun audit --audit-level=high
-
-      - name: Test release tools
-        run: bun run test:tools
-
-      - name: Show package version
-        run: echo "${{ steps.package.outputs.package_name }}@${{ steps.package.outputs.package_version }}"
-
-      - name: Build local package dependencies
-        run: |
-          set -euo pipefail
-          case "${{ steps.package.outputs.package_name }}" in
-            "@webstir-io/webstir-backend"|"@webstir-io/webstir-frontend")
-              bun run --filter @webstir-io/module-contract build
-              ;;
-            "@webstir-io/webstir-testing")
-              bun run --filter @webstir-io/testing-contract build
-              ;;
-            "@webstir-io/webstir")
-              bun run --filter @webstir-io/module-contract build
-              bun run --filter @webstir-io/testing-contract build
-              bun run --filter @webstir-io/webstir-backend build
-              bun run --filter @webstir-io/webstir-frontend build
-              bun run --filter @webstir-io/webstir-testing build
-              ;;
-          esac
-
-      - name: Clean package
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun run --if-present clean
-
-      - name: Build package
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun run build
-
-      - name: Install Playwright browser
-        if: steps.package.outputs.package_name == '@webstir-io/webstir'
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun x playwright install --with-deps chromium
-
-      - name: Test package
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun run test
-
-      - name: Smoke package
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun run --if-present smoke
-
-      - name: Smoke standalone install
-        if: steps.package.outputs.package_name == '@webstir-io/webstir'
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun run test:install:standalone
-
-      - name: Smoke package install
-        if: steps.package.outputs.package_name == '@webstir-io/webstir'
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: bun run test:install:package
-
-      - name: Check registry for existing version
-        id: registry
-        run: |
-          set -euo pipefail
-          if npm view "${{ steps.package.outputs.package_name }}@${{ steps.package.outputs.package_version }}" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
-            echo "already_published=true" >> "$GITHUB_OUTPUT"
-            echo "${{ steps.package.outputs.package_name }}@${{ steps.package.outputs.package_version }} is already published; skipping npm publish."
-          else
-            echo "already_published=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Publish package
-        if: steps.registry.outputs.already_published != 'true'
-        working-directory: ${{ steps.package.outputs.package_dir }}
-        run: npm publish --provenance --access public
+      - name: Publish and verify release set
+        env:
+          RELEASE_GROUP: ${{ steps.release.outputs.release_group }}
+          RELEASE_VERSION: ${{ steps.release.outputs.release_version }}
+        run: >-
+          bun tools/release-set.mjs
+          --publish
+          --group "${RELEASE_GROUP}"
+          --version "${RELEASE_VERSION}"
+          --commit "${GITHUB_SHA}"

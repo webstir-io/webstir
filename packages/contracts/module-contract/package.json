@@ -29,8 +29,7 @@
     "build:schema": "bun scripts/build-schema.mjs",
     "test": "tsc -p tsconfig.json && bun scripts/build-schema.mjs && tsc -p tsconfig.examples.json",
     "test:examples": "tsc -p tsconfig.examples.json",
-    "smoke": "bun -e \"console.log('[smoke] no smoke tests configured');\"",
-    "release": "bash scripts/publish.sh"
+    "smoke": "bun -e \"console.log('[smoke] no smoke tests configured');\""
   },
   "keywords": [
     "webstir",

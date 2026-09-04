@@ -3,34 +3,47 @@ import { fileURLToPath } from 'node:url';
 
 export const frameworkPackages = [
   {
-    releaseTag: 'module-contract',
     packageName: '@webstir-io/module-contract',
     canonicalDir: 'packages/contracts/module-contract',
   },
   {
-    releaseTag: 'testing-contract',
     packageName: '@webstir-io/testing-contract',
     canonicalDir: 'packages/contracts/testing-contract',
   },
   {
-    releaseTag: 'webstir-backend',
     packageName: '@webstir-io/webstir-backend',
     canonicalDir: 'packages/tooling/webstir-backend',
   },
   {
-    releaseTag: 'webstir-frontend',
     packageName: '@webstir-io/webstir-frontend',
     canonicalDir: 'packages/tooling/webstir-frontend',
   },
   {
-    releaseTag: 'webstir-testing',
     packageName: '@webstir-io/webstir-testing',
     canonicalDir: 'packages/tooling/webstir-testing',
   },
   {
-    releaseTag: 'webstir',
     packageName: '@webstir-io/webstir',
     canonicalDir: 'orchestrators/bun',
+    releaseBuildScript: 'build:self',
+  },
+];
+
+export const releaseGroups = [
+  {
+    name: 'webstir',
+    installPackage: '@webstir-io/webstir',
+    packageNames: [
+      '@webstir-io/module-contract',
+      '@webstir-io/webstir-backend',
+      '@webstir-io/webstir-frontend',
+      '@webstir-io/webstir',
+    ],
+  },
+  {
+    name: 'testing',
+    installPackage: '@webstir-io/webstir-testing',
+    packageNames: ['@webstir-io/testing-contract', '@webstir-io/webstir-testing'],
   },
 ];
 
@@ -51,22 +64,26 @@ export function getFrameworkPackageByPackageName(packageName) {
   return frameworkPackages.find((pkg) => pkg.packageName === packageName) ?? null;
 }
 
-export function parseFrameworkReleaseTag(tagName) {
-  for (const pkg of frameworkPackages) {
-    const prefix = `release/${pkg.releaseTag}/v`;
+export function getReleaseGroupByName(groupName) {
+  return releaseGroups.find((group) => group.name === groupName) ?? null;
+}
+
+export function parseReleaseSetTag(tagName) {
+  for (const group of releaseGroups) {
+    const prefix = `release-set/${group.name}/v`;
     if (!tagName.startsWith(prefix)) {
       continue;
     }
 
     const version = tagName.slice(prefix.length);
     if (/^\d+\.\d+\.\d+$/.test(version)) {
-      return { package: pkg, version };
+      return { group, version };
     }
   }
 
   return null;
 }
 
-export function getFrameworkReleaseTag(pkg, version) {
-  return `release/${pkg.releaseTag}/v${version}`;
+export function getReleaseSetTag(group, version) {
+  return `release-set/${group.name}/v${version}`;
 }

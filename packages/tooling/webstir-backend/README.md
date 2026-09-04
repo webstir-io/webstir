@@ -377,14 +377,13 @@ bun run clean          # remove dist artifacts
 bun run build          # emits dist/
 bun run test           # runs unit/integration tests
 bun run smoke
-# Release helper (bumps version and pushes a package-scoped release tag)
-bun run release -- patch
+# From the repository root, prepare the synchronized production release set
+bun run release:prepare -- webstir patch
 ```
 
 - Add tests under `tests/**/*.test.ts` and wire them into `bun run test` once the backend runtime is ready.
-- Ensure CI runs `bun install --frozen-lockfile`, `bun run clean`, `bun run build`, `bun run test`, and `bun run smoke` before publish.
 - Publishing targets npm via `publishConfig.registry`.
-- Use `bun run release -- <patch|minor|major|x.y.z>` to bump the version, build, test, run the smoke check, and push a package-scoped tag that triggers the monorepo release workflow.
+- The release-set workflow publishes the contract, backend, frontend, and CLI in dependency order after exact-commit CI succeeds.
 
 ## Troubleshooting
 
@@ -393,7 +392,7 @@ bun run release -- patch
 - esbuild warnings/errors are surfaced as diagnostics with file locations when available.
 
 CI notes
-- Package CI runs clean + build + tests + smoke on PRs and main.
+- Package behavior is validated before publishing; the release workflow consumes that exact CI proof instead of rerunning it.
 
 Dev tips
 - Fast iteration: set `WEBSTIR_BACKEND_TYPECHECK=skip` to bypass type-checking during `build`/`test` mode. Type-checks always run for `publish`.
