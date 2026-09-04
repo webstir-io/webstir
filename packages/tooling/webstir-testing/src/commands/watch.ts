@@ -128,7 +128,7 @@ export async function runWatchCommand(options: WatchCommandOptions): Promise<voi
 
   const watcher = chokidar.watch(srcRoot, {
     ignoreInitial: true,
-    ignored: [/(^|\/)\../, '**/node_modules/**', '**/build/**', '**/dist/**'],
+    ignored: [/(^|[/\\])\./, /(^|[/\\])(node_modules|build|dist)([/\\]|$)/],
   });
 
   watcher.on('add', addChangedPath);
@@ -169,7 +169,7 @@ function waitForWatcherReady(watcher: FSWatcher): Promise<void> {
       watcher.removeListener('error', onError);
       resolve();
     };
-    const onError = (error: Error): void => {
+    const onError = (error: unknown): void => {
       watcher.removeListener('ready', onReady);
       reject(error);
     };
