@@ -311,7 +311,11 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
   const routes = result.manifest.routes ?? [];
   lines.push(`routes: ${routes.length}`);
   for (const route of routes) {
-    lines.push(`  - ${route.method} ${route.path}${route.name ? ` (${route.name})` : ''}`);
+    const sessionMode = route.session?.mode ?? route.form?.session?.mode;
+    const sessionSuffix = sessionMode === 'required' ? ' [session: required]' : '';
+    lines.push(
+      `  - ${route.method} ${route.path}${route.name ? ` (${route.name})` : ''}${sessionSuffix}`,
+    );
   }
 
   const views = result.manifest.views ?? [];

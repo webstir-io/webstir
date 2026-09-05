@@ -74,6 +74,8 @@ export interface PreparedSessionState<TSession, TResult> {
     session: TSession | null;
     route?: SessionAwareRouteDefinitionLike;
     result?: TResult;
+    /** Set to false when the request was rejected before its route ran (default true). */
+    publishFlash?: boolean;
   }): SessionCommitResult<TSession>;
 }
 
@@ -109,7 +111,7 @@ const LEGACY_FORM_RUNTIME_KEY = '__webstir_form_runtime';
 
 export function prepareSessionState<
   TSession extends Record<string, unknown>,
-  TResult extends { status?: number; errors?: unknown },
+  TResult extends { status?: number; errors?: unknown; fragment?: unknown },
 >(options: {
   cookies?: Record<string, string> | string | string[];
   route?: SessionAwareRouteDefinitionLike;
@@ -138,8 +140,10 @@ export function prepareSessionState<
   return {
     session: initialSession,
     flash: delivered.flash,
-    commit({ session, route, result }) {
-      const publishFlash = resolvePublishedFlash(route ?? options.route, result, now);
+    commit({ session, route, result, publishFlash: shouldPublishFlash = true }) {
+      const publishFlash = shouldPublishFlash
+        ? resolvePublishedFlash(route ?? options.route, result, now)
+        : [];
       const normalized = normalizeSessionValue<TSession>(session);
 
       if (initialRecord) {
@@ -351,13 +355,22 @@ function resolveConsumedFlash(
   return { flash: delivered, remaining };
 }
 
-function resolvePublishedFlash<TResult extends { status?: number; errors?: unknown }>(
+function resolvePublishedFlash<
+  TResult extends { status?: number; errors?: unknown; fragment?: unknown },
+>(
   route: SessionAwareRouteDefinitionLike | undefined,
   result: TResult | undefined,
   now: () => Date,
 ): SessionFlashMessage[] {
   const definitions = [...(route?.flash?.publish ?? []), ...(route?.form?.flash?.publish ?? [])];
   if (definitions.length === 0) {
+    return [];
+  }
+
+  // Flash messages surface on the next document render after a redirect. A fragment response
+  // updates the current document in place, so queueing a flash would only replay the
+  // confirmation on a later, unrelated navigation.
+  if (result?.fragment) {
     return [];
   }
 

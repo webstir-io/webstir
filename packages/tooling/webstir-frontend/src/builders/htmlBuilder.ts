@@ -126,6 +126,7 @@ async function publishHtml(context: BuilderContext): Promise<void> {
     config.paths.build.pages,
   );
   const useRootIndex = pagesUrlPrefix.length === 0;
+  const knownPages: ReadonlySet<string> = new Set(pages.map((page) => page.name));
 
   for (const page of pages) {
     if (targetPage && page.name !== targetPage) {
@@ -152,6 +153,7 @@ async function publishHtml(context: BuilderContext): Promise<void> {
           pagesUrlPrefix,
           buildPagesUrlPrefix,
           useRootIndex,
+          knownPages,
         },
       );
       const outputPath = path.join(distDir, relativeHtml);
@@ -301,10 +303,11 @@ async function rewriteForPublish(
     readonly pagesUrlPrefix: string;
     readonly buildPagesUrlPrefix: string;
     readonly useRootIndex: boolean;
+    readonly knownPages: ReadonlySet<string>;
   },
 ): Promise<string> {
   const document = load(html);
-  const { pagesUrlPrefix, buildPagesUrlPrefix, useRootIndex } = options;
+  const { pagesUrlPrefix, buildPagesUrlPrefix, useRootIndex, knownPages } = options;
   const buildScriptHref = resolvePageAssetUrl(
     buildPagesUrlPrefix,
     pageName,
@@ -407,7 +410,7 @@ async function rewriteForPublish(
       });
     }
 
-    const hints = injectResourceHints(document, pageName, pagesUrlPrefix, useRootIndex);
+    const hints = injectResourceHints(document, pageName, pagesUrlPrefix, useRootIndex, knownPages);
     if (hints.missingHead) {
       emitDiagnostic({
         code: 'frontend.resourceHints.missingHead',

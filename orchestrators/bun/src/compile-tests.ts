@@ -6,7 +6,9 @@ import ts from '@typescript/typescript6';
 import type { TestModule } from '@webstir-io/webstir-testing';
 
 const TESTING_PACKAGE_SPECIFIER = '@webstir-io/webstir-testing';
-const TESTING_RUNTIME_SPECIFIER = import.meta.resolve('./testing-runtime.ts');
+// The shim must re-export the same module instance the provider registry executes tests with.
+// Pointing it at a separate copy of the runtime registers tests in a registry nobody reads.
+const TESTING_RUNTIME_SPECIFIER = import.meta.resolve(TESTING_PACKAGE_SPECIFIER);
 
 export async function compileTestModules(
   workspaceRoot: string,

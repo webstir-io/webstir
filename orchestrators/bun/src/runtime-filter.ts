@@ -36,6 +36,6 @@ export function describeRuntimeFilter(
   }
 
   const skipped = Math.max(before - after, 0);
-  const noun = after === 1 ? 'test' : 'tests';
+  const noun = after === 1 ? 'test module' : 'test modules';
   return `Runtime filter '${runtime}' matched ${after} ${noun} (${skipped} skipped).`;
 }

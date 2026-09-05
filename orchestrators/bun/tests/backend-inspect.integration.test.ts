@@ -59,6 +59,20 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
     ]);
     expect(addRoute.exitCode).toBe(0);
 
+    const addSessionRoute = await runCli([
+      'add-route',
+      'sign-out',
+      '--method',
+      'POST',
+      '--path',
+      '/api/sign-out',
+      '--session',
+      'required',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+    expect(addSessionRoute.exitCode).toBe(0);
+
     const addJob = await runCli([
       'add-job',
       'nightly',
@@ -83,8 +97,9 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
     expect(inspectResult.stdout).toContain('[webstir] backend-inspect complete');
     expect(inspectResult.stdout).toContain('mode: api');
     expect(inspectResult.stdout).toContain('module: webstir-demo-api@1.0.0');
-    expect(inspectResult.stdout).toContain('routes: 1');
+    expect(inspectResult.stdout).toContain('routes: 2');
     expect(inspectResult.stdout).toContain('GET /api/accounts (accounts)');
+    expect(inspectResult.stdout).toContain('POST /api/sign-out (sign-out) [session: required]');
     expect(inspectResult.stdout).toContain('jobs: 1');
     expect(inspectResult.stdout).toContain(
       'nightly (schedule: 0 0 * * *, description: Nightly maintenance run, priority: 5)',

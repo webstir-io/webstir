@@ -26,8 +26,8 @@ bun run test:contracts
 # Bun orchestrator tests (uses Bun test runner + Playwright)
 bun run --filter @webstir-io/webstir test
 
-# Run a single backend test (Node test runner, operates on built JS)
-node --test packages/tooling/webstir-backend/dist/tests/add.test.js
+# Run a single backend test (Bun test runner; tests import from dist/, so build first)
+bun test packages/tooling/webstir-backend/tests/add.test.js
 
 # Run a single Bun orchestrator test
 bun test ./tests/init.integration.test.ts
@@ -49,7 +49,7 @@ bun run webstir -- init ssg ./my-site
 
 - **`packages/contracts/module-contract`** — Zod schemas and TypeScript types defining the `ModuleProvider` interface (resolveWorkspace, build, getScaffoldAssets). All tooling packages depend on this.
 - **`packages/contracts/testing-contract`** — Contract for the testing framework.
-- **`packages/tooling/webstir-backend`** — Backend provider: TypeScript compilation via esbuild, Bun runtime delivery, session management, scaffold templates. Tests use Node's built-in `node --test` with `node:assert/strict`.
+- **`packages/tooling/webstir-backend`** — Backend provider: TypeScript compilation via esbuild, Bun runtime delivery, session management, scaffold templates. Tests run with `bun test` against `dist/` and use `node:assert/strict` for assertions.
 - **`packages/tooling/webstir-frontend`** — Frontend provider: SSG/SPA/SSR modes, markdown processing, image optimization (sharp), HTML minification. Same test setup as backend.
 - **`packages/tooling/webstir-testing`** — Testing runner and CLI.
 - **`orchestrators/bun`** — Primary CLI that bundles everything for end-user consumption. Tests use Bun's test runner with Playwright for browser automation.

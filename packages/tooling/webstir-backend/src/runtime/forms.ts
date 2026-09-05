@@ -221,7 +221,17 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
   };
   cleanupFormRuntimeStore(options.session);
 
+  const errors = options.issues.map((issue) => ({
+    code: issue.code === 'auth' ? 'auth' : 'validation',
+    message: issue.message,
+    details: issue.field
+      ? { field: issue.field, reason: issue.code ?? 'validation' }
+      : { reason: issue.code ?? 'validation' },
+  }));
+
   if (options.redirectTo) {
+    // The redirect keeps the HTML-first flow, and `errors` marks the outcome as a failure so
+    // route-level flash publishing (`when: 'success'`) does not treat the 303 as success.
     return {
       ok: false,
       session: options.session,
@@ -232,6 +242,7 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
         redirect: {
           location: options.redirectTo,
         },
+        errors,
       },
     };
   }
@@ -249,13 +260,7 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
     issues: options.issues,
     result: {
       status,
-      errors: options.issues.map((issue) => ({
-        code: issue.code === 'auth' ? 'auth' : 'validation',
-        message: issue.message,
-        details: issue.field
-          ? { field: issue.field, reason: issue.code ?? 'validation' }
-          : { reason: issue.code ?? 'validation' },
-      })),
+      errors,
     },
   };
 }
