@@ -1,8 +1,9 @@
+import { assertPreparedPage } from '../test-support/prepared-page-browser.ts';
 import { assertPageLifecycle } from '../test-support/page-lifecycle-browser.ts';
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 
@@ -126,6 +127,8 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
   try {
     setScenarioStep(progress, 'verify page lifecycle');
     await assertPageLifecycle(browser, origin);
+    setScenarioStep(progress, 'verify prepared page');
+    await assertPreparedPage(browser, origin);
     const fragmentContext = await browser.newContext({
       javaScriptEnabled: true,
       viewport: { width: 1280, height: 720 },
@@ -966,6 +969,25 @@ async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<s
     rm(path.join(workspace, '.webstir'), { recursive: true, force: true }),
   ]);
   if (fixtureName === 'full') {
+    const preparedRoot = path.join(workspace, 'src/frontend/pages/prepared');
+    await mkdir(preparedRoot, { recursive: true });
+    await writeFile(
+      path.join(preparedRoot, 'index.html'),
+      `<head><title>Prepared</title><script type="module" src="index.js" data-webstir-load></script></head><body><main><h1 id="prepared">Loading</h1><a href="/prepared?next=1">Next</a><a href="/">Home</a></main></body>`,
+    );
+    await writeFile(
+      path.join(preparedRoot, 'index.ts'),
+      `
+      export async function load({url,signal}) {
+        const response = await fetch('/load-fixture' + url.search, {signal});
+        return response.text();
+      }
+      export function setup({root,data,scope}) {
+        root.querySelector('h1').textContent=data;
+        scope.add(()=>root.dataset.disposed='true');
+      }
+    `,
+    );
     const manifestPath = path.join(workspace, 'package.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     manifest.webstir.moduleManifest.views = [

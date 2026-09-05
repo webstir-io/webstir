@@ -1,6 +1,7 @@
 import { createCleanupScope, type CleanupHandler, type CleanupScope } from './boundary.js';
 
-export interface PageContext {
+export interface PageContext<Data = unknown> {
+  readonly data: Data;
   readonly root: HTMLElement;
   readonly url: URL;
   readonly signal: AbortSignal;
@@ -16,13 +17,13 @@ export function createPageLifecycle(reportError: (error: unknown) => void = cons
   let current: { controller: AbortController; scope: CleanupScope } | undefined;
 
   return {
-    start(setup: PageSetup, root: HTMLElement, url: string): void {
+    start(setup: PageSetup, root: HTMLElement, url: string, data?: unknown): void {
       if (current) throw new Error('Dispose the previous page before starting another.');
       const controller = new AbortController();
       const scope = createCleanupScope();
       current = { controller, scope };
       try {
-        const result = setup({ root, url: new URL(url), signal: controller.signal, scope });
+        const result = setup({ data, root, url: new URL(url), signal: controller.signal, scope });
         if (typeof result === 'function') {
           scope.add(result);
           return;

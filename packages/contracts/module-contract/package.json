@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/module-contract",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "description": "Public contract definitions for Webstir frontend and backend module providers.",
   "type": "module",
   "main": "dist/index.js",

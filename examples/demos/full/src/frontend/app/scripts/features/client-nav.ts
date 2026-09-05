@@ -1,4 +1,4 @@
-import { createPageLifecycle, type PageSetup } from '@webstir-io/webstir-frontend/runtime';
+import { createPageLifecycle, preparePage, type LoadablePage, type PreparedPage, type PageSetup } from '@webstir-io/webstir-frontend/runtime';
 import {
     buildEnhancedFormRequest,
     normalizeFormEnctype,
@@ -108,14 +108,23 @@ const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
 let commitQueue = Promise.resolve();
 
-async function startPage(url: string): Promise<void> {
+async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
     const generation = ++pageGeneration;
     const script = document.querySelector<HTMLScriptElement>('script[data-webstir-page][src]');
     const root = document.querySelector('main');
-    if (!script || !root) return;
-    const module = await import(script.src) as { setup?: PageSetup };
+    if (!root || (!prepared && !script)) return;
+    if (!prepared && script?.hasAttribute('data-webstir-load')) {
+        const controller = activeController ??= new AbortController();
+        try {
+            prepared = await preparePage(import(script.src) as Promise<LoadablePage>, url, controller.signal);
+        } catch (error) {
+            if (controller.signal.aborted) return;
+            throw error;
+        }
+    }
+    const module = prepared?.module ?? await import(script!.src) as { setup?: PageSetup };
     if (generation !== pageGeneration || !root.isConnected) return;
-    if (typeof module.setup === 'function') pageLifecycle.start(module.setup, root, url);
+    if (typeof module.setup === 'function') pageLifecycle.start(module.setup, root, url, prepared?.data);
 }
 
 let activeRequestId = 0;
@@ -295,9 +304,24 @@ async function renderDocumentResponse(
     }
     if (requestId !== activeRequestId) return;
 
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const script = doc.querySelector<HTMLScriptElement>('script[data-webstir-page][data-webstir-load][src]');
+    let prepared: PreparedPage | undefined;
+    if (script) {
+        const signal = activeController!.signal;
+        try {
+            const src = new URL(script.getAttribute('src')!, options.url).href;
+            prepared = await preparePage(import(src) as Promise<LoadablePage>, options.url, signal);
+        } catch (error) {
+            if (signal.aborted || requestId !== activeRequestId) return;
+            console.error(error);
+            window.location.href = options.url;
+            return;
+        }
+    }
     const commit = commitQueue.then(async () => {
         if (requestId !== activeRequestId) return;
-        await renderDocumentHtml(html, options, requestId);
+        await renderDocumentHtml(doc, options, requestId, prepared);
     });
     commitQueue = commit.catch(() => {});
     try {
@@ -309,12 +333,11 @@ async function renderDocumentResponse(
 }
 
 async function renderDocumentHtml(
-    html: string,
+    doc: Document,
     options: { readonly pushHistory: boolean; readonly url: string },
-    requestId: number
+    requestId: number,
+    prepared?: PreparedPage
 ): Promise<void> {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
 
     if (!doc.querySelector('main') || !document.querySelector('main')) {
         window.location.href = options.url;
@@ -343,11 +366,13 @@ async function renderDocumentHtml(
     window.scrollTo({ top: 0, behavior: 'smooth' });
     focusAutofocus(document);
 
+    // Opted-in pages render prepared data before yielding to additional document scripts.
+    if (prepared) await startPage(options.url, prepared);
     await loadHeadScripts(doc, options.url, DOM_RUNTIME, activeController?.signal);
     if (requestId !== activeRequestId) return;
     await executeScripts(document.querySelector('main'), DOM_RUNTIME, activeController?.signal);
     if (requestId !== activeRequestId) return;
-    await startPage(options.url);
+    if (!prepared) await startPage(options.url);
     if (requestId !== activeRequestId) return;
     window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url: options.url } }));
 }
