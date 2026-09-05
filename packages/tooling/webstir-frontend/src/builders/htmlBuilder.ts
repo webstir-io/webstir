@@ -241,6 +241,18 @@ function injectOptInScripts(
     }
   }
 
+  if (enable?.clientNav && document('script[src="/app/app.js"]').length === 0) {
+    document('head').prepend('<script type="module" src="/app/app.js"></script>');
+  }
+  if (enable?.clientNav && pageScriptExists) {
+    document('script[src]').each((_, element) => {
+      const script = document(element);
+      if (isPageEntryScript(script.attr('src') ?? '', pageName, `/${FOLDERS.pages}`)) {
+        script.attr('data-webstir-page', '');
+      }
+    });
+  }
+
   return document.root().html() ?? html;
 }
 

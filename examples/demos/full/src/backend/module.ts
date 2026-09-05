@@ -478,6 +478,9 @@ function requireBunCookieMap(): BunCookieMapConstructor {
 
 function resolveFrontendAssets(): { cssHref: string; scriptSrc: string } {
   if (process.env.WEBSTIR_FRONTEND_DEV_SERVER === '1') {
+    if (existsSync(path.join(resolveWorkspaceRoot(), 'build/frontend/app/app.js'))) {
+      return { cssHref: '/app/app.css', scriptSrc: '/app/app.js' };
+    }
     return DEV_FRONTEND_ASSETS;
   }
 

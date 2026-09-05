@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
 import { watch, type FSWatcher } from 'node:fs';
 
 import { readWorkspacePageRoutes, type PageRoute } from '@webstir-io/webstir-backend';
@@ -38,10 +41,18 @@ export interface BunGeneratedFrontendWatchSession {
 export async function startBunGeneratedFrontendWatch(
   options: BunGeneratedFrontendWatchOptions,
 ): Promise<BunGeneratedFrontendWatchSession> {
+  const packageJson = JSON.parse(
+    await readFile(path.join(options.workspaceRoot, 'package.json'), 'utf8'),
+  );
   const paths = resolveBunSpaEntryPaths(options.workspaceRoot);
   const pages = await resolveBunSpaPages(paths.workspaceRoot);
   const pageRoutes = await readWorkspacePageRoutes(paths.workspaceRoot);
   assertPageRoutesCompatible(pageRoutes, pages);
+  if (packageJson.webstir?.enable?.clientNav === true) {
+    // Client navigation needs independently importable page entries. Bun's HTML
+    // bundler combines them; use the existing document builder/watch pipeline.
+    return startBunSsgFrontendWatch(options);
+  }
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? 8088;
   const fetchOptions = {

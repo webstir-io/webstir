@@ -1,3 +1,4 @@
+import { matchPageRoute, type PageRoute } from '@webstir-io/webstir-backend';
 import path from 'node:path';
 import { access } from 'node:fs/promises';
 
@@ -8,6 +9,7 @@ export interface DevServerOptions {
   readonly host?: string;
   readonly port?: number;
   readonly apiProxyOrigin?: string;
+  readonly pageRoutes?: readonly PageRoute[];
 }
 
 export interface DevServerAddress {
@@ -79,6 +81,7 @@ export class DevServer {
   private readonly host: string;
   private readonly port: number;
   private readonly apiProxyOrigin?: string;
+  private readonly pageRoutes: readonly PageRoute[];
   private readonly clients = new Set<SseClient>();
   private server?: ReturnType<typeof Bun.serve>;
 
@@ -87,6 +90,7 @@ export class DevServer {
     this.host = options.host ?? '127.0.0.1';
     this.port = options.port ?? 8088;
     this.apiProxyOrigin = options.apiProxyOrigin;
+    this.pageRoutes = options.pageRoutes ?? [];
   }
 
   public async start(): Promise<DevServerAddress> {
@@ -167,7 +171,14 @@ export class DevServer {
     }
 
     const candidates = getStaticCandidatePaths(pathname);
-    const resolved = await resolveStaticFile(this.buildRoot, candidates);
+    let resolved = await resolveStaticFile(this.buildRoot, candidates);
+    if (!resolved) {
+      const match = matchPageRoute(this.pageRoutes, pathname);
+      if (match)
+        resolved = await resolveStaticFile(this.buildRoot, [
+          `pages/${match.route.page}/index.html`,
+        ]);
+    }
     if (!resolved) {
       return textResponse(404, 'Not found.');
     }

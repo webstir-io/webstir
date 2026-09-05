@@ -1,3 +1,4 @@
+import { readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
 import path from 'node:path';
 
 import { DevServer, type DevServerAddress } from './dev-server.ts';
@@ -10,6 +11,7 @@ export interface BunSsgFrontendWatchOptions {
   readonly host?: string;
   readonly port?: number;
   readonly verbose?: boolean;
+  readonly apiProxyOrigin?: string;
 }
 
 export interface BunSsgFrontendWatchSession {
@@ -103,6 +105,8 @@ export async function startBunSsgFrontendWatch(
 
   const server = new DevServer({
     buildRoot,
+    apiProxyOrigin: options.apiProxyOrigin,
+    pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
     host: options.host,
     port: options.port,
   });
