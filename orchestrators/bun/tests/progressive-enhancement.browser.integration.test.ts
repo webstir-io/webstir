@@ -1,7 +1,8 @@
+import { assertPageLifecycle } from '../test-support/page-lifecycle-browser.ts';
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
-import { cp, mkdtemp, rm } from 'node:fs/promises';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 
@@ -14,7 +15,7 @@ test('browser progressive enhancement flows work in watch mode', async () => {
   try {
     await runWatchBrowserScenarioWithRetry(
       workspace,
-      (origin, progress) => exerciseBrowserScenario(origin, 'watch', progress),
+      (origin, progress) => exerciseBrowserScenario(origin, progress),
       {
         scenarioTimeoutMs: 60_000,
       },
@@ -29,7 +30,7 @@ test('browser progressive enhancement flows work in publish mode', async () => {
 
   try {
     await runPublishBrowserScenarioWithRetry(workspace, (origin, progress) =>
-      exerciseBrowserScenario(origin, 'publish', progress),
+      exerciseBrowserScenario(origin, progress),
     );
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
@@ -120,13 +121,11 @@ test('browser dashboard flows work in publish mode', async () => {
   }
 }, 120_000);
 
-async function exerciseBrowserScenario(
-  origin: string,
-  mode: 'watch' | 'publish',
-  progress?: ScenarioProgress,
-): Promise<void> {
+async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgress): Promise<void> {
   const browser = await launchBrowser();
   try {
+    setScenarioStep(progress, 'verify page lifecycle');
+    await assertPageLifecycle(browser, origin);
     const fragmentContext = await browser.newContext({
       javaScriptEnabled: true,
       viewport: { width: 1280, height: 720 },
@@ -163,7 +162,7 @@ async function exerciseBrowserScenario(
       });
       await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
       setScenarioStep(progress, 'exercise enhanced session flow');
-      await assertSessionFlow(sessionPage, mode);
+      await assertSessionFlow(sessionPage);
     } finally {
       await sessionContext.close().catch(() => undefined);
     }
@@ -265,10 +264,13 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
       '<a id="new-tab-link-fixture" href="/" target="_blank">new tab</a>',
       '<a id="anchor-link-fixture" href="#client-nav-anchor">anchor</a>',
       '<span id="client-nav-anchor">anchor target</span>',
+      '<a id="target-link-fixture" href="/" target="named-frame">frame</a>',
+      '<a id="ordinary-fixture" href="/">ordinary</a>',
+      '<a id="opt-out-fixture" href="/" data-no-client-nav>native</a>',
     ].join('');
     document.body.append(fixture);
 
-    const clickWasPrevented = (selector: string) => {
+    const clickWasPrevented = (selector: string, options: MouseEventInit = {}) => {
       const link = document.querySelector(selector);
       if (!(link instanceof HTMLAnchorElement)) {
         throw new Error(`Missing fixture link ${selector}`);
@@ -283,6 +285,7 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
         bubbles: true,
         cancelable: true,
         button: 0,
+        ...options,
       });
       link.dispatchEvent(event);
       document.removeEventListener('click', recorder);
@@ -294,6 +297,10 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
       download: clickWasPrevented('#download-link-fixture'),
       newTab: clickWasPrevented('#new-tab-link-fixture'),
       sameDocumentAnchor: clickWasPrevented('#anchor-link-fixture'),
+      namedTarget: clickWasPrevented('#target-link-fixture'),
+      optOut: clickWasPrevented('#opt-out-fixture'),
+      modified: clickWasPrevented('#ordinary-fixture', { ctrlKey: true }),
+      middle: clickWasPrevented('#ordinary-fixture', { button: 1 }),
     };
   });
 
@@ -302,6 +309,10 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
     download: false,
     newTab: false,
     sameDocumentAnchor: false,
+    namedTarget: false,
+    optOut: false,
+    modified: false,
+    middle: false,
   });
 
   await installClientNavRecorder(page);
@@ -351,7 +362,7 @@ async function assertFragmentUpdateAndFocus(page: Page): Promise<void> {
   );
 }
 
-async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise<void> {
+async function assertSessionFlow(page: Page): Promise<void> {
   await page.locator('#session-name').fill('Casey Browser');
 
   await page.locator('#demo-sign-in').click();
@@ -366,27 +377,14 @@ async function assertSessionFlow(page: Page, mode: 'watch' | 'publish'): Promise
   await page.locator('#demo-sign-out').click();
   await page.locator('#demo-sign-in').waitFor({ state: 'visible' });
 
-  if (mode === 'publish') {
-    await page.waitForFunction(
-      () =>
-        window.location.pathname === '/api/demo/progressive-enhancement' &&
-        window.location.search === '',
-    );
-  } else {
-    await page.waitForFunction(() => window.location.search === '?session=signed-out');
-  }
-
+  await page.waitForFunction(
+    () =>
+      window.location.pathname === '/api/demo/progressive-enhancement' &&
+      window.location.search === '',
+  );
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.locator('#demo-sign-in').waitFor({ state: 'visible' });
-
-  if (mode === 'publish') {
-    expect(await page.locator('#session-status').textContent()).toContain('Not signed in');
-    return;
-  }
-
-  expect(await page.locator('#session-status').textContent()).toContain(
-    'Signed out via the no-JavaScript redirect path.',
-  );
+  expect(await page.locator('#session-status').textContent()).toContain('Not signed in');
 }
 
 async function assertNativeRedirectFlow(page: Page, origin: string): Promise<void> {
@@ -967,6 +965,14 @@ async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<s
     rm(path.join(workspace, 'node_modules'), { recursive: true, force: true }),
     rm(path.join(workspace, '.webstir'), { recursive: true, force: true }),
   ]);
+  if (fixtureName === 'full') {
+    const manifestPath = path.join(workspace, 'package.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.webstir.moduleManifest.views = [
+      { name: 'lifecycle-record', path: '/records/:id', page: 'lifecycle' },
+    ];
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+  }
   return workspace;
 }
 

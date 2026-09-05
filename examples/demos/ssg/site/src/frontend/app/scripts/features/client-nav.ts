@@ -1,20 +1,47 @@
+import { createPageLifecycle, type PageSetup } from '@webstir-io/webstir-frontend/runtime';
+import {
+    buildEnhancedFormRequest,
+    normalizeFormEnctype,
+    normalizeFormMethod,
+    resolveEnhancedFormResponse,
+    resolveFragmentResponseMetadata,
+    resolveFragmentInsertionBehavior
+} from './form-enhancement.js';
+import {
+    cssEscape,
+    executeScripts,
+    focusAutofocus,
+    resolveDocumentNavigationResponse,
+    loadHeadScripts,
+    syncHead
+} from './document-navigation.js';
+
 export {};
 
 /**
- * Minimal PJAX-style navigation: swaps the <main> content, updates title/URL,
- * and restores scroll/focus.
+ * Minimal document navigation enhancement: swaps the <main> content, updates
+ * title/URL, restores scroll/focus, and can consume fragment responses from
+ * enhanced POST forms.
  *
  * Opt out per-link with:
  * - data-no-client-nav
  * - data-client-nav="off"
  */
 export function enableClientNav(): void {
+    if (enabled) return;
+    enabled = true;
+    const initial = () => { void startPage(window.location.href).catch(console.error); };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initial, { once: true });
+    } else {
+        initial();
+    }
     document.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
             return;
         }
-        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        if (event.button !== 0 || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             return;
         }
 
@@ -23,18 +50,15 @@ export function enableClientNav(): void {
             return;
         }
 
-        const setting = link.getAttribute('data-client-nav');
-        const optOut = link.hasAttribute('data-no-client-nav')
-            || setting === 'off'
-            || setting === 'false';
-        if (optOut) {
+        if (hasClientNavOptOut(link)) {
             return;
         }
 
         const isExternal = link.origin !== window.location.origin;
-        const opensInNewTab = link.getAttribute('target') === '_blank';
+        const targetName = link.getAttribute('target') || document.querySelector('base')?.target;
+        const opensInNewTab = Boolean(targetName && targetName !== '_self');
         const isDownload = link.hasAttribute('download');
-        if (isExternal || opensInNewTab || isDownload) {
+        if (!link.hasAttribute('href') || !['http:', 'https:'].includes(link.protocol) || isExternal || opensInNewTab || isDownload) {
             return;
         }
 
@@ -49,16 +73,63 @@ export function enableClientNav(): void {
         await renderUrl(link.href, { pushHistory: true });
     });
 
-    window.addEventListener('popstate', async () => {
-        await renderUrl(window.location.href, { pushHistory: false });
+    document.addEventListener('submit', async (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLFormElement)) {
+            return;
+        }
+
+        if (target.hasAttribute(BYPASS_ATTR)) {
+            target.removeAttribute(BYPASS_ATTR);
+            return;
+        }
+
+        const submitEvent = event as SubmitEvent;
+        const submitter = getSubmitter(submitEvent);
+        const submission = createEnhancedFormSubmission(target, submitter);
+        if (!submission) {
+            return;
+        }
+
+        event.preventDefault();
+        await submitForm(target, submitter, submission);
     });
+
+    window.addEventListener('popstate', async () => {
+        const url = new URL(window.location.href);
+        if (url.pathname + url.search === documentUrl.pathname + documentUrl.search) return;
+        await renderUrl(url.href, { pushHistory: false });
+    });
+}
+
+let enabled = false;
+let documentUrl = new URL(window.location.href);
+const pageLifecycle = createPageLifecycle();
+let pageGeneration = 0;
+let commitQueue = Promise.resolve();
+
+async function startPage(url: string): Promise<void> {
+    const generation = ++pageGeneration;
+    const script = document.querySelector<HTMLScriptElement>('script[data-webstir-page][src]');
+    const root = document.querySelector('main');
+    if (!script || !root) return;
+    const module = await import(script.src) as { setup?: PageSetup };
+    if (generation !== pageGeneration || !root.isConnected) return;
+    if (typeof module.setup === 'function') pageLifecycle.start(module.setup, root, url);
 }
 
 let activeRequestId = 0;
 let activeController: AbortController | null = null;
 const DYNAMIC_ATTR = 'data-webstir-dynamic';
 const DYNAMIC_VALUE = 'client-nav';
+const BYPASS_ATTR = 'data-webstir-client-nav-bypass';
 const BASE_PATH = resolveBasePath();
+const DOM_RUNTIME = {
+    dynamicAttr: DYNAMIC_ATTR,
+    dynamicValue: DYNAMIC_VALUE,
+    withBasePath,
+    stripBasePath
+} as const;
 
 function resolveBasePath(): string {
     const raw = document.documentElement?.getAttribute('data-webstir-base') ?? '';
@@ -103,15 +174,7 @@ function stripBasePath(value: string): string {
 }
 
 async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean }): Promise<void> {
-    activeRequestId += 1;
-    const requestId = activeRequestId;
-
-    if (activeController) {
-        activeController.abort();
-    }
-
-    const controller = new AbortController();
-    activeController = controller;
+    const { controller, requestId } = beginRequest();
 
     let response: Response;
     try {
@@ -128,20 +191,139 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
         return;
     }
 
-    if (!response.ok || !isHtmlDocumentContentType(response.headers.get('content-type'))) {
+    if (requestId !== activeRequestId) return;
+    if (response.redirected) {
+        window.location.href = response.url;
+        return;
+    }
+
+    const resolution = resolveDocumentNavigationResponse({
+        ok: response.ok,
+        contentType: response.headers.get('content-type')
+    });
+    if (resolution.kind === 'navigate') {
         window.location.href = url;
         return;
     }
 
-    const html = await response.text();
+    await renderDocumentResponse(response, requestId, {
+        pushHistory,
+        url
+    });
+}
+
+async function submitForm(
+    form: HTMLFormElement,
+    submitter: HTMLButtonElement | HTMLInputElement | null,
+    submission: { readonly url: string; readonly init: RequestInit }
+): Promise<void> {
+    const { controller, requestId } = beginRequest();
+
+    let response: Response;
+    try {
+        response = await fetch(submission.url, {
+            ...submission.init,
+            signal: controller.signal
+        });
+    } catch {
+        if (controller.signal.aborted) {
+            return;
+        }
+
+        submitFormNatively(form, submitter);
+        return;
+    }
+
     if (requestId !== activeRequestId) {
         return;
     }
 
+    const metadata = resolveFragmentResponseMetadata(response.headers);
+    const fragmentTarget = metadata.kind === 'fragment'
+        ? resolveFragmentTarget(metadata.fragment.target, metadata.fragment.selector)
+        : null;
+    const resolution = resolveEnhancedFormResponse({
+        metadata,
+        hasFragmentTarget: fragmentTarget !== null,
+        contentType: response.headers.get('content-type'),
+        redirected: response.redirected,
+        responseUrl: response.url,
+        requestUrl: submission.url
+    });
+
+    if (resolution.kind === 'fragment') {
+        await handleFragmentResponse(response, requestId, resolution.fragment, fragmentTarget);
+        return;
+    }
+
+    if (resolution.kind === 'document') {
+        await renderDocumentResponse(response, requestId, {
+            pushHistory: true,
+            url: response.url || submission.url
+        });
+        return;
+    }
+
+    window.location.href = resolution.location;
+}
+
+function beginRequest(): { readonly controller: AbortController; readonly requestId: number } {
+    activeRequestId += 1;
+    const requestId = activeRequestId;
+
+    if (activeController) {
+        activeController.abort();
+    }
+
+    const controller = new AbortController();
+    activeController = controller;
+
+    return { controller, requestId };
+}
+
+async function renderDocumentResponse(
+    response: Response,
+    requestId: number,
+    options: { readonly pushHistory: boolean; readonly url: string }
+): Promise<void> {
+    let html: string;
+    try {
+        html = await response.text();
+    } catch {
+        if (requestId === activeRequestId) window.location.href = options.url;
+        return;
+    }
+    if (requestId !== activeRequestId) return;
+
+    const commit = commitQueue.then(async () => {
+        if (requestId !== activeRequestId) return;
+        await renderDocumentHtml(html, options, requestId);
+    });
+    commitQueue = commit.catch(() => {});
+    try {
+        await commit;
+    } catch (error) {
+        console.error(error);
+        if (requestId === activeRequestId) window.location.href = options.url;
+    }
+}
+
+async function renderDocumentHtml(
+    html: string,
+    options: { readonly pushHistory: boolean; readonly url: string },
+    requestId: number
+): Promise<void> {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
-    await syncHead(doc, url);
+    if (!doc.querySelector('main') || !document.querySelector('main')) {
+        window.location.href = options.url;
+        return;
+    }
+    ++pageGeneration;
+    await pageLifecycle.dispose();
+    await syncHead(doc, options.url, DOM_RUNTIME);
+    if (requestId !== activeRequestId) return;
 
     const newMain = doc.querySelector('main');
     const currentMain = document.querySelector('main');
@@ -154,325 +336,302 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
         document.title = newTitle.textContent;
     }
 
-    if (pushHistory) {
-        window.history.pushState({}, '', url);
+    if (options.pushHistory) {
+        window.history.pushState({}, '', options.url);
     }
+    documentUrl = new URL(options.url);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    const focusTarget = document.querySelector('[autofocus]');
-    if (focusTarget instanceof HTMLElement) {
-        focusTarget.focus();
-    }
+    focusAutofocus(document);
 
-    executeScripts(document.querySelector('main'));
-    window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url } }));
+    await loadHeadScripts(doc, options.url, DOM_RUNTIME, activeController?.signal);
+    if (requestId !== activeRequestId) return;
+    await executeScripts(document.querySelector('main'), DOM_RUNTIME, activeController?.signal);
+    if (requestId !== activeRequestId) return;
+    await startPage(options.url);
+    if (requestId !== activeRequestId) return;
+    window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url: options.url } }));
 }
 
-enableClientNav();
-
-async function syncHead(doc: Document, url: string): Promise<void> {
-    const head = document.head;
-    const newHead = doc.head;
-    if (!head || !newHead) {
-        return;
+function getSubmitter(event: SubmitEvent): HTMLButtonElement | HTMLInputElement | null {
+    const candidate = event.submitter;
+    if (candidate instanceof HTMLButtonElement || candidate instanceof HTMLInputElement) {
+        return candidate;
     }
-
-    const preservedClientNav = head.querySelector('script[data-webstir="client-nav"]');
-    const preservedAppCss = Array.from(head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))
-        .find((link) => isAppStylesheetHref(link.getAttribute('href'))) ?? null;
-
-    for (const element of Array.from(head.querySelectorAll(`script[${DYNAMIC_ATTR}="${DYNAMIC_VALUE}"]`))) {
-        element.remove();
-    }
-
-    for (const script of Array.from(head.querySelectorAll('script[src]'))) {
-        const src = script.getAttribute('src') ?? '';
-        const normalizedSrc = stripBasePath(src);
-        if (script === preservedClientNav) {
-            continue;
-        }
-        if (normalizedSrc === '/hmr.js' || normalizedSrc === '/refresh.js') {
-            continue;
-        }
-        if (normalizedSrc.startsWith('/pages/')) {
-            script.remove();
-        }
-    }
-
-    const desiredStyles = new Map<string, string>();
-    for (const link of Array.from(newHead.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))) {
-        const href = link.getAttribute('href');
-        if (!href) {
-            continue;
-        }
-        const resolved = resolveUrl(href, url);
-        if (!resolved) {
-            continue;
-        }
-        const key = stripBasePath(stripQueryAndHash(resolved));
-        const finalHref = key === '/app/app.css' && preservedAppCss
-            ? (preservedAppCss.getAttribute('href') ?? resolved)
-            : withBasePath(resolved);
-        desiredStyles.set(key, finalHref);
-    }
-
-    if (preservedAppCss) {
-        const appHref = preservedAppCss.getAttribute('href') ?? withBasePath('/app/app.css');
-        desiredStyles.set('/app/app.css', appHref);
-    }
-
-    const existingStyles = new Map<string, HTMLLinkElement>();
-    const staleStyles: HTMLLinkElement[] = [];
-    for (const link of Array.from(head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))) {
-        const key = normalizeStylesheetKey(link.getAttribute('href'), window.location.href);
-        if (!key) {
-            link.remove();
-            continue;
-        }
-        if (desiredStyles.has(key)) {
-            if (!existingStyles.has(key)) {
-                existingStyles.set(key, link);
-            }
-            continue;
-        }
-        staleStyles.push(link);
-    }
-
-    const pendingStyles: HTMLLinkElement[] = [];
-    for (const [key, href] of desiredStyles.entries()) {
-        if (existingStyles.has(key)) {
-            continue;
-        }
-        const next = document.createElement('link');
-        next.rel = 'stylesheet';
-        next.href = href;
-        head.appendChild(next);
-        existingStyles.set(key, next);
-        pendingStyles.push(next);
-    }
-
-    const stylesReady = pendingStyles.length > 0
-        ? waitForStylesheets(pendingStyles)
-        : Promise.resolve();
-    if (staleStyles.length > 0) {
-        void stylesReady.then(() => {
-            requestAnimationFrame(() => {
-                for (const link of staleStyles) {
-                    link.remove();
-                }
-            });
-        });
-    }
-
-    syncCriticalStyles(head, newHead);
-
-    for (const script of Array.from(newHead.querySelectorAll('script[src]'))) {
-        const src = script.getAttribute('src');
-        if (!src) {
-            continue;
-        }
-        if (src === '/clientNav.js' || src.endsWith('/clientNav.js')) {
-            continue;
-        }
-        if (src === '/hmr.js' || src === '/refresh.js') {
-            continue;
-        }
-
-        const resolved = resolveUrl(src, url);
-        if (!resolved) {
-            continue;
-        }
-
-        const next = document.createElement('script');
-        const type = script.getAttribute('type');
-        if (type) {
-            next.type = type;
-        }
-        next.src = resolved;
-        next.setAttribute(DYNAMIC_ATTR, DYNAMIC_VALUE);
-        head.appendChild(next);
-    }
-
-    if (preservedClientNav && !head.contains(preservedClientNav)) {
-        head.appendChild(preservedClientNav);
-    }
-
-    await stylesReady;
+    return null;
 }
 
-function executeScripts(container: Element | null): void {
-    if (!container) {
-        return;
-    }
-
-    const scripts = Array.from(container.querySelectorAll('script'));
-    for (const script of scripts) {
-        const src = script.getAttribute('src');
-        const type = script.getAttribute('type');
-
-        const normalizedSrc = src ? stripBasePath(src) : '';
-        if (normalizedSrc && (normalizedSrc === '/clientNav.js' || normalizedSrc.endsWith('/clientNav.js'))) {
-            script.remove();
-            continue;
-        }
-        if (normalizedSrc === '/hmr.js' || normalizedSrc === '/refresh.js') {
-            script.remove();
-            continue;
-        }
-
-        const next = document.createElement('script');
-        if (type) {
-            next.type = type;
-        }
-
-        if (src) {
-            const resolved = resolveUrl(src, window.location.href);
-            if (resolved) {
-                next.src = resolved;
-            }
-        } else if (script.textContent) {
-            next.textContent = script.textContent;
-        }
-
-        script.replaceWith(next);
-    }
-}
-
-function resolveUrl(value: string, baseUrl: string): string | null {
-    try {
-        const trimmed = String(value ?? '').trim();
-        const [path, suffix] = splitPathSuffix(trimmed);
-        if (path && !path.startsWith('/') && !path.startsWith('http:') && !path.startsWith('https:')) {
-            if (path === 'index.js' || path === 'index.css') {
-                const pageName = getPageNameFromUrl(baseUrl);
-                return withBasePath(`/pages/${pageName}/${path}${suffix}`);
-            }
-        }
-
-        const resolved = new URL(value, baseUrl);
-        return withBasePath(resolved.pathname + resolved.search + resolved.hash);
-    } catch {
+function createEnhancedFormSubmission(
+    form: HTMLFormElement,
+    submitter: HTMLButtonElement | HTMLInputElement | null
+): { readonly url: string; readonly init: RequestInit } | null {
+    if (hasClientNavOptOut(form) || hasClientNavOptOut(submitter)) {
         return null;
     }
-}
 
-function normalizeStylesheetKey(href: string | null, baseUrl: string): string | null {
-    const resolved = resolveUrl(href ?? '', baseUrl);
-    if (!resolved) {
+    const target = resolveFormTarget(form, submitter);
+    if (target && target !== '_self') {
         return null;
     }
-    return stripBasePath(stripQueryAndHash(resolved));
-}
 
-function stripQueryAndHash(value: string): string {
-    return value.split(/[?#]/)[0] ?? value;
-}
-
-function waitForStylesheets(links: HTMLLinkElement[], timeoutMs = 2000): Promise<void> {
-    if (links.length === 0) {
-        return Promise.resolve();
+    const method = resolveFormMethod(form, submitter);
+    if (normalizeFormMethod(method) !== 'POST') {
+        return null;
     }
 
-    return new Promise((resolve) => {
-        let remaining = links.length;
-        let done = false;
-        const finish = () => {
-            if (done) {
-                return;
-            }
-            done = true;
-            resolve();
-        };
+    const enctype = resolveFormEnctype(form, submitter);
+    const action = resolveFormAction(form, submitter);
+    if (new URL(action).origin !== window.location.origin) {
+        return null;
+    }
+    const formData = createFormData(form, submitter);
 
-        const timer = window.setTimeout(finish, timeoutMs);
-        const handle = () => {
-            if (done) {
-                return;
-            }
-            remaining -= 1;
-            if (remaining <= 0) {
-                window.clearTimeout(timer);
-                finish();
-            }
-        };
-
-        for (const link of links) {
-            if (link.sheet) {
-                handle();
-                continue;
-            }
-            link.addEventListener('load', handle, { once: true });
-            link.addEventListener('error', handle, { once: true });
-        }
+    return buildEnhancedFormRequest({
+        action,
+        method,
+        enctype,
+        formData
     });
 }
 
-function syncCriticalStyles(head: HTMLHeadElement, newHead: HTMLHeadElement): void {
-    for (const style of Array.from(head.querySelectorAll<HTMLStyleElement>('style[data-critical]'))) {
-        style.remove();
+function hasClientNavOptOut(element: Element | null): boolean {
+    if (!element) {
+        return false;
     }
 
-    for (const style of Array.from(newHead.querySelectorAll<HTMLStyleElement>('style[data-critical]'))) {
-        const next = document.createElement('style');
-        for (const attribute of Array.from(style.attributes)) {
-            next.setAttribute(attribute.name, attribute.value);
+    const setting = element.getAttribute('data-client-nav');
+    return element.hasAttribute('data-no-client-nav')
+        || setting === 'off'
+        || setting === 'false';
+}
+
+function resolveFormAction(form: HTMLFormElement, submitter: HTMLButtonElement | HTMLInputElement | null): string {
+    const override = submitter?.getAttribute('formaction')?.trim();
+    const action = override || form.getAttribute('action')?.trim() || window.location.href;
+    return new URL(action, window.location.href).href;
+}
+
+function resolveFormMethod(form: HTMLFormElement, submitter: HTMLButtonElement | HTMLInputElement | null): string {
+    return submitter?.getAttribute('formmethod') || form.getAttribute('method') || form.method || 'GET';
+}
+
+function resolveFormEnctype(form: HTMLFormElement, submitter: HTMLButtonElement | HTMLInputElement | null): string {
+    const override = submitter?.getAttribute('formenctype');
+    return normalizeFormEnctype(override || form.getAttribute('enctype') || form.enctype);
+}
+
+function resolveFormTarget(form: HTMLFormElement, submitter: HTMLButtonElement | HTMLInputElement | null): string {
+    return submitter?.getAttribute('formtarget') || form.getAttribute('target') || form.target || '';
+}
+
+function createFormData(
+    form: HTMLFormElement,
+    submitter: HTMLButtonElement | HTMLInputElement | null
+): FormData {
+    try {
+        if (submitter) {
+            return new FormData(form, submitter);
         }
-        if (style.textContent) {
-            next.textContent = style.textContent;
-        }
-        head.appendChild(next);
+    } catch {
+        // Fall through to the broader FormData constructor.
     }
+
+    const formData = new FormData(form);
+    if (submitter?.name && !formData.has(submitter.name)) {
+        formData.append(submitter.name, submitter.value);
+    }
+    return formData;
 }
 
-function splitPathSuffix(value: string): [string, string] {
-    const [path, suffix = ''] = value.split(/(?=[?#])/);
-    return [path ?? '', suffix ?? ''];
+async function handleFragmentResponse(
+    response: Response,
+    requestId: number,
+    fragment: {
+        readonly target: string;
+        readonly selector?: string;
+        readonly mode: 'replace' | 'append' | 'prepend';
+    },
+    target: Element | null
+): Promise<void> {
+    if (!target) {
+        return;
+    }
+
+    const html = await response.text();
+    if (requestId !== activeRequestId) {
+        return;
+    }
+
+    const appliedFragment = applyFragmentHtml(target, html, fragment);
+    focusInsertedAutofocus(appliedFragment.focusRoots);
+    window.dispatchEvent(new CustomEvent('webstir:fragment-update', {
+        detail: {
+            target: fragment.target,
+            selector: fragment.selector,
+            mode: fragment.mode
+        }
+    }));
 }
 
-function isAppStylesheetHref(href: string | null): boolean {
-    if (!href) {
+function resolveFragmentTarget(target: string, selector?: string): Element | null {
+    if (selector) {
+        return document.querySelector(selector);
+    }
+
+    const byId = document.getElementById(target);
+    if (byId) {
+        return byId;
+    }
+
+    return document.querySelector(`[data-webstir-fragment-target="${cssEscape(target)}"]`);
+}
+
+function applyFragmentHtml(target: Element, html: string, fragment: {
+    readonly target: string;
+    readonly selector?: string;
+    readonly mode: 'replace' | 'append' | 'prepend';
+}): { readonly focusRoots: readonly Element[] } {
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    const insertedRoots = Array.from(template.content.children);
+    const insertionBehavior = resolveFragmentInsertionBehavior({
+        mode: fragment.mode,
+        target: fragment.target,
+        hasMeaningfulSiblingContent: hasMeaningfulSiblingContent(template.content, insertedRoots[0] ?? null),
+        roots: insertedRoots.map((root) => ({
+            id: root.id,
+            fragmentTarget: root.getAttribute('data-webstir-fragment-target'),
+            matchesSelector: elementMatchesSelector(root, fragment.selector)
+        }))
+    });
+
+    if (insertionBehavior === 'replace-target') {
+        target.replaceWith(template.content);
+        executeInsertedScripts(insertedRoots);
+        return { focusRoots: insertedRoots };
+    }
+
+    if (insertionBehavior === 'append-matching-root-children' || insertionBehavior === 'prepend-matching-root-children') {
+        const { content, roots } = extractMatchingRootChildren(template.content);
+        if (insertionBehavior === 'append-matching-root-children') {
+            target.append(content);
+        } else {
+            target.prepend(content);
+        }
+        executeInsertedScripts(roots);
+        return { focusRoots: roots };
+    }
+
+    if (insertionBehavior === 'append-payload') {
+        target.append(template.content);
+    } else if (insertionBehavior === 'prepend-payload') {
+        target.prepend(template.content);
+    } else {
+        target.replaceChildren(template.content);
+    }
+
+    executeInsertedScripts(insertedRoots);
+    return { focusRoots: insertedRoots };
+}
+
+function elementMatchesSelector(element: Element, selector: string | undefined): boolean {
+    if (!selector) {
         return false;
     }
 
     try {
-        const normalized = stripBasePath(new URL(href, window.location.origin).pathname);
-        return normalized === '/app/app.css';
+        return element.matches(selector);
     } catch {
-        const trimmed = href.trim();
-        if (!trimmed) {
-            return false;
-        }
-        const [path] = trimmed.split(/[?#]/);
-        return stripBasePath(path) === '/app/app.css';
-    }
-}
-
-function isHtmlDocumentContentType(value: string | null): boolean {
-    if (!value) {
         return false;
     }
-
-    const normalized = value.toLowerCase();
-    return normalized.includes('text/html') || normalized.includes('application/xhtml+xml');
 }
 
-function getPageNameFromUrl(url: string): string {
-    try {
-        const pathname = stripBasePath(new URL(url, window.location.href).pathname);
-        const trimmed = pathname.replace(/^\/+|\/+$/g, '');
-        if (!trimmed) {
-            return 'home';
+function hasMeaningfulSiblingContent(content: DocumentFragment, root: Element | null): boolean {
+    for (const node of Array.from(content.childNodes)) {
+        if (node === root || node instanceof Comment) {
+            continue;
+        }
+        if (node instanceof Text && !node.textContent?.trim()) {
+            continue;
+        }
+        return true;
+    }
+    return false;
+}
+
+function extractMatchingRootChildren(content: DocumentFragment): {
+    readonly content: DocumentFragment;
+    readonly roots: readonly Element[];
+} {
+    const fragment = document.createDocumentFragment();
+    const roots: Element[] = [];
+    const root = content.firstElementChild;
+    if (!root) {
+        return { content: fragment, roots };
+    }
+
+    while (root.firstChild) {
+        const node = root.firstChild;
+        fragment.append(node);
+        if (node instanceof Element) {
+            roots.push(node);
+        }
+    }
+
+    return { content: fragment, roots };
+}
+
+function executeInsertedScripts(roots: readonly Element[]): void {
+    for (const root of roots) {
+        if (root.tagName.toLowerCase() === 'script') {
+            executeTopLevelScriptRoot(root as HTMLScriptElement);
+            continue;
+        }
+        void executeScripts(root, DOM_RUNTIME).catch(console.error);
+    }
+}
+
+function executeTopLevelScriptRoot(script: HTMLScriptElement): void {
+    const wrapper = document.createElement('div');
+    wrapper.append(script.cloneNode(true));
+    void executeScripts(wrapper, DOM_RUNTIME).catch(console.error);
+
+    const replacement = wrapper.querySelector('script');
+    if (replacement) {
+        script.replaceWith(replacement);
+        return;
+    }
+
+    script.remove();
+}
+
+function focusInsertedAutofocus(roots: readonly Element[]): void {
+    for (const root of roots) {
+        if (root instanceof HTMLElement && root.hasAttribute('autofocus')) {
+            root.focus();
+            return;
         }
 
-        const firstSegment = trimmed.split('/')[0];
-        return firstSegment || 'home';
-    } catch {
-        return 'home';
+        const descendant = root.querySelector('[autofocus]');
+        if (descendant instanceof HTMLElement) {
+            descendant.focus();
+            return;
+        }
     }
 }
 
-function cssEscape(value: string): string {
-    if (typeof CSS !== 'undefined' && typeof (CSS as { escape?: (value: string) => string }).escape === 'function') {
-        return (CSS as { escape: (value: string) => string }).escape(value);
+function submitFormNatively(
+    form: HTMLFormElement,
+    submitter: HTMLButtonElement | HTMLInputElement | null
+): void {
+    form.setAttribute(BYPASS_ATTR, 'true');
+    if (submitter && typeof form.requestSubmit === 'function') {
+        form.requestSubmit(submitter);
+        return;
     }
-    return value.replace(/[\"\\\\]/g, '\\\\$&');
+    window.setTimeout(() => {
+        form.removeAttribute(BYPASS_ATTR);
+    }, 0);
+    form.submit();
 }
+
+enableClientNav();

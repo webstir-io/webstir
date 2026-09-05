@@ -111,3 +111,9 @@ Typical backend scaffold:
 - Engine internals — [engine](../explanations/engine.md)
 - Pipelines — [pipelines](../explanations/pipelines.md)
 - Workspace and paths — [workspace](../explanations/workspace.md)
+
+The full template includes `/lifecycle`, demonstrating the optional page `setup`
+export and cleanup scopes. After changing canonical client-nav feature sources,
+run `bun orchestrators/bun/scripts/sync-client-nav.mjs` to refresh the full template
+and first-party consumers, then `bun orchestrators/bun/scripts/sync-assets.mjs`
+to regenerate packaged assets. The .NET archive is not part of this projection.

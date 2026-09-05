@@ -86,3 +86,6 @@ Applies to SSG docs pages (content pipeline) only.
 - `enable` is additive and idempotent: it avoids duplicating imports on re-run.
 - Feature scripts are appended as `.js` imports in `app.ts` because the dev server serves the compiled output under `build/frontend/**`.
 - Prefer the server-first path for forms, links, redirects, and auth before enabling client-nav or other UI polish.
+
+For interactive page setup, cleanup, and migration from top-level scripts, see
+[Client navigation page lifecycle](./client-nav-lifecycle.md).

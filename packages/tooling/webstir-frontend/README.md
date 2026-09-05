@@ -228,3 +228,21 @@ Webstir Frontend depends on third-party libraries and data sets (including `shar
 ## License
 
 MIT © Webstir
+
+## Client navigation page lifecycle
+
+With `webstir.enable.clientNav` enabled, a page entry can export
+`setup(context: PageContext)`. The navigator calls it once on the initial document
+and once per committed document visit, including history traversal and different
+URLs served by the same cached module. See the [lifecycle guide](../../../apps/portal/src/frontend/content/how-to/client-nav-lifecycle.md)
+and the full demo's `/lifecycle` page.
+
+`PageContext` supplies the current `root` (`<main>`), a `URL`, an `AbortSignal`,
+and the existing `CleanupScope`. Register resources with `listen`,
+`scheduleTimeout`, `scheduleInterval`, `trackObserver`, or `scope.add`.
+Setup may return a cleanup function, synchronously or asynchronously. Register
+cleanup before awaiting; check `signal.aborted` before effects after an await.
+
+This contract does not opt a module into HMR. Keep the default reload behavior
+for these pages; do not independently mount the same page through a hot boundary
+or a client-nav event listener.

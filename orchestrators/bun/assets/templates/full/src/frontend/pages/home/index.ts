@@ -1,18 +1,8 @@
-// TypeScript file for index page
+import type { PageContext } from '@webstir-io/webstir-frontend/runtime';
 
-import { registerHotModule } from '../../app/app';
-
-const main = document.querySelector('main');
-if (main) {
-  main.dataset.hmrRendered = String(Date.now());
+// With client-nav enabled, Webstir calls setup for every visit to this page.
+// Keep page behavior here; the shared app entry is loaded independently.
+export function setup({ root, scope }: PageContext): void {
+  root.dataset.pageReady = 'true';
+  scope.add(() => { delete root.dataset.pageReady; });
 }
-
-registerHotModule(import.meta.url, {
-  accept: (_, context) => {
-    console.info('[webstir-hmr] Home page accepted update for', context.asset?.relativePath ?? 'unknown module');
-    return true;
-  },
-  dispose: (context) => {
-    console.info('[webstir-hmr] Preparing to update', context.asset?.relativePath ?? 'home page module');
-  }
-});

@@ -1,3 +1,4 @@
+import { createPageLifecycle, type PageSetup } from '@webstir-io/webstir-frontend/runtime';
 import {
     buildEnhancedFormRequest,
     normalizeFormEnctype,
@@ -11,6 +12,7 @@ import {
     executeScripts,
     focusAutofocus,
     resolveDocumentNavigationResponse,
+    loadHeadScripts,
     syncHead
 } from './document-navigation.js';
 
@@ -26,12 +28,20 @@ export {};
  * - data-client-nav="off"
  */
 export function enableClientNav(): void {
+    if (enabled) return;
+    enabled = true;
+    const initial = () => { void startPage(window.location.href).catch(console.error); };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initial, { once: true });
+    } else {
+        initial();
+    }
     document.addEventListener('click', async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
             return;
         }
-        if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        if (event.button !== 0 || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             return;
         }
 
@@ -45,9 +55,10 @@ export function enableClientNav(): void {
         }
 
         const isExternal = link.origin !== window.location.origin;
-        const opensInNewTab = link.getAttribute('target') === '_blank';
+        const targetName = link.getAttribute('target') || document.querySelector('base')?.target;
+        const opensInNewTab = Boolean(targetName && targetName !== '_self');
         const isDownload = link.hasAttribute('download');
-        if (isExternal || opensInNewTab || isDownload) {
+        if (!link.hasAttribute('href') || !['http:', 'https:'].includes(link.protocol) || isExternal || opensInNewTab || isDownload) {
             return;
         }
 
@@ -85,8 +96,26 @@ export function enableClientNav(): void {
     });
 
     window.addEventListener('popstate', async () => {
-        await renderUrl(window.location.href, { pushHistory: false });
+        const url = new URL(window.location.href);
+        if (url.pathname + url.search === documentUrl.pathname + documentUrl.search) return;
+        await renderUrl(url.href, { pushHistory: false });
     });
+}
+
+let enabled = false;
+let documentUrl = new URL(window.location.href);
+const pageLifecycle = createPageLifecycle();
+let pageGeneration = 0;
+let commitQueue = Promise.resolve();
+
+async function startPage(url: string): Promise<void> {
+    const generation = ++pageGeneration;
+    const script = document.querySelector<HTMLScriptElement>('script[data-webstir-page][src]');
+    const root = document.querySelector('main');
+    if (!script || !root) return;
+    const module = await import(script.src) as { setup?: PageSetup };
+    if (generation !== pageGeneration || !root.isConnected) return;
+    if (typeof module.setup === 'function') pageLifecycle.start(module.setup, root, url);
 }
 
 let activeRequestId = 0;
@@ -159,6 +188,12 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
         }
 
         window.location.href = url;
+        return;
+    }
+
+    if (requestId !== activeRequestId) return;
+    if (response.redirected) {
+        window.location.href = response.url;
         return;
     }
 
@@ -251,22 +286,44 @@ async function renderDocumentResponse(
     requestId: number,
     options: { readonly pushHistory: boolean; readonly url: string }
 ): Promise<void> {
-    const html = await response.text();
-    if (requestId !== activeRequestId) {
+    let html: string;
+    try {
+        html = await response.text();
+    } catch {
+        if (requestId === activeRequestId) window.location.href = options.url;
         return;
     }
+    if (requestId !== activeRequestId) return;
 
-    await renderDocumentHtml(html, options);
+    const commit = commitQueue.then(async () => {
+        if (requestId !== activeRequestId) return;
+        await renderDocumentHtml(html, options, requestId);
+    });
+    commitQueue = commit.catch(() => {});
+    try {
+        await commit;
+    } catch (error) {
+        console.error(error);
+        if (requestId === activeRequestId) window.location.href = options.url;
+    }
 }
 
 async function renderDocumentHtml(
     html: string,
-    options: { readonly pushHistory: boolean; readonly url: string }
+    options: { readonly pushHistory: boolean; readonly url: string },
+    requestId: number
 ): Promise<void> {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
 
+    if (!doc.querySelector('main') || !document.querySelector('main')) {
+        window.location.href = options.url;
+        return;
+    }
+    ++pageGeneration;
+    await pageLifecycle.dispose();
     await syncHead(doc, options.url, DOM_RUNTIME);
+    if (requestId !== activeRequestId) return;
 
     const newMain = doc.querySelector('main');
     const currentMain = document.querySelector('main');
@@ -282,10 +339,16 @@ async function renderDocumentHtml(
     if (options.pushHistory) {
         window.history.pushState({}, '', options.url);
     }
+    documentUrl = new URL(options.url);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     focusAutofocus(document);
 
-    executeScripts(document.querySelector('main'), DOM_RUNTIME);
+    await loadHeadScripts(doc, options.url, DOM_RUNTIME, activeController?.signal);
+    if (requestId !== activeRequestId) return;
+    await executeScripts(document.querySelector('main'), DOM_RUNTIME, activeController?.signal);
+    if (requestId !== activeRequestId) return;
+    await startPage(options.url);
+    if (requestId !== activeRequestId) return;
     window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url: options.url } }));
 }
 
@@ -523,14 +586,14 @@ function executeInsertedScripts(roots: readonly Element[]): void {
             executeTopLevelScriptRoot(root as HTMLScriptElement);
             continue;
         }
-        executeScripts(root, DOM_RUNTIME);
+        void executeScripts(root, DOM_RUNTIME).catch(console.error);
     }
 }
 
 function executeTopLevelScriptRoot(script: HTMLScriptElement): void {
     const wrapper = document.createElement('div');
     wrapper.append(script.cloneNode(true));
-    executeScripts(wrapper, DOM_RUNTIME);
+    void executeScripts(wrapper, DOM_RUNTIME).catch(console.error);
 
     const replacement = wrapper.querySelector('script');
     if (replacement) {

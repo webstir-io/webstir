@@ -62,7 +62,8 @@ test('CLI watch serves the full demo, proxies /api, and rebuilds frontend and ba
 
     await waitFor(async () => {
       const rootHtml = await fetchText(port, '/');
-      expect(rootHtml).toContain('data-bun-dev-server-script');
+      expect(rootHtml).toContain('/refresh.js');
+      expect(rootHtml).toContain('data-webstir-page');
       expect(rootHtml).toContain('Home');
       expect(await fetchText(port, '/api')).toContain('API server running');
     }, 10_000);

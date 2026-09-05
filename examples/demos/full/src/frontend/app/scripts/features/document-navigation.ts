@@ -124,33 +124,6 @@ export async function syncHead(
 
     syncCriticalStyles(head, newHead);
 
-    for (const script of Array.from(newHead.querySelectorAll('script[src]'))) {
-        const src = script.getAttribute('src');
-        if (!src) {
-            continue;
-        }
-        if (src === '/clientNav.js' || src.endsWith('/clientNav.js')) {
-            continue;
-        }
-        if (src === '/hmr.js' || src === '/refresh.js') {
-            continue;
-        }
-
-        const resolved = resolveUrl(src, url, runtime);
-        if (!resolved) {
-            continue;
-        }
-
-        const next = document.createElement('script');
-        const type = script.getAttribute('type');
-        if (type) {
-            next.type = type;
-        }
-        next.src = resolved;
-        next.setAttribute(runtime.dynamicAttr, runtime.dynamicValue);
-        head.appendChild(next);
-    }
-
     if (preservedClientNav && !head.contains(preservedClientNav)) {
         head.appendChild(preservedClientNav);
     }
@@ -158,11 +131,31 @@ export async function syncHead(
     await stylesReady;
 }
 
-export function executeScripts(container: Element | null, runtime: NavigationDomRuntime): void {
-    if (!container) {
-        return;
+/** Load head scripts only after the new main and URL have been committed. */
+export async function loadHeadScripts(doc: Document, url: string, runtime: NavigationDomRuntime, signal?: AbortSignal): Promise<void> {
+    for (const script of Array.from(doc.head.querySelectorAll<HTMLScriptElement>('script[src]'))) {
+        if (signal?.aborted) return;
+        const src = resolveUrl(script.getAttribute('src') ?? '', url, runtime);
+        if (!src || /\/(?:clientNav|hmr|refresh)\.js$/.test(src)) continue;
+        const absolute = new URL(src, url).href;
+        if (Array.from(document.head.querySelectorAll<HTMLScriptElement>('script[src]'))
+            .some((existing) => existing.src === absolute)) continue;
+        const next = document.createElement('script');
+        for (const attribute of Array.from(script.attributes)) next.setAttribute(attribute.name, attribute.value);
+        next.src = absolute;
+        next.setAttribute(runtime.dynamicAttr, runtime.dynamicValue);
+        const ready = waitForScript(next, signal);
+        document.head.appendChild(next);
+        await ready;
+    }
+}
+
+export function executeScripts(container: Element | null, runtime: NavigationDomRuntime, signal?: AbortSignal): Promise<void> {
+    if (!container || signal?.aborted) {
+        return Promise.resolve();
     }
 
+    const pending: Promise<void>[] = [];
     const scripts = Array.from(container.querySelectorAll('script'));
     for (const script of scripts) {
         const src = script.getAttribute('src');
@@ -179,6 +172,7 @@ export function executeScripts(container: Element | null, runtime: NavigationDom
         }
 
         const next = document.createElement('script');
+        for (const attribute of Array.from(script.attributes)) next.setAttribute(attribute.name, attribute.value);
         if (type) {
             next.type = type;
         }
@@ -192,8 +186,33 @@ export function executeScripts(container: Element | null, runtime: NavigationDom
             next.textContent = script.textContent;
         }
 
+        if (src || type === 'module') {
+            pending.push(waitForScript(next, signal));
+        }
         script.replaceWith(next);
     }
+    return Promise.all(pending).then(() => {});
+}
+
+function waitForScript(script: HTMLScriptElement, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const finish = () => {
+            script.onload = null;
+            script.onerror = null;
+            signal?.removeEventListener('abort', abort);
+        };
+        const abort = () => {
+            finish();
+            script.remove();
+            resolve();
+        };
+        signal?.addEventListener('abort', abort, { once: true });
+        script.onload = () => { finish(); resolve(); };
+        script.onerror = () => {
+            finish();
+            reject(new Error(`Unable to load navigation script: ${script.src || 'inline module'}`));
+        };
+    });
 }
 
 export function focusAutofocus(root: ParentNode): void {
@@ -222,7 +241,9 @@ function resolveUrl(value: string, baseUrl: string, runtime: NavigationDomRuntim
         }
 
         const resolved = new URL(value, baseUrl);
-        return runtime.withBasePath(resolved.pathname + resolved.search + resolved.hash);
+        return resolved.origin === window.location.origin
+            ? runtime.withBasePath(resolved.pathname + resolved.search + resolved.hash)
+            : resolved.href;
     } catch {
         return null;
     }
