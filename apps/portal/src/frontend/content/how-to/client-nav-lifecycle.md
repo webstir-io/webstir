@@ -98,3 +98,53 @@ its application data, menus, error display, and auth redirects remain its code.
 
 The full demo and full template include `/lifecycle`, an interactive counter with
 scoped listener, observer, timer, request, and guarded asynchronous completion.
+
+## Prepare data before replacing the page
+
+For a data-driven page, opt in on its page entry script:
+
+```html
+<script type="module" src="index.js" data-webstir-load></script>
+```
+
+Export `load` alongside `setup`. The loader receives `{ url, signal }` and returns
+page data. It must not access page DOM, install listeners, or perform redirects:
+it runs while the outgoing page is still visible. Keep module-level code free of
+page DOM access too, because the module is imported before the swap.
+
+```ts
+import type { PageContext, PageLoadContext } from '@webstir-io/webstir-frontend/runtime';
+
+export async function load({ url, signal }: PageLoadContext) {
+  const response = await fetch(`/api/items${url.search}`, { signal });
+  if (!response.ok) return { error: response.status, items: [] };
+  return { items: await response.json() };
+}
+
+export function setup({ root, data, scope }: PageContext<Awaited<ReturnType<typeof load>>>) {
+  // Render data synchronously, including application-owned errors or redirects.
+  // Register DOM listeners and cleanup here as usual.
+}
+```
+
+On link navigation, the current content, URL, and page lifetime remain intact while
+`load` is pending. History traversal changes the URL immediately, as usual, but
+keeps the outgoing content visible until data is ready. Webstir then synchronizes styles and commits the prepared page.
+Its setup runs before additional document scripts, so prepared content can render
+without an intervening loading frame. On initial load the existing HTML remains
+available while data loads. Pages without the attribute retain the original
+script/setup ordering and do not call a load export.
+
+Each visit loads fresh data, including history and URLs sharing a module. A new
+navigation aborts the pending loader; even a promise that ignores cancellation
+cannot block subsequent navigation. Treat the signal as a cancellation boundary
+and avoid external side effects in loaders. Setup owns a separate page lifetime.
+There is no shared data cache. Handle expected API failures as returned data so
+setup can render the destination's normal error UI or auth redirect. Unexpected
+loader failures use the existing full-document fallback; initial-load failures
+are reported to the console.
+
+This opt-in API requires CLI and frontend 0.1.55 or newer. Refresh generated
+client-nav features after upgrading. Async work started by setup still does not
+hold navigation open; move everything required for the first rendered content
+into load.
