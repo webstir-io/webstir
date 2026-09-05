@@ -7,14 +7,22 @@ export interface ResourceHintResult {
   readonly missingHead: boolean;
 }
 
+/**
+ * Adds `<link rel="prefetch">` hints for links that point at other frontend pages.
+ *
+ * Only `knownPages` (the page directories that were actually built) are eligible. Links whose
+ * first path segment is not a page, such as backend routes, produce no hint; otherwise a
+ * published page would prefetch a document that does not exist.
+ */
 export function injectResourceHints(
   document: CheerioAPI,
   currentPage: string,
   pagesUrlPrefix: string,
   useRootIndex: boolean,
+  knownPages: ReadonlySet<string>,
 ): ResourceHintResult {
   const head = document('head').first();
-  const pages = [...collectInternalPages(document, currentPage, pagesUrlPrefix)];
+  const pages = [...collectInternalPages(document, currentPage, pagesUrlPrefix, knownPages)];
 
   if (head.length === 0) {
     return {
@@ -40,12 +48,13 @@ function collectInternalPages(
   document: CheerioAPI,
   currentPage: string,
   pagesUrlPrefix: string,
+  knownPages: ReadonlySet<string>,
 ): Set<string> {
   const pages = new Set<string>();
   document('a[href]').each((_index, element) => {
     const href = document(element).attr('href');
     const pageName = normalizePageName(href, pagesUrlPrefix);
-    if (!pageName || pageName === currentPage) {
+    if (!pageName || pageName === currentPage || !knownPages.has(pageName)) {
       return;
     }
     pages.add(pageName);

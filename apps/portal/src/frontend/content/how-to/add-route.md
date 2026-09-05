@@ -78,7 +78,7 @@ export const module = {
 - The CLI prevents duplicate entries for the same method+path.
 - The backend provider also validates the manifest and emits diagnostics on duplicates.
 - Route handler scaffolding is optional and intended as a starting point; adapt it to your server style.
-- `--session required` is the current manifest-level way to mark auth-gated routes in the default server-first lane.
+- `--session required` declares that a session must already exist. The runtime enforces it: requests without a session get `401` with a `session_required` error before the handler runs, and the rejection never creates a session. The declaration in `package.json` is applied to the matching `method` + `path` handler in `src/backend/module.ts` even when that handler states no `session` metadata; if the two disagree on `session.mode`, `required` wins and `backend-inspect`/startup report a warning. It does not check identity. Gate signed-in access in the handler (or a request hook) with `ctx.auth` or your own session data.
 - `--form-urlencoded`, `--csrf`, and `--fragment-*` only declare the contract. Your handler in `src/backend/module.ts` still needs to implement the actual form, redirect, or fragment behavior.
 - Schema references can point at Zod files (`zod:Type@path/to/file.ts`), JSON schema, or ts-rest routers. They only record metadata; the backend provider enforces the manifest at build time.
 

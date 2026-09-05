@@ -20,7 +20,6 @@ import {
   normalizeRuntimeFilter,
 } from './runtime-filter.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
-import { run as runFrontendTests } from './testing-runtime.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import {
   createDefaultProviderRegistry as createPublishedProviderRegistry,
@@ -115,10 +114,7 @@ async function executeTestRun(
   let summary = createEmptySummary();
 
   for (const [runtime, runtimeModules] of grouped) {
-    const provider =
-      runtime === 'frontend'
-        ? { id: '@webstir-io/webstir/frontend-runtime', runTests: runFrontendTests }
-        : registry.get(runtime);
+    const provider = registry.get(runtime);
     if (!provider) {
       continue;
     }

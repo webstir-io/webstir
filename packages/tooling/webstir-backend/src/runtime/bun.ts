@@ -169,6 +169,7 @@ export async function startBunBackend<
     runtime = await loadModuleRuntime<BunRouteContext, RouteHandlerResult, ModuleRouteDefinition>({
       importMetaUrl: options.importMetaUrl,
       candidates: options.moduleCandidates,
+      workspaceRoot: options.resolveWorkspaceRoot(),
     });
   } catch (error) {
     loadError = (error as Error).message ?? 'Failed to load module definition';
@@ -187,7 +188,7 @@ export async function startBunBackend<
 
   logManifestSummary(logger, runtime.manifest, runtime.routes.length, runtime.views.length);
   for (const warning of runtime.warnings ?? []) {
-    logger.warn({ warning }, '[webstir-backend] request hook configuration warning');
+    logger.warn({ warning }, '[webstir-backend] module configuration warning');
   }
   const manifestSummary = summarizeManifest(runtime.manifest);
 
@@ -470,6 +471,21 @@ async function handleRequest<
         return response;
       }
 
+      if (requiresSession(routeMatch.route.definition) && ctx.session === null) {
+        // The route never ran, so its flash declarations must not fire: publishing one would
+        // persist a brand-new session and hand the caller the cookie needed to pass this guard.
+        const response = createCommittedResponse(createSessionRequiredResult(), {
+          method,
+          sessionState,
+          session: null,
+          route: routeMatch.route.definition,
+          requestId,
+          publishFlash: false,
+        });
+        responseStatus = response.status;
+        return response;
+      }
+
       const handlerResult = await routeMatch.route.handler(ctx);
       const afterHandler = await executeRequestHookPhase({
         hooks: routeMatch.route.requestHooks,
@@ -611,6 +627,7 @@ function createCommittedResponse<
     session: TSession | null;
     route?: TRouteDefinition;
     requestId: string;
+    publishFlash?: boolean;
   },
 ): Response {
   const normalizedResult = normalizeRouteHandlerResult(result);
@@ -618,6 +635,7 @@ function createCommittedResponse<
     session: options.session,
     route: options.route,
     result: normalizedResult as TResult,
+    publishFlash: options.publishFlash,
   });
 
   const status = resolveResponseStatus(normalizedResult);
@@ -627,11 +645,13 @@ function createCommittedResponse<
     headers.append('set-cookie', commit.setCookie);
   }
 
+  if (normalizedResult.redirect) {
+    // Redirects may carry `errors` to classify the outcome (for example flash publishing);
+    // the response itself stays a bodiless redirect.
+    return new Response(null, { status, headers });
+  }
   if (normalizedResult.errors) {
     return jsonResponse(status, { errors: normalizedResult.errors }, options.requestId, headers);
-  }
-  if (normalizedResult.redirect) {
-    return new Response(null, { status, headers });
   }
 
   const payload = normalizedResult.fragment
@@ -744,6 +764,26 @@ function extractRequestId(request: Request): string {
 
 function toRequestHeadersRecord(headers: Headers): Record<string, string> {
   return Object.fromEntries(headers.entries());
+}
+
+// `session.mode: 'required'` means a session must already exist when the route runs. It says
+// nothing about identity: authenticated access is `ctx.auth`, resolved by the auth adapter or a
+// request hook, and handlers or hooks still decide what an anonymous user may do.
+function requiresSession(definition: BackendRouteDefinitionLike | undefined): boolean {
+  const mode = definition?.session?.mode ?? definition?.form?.session?.mode;
+  return mode === 'required';
+}
+
+function createSessionRequiredResult(): RouteHandlerResult {
+  return {
+    status: 401,
+    errors: [
+      {
+        code: 'session_required',
+        message: 'This route requires an existing session.',
+      },
+    ],
+  };
 }
 
 function resolveResponseStatus(result: ReturnType<typeof normalizeRouteHandlerResult>): number {

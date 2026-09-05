@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -34,6 +35,21 @@ async function runCli(
   };
 }
 
+function readSummaryCounts(stdout: string): { tests: number; passed: number; failed: number } {
+  const read = (label: string): number => {
+    const match = stdout.match(new RegExp(`^${label}: (\\d+)$`, 'm'));
+    if (!match) {
+      throw new Error(`Missing "${label}:" line in output:\n${stdout}`);
+    }
+    return Number(match[1]);
+  };
+  return { tests: read('tests'), passed: read('passed'), failed: read('failed') };
+}
+
+// The full demo ships one frontend test module and one backend test module (7 tests).
+const FULL_DEMO_FRONTEND_TESTS = 1;
+const FULL_DEMO_BACKEND_TESTS = 7;
+
 test('CLI test runs the full demo workspace end to end', async () => {
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-');
 
@@ -47,9 +63,11 @@ test('CLI test runs the full demo workspace end to end', async () => {
     expect(result.stdout).toContain('mode: full');
     expect(result.stdout).toContain('runtime: all');
     expect(result.stdout).toContain('build-targets: frontend, backend');
-    expect(result.stdout).toMatch(/tests: \d+/);
-    expect(result.stdout).toMatch(/passed: \d+/);
-    expect(result.stdout).toContain('failed: 0');
+    expect(readSummaryCounts(result.stdout)).toEqual({
+      tests: FULL_DEMO_FRONTEND_TESTS + FULL_DEMO_BACKEND_TESTS,
+      passed: FULL_DEMO_FRONTEND_TESTS + FULL_DEMO_BACKEND_TESTS,
+      failed: 0,
+    });
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
@@ -96,12 +114,53 @@ test('CLI test honors --runtime backend for the full demo workspace', async () =
     expect(result.stdout).toContain('mode: full');
     expect(result.stdout).toContain('runtime: backend');
     expect(result.stdout).toContain('build-targets: backend');
-    expect(result.stdout).toMatch(
-      /filter: Runtime filter 'backend' matched \d+ tests \(1 skipped\)\./,
+    expect(result.stdout).toContain(
+      "filter: Runtime filter 'backend' matched 2 test modules (1 skipped).",
     );
-    expect(result.stdout).toMatch(/tests: \d+/);
-    expect(result.stdout).toMatch(/passed: \d+/);
-    expect(result.stdout).toContain('failed: 0');
+    // The demo backend tests plus the single scaffolded ping test all execute.
+    expect(readSummaryCounts(result.stdout)).toEqual({
+      tests: FULL_DEMO_BACKEND_TESTS + 1,
+      passed: FULL_DEMO_BACKEND_TESTS + 1,
+      failed: 0,
+    });
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI test executes backend tests and fails the run when one of them fails', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-test-full-backend-failure-');
+
+  try {
+    const testsDir = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'tests');
+    await mkdir(testsDir, { recursive: true });
+    await writeFile(
+      path.join(testsDir, 'deliberate-failure.test.ts'),
+      `import { assert, test } from '@webstir-io/webstir-testing';
+
+test('backend test that passes', () => {
+  assert.equal(1, 1);
+});
+
+test('backend test that deliberately fails', () => {
+  assert.equal('actual', 'expected');
+});
+`,
+      'utf8',
+    );
+
+    const result = await runCli(
+      ['test', '--runtime', 'backend', '--workspace', copiedWorkspace.workspaceRoot],
+      { WEBSTIR_BACKEND_TYPECHECK: 'skip' },
+    );
+
+    expect(result.exitCode).not.toBe(0);
+    expect(readSummaryCounts(result.stdout)).toEqual({
+      tests: FULL_DEMO_BACKEND_TESTS + 2,
+      passed: FULL_DEMO_BACKEND_TESTS + 1,
+      failed: 1,
+    });
+    expect(result.stdout).toContain('backend test that deliberately fails');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

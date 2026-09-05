@@ -10,6 +10,7 @@ import type {
 } from '@webstir-io/module-contract';
 
 import { readTextFile } from '../utils/bun.js';
+import { getRouteMetadataKey, reconcileRouteSessionMetadata } from '../runtime/route-metadata.js';
 
 interface WorkspacePackageJson {
   readonly name?: string;
@@ -101,6 +102,7 @@ export async function loadBackendModuleManifest(
       routes: mergeRouteDefinitions(
         routesFromDefinition ?? definitionManifest.routes,
         manifestCandidate.routes,
+        diagnostics,
       ),
       views: viewsFromDefinition ?? definitionManifest.views ?? manifestCandidate.views ?? [],
       jobs: mergeJobDefinitions(definitionManifest.jobs, manifestCandidate.jobs),
@@ -307,8 +309,30 @@ function deriveModuleVersion(pkg: WorkspacePackageJson | undefined): string {
 function mergeRouteDefinitions(
   definitionRoutes: ModuleManifest['routes'] | undefined,
   packageRoutes: ModuleManifest['routes'] | undefined,
+  diagnostics: ModuleDiagnostic[],
 ): ModuleManifest['routes'] {
-  const merged = Array.isArray(definitionRoutes) ? [...definitionRoutes] : [];
+  const declaredByKey = new Map<string, NonNullable<ModuleManifest['routes']>[number]>();
+  for (const route of packageRoutes ?? []) {
+    const key = getRouteKey(route);
+    if (key) {
+      declaredByKey.set(key, route);
+    }
+  }
+
+  // Inline definitions win, but a CLI-authored session declaration for the same route is
+  // folded in so the inspected manifest matches what the runtime enforces.
+  const merged = (Array.isArray(definitionRoutes) ? definitionRoutes : []).map((route) => {
+    const key = getRouteKey(route);
+    const declared = key ? declaredByKey.get(key) : undefined;
+    if (!declared) {
+      return route;
+    }
+    const reconciled = reconcileRouteSessionMetadata(route, declared);
+    for (const warning of reconciled.warnings) {
+      diagnostics.push({ severity: 'warn', message: warning });
+    }
+    return reconciled.definition;
+  });
   const seen = new Set(merged.map((route) => getRouteKey(route)).filter(Boolean));
 
   for (const route of packageRoutes ?? []) {
@@ -347,24 +371,7 @@ function getJobKey(job: ManifestJobLike | undefined): string | undefined {
 }
 
 function getRouteKey(route: ManifestRouteLike | undefined): string | undefined {
-  const method = typeof route?.method === 'string' ? route.method.toUpperCase() : '';
-  const routePath = normalizeRoutePath(route?.path);
-  if (!method || !routePath) {
-    return undefined;
-  }
-  return `${method} ${routePath}`;
-}
-
-function normalizeRoutePath(routePath: unknown): string | undefined {
-  if (typeof routePath !== 'string' || routePath.length === 0) {
-    return undefined;
-  }
-
-  let normalized = routePath;
-  if (!normalized.startsWith('/')) normalized = `/${normalized}`;
-  normalized = normalized.replace(/\/+/g, '/');
-  if (normalized.length > 1 && normalized.endsWith('/')) normalized = normalized.slice(0, -1);
-  return normalized;
+  return getRouteMetadataKey(route);
 }
 
 export async function summarizeBuiltManifest(

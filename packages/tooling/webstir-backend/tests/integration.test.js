@@ -507,6 +507,66 @@ function createSessionRuntimeModuleSource() {
   },
   {
     definition: {
+      name: 'sessionRequiredPage',
+      method: 'GET',
+      path: '/session/required',
+      interaction: 'navigation',
+      session: { mode: 'required' }
+    },
+    handler: async (ctx) => ({
+      status: 200,
+      body: \`<main data-user="\${String(ctx.session?.userId ?? 'guest')}"></main>\`
+    })
+  },
+  {
+    definition: {
+      name: 'sessionRequiredFormSubmit',
+      method: 'POST',
+      path: '/session/required/submit',
+      interaction: 'mutation',
+      form: {
+        contentType: 'application/x-www-form-urlencoded',
+        session: { mode: 'required', write: true }
+      }
+    },
+    handler: async (ctx) => ({
+      status: 200,
+      body: { userId: ctx.session?.userId ?? null }
+    })
+  },
+  {
+    definition: {
+      name: 'sessionRequiredFlashingError',
+      method: 'POST',
+      path: '/session/required/flashing-error',
+      interaction: 'mutation',
+      session: { mode: 'required' },
+      flash: { publish: [{ key: 'session-missing', level: 'error', when: 'error' }] }
+    },
+    handler: async (ctx) => ({
+      status: 200,
+      body: { handlerRan: true, userId: ctx.session?.userId ?? null }
+    })
+  },
+  {
+    definition: {
+      name: 'sessionRequiredFlashingAlways',
+      method: 'POST',
+      path: '/session/required/flashing-always',
+      interaction: 'mutation',
+      form: {
+        contentType: 'application/x-www-form-urlencoded',
+        session: { mode: 'required', write: true },
+        flash: { publish: [{ key: 'signed-in', level: 'info', when: 'always' }] }
+      }
+    },
+    handler: async (ctx) => ({
+      status: 200,
+      body: { handlerRan: true, userId: ctx.session?.userId ?? null }
+    })
+  },
+  {
+    definition: {
       name: 'sessionLogout',
       method: 'POST',
       path: '/session/logout',
@@ -571,7 +631,42 @@ const updateAccountSettingsDefinition = {
   }
 };
 
+const updateAccountSettingsFragmentDefinition = {
+  name: 'accountSettingsFragmentUpdate',
+  method: 'POST',
+  path: '/account/settings/fragment',
+  interaction: 'mutation',
+  form: {
+    contentType: 'application/x-www-form-urlencoded',
+    session: { write: true }
+  },
+  fragment: {
+    target: 'account-settings',
+    selector: '#account-settings',
+    mode: 'replace'
+  },
+  flash: {
+    publish: [{ key: 'settings-saved', level: 'success', when: 'success' }]
+  }
+};
+
 const routes = [
+  {
+    definition: updateAccountSettingsFragmentDefinition,
+    handler: async (ctx) => {
+      const email = typeof ctx.body?.email === 'string' ? ctx.body.email.trim() : 'guest@example.com';
+      ctx.session = { ...(ctx.session ?? {}), profile: { email } };
+      return {
+        status: 200,
+        fragment: {
+          target: 'account-settings',
+          selector: '#account-settings',
+          mode: 'replace',
+          body: \`<section id="account-settings" data-user="\${email}">Saved</section>\`
+        }
+      };
+    }
+  },
   {
     definition: accountSettingsPageDefinition,
     handler: async (ctx) => {
@@ -1096,6 +1191,71 @@ async function assertSessionRuntimeBehavior() {
   port = server.port;
 
   try {
+    // Routes declaring session.mode 'required' reject anonymous requests before the handler runs.
+    const anonymousRequired = await fetch(`http://127.0.0.1:${port}/session/required`);
+    assert.equal(anonymousRequired.status, 401);
+    assert.equal(anonymousRequired.headers.get('set-cookie'), null);
+    assert.deepEqual(
+      (await anonymousRequired.json()).errors.map((error) => error.code),
+      ['session_required'],
+    );
+
+    const anonymousRequiredSubmit = await fetch(
+      `http://127.0.0.1:${port}/session/required/submit`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'value=1',
+      },
+    );
+    assert.equal(anonymousRequiredSubmit.status, 401);
+    assert.deepEqual(
+      (await anonymousRequiredSubmit.json()).errors.map((error) => error.code),
+      ['session_required'],
+    );
+
+    // Rejection must not mint a session through route flash publishing, so the caller can
+    // never obtain a cookie that passes the guard it was just refused by.
+    const flashingRoutes = [
+      '/session/required/flashing-error',
+      '/session/required/flashing-always',
+    ];
+    for (const routePath of flashingRoutes) {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const rejected = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: 'value=1',
+        });
+        assert.equal(rejected.status, 401, `${routePath} attempt ${attempt}`);
+        assert.equal(rejected.headers.get('set-cookie'), null, `${routePath} attempt ${attempt}`);
+        const rejectedBody = await rejected.json();
+        assert.equal(rejectedBody.handlerRan, undefined);
+        assert.deepEqual(
+          rejectedBody.errors.map((error) => error.code),
+          ['session_required'],
+        );
+      }
+
+      // A tampered cookie is cleared, and still cannot become a usable session.
+      const tampered = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          cookie: 'webstir_session=not-a-real-session.invalid-signature',
+        },
+        body: 'value=1',
+      });
+      assert.equal(tampered.status, 401);
+      assert.match(String(tampered.headers.get('set-cookie')), /Max-Age=0/);
+      assert.equal((await tampered.json()).handlerRan, undefined);
+    }
+
+    // Optional (and unset) session modes keep serving anonymous requests.
+    const anonymousOptional = await fetch(`http://127.0.0.1:${port}/session/account`);
+    assert.equal(anonymousOptional.status, 200);
+    assert.match(await anonymousOptional.text(), /data-user="guest"/);
+
     const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
       method: 'POST',
       headers: {
@@ -1108,6 +1268,27 @@ async function assertSessionRuntimeBehavior() {
     assert.equal(loginResponse.headers.get('location'), '/session/account');
 
     const cookieHeader = extractCookieHeader(loginResponse.headers.get('set-cookie'));
+
+    // With an existing session the same required routes run their handlers.
+    const requiredWithSession = await fetch(`http://127.0.0.1:${port}/session/required`, {
+      headers: { cookie: cookieHeader },
+    });
+    assert.equal(requiredWithSession.status, 200);
+    assert.match(await requiredWithSession.text(), /data-user="ada@example\.com"/);
+
+    const requiredSubmitWithSession = await fetch(
+      `http://127.0.0.1:${port}/session/required/submit`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          cookie: cookieHeader,
+        },
+        body: 'value=1',
+      },
+    );
+    assert.equal(requiredSubmitWithSession.status, 200);
+    assert.deepEqual(await requiredSubmitWithSession.json(), { userId: 'ada@example.com' });
     assert.match(cookieHeader, /^webstir_session=/);
 
     const accountResponse = await fetch(`http://127.0.0.1:${port}/session/account`, {
@@ -1132,6 +1313,28 @@ async function assertSessionRuntimeBehavior() {
       '<main data-user="ada@example.com" data-flash="">ada@example.com</main>',
     );
 
+    // With a valid session the flashing required routes run their handlers, and the
+    // `when: 'always'` flash they publish is delivered on the next document render.
+    for (const routePath of flashingRoutes) {
+      const allowed = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          cookie: cookieHeader,
+        },
+        body: 'value=1',
+      });
+      assert.equal(allowed.status, 200, routePath);
+      assert.deepEqual(await allowed.json(), { handlerRan: true, userId: 'ada@example.com' });
+    }
+    const flashAfterAllowed = await fetch(`http://127.0.0.1:${port}/session/account`, {
+      headers: { cookie: cookieHeader },
+    });
+    assert.equal(
+      await flashAfterAllowed.text(),
+      '<main data-user="ada@example.com" data-flash="signed-in:info">ada@example.com</main>',
+    );
+
     const logoutResponse = await fetch(`http://127.0.0.1:${port}/session/logout`, {
       method: 'POST',
       headers: {
@@ -1152,6 +1355,115 @@ async function assertSessionRuntimeBehavior() {
       await postLogoutAccountResponse.text(),
       '<main data-user="guest" data-flash="">guest</main>',
     );
+
+    // The old cookie is correctly signed but its record is gone: a stale cookie is cleared and
+    // does not satisfy a required route, with or without flash declarations.
+    for (const routePath of ['/session/required', ...flashingRoutes]) {
+      const stale = await fetch(`http://127.0.0.1:${port}${routePath}`, {
+        method: routePath === '/session/required' ? 'GET' : 'POST',
+        headers: {
+          'content-type': 'application/x-www-form-urlencoded',
+          cookie: cookieHeader,
+        },
+        ...(routePath === '/session/required' ? {} : { body: 'value=1' }),
+      });
+      assert.equal(stale.status, 401, routePath);
+      assert.match(String(stale.headers.get('set-cookie')), /Max-Age=0/, routePath);
+      assert.equal((await stale.json()).handlerRan, undefined);
+    }
+  } finally {
+    await server.stop();
+  }
+}
+
+async function assertDeclaredRouteMetadataRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-declared-session-');
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createSessionRuntimeModuleSource(),
+  });
+  // `webstir add-route ... --session required` writes only package.json; the inline logout
+  // handler declares no session mode of its own. The runtime must still enforce it.
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify(
+      {
+        type: 'module',
+        webstir: {
+          mode: 'api',
+          moduleManifest: {
+            routes: [
+              {
+                name: 'sessionLogout',
+                method: 'POST',
+                path: '/session/logout',
+                session: { mode: 'required', write: true },
+              },
+              // The inline route requires a session via form.session; this looser
+              // package-level declaration must not win.
+              {
+                name: 'sessionRequiredFlashingAlways',
+                method: 'POST',
+                path: '/session/required/flashing-always',
+                session: { mode: 'optional' },
+              },
+            ],
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+
+  let port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port);
+  port = server.port;
+
+  try {
+    const anonymousLogout = await fetch(`http://127.0.0.1:${port}/session/logout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      redirect: 'manual',
+    });
+    assert.equal(anonymousLogout.status, 401);
+    assert.equal(anonymousLogout.headers.get('set-cookie'), null);
+    assert.deepEqual(
+      (await anonymousLogout.json()).errors.map((error) => error.code),
+      ['session_required'],
+    );
+
+    const anonymousFormRequired = await fetch(
+      `http://127.0.0.1:${port}/session/required/flashing-always`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: 'value=1',
+      },
+    );
+    assert.equal(anonymousFormRequired.status, 401);
+    assert.equal(anonymousFormRequired.headers.get('set-cookie'), null);
+    assert.equal((await anonymousFormRequired.json()).handlerRan, undefined);
+
+    const loginResponse = await fetch(`http://127.0.0.1:${port}/session/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'email=ada%40example.com',
+      redirect: 'manual',
+    });
+    assert.equal(loginResponse.status, 303);
+    const cookieHeader = extractCookieHeader(loginResponse.headers.get('set-cookie'));
+
+    const logoutWithSession = await fetch(`http://127.0.0.1:${port}/session/logout`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: cookieHeader,
+      },
+      redirect: 'manual',
+    });
+    assert.equal(logoutWithSession.status, 303);
+    assert.equal(logoutWithSession.headers.get('location'), '/session/account');
   } finally {
     await server.stop();
   }
@@ -1204,6 +1516,7 @@ async function assertFormWorkflowRuntimeBehavior() {
       /data-form-errors="Sign-in required to update account settings\."/,
     );
     assert.match(authFailureHtml, /value="ada@example\.com"/);
+    assert.match(authFailureHtml, /data-flash=""/);
     const validationCsrfToken = extractHiddenInputValue(authFailureHtml, '_csrf');
 
     const validationFailureResponse = await fetch(`http://127.0.0.1:${port}/account/settings`, {
@@ -1227,6 +1540,7 @@ async function assertFormWorkflowRuntimeBehavior() {
     const validationFailureHtml = await validationFailurePage.text();
     assert.match(validationFailureHtml, /data-field-errors="Enter a valid email address\."/);
     assert.match(validationFailureHtml, /value="invalid-email"/);
+    assert.match(validationFailureHtml, /data-flash=""/);
     const successCsrfToken = extractHiddenInputValue(validationFailureHtml, '_csrf');
 
     const csrfFailureResponse = await fetch(`http://127.0.0.1:${port}/account/settings`, {
@@ -1252,6 +1566,7 @@ async function assertFormWorkflowRuntimeBehavior() {
       csrfFailureHtml,
       /data-form-errors="Form session expired\. Reload the page and try again\."/,
     );
+    assert.match(csrfFailureHtml, /data-flash=""/);
 
     const successResponse = await fetch(`http://127.0.0.1:${port}/account/settings`, {
       method: 'POST',
@@ -1276,6 +1591,28 @@ async function assertFormWorkflowRuntimeBehavior() {
     assert.match(successHtml, /data-flash="settings-saved:success"/);
     assert.match(successHtml, /data-form-errors=""/);
     assert.match(successHtml, /data-field-errors=""/);
+
+    const fragmentResponse = await fetch(`http://127.0.0.1:${port}/account/settings/fragment`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: cookieHeader,
+        'x-webstir-client-nav': '1',
+      },
+      body: 'email=grace%40example.com',
+    });
+    assert.equal(fragmentResponse.status, 200);
+    assert.equal(fragmentResponse.headers.get('x-webstir-fragment-target'), 'account-settings');
+    assert.match(await fragmentResponse.text(), /data-user="grace@example\.com"/);
+
+    const afterFragmentPage = await fetch(`http://127.0.0.1:${port}/account/settings`, {
+      headers: {
+        cookie: cookieHeader,
+      },
+    });
+    const afterFragmentHtml = await afterFragmentPage.text();
+    assert.match(afterFragmentHtml, /data-user="grace@example\.com"/);
+    assert.match(afterFragmentHtml, /data-flash=""/);
   } finally {
     await server.stop();
   }
@@ -2066,6 +2403,13 @@ test('form scaffold helper redirects validation and auth failures with csrf prot
     redirect: {
       location: '/account/settings',
     },
+    errors: [
+      {
+        code: 'auth',
+        message: 'Sign-in required to update account settings.',
+        details: { reason: 'auth' },
+      },
+    ],
   });
 
   const authFailurePage = prepareFormState({
@@ -2464,6 +2808,13 @@ test.skipIf(!tcpListenAvailable)(
   'built backend server accepts rsa public-key and jwks bearer tokens',
   async () => {
     await assertJwtAsymmetricBehavior();
+  },
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'built backend server enforces session metadata declared only in package.json',
+  async () => {
+    await assertDeclaredRouteMetadataRuntimeBehavior();
   },
 );
 

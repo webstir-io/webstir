@@ -15,6 +15,11 @@ import {
   type ModuleViewLike,
   type ViewDefinitionLike,
 } from './views.js';
+import {
+  getRouteMetadataKey,
+  readWorkspaceRouteMetadata,
+  reconcileRouteSessionMetadata,
+} from './route-metadata.js';
 
 export interface EnvAccessor {
   get(name: string): string | undefined;
@@ -249,6 +254,8 @@ export async function loadModuleRuntime<
 >(options: {
   importMetaUrl: string;
   candidates?: readonly string[];
+  /** Workspace root whose package.json route metadata is reconciled with inline routes. */
+  workspaceRoot?: string;
 }): Promise<ModuleRuntime<TContext, TResult, TRouteDefinition>> {
   const loaded = await tryLoadModuleDefinition<TContext, TResult, TRouteDefinition>(options);
   if (!loaded) {
@@ -256,13 +263,14 @@ export async function loadModuleRuntime<
   }
 
   const manifest = sanitizeManifest<TRouteDefinition>(loaded.definition.manifest);
-  const compiled = compileRoutes<TContext, TResult, TRouteDefinition>(
+  const reconciled = reconcileRoutesWithWorkspaceMetadata<TContext, TResult, TRouteDefinition>(
     loaded.definition.routes ?? [],
-    {
-      manifestRequestHooks: manifest?.requestHooks,
-      requestHookImplementations: loaded.definition.requestHooks,
-    },
+    options.workspaceRoot,
   );
+  const compiled = compileRoutes<TContext, TResult, TRouteDefinition>(reconciled.routes, {
+    manifestRequestHooks: manifest?.requestHooks,
+    requestHookImplementations: loaded.definition.requestHooks,
+  });
   const views = compileViews(resolveModuleViews(loaded.definition, manifest));
 
   return {
@@ -271,8 +279,39 @@ export async function loadModuleRuntime<
     routes: compiled.routes,
     views,
     source: loaded.source,
-    warnings: compiled.warnings,
+    warnings: [...reconciled.warnings, ...compiled.warnings],
   };
+}
+
+function reconcileRoutesWithWorkspaceMetadata<
+  TContext,
+  TResult extends RouteHandlerResult,
+  TRouteDefinition extends BackendRouteDefinitionLike,
+>(
+  routes: ModuleRouteLike<TContext, TResult, TRouteDefinition>[],
+  workspaceRoot: string | undefined,
+): { routes: ModuleRouteLike<TContext, TResult, TRouteDefinition>[]; warnings: string[] } {
+  const declared = readWorkspaceRouteMetadata(workspaceRoot);
+  if (declared.size === 0) {
+    return { routes, warnings: [] };
+  }
+
+  const warnings: string[] = [];
+  const reconciledRoutes = routes.map((route) => {
+    if (!route.definition) {
+      return route;
+    }
+    const key = getRouteMetadataKey(route.definition);
+    const declaredRoute = key ? declared.get(key) : undefined;
+    if (!declaredRoute) {
+      return route;
+    }
+    const result = reconcileRouteSessionMetadata(route.definition, declaredRoute);
+    warnings.push(...result.warnings);
+    return { ...route, definition: result.definition };
+  });
+
+  return { routes: reconciledRoutes, warnings };
 }
 
 export function summarizeManifest<TRouteDefinition extends BackendRouteDefinitionLike>(
