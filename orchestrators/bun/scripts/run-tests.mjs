@@ -13,6 +13,7 @@ const browserTestFiles = [
   'tests/runtime-boundary.integration.test.ts',
   'tests/bun-first-spa.integration.test.ts',
   'tests/ssg-watch.integration.test.ts',
+  'tests/ssg-publish-client-nav.browser.integration.test.ts',
   'tests/full-watch.integration.test.ts',
 ];
 

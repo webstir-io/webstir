@@ -52,7 +52,9 @@ export async function syncHead(
         if (normalizedSrc === '/hmr.js' || normalizedSrc === '/refresh.js') {
             continue;
         }
-        if (normalizedSrc.startsWith('/pages/')) {
+        // Published SSG output relocates page entries out of /pages/ (for example
+        // /home/index-abc123.js), so also match the lifecycle marker.
+        if (normalizedSrc.startsWith('/pages/') || script.hasAttribute('data-webstir-page')) {
             script.remove();
         }
     }
