@@ -19,6 +19,8 @@ Your host should serve `index.html` automatically when a URL points at a directo
 
 If you want `/about` (no trailing slash) to work too, configure your host to treat it like a directory request.
 
+On S3 behind CloudFront this needs a small viewer-request function: the S3 REST origin serves exact object keys and will 404 on `/about/`. Run `webstir enable s3-cloudfront` to scaffold the deploy script, the function, and a GitHub Actions workflow.
+
 Example (nginx):
 
 ```nginx

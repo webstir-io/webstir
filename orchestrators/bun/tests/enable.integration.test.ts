@@ -4,6 +4,7 @@ import path from 'node:path';
 import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
+import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
 
@@ -71,6 +72,7 @@ type EnableWorkspacePackageJson = {
       search: boolean;
       clientNav: boolean;
       githubPages: boolean;
+      s3CloudFront: boolean;
     };
   };
   scripts: {
@@ -259,10 +261,208 @@ test('CLI enables gh-deploy with Bun-native deploy scaffolding', async () => {
   expect(packageJson.webstir.enable.githubPages).toBe(true);
   expect(packageJson.scripts.deploy).toBe('bash ./utils/deploy-gh-pages.sh');
   expect(frontendConfig.publish.basePath).toBe('/demo-site');
-  expect(deployScript).toContain('bunx --bun webstir-frontend publish');
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"',
+  );
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg',
+  );
   expect(workflow).toContain('uses: oven-sh/setup-bun@v2');
   expect(workflow).toContain('run: bun run deploy');
 });
+
+test('CLI enables s3-cloudfront with a deploy script, edge function, and workflow', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
+  const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['s3-cloudfront']);
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stderr).toBe('');
+  expect(result.stdout).toContain('feature: s3-cloudfront');
+
+  const packageJson = await readJsonFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
+  const deployScript = await readFile(
+    path.join(copiedWorkspace.workspaceRoot, 'utils', 'deploy-s3-cloudfront.sh'),
+    'utf8',
+  );
+  const edgeFunction = await readFile(
+    path.join(copiedWorkspace.workspaceRoot, 'utils', 'cloudfront-rewrite-directory-index.js'),
+    'utf8',
+  );
+  const workflow = await readFile(
+    path.join(copiedWorkspace.workspaceRoot, '.github', 'workflows', 'webstir-s3-cloudfront.yml'),
+    'utf8',
+  );
+
+  expect(packageJson.webstir.enable.s3CloudFront).toBe(true);
+  expect(packageJson.scripts.deploy).toBe('bash ./utils/deploy-s3-cloudfront.sh');
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"',
+  );
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg',
+  );
+  expect(deployScript).toContain('--cache-control "$IMMUTABLE_CACHE"');
+  expect(deployScript).toContain('--cache-control "$DOCUMENT_CACHE"');
+  expect(deployScript).toContain('aws cloudfront create-invalidation');
+  expect(edgeFunction).toContain("request.uri = uri + 'index.html';");
+  expect(workflow).toContain('uses: aws-actions/configure-aws-credentials@v4');
+  expect(workflow).toContain(`S3_BUCKET: \${{ vars.S3_BUCKET }}`);
+  expect(workflow).toContain('run: bash ./utils/deploy-s3-cloudfront.sh');
+  expect(
+    existsSync(path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'frontend.config.json')),
+  ).toBe(false);
+
+  const secondRun = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['s3-cloudfront']);
+  expect(secondRun.exitCode).toBe(0);
+  expect(secondRun.stdout).not.toContain('webstir-s3-cloudfront.yml');
+});
+
+test('CLI s3-cloudfront keeps an existing deploy command and the workflow still runs its own script', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
+  const pages = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['gh-deploy', 'demo']);
+  expect(pages.exitCode).toBe(0);
+  const s3 = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['s3-cloudfront']);
+  expect(s3.exitCode).toBe(0);
+
+  const packageJson = await readJsonFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
+  const workflow = await readFile(
+    path.join(copiedWorkspace.workspaceRoot, '.github', 'workflows', 'webstir-s3-cloudfront.yml'),
+    'utf8',
+  );
+
+  expect(packageJson.scripts.deploy).toBe('bash ./utils/deploy-gh-pages.sh');
+  expect(packageJson.webstir.enable.s3CloudFront).toBe(true);
+  expect(workflow).toContain('run: bash ./utils/deploy-s3-cloudfront.sh');
+  expect(workflow).not.toContain('bun run deploy');
+});
+
+test('generated s3-cloudfront script publishes from a clean checkout and retains bundles by last publish', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
+  const workspace = copiedWorkspace.workspaceRoot;
+  const enable = await runEnableInWorkspace(workspace, ['s3-cloudfront']);
+  expect(enable.exitCode).toBe(0);
+  await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
+
+  await rm(path.join(workspace, 'build'), { recursive: true, force: true });
+  await rm(path.join(workspace, 'dist'), { recursive: true, force: true });
+  await rm(path.join(workspace, '.webstir'), { recursive: true, force: true });
+
+  const stubDir = await mkdtemp(path.join(os.tmpdir(), 'webstir-aws-stub-'));
+  await mkdir(path.join(stubDir, 'manifests'), { recursive: true });
+  // Fake bucket state: MONTHOLD was uploaded long ago but the previous publish still served it.
+  await writeFile(
+    path.join(stubDir, 'aws'),
+    [
+      '#!/usr/bin/env bash',
+      'printf \'%s\\n\' "$*" >> "$AWS_STUB_LOG"',
+      'PREFIX="s3://example-bucket/.webstir-deploys/"',
+      'if [[ "$1 $2" == "s3 cp" && "$4" == "$PREFIX"* ]]; then',
+      '  cp "$3" "$AWS_STUB_DIR/manifests/$(basename "$4")"',
+      'elif [[ "$1 $2" == "s3 cp" && "$3" == "$PREFIX"* && "$4" == "-" ]]; then',
+      '  name="$(basename "$3")"',
+      '  case "$name" in',
+      '    19990101T000000Z.txt) echo "app/app-ANCIENT0.js" ;;',
+      '    20000101T000000Z.txt) echo "app/app-MONTHOLD.js" ;;',
+      '    29990101T000000Z.txt) echo "home/index-NEWNEW01.js" ;;',
+      '    *) cat "$AWS_STUB_DIR/manifests/$name" ;;',
+      '  esac',
+      'elif [[ "$1 $2" == "s3 ls" && "$3" == "$PREFIX" ]]; then',
+      '  if [[ "$AWS_STUB_HISTORY" == "busy" ]]; then',
+      '    echo "1999-01-01 00:00:00     100 19990101T000000Z.txt"',
+      '    echo "2000-01-01 00:00:00     100 20000101T000000Z.txt"',
+      '    echo "2999-01-01 00:00:00     100 29990101T000000Z.txt"',
+      '  elif [[ "$AWS_STUB_HISTORY" == "quiet" ]]; then',
+      '    echo "2000-01-01 00:00:00     100 20000101T000000Z.txt"',
+      '  fi',
+      '  for f in "$AWS_STUB_DIR"/manifests/*; do echo "2999-01-01 00:00:00     100 $(basename "$f")"; done',
+      'elif [[ "$1 $2" == "s3 ls" && "$4" == "--recursive" ]]; then',
+      '  echo "1999-01-01 00:00:00     100 app/app-ANCIENT0.js"',
+      '  echo "2000-01-01 00:00:00     100 app/app-MONTHOLD.js"',
+      '  echo "2000-01-01 00:00:00     100 app/app-OLDOLD01.js"',
+      '  echo "2999-01-01 00:00:00     100 home/index-NEWNEW01.js"',
+      '  echo "2000-01-01 00:00:00     100 index.html"',
+      '  (cd "$DIST_DIR" && find . -name "*-????????.js" -o -name "*-????????.css" | sed "s|^\\./|2000-01-01 00:00:00     100 |")',
+      'fi',
+      '',
+    ].join('\n'),
+    { encoding: 'utf8', mode: 0o755 },
+  );
+
+  async function runDeploy(history: 'busy' | 'quiet' | 'no'): Promise<string[]> {
+    const callLog = path.join(stubDir, `calls-${history}.log`);
+    await rm(path.join(stubDir, 'manifests'), { recursive: true, force: true });
+    await mkdir(path.join(stubDir, 'manifests'), { recursive: true });
+    const run = Bun.spawnSync({
+      cmd: ['bash', path.join(workspace, 'utils', 'deploy-s3-cloudfront.sh')],
+      cwd: workspace,
+      env: {
+        ...process.env,
+        PATH: `${stubDir}:${process.env.PATH ?? ''}`,
+        AWS_STUB_LOG: callLog,
+        AWS_STUB_DIR: stubDir,
+        AWS_STUB_HISTORY: history,
+        DIST_DIR: path.join(workspace, 'dist', 'frontend'),
+        S3_BUCKET: 'example-bucket',
+        CLOUDFRONT_DISTRIBUTION_ID: 'EXAMPLE',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const stdout = decodeOutput(run.stdout);
+    const stderr = decodeOutput(run.stderr);
+    expect(run.exitCode, `stdout:\n${stdout}\nstderr:\n${stderr}`).toBe(0);
+    return (await readFile(callLog, 'utf8')).trim().split('\n');
+  }
+
+  const calls = await runDeploy('busy');
+  expect(existsSync(path.join(workspace, 'dist', 'frontend', 'index.html'))).toBe(true);
+
+  const syncs = calls.filter((call) => call.startsWith('s3 sync '));
+  expect(syncs).toHaveLength(2);
+  expect(syncs[0]).not.toContain('--delete');
+  expect(syncs[0]).toContain('--include *-????????.js');
+  expect(syncs[1]).toContain('--delete');
+  expect(syncs[1]).toContain('--exclude *-????????.js');
+  expect(syncs[1]).toContain('--exclude .webstir-deploys/*');
+
+  const headIndex = calls.findIndex((call) => call.startsWith('s3api head-object'));
+  const manifestIndex = calls.findIndex((call) =>
+    /^s3 cp \S+ s3:\/\/example-bucket\/\.webstir-deploys\/\d{8}T\d{6}Z\.txt/.test(call),
+  );
+  const invalidateIndex = calls.findIndex((call) =>
+    call.startsWith('cloudfront create-invalidation'),
+  );
+  expect(headIndex).toBeGreaterThan(calls.indexOf(syncs[1] ?? ''));
+  expect(manifestIndex).toBeGreaterThan(headIndex);
+  expect(invalidateIndex).toBeGreaterThan(manifestIndex);
+  expect(calls[invalidateIndex]).toContain('--distribution-id EXAMPLE');
+
+  const removals = calls.filter((call) => call.startsWith('s3 rm ')).sort();
+  // Busy history: 1999 and 2000 both predate the cutoff, but the 2000 release was the
+  // one live when the window began, so it and its bundle stay. Only the release it
+  // replaced (1999) and bundles no active release referenced are removed.
+  expect(removals).toEqual([
+    's3 rm s3://example-bucket/.webstir-deploys/19990101T000000Z.txt',
+    's3 rm s3://example-bucket/app/app-ANCIENT0.js',
+    's3 rm s3://example-bucket/app/app-OLDOLD01.js',
+  ]);
+  expect(calls.findIndex((call) => call.startsWith('s3 rm '))).toBeGreaterThan(invalidateIndex);
+
+  // Quiet period: one release published long before the cutoff and live until this
+  // deploy. Its manifest and bundle must survive; only unreferenced bundles go.
+  const quiet = await runDeploy('quiet');
+  expect(quiet.filter((call) => call.startsWith('s3 rm ')).sort()).toEqual([
+    's3 rm s3://example-bucket/app/app-ANCIENT0.js',
+    's3 rm s3://example-bucket/app/app-OLDOLD01.js',
+    's3 rm s3://example-bucket/home/index-NEWNEW01.js',
+  ]);
+
+  // With no publish history, nothing is ever removed.
+  const firstRun = await runDeploy('no');
+  expect(firstRun.some((call) => call.startsWith('s3 rm '))).toBe(false);
+
+  await rm(stubDir, { recursive: true, force: true });
+}, 120_000);
 
 test('CLI enables page scripts once and rejects duplicate scaffold attempts', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');

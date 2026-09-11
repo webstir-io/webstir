@@ -78,16 +78,21 @@ Then publish `out/` with your preferred Pages workflow.
 
 ## S3 + CloudFront
 
-1. Build the static frontend:
+Scaffold the deploy script, edge function, and workflow:
 
 ```bash
-webstir publish --workspace "$PWD"
+webstir enable s3-cloudfront --workspace "$PWD"
+S3_BUCKET=your-bucket-name CLOUDFRONT_DISTRIBUTION_ID=E123EXAMPLE bun run deploy
 ```
 
-2. Sync `dist/frontend/**` to your bucket:
+The script publishes, syncs `dist/frontend/**` to the bucket with long-lived caching for fingerprinted bundles and revalidation for documents, and invalidates the distribution. See [Enable Features](./enable.md#s3-cloudfront) for what it writes.
 
-```bash
-aws s3 sync dist/frontend "s3://your-bucket-name" --delete
-```
+### Directory URLs need an edge rewrite
 
-3. Configure your CDN to serve `index.html` as the default object and cache hashed assets aggressively.
+Publish output is directory-based (`/about/` is `about/index.html`). CloudFront's `DefaultRootObject` only covers `/`. When the origin is the S3 REST endpoint (the default when you pick a bucket in the CloudFront console, and the only option with Origin Access Control), every other page returns 404, because the REST endpoint serves exact object keys and never maps a directory to its index file.
+
+Attach the generated `utils/cloudfront-rewrite-directory-index.js` as a CloudFront Function on the distribution's default behavior, viewer-request event. It rewrites `/about/` and `/about` to `/about/index.html` and leaves file requests alone. Only the S3 *website* endpoint resolves directory indexes on its own, and that endpoint is HTTP-only and cannot use Origin Access Control.
+
+### Error pages
+
+Add a `404` page to the workspace and point the distribution's custom error responses for 403 and 404 at `/404/index.html`. The 404 page is excluded from the sitemap automatically.

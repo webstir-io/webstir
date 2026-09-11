@@ -18,6 +18,7 @@ Supported features:
 - `backend` — add backend scaffold and switch to `webstir.mode=full`
 - `github-pages [basePath]` — scaffold a Bun-based GitHub Pages deploy script and set the publish base path
 - `gh-deploy [basePath]` — `github-pages` plus a GitHub Actions workflow
+- `s3-cloudfront` — scaffold an S3 + CloudFront deploy script, the edge function that maps directory URLs to `index.html`, and a GitHub Actions workflow
 
 ## What `enable` Changes
 
@@ -81,6 +82,15 @@ Applies to SSG docs pages (content pipeline) only.
 - Applies all `github-pages` changes.
 - Also writes `.github/workflows/webstir-gh-pages.yml` if it does not already exist.
 - The generated workflow is Bun-based and runs `bun install` plus `bun run deploy`.
+
+### s3-cloudfront
+- Writes `utils/deploy-s3-cloudfront.sh`: builds and publishes the site, uploads new fingerprinted bundles first, then documents, records the bundles this publish references in `.webstir-deploys/<timestamp>.txt`, then invalidates `$CLOUDFRONT_DISTRIBUTION_ID` when set. Previous bundles are never deleted during the deploy, because edge caches and already-open pages can still reference them. Cleanup runs last. A release counts as active from its publish until the next publish, and a bundle is removed only when no release active at any point in the past `S3_BUNDLE_RETENTION_DAYS` days (default 7) referenced it, so a release that sat untouched for months is still protected on the deploy that replaces it. A bucket with no manifest history is left untouched. The manifests are plain lists of bundle paths stored in the bucket under `.webstir-deploys/`, so they are fetchable through the CDN but reveal nothing the page HTML does not already reference.
+- Writes `utils/cloudfront-rewrite-directory-index.js`, a CloudFront Function for the viewer-request event. Attach it to the distribution once; without it the S3 REST origin returns 404 for every page except `/`, because it does not map `/about/` to `about/index.html`.
+- Writes `.github/workflows/webstir-s3-cloudfront.yml` if it does not already exist. The workflow assumes an OIDC role from `vars.AWS_ROLE_ARN`, reads `vars.AWS_REGION`, `vars.S3_BUCKET`, and `vars.CLOUDFRONT_DISTRIBUTION_ID`, and runs the S3 script directly so it is unaffected by whatever `scripts.deploy` points at.
+- Updates `package.json`:
+  - `webstir.enable.s3CloudFront=true`
+  - adds `scripts.deploy="bash ./utils/deploy-s3-cloudfront.sh"` if missing
+- Does not touch `publish.basePath`; the site is served from the bucket root.
 
 ## Notes
 - `enable` is additive and idempotent: it avoids duplicating imports on re-run.

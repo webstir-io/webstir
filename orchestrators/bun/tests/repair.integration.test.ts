@@ -152,6 +152,42 @@ test('CLI repair restores enabled feature assets and wiring for the SSG site dem
   }
 });
 
+test('CLI repair restores the s3-cloudfront deploy script and edge function', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-repair-ssg-s3-');
+  try {
+    const enable = await runCli([
+      'enable',
+      's3-cloudfront',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+    expect(enable.exitCode).toBe(0);
+
+    const deployScript = path.join(
+      copiedWorkspace.workspaceRoot,
+      'utils',
+      'deploy-s3-cloudfront.sh',
+    );
+    const edgeFunction = path.join(
+      copiedWorkspace.workspaceRoot,
+      'utils',
+      'cloudfront-rewrite-directory-index.js',
+    );
+    await rm(deployScript, { force: true });
+    await rm(edgeFunction, { force: true });
+
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('utils/deploy-s3-cloudfront.sh');
+    expect(result.stdout).toContain('utils/cloudfront-rewrite-directory-index.js');
+    expect(existsSync(deployScript)).toBe(true);
+    expect(existsSync(edgeFunction)).toBe(true);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI repair preserves mode ownership when an enabled feature target overlaps', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-overlap-', {
     workspaceName: 'spa',
