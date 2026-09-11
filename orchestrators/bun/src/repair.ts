@@ -10,6 +10,8 @@ import {
   getSearchAssets,
   getSpaAssets,
   renderGithubPagesDeployScript,
+  renderS3CloudFrontDeployScript,
+  renderS3CloudFrontFunction,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
 import {
@@ -39,6 +41,7 @@ interface RepairEnableFlags {
   contentNav?: boolean;
   backend?: boolean;
   githubPages?: boolean;
+  s3CloudFront?: boolean;
 }
 
 interface RepairPackageJson {
@@ -135,8 +138,22 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   }
   if (frontendConfig) {
     await ensureGithubPagesDeployScript(workspace.root, changes, dryRun);
-    await ensureDeployScriptEntry(packageJsonPath, changes, dryRun);
+    await ensureDeployScriptEntry(
+      packageJsonPath,
+      'bash ./utils/deploy-gh-pages.sh',
+      changes,
+      dryRun,
+    );
     await ensureFrontendConfigBasePath(workspace.root, frontendConfig, changes, dryRun);
+  }
+  if (enable.s3CloudFront) {
+    await ensureS3CloudFrontAssets(workspace.root, changes, dryRun);
+    await ensureDeployScriptEntry(
+      packageJsonPath,
+      'bash ./utils/deploy-s3-cloudfront.sh',
+      changes,
+      dryRun,
+    );
   }
 
   return {
@@ -172,6 +189,13 @@ function getFixedRepairWriteTargets(
       path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh'),
       path.join(workspaceRoot, 'package.json'),
       path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json'),
+    );
+  }
+  if (enable.s3CloudFront) {
+    targets.push(
+      path.join(workspaceRoot, 'utils', 'deploy-s3-cloudfront.sh'),
+      path.join(workspaceRoot, 'utils', 'cloudfront-rewrite-directory-index.js'),
+      path.join(workspaceRoot, 'package.json'),
     );
   }
 
@@ -379,8 +403,34 @@ async function ensureGithubPagesDeployScript(
   changes.push(relativeWorkspacePath(workspaceRoot, deployScriptPath));
 }
 
+async function ensureS3CloudFrontAssets(
+  workspaceRoot: string,
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
+  const deployScriptPath = path.join(workspaceRoot, 'utils', 'deploy-s3-cloudfront.sh');
+  if (!existsSync(deployScriptPath)) {
+    if (!dryRun) {
+      await mkdir(path.dirname(deployScriptPath), { recursive: true });
+      await Bun.write(deployScriptPath, renderS3CloudFrontDeployScript());
+      await chmod(deployScriptPath, 0o755);
+    }
+    changes.push(relativeWorkspacePath(workspaceRoot, deployScriptPath));
+  }
+
+  const functionPath = path.join(workspaceRoot, 'utils', 'cloudfront-rewrite-directory-index.js');
+  if (!existsSync(functionPath)) {
+    if (!dryRun) {
+      await mkdir(path.dirname(functionPath), { recursive: true });
+      await Bun.write(functionPath, renderS3CloudFrontFunction());
+    }
+    changes.push(relativeWorkspacePath(workspaceRoot, functionPath));
+  }
+}
+
 async function ensureDeployScriptEntry(
   packageJsonPath: string,
+  deployCommand: string,
   changes: string[],
   dryRun: boolean,
 ): Promise<void> {
@@ -391,7 +441,7 @@ async function ensureDeployScriptEntry(
     return;
   }
 
-  scripts.deploy = 'bash ./utils/deploy-gh-pages.sh';
+  scripts.deploy = deployCommand;
   root.scripts = scripts;
   const updated = `${JSON.stringify(root, null, 2)}\n`;
 

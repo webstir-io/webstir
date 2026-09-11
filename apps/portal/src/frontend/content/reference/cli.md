@@ -92,7 +92,7 @@ Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
 
 What it does:
 - Adds optional enhancements to an existing workspace
-- Supported features include `scripts`, `spa`, `client-nav`, `search`, `content-nav`, `backend`, `github-pages`, and `gh-deploy`
+- Supported features include `scripts`, `spa`, `client-nav`, `search`, `content-nav`, `backend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
 - Updates workspace files and `package.json` flags so the feature is active on the next build/watch
 
 Notes:

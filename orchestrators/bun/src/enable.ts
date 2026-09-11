@@ -12,6 +12,9 @@ import {
   pageScriptTemplate,
   renderGithubPagesDeployScript,
   renderGithubPagesWorkflow,
+  renderS3CloudFrontDeployScript,
+  renderS3CloudFrontFunction,
+  renderS3CloudFrontWorkflow,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
@@ -32,7 +35,8 @@ type EnableFeature =
   | 'backend'
   | 'github-pages'
   | 'gh-pages'
-  | 'gh-deploy';
+  | 'gh-deploy'
+  | 's3-cloudfront';
 
 export interface RunEnableOptions {
   readonly workspaceRoot: string;
@@ -50,7 +54,7 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   const [featureToken, ...rest] = options.args;
   if (!featureToken) {
     throw new Error(
-      'Missing enable feature. Usage: webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy> --workspace <path>.',
+      'Missing enable feature. Usage: webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
     );
   }
 
@@ -110,6 +114,9 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
         changes,
       );
       break;
+    case 's3-cloudfront':
+      await enableS3CloudFront(workspace.root, changes);
+      break;
   }
 
   return {
@@ -131,10 +138,11 @@ function parseEnableFeature(value: string): EnableFeature {
     case 'github-pages':
     case 'gh-pages':
     case 'gh-deploy':
+    case 's3-cloudfront':
       return normalized;
     default:
       throw new Error(
-        `Unknown feature "${value}". Expected scripts, spa, client-nav, search, content-nav, backend, github-pages, or gh-deploy.`,
+        `Unknown feature "${value}". Expected scripts, spa, client-nav, search, content-nav, backend, github-pages, gh-deploy, or s3-cloudfront.`,
       );
   }
 }
@@ -176,6 +184,13 @@ function getFixedEnableWriteTargets(
         path.join(workspaceRoot, 'utils', 'deploy-gh-pages.sh'),
         path.join(workspaceRoot, '.github', 'workflows', 'webstir-gh-pages.yml'),
         path.join(workspaceRoot, 'src', 'frontend', 'frontend.config.json'),
+        packageJsonPath,
+      ];
+    case 's3-cloudfront':
+      return [
+        path.join(workspaceRoot, 'utils', 'deploy-s3-cloudfront.sh'),
+        path.join(workspaceRoot, 'utils', 'cloudfront-rewrite-directory-index.js'),
+        path.join(workspaceRoot, '.github', 'workflows', 'webstir-s3-cloudfront.yml'),
         packageJsonPath,
       ];
   }
@@ -287,7 +302,34 @@ async function enableGithubPages(
   await updateFrontendConfig(workspaceRoot, frontendConfig, resolvedBasePath, changes);
   await updatePackageJson(
     workspaceRoot,
-    { enableGithubPages: true, ensureDeployScript: true },
+    { enableGithubPages: true, ensureDeployScript: 'bash ./utils/deploy-gh-pages.sh' },
+    changes,
+  );
+}
+
+async function enableS3CloudFront(workspaceRoot: string, changes: string[]): Promise<void> {
+  const deployScriptPath = path.join(workspaceRoot, 'utils', 'deploy-s3-cloudfront.sh');
+  await writeTextFile(deployScriptPath, renderS3CloudFrontDeployScript(), 0o755);
+  changes.push(relativeWorkspacePath(workspaceRoot, deployScriptPath));
+
+  const functionPath = path.join(workspaceRoot, 'utils', 'cloudfront-rewrite-directory-index.js');
+  await writeTextFile(functionPath, renderS3CloudFrontFunction());
+  changes.push(relativeWorkspacePath(workspaceRoot, functionPath));
+
+  const workflowPath = path.join(
+    workspaceRoot,
+    '.github',
+    'workflows',
+    'webstir-s3-cloudfront.yml',
+  );
+  if (!existsSync(workflowPath)) {
+    await writeTextFile(workflowPath, renderS3CloudFrontWorkflow());
+    changes.push(relativeWorkspacePath(workspaceRoot, workflowPath));
+  }
+
+  await updatePackageJson(
+    workspaceRoot,
+    { enableS3CloudFront: true, ensureDeployScript: 'bash ./utils/deploy-s3-cloudfront.sh' },
     changes,
   );
 }
@@ -366,9 +408,10 @@ async function updatePackageJson(
     readonly enableContentNav?: boolean;
     readonly enableBackend?: boolean;
     readonly enableGithubPages?: boolean;
+    readonly enableS3CloudFront?: boolean;
     readonly mode?: string;
     readonly ensureBackendDependency?: boolean;
-    readonly ensureDeployScript?: boolean;
+    readonly ensureDeployScript?: string;
   },
   changes: string[],
 ): Promise<void> {
@@ -399,6 +442,9 @@ async function updatePackageJson(
   if (options.enableGithubPages !== undefined) {
     enable.githubPages = options.enableGithubPages;
   }
+  if (options.enableS3CloudFront !== undefined) {
+    enable.s3CloudFront = options.enableS3CloudFront;
+  }
 
   webstir.enable = enable;
   root.webstir = webstir;
@@ -410,7 +456,7 @@ async function updatePackageJson(
   if (options.ensureDeployScript) {
     const scripts = asRecord(root.scripts);
     if (typeof scripts.deploy !== 'string') {
-      scripts.deploy = 'bash ./utils/deploy-gh-pages.sh';
+      scripts.deploy = options.ensureDeployScript;
     }
     root.scripts = scripts;
   }
