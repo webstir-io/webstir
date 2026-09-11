@@ -261,8 +261,12 @@ test('CLI enables gh-deploy with Bun-native deploy scaffolding', async () => {
   expect(packageJson.webstir.enable.githubPages).toBe(true);
   expect(packageJson.scripts.deploy).toBe('bash ./utils/deploy-gh-pages.sh');
   expect(frontendConfig.publish.basePath).toBe('/demo-site');
-  expect(deployScript).toContain('bunx --bun webstir-frontend build -w "$ROOT_DIR"');
-  expect(deployScript).toContain('bunx --bun webstir-frontend publish -w "$ROOT_DIR" -m ssg');
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"',
+  );
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg',
+  );
   expect(workflow).toContain('uses: oven-sh/setup-bun@v2');
   expect(workflow).toContain('run: bun run deploy');
 });
@@ -291,8 +295,12 @@ test('CLI enables s3-cloudfront with a deploy script, edge function, and workflo
 
   expect(packageJson.webstir.enable.s3CloudFront).toBe(true);
   expect(packageJson.scripts.deploy).toBe('bash ./utils/deploy-s3-cloudfront.sh');
-  expect(deployScript).toContain('bunx --bun webstir-frontend build -w "$ROOT_DIR"');
-  expect(deployScript).toContain('bunx --bun webstir-frontend publish -w "$ROOT_DIR" -m ssg');
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"',
+  );
+  expect(deployScript).toContain(
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg',
+  );
   expect(deployScript).toContain('--cache-control "$IMMUTABLE_CACHE"');
   expect(deployScript).toContain('--cache-control "$DOCUMENT_CACHE"');
   expect(deployScript).toContain('aws cloudfront create-invalidation');

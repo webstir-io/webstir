@@ -118,8 +118,8 @@ publish_site() {
   fi
 
   echo "[gh-pages] Running Bun build and publish fallback..."
-  bunx --bun webstir-frontend build -w "$ROOT_DIR"
-  bunx --bun webstir-frontend publish -w "$ROOT_DIR" -m ssg
+  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"
+  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg
 }
 
 echo "[gh-pages] Publishing static site..."
@@ -235,8 +235,8 @@ publish_site() {
   fi
 
   echo "[s3-cloudfront] Running Bun build and publish fallback..."
-  bunx --bun webstir-frontend build -w "$ROOT_DIR"
-  bunx --bun webstir-frontend publish -w "$ROOT_DIR" -m ssg
+  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"
+  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg
 }
 
 echo "[s3-cloudfront] Publishing static site..."
