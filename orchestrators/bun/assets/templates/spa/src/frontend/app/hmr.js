@@ -160,10 +160,13 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
         };
     }
 
-    // Pages register hot-update handlers through app.ts, which keeps them in
-    // window.__webstirHotModules. This client owns everything else, so the app
+    // Pages register hot-update handlers through app.ts, which queues them in
+    // window.__webstirHotModules. This client drains that queue into a map keyed
+    // by normalized module id, so a module that re-registers after each update
+    // replaces its earlier handlers instead of piling up behind them. The app
     // bundle carries no HMR machinery into production. Older app entries that
     // still install window.__webstirDispose / __webstirAccept keep working.
+    const hotModuleHandlers = new Map();
     const hotModuleExports = new Map();
 
     async function invokeDispose(asset, context) {
@@ -236,20 +239,29 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     }
 
     function findHotModule(candidate) {
+        takeRegistrations();
         const moduleId = normalizePath(candidate);
-        if (!moduleId) {
-            return null;
+        return moduleId ? hotModuleHandlers.get(moduleId) ?? null : null;
+    }
+
+    function takeRegistrations() {
+        const queue = window.__webstirHotModules;
+        if (!Array.isArray(queue) || queue.length === 0) {
+            return;
         }
 
-        const registrations = Array.isArray(window.__webstirHotModules) ? window.__webstirHotModules : [];
-        for (let index = registrations.length - 1; index >= 0; index -= 1) {
-            const registration = registrations[index];
-            if (registration && normalizePath(registration.moduleId) === moduleId) {
-                return registration;
+        for (const registration of queue.splice(0, queue.length)) {
+            const moduleId = normalizePath(registration?.moduleId);
+            if (!moduleId) {
+                continue;
+            }
+
+            if (registration.handlers) {
+                hotModuleHandlers.set(moduleId, registration);
+            } else {
+                hotModuleHandlers.delete(moduleId);
             }
         }
-
-        return null;
     }
 
     function withPreviousExports(context, asset) {

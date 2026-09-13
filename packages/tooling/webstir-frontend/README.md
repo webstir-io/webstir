@@ -37,7 +37,54 @@ Webstir watch mode follows a narrow fallback policy:
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
 - Current exception: the SSG docs-sidebar pilot also remounts on `src/frontend/content/_sidebar.json` edits.
 - Any cleanup failure or declined boundary update falls back to reload.
-- A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only records the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client owns the registry, so production bundles carry no hot-update code. Workspaces scaffolded before this split keep working through the older `window.__webstirDispose` / `window.__webstirAccept` hooks; to slim them, delete the registry block from `app.ts` and refresh `hmr.js` (remove it and run `webstir repair`).
+- A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only queues the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client drains the queue into its own registry, so production bundles carry no hot-update code.
+
+### Moving an older workspace to the dev-only registry
+
+Workspaces scaffolded before this split keep working: `hmr.js` still honours the `window.__webstirDispose` and `window.__webstirAccept` hooks that the older `app.ts` installs. To drop that code from your production bundle:
+
+1. Remove `src/frontend/app/hmr.js` and run `webstir repair` to restore the current client.
+2. In `src/frontend/app/app.ts`, delete everything from `type HotAsset = {` through the end of the `window.__webstirAccept = ...;` block (the registry Map, `ensureRecord`, `normalizeModuleId`, `withHistoryContext`, `evaluateHandlerResult`, and the three `window.__webstir*` assignments), and put this in its place. Pages that import `registerHotModule` from `app.ts` keep compiling and keep their handlers:
+
+```ts
+export type HotAsset = {
+  type: 'js' | 'css';
+  url: string;
+  relativePath: string;
+};
+
+export type HotModuleContext = {
+  changedFile: string | null;
+  modules: ReadonlyArray<HotAsset>;
+  styles: ReadonlyArray<HotAsset>;
+  cacheBuster: string;
+  timestamp: number;
+  asset?: HotAsset;
+  previousExports?: unknown;
+};
+
+export type HotModuleHandlers = {
+  accept?: (moduleExports: unknown, context: HotModuleContext) => boolean | Promise<boolean>;
+  dispose?: (context: HotModuleContext) => void | Promise<void>;
+};
+
+export type HotModuleRegistration = { moduleId: string; handlers: HotModuleHandlers };
+
+declare global {
+  interface Window {
+    __webstirEventSource?: EventSource;
+    __webstirSetDevStatus?: (status: string, message?: string) => void;
+    __webstirOnHmrFallback?: (info: { reason?: string; payload?: unknown; details?: unknown }) => void;
+    __webstirHotModules?: HotModuleRegistration[];
+  }
+}
+
+export function registerHotModule(moduleId: string, handlers: HotModuleHandlers): void {
+  (window.__webstirHotModules ??= []).push({ moduleId, handlers });
+}
+```
+
+Keep the error-handler section and any imports of your own. The current ssg template's `app.ts` is the reference.
 
 ## Fragment Ownership Decision
 

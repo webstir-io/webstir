@@ -336,23 +336,38 @@ test('CLI watch runs page handlers registered through registerHotModule for JS e
     });
     await waitForHmrRuntime(page);
 
-    await writeFile(
-      docsScriptPath,
-      `${originalDocsScript}${registration.replace('docs-v1', 'docs-v2')}`,
-      'utf8',
-    );
+    // Each update re-runs the module, which registers again. The client must
+    // replace the earlier handlers rather than let them pile up.
+    for (const version of ['docs-v2', 'docs-v3', 'docs-v4']) {
+      await page.evaluate(() => {
+        delete document.documentElement.dataset.hmrAccepted;
+        delete document.documentElement.dataset.hmrDisposed;
+      });
+      await writeFile(
+        docsScriptPath,
+        `${originalDocsScript}${registration.replace('docs-v1', version)}`,
+        'utf8',
+      );
 
-    await page.waitForFunction(
-      () => {
-        const data = document.documentElement.dataset;
-        return data.docsVersion === 'docs-v2' && data.hmrAccepted !== undefined;
-      },
-      undefined,
-      { timeout: 15_000 },
-    );
-    const data = await page.evaluate(() => ({ ...document.documentElement.dataset }));
-    expect(data.hmrDisposed).toBe('yes');
-    expect(data.hmrAccepted).toBe('pages/docs/index.js');
+      await page.waitForFunction(
+        (expected) => {
+          const data = document.documentElement.dataset;
+          return data.docsVersion === expected && data.hmrAccepted !== undefined;
+        },
+        version,
+        { timeout: 15_000 },
+      );
+      const data = await page.evaluate(() => ({ ...document.documentElement.dataset }));
+      expect(data.hmrDisposed).toBe('yes');
+      expect(data.hmrAccepted).toBe('pages/docs/index.js');
+      expect(
+        await page.evaluate(
+          () =>
+            (window as Window & { __webstirHotModules?: unknown[] }).__webstirHotModules?.length ??
+            null,
+        ),
+      ).toBe(0);
+    }
     expect(
       await page.evaluate(
         () => (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker ?? null,
