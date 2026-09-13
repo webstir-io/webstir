@@ -193,6 +193,23 @@ test('CLI watch exposes a full home boundary that remounts cleanly', async () =>
       ),
     ).toBe('persist');
 
+    // An uncaught error in the page reaches the terminal through the scaffold's
+    // reporter and the dev server's /client-errors route. The first error only
+    // installs the reporter; the second is the one it sends.
+    await page.evaluate(() => {
+      window.setTimeout(() => {
+        throw new Error('webstir-client-error-proof-1');
+      }, 0);
+      window.setTimeout(() => {
+        throw new Error('webstir-client-error-proof-2');
+      }, 200);
+    });
+    await waitFor(async () => {
+      expect(stderrBuffer.text).toMatch(
+        /\[webstir\] client error: error: Uncaught Error: webstir-client-error-proof-2 \(c-[a-z0-9]+\)/,
+      );
+    }, 15_000);
+
     await context.close();
   } catch (error) {
     throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);

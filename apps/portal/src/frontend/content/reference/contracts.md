@@ -39,7 +39,7 @@ Current user-visible behaviors that Webstir documents and tests while the framew
 ## Dev Server
 - Serves `build/frontend/**` with SSE reload and an `/api/*` proxy to the Bun backend runtime.
 - No-cache headers for HTML; short/no-cache for static assets in dev.
-- Accepts client error reports at `POST /client-errors`:
+- Accepts client error reports at `POST /client-errors` (the Bun backend runtime serves the same route in published full and API workspaces):
   - Requires `Content-Type: application/json` and body up to 32KB.
   - Returns `204` on success; `415` for unsupported media type; `413` if payload too large.
   - Forwards to the error tracking hook with correlation id support (`X-Correlation-ID` or payload `correlationId`).
@@ -47,7 +47,7 @@ Current user-visible behaviors that Webstir documents and tests while the framew
 ## Error Handling
 - Missing required inputs (base HTML, server entry) fails fast with clear messages.
 - Publish removes comments and source maps from outputs.
- - Template includes a client error handler (`/app/error.js`) that throttles to 1/sec (max 20/session) and deduplicates repeats for 60s.
+- The SPA and full templates include a client error reporter (loaded from `src/frontend/app/error.ts` on the first error) that throttles to 1/sec (max 20/session) and deduplicates repeats for 60s. The SSG template omits it.
 
 ## CLI Guarantees
 - Commands: `init`, `refresh`, `inspect`, `frontend-inspect`, `doctor`, `repair`, `enable`, `build`, `watch`, `test`, `publish`, `smoke`, `backend-inspect`, `add-page`, `add-test`, `add-route`, `add-job`, `mcp`.

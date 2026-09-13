@@ -1,4 +1,11 @@
-import { matchPageRoute, type PageRoute } from '@webstir-io/webstir-backend';
+import {
+  type ClientErrorReport,
+  formatClientErrorReport,
+  isClientErrorsPath,
+  matchPageRoute,
+  type PageRoute,
+  readClientErrorReport,
+} from '@webstir-io/webstir-backend';
 import path from 'node:path';
 import { access } from 'node:fs/promises';
 
@@ -10,6 +17,8 @@ export interface DevServerOptions {
   readonly port?: number;
   readonly apiProxyOrigin?: string;
   readonly pageRoutes?: readonly PageRoute[];
+  /** Receives each browser error report posted to /client-errors. Defaults to the terminal. */
+  readonly onClientError?: (report: ClientErrorReport) => void;
 }
 
 export interface DevServerAddress {
@@ -82,6 +91,7 @@ export class DevServer {
   private readonly port: number;
   private readonly apiProxyOrigin?: string;
   private readonly pageRoutes: readonly PageRoute[];
+  private readonly onClientError: (report: ClientErrorReport) => void;
   private readonly clients = new Set<SseClient>();
   private server?: ReturnType<typeof Bun.serve>;
 
@@ -91,6 +101,11 @@ export class DevServer {
     this.port = options.port ?? 8088;
     this.apiProxyOrigin = options.apiProxyOrigin;
     this.pageRoutes = options.pageRoutes ?? [];
+    this.onClientError =
+      options.onClientError ??
+      ((report) => {
+        console.error(`[webstir] client error: ${formatClientErrorReport(report)}`);
+      });
   }
 
   public async start(): Promise<DevServerAddress> {
@@ -161,6 +176,10 @@ export class DevServer {
       return this.handleSse(request);
     }
 
+    if (isClientErrorsPath(pathname)) {
+      return await this.handleClientError(request, method);
+    }
+
     const apiProxyPath = getApiProxyPath(pathname);
     if (apiProxyPath !== null && this.apiProxyOrigin) {
       return await this.handleApiProxy(request, requestUrl, apiProxyPath);
@@ -201,6 +220,20 @@ export class DevServer {
       status: 200,
       headers,
     });
+  }
+
+  // Browser errors reported by the scaffold's client reporter land in the
+  // terminal next to the build output, so a broken page is visible without
+  // opening devtools.
+  private async handleClientError(request: Request, method: string): Promise<Response> {
+    if (method !== 'POST') {
+      return textResponse(405, 'Method not allowed.');
+    }
+    const outcome = await readClientErrorReport(request);
+    if (outcome.report) {
+      this.onClientError(outcome.report);
+    }
+    return new Response(null, { status: outcome.status });
   }
 
   private async handleApiProxy(

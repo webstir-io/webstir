@@ -1,3 +1,8 @@
+import {
+  formatClientErrorReport,
+  isClientErrorsPath,
+  readClientErrorReport,
+} from './client-errors.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -337,6 +342,17 @@ async function handleRequest<
     if (isMetricsPath(pathname)) {
       const snapshot = metrics.snapshot();
       return jsonResponse(200, snapshot ?? { enabled: false });
+    }
+
+    if (isClientErrorsPath(pathname) && method === 'POST') {
+      const outcome = await readClientErrorReport(request);
+      if (outcome.report) {
+        logger.error(
+          { clientError: outcome.report, correlationId: outcome.report.correlationId },
+          `[webstir-backend] client error: ${formatClientErrorReport(outcome.report)}`,
+        );
+      }
+      return new Response(null, { status: outcome.status });
     }
 
     if (method === 'OPTIONS') {

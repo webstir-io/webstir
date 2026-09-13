@@ -55,14 +55,14 @@ Typical backend scaffold:
 - Place Images, Fonts, and Media under `src/frontend/{images|fonts|media}/**`.
 
 ## Client Error Reporting
-- The base `app.html` includes `/app/error.js` which installs a lightweight client error handler.
-- It listens for `window` `error` and `unhandledrejection` and reports to `POST /client-errors` using `sendBeacon` (fallback to `fetch`).
+- The SPA and full templates install a lightweight client error reporter: `src/frontend/app/app.ts` listens for `window` `error` and `unhandledrejection`, loads `src/frontend/app/error.ts` on the first one, and reports to `POST /client-errors` using `sendBeacon` (fallback to `fetch`).
+- The SSG template does not include it: a static site has no server to report to.
 - Behavior:
   - Throttled: max 1 event/second; capped at 20 per page session.
   - Deduped: repeats suppressed within 60s using a fingerprint of type|message|file:line:col|stack-hash.
-  - Correlation: includes a client correlation id; server also accepts `X-Correlation-ID`.
-- Override: set `window.__WEBSTIR_ON_ERROR__ = (event) => { /* custom */ }` before errors occur to customize reporting.
-- Opt-out: remove the `<script src="/app/error.js" async></script>` tag from your `src/frontend/app/app.html`.
+  - Correlation: includes a client correlation id; the server also accepts `X-Correlation-ID`.
+- Where reports go: `webstir watch` prints each report in the terminal next to the build output; the Bun backend runtime logs it at error level, so full and API workspaces have a sink in production.
+- Opt-out: delete `src/frontend/app/error.ts` and remove the `loadErrorHandler` section from `src/frontend/app/app.ts`.
 
 ## Generators
 
