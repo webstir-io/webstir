@@ -37,6 +37,7 @@ Webstir watch mode follows a narrow fallback policy:
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
 - Current exception: the SSG docs-sidebar pilot also remounts on `src/frontend/content/_sidebar.json` edits.
 - Any cleanup failure or declined boundary update falls back to reload.
+- A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only records the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client owns the registry, so production bundles carry no hot-update code. Workspaces scaffolded before this split keep working through the older `window.__webstirDispose` / `window.__webstirAccept` hooks; to slim them, delete the registry block from `app.ts` and refresh `hmr.js` (remove it and run `webstir repair`).
 
 ## Fragment Ownership Decision
 

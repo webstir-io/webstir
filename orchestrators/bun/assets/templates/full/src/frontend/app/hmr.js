@@ -160,14 +160,33 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
         };
     }
 
+    // Pages register hot-update handlers through app.ts, which keeps them in
+    // window.__webstirHotModules. This client owns everything else, so the app
+    // bundle carries no HMR machinery into production. Older app entries that
+    // still install window.__webstirDispose / __webstirAccept keep working.
+    const hotModuleExports = new Map();
+
     async function invokeDispose(asset, context) {
-        const handler = window.__webstirDispose;
-        if (typeof handler !== 'function') {
+        const legacy = window.__webstirDispose;
+        if (typeof legacy === 'function') {
+            try {
+                const result = legacy(asset, context);
+                if (isPromise(result)) {
+                    await result;
+                }
+            } catch (error) {
+                console.error(`[webstir-hmr] Dispose handler threw for '${asset.relativePath}'.`, error);
+                return false;
+            }
+        }
+
+        const registration = findHotModule(asset.url ?? asset.relativePath);
+        if (!registration || typeof registration.handlers?.dispose !== 'function') {
             return true;
         }
 
         try {
-            const result = handler(asset, context);
+            const result = registration.handlers.dispose(withPreviousExports(context, asset));
             if (isPromise(result)) {
                 await result;
             }
@@ -179,22 +198,63 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     }
 
     async function invokeAccept(moduleExports, context) {
-        const handler = window.__webstirAccept;
-        if (typeof handler !== 'function') {
+        const legacy = window.__webstirAccept;
+        if (typeof legacy === 'function') {
+            try {
+                const result = legacy(moduleExports, context);
+                const resolved = isPromise(result) ? await result : result;
+                if (resolved === false) {
+                    return false;
+                }
+            } catch (error) {
+                console.error('[webstir-hmr] Accept handler threw.', error);
+                return false;
+            }
+        }
+
+        const asset = context.asset;
+        const registration = findHotModule(asset?.url ?? asset?.relativePath);
+        if (!registration) {
             return true;
         }
 
-        try {
-            const result = handler(moduleExports, context);
-            if (isPromise(result)) {
-                const resolved = await result;
-                return resolved !== false;
+        if (typeof registration.handlers?.accept === 'function') {
+            try {
+                const result = registration.handlers.accept(moduleExports, withPreviousExports(context, asset));
+                const resolved = isPromise(result) ? await result : result;
+                if (resolved === false) {
+                    return false;
+                }
+            } catch (error) {
+                console.error('[webstir-hmr] Accept handler threw.', error);
+                return false;
             }
-            return result !== false;
-        } catch (error) {
-            console.error('[webstir-hmr] Accept handler threw.', error);
-            return false;
         }
+
+        hotModuleExports.set(normalizePath(asset?.url ?? asset?.relativePath), moduleExports);
+        return true;
+    }
+
+    function findHotModule(candidate) {
+        const moduleId = normalizePath(candidate);
+        if (!moduleId) {
+            return null;
+        }
+
+        const registrations = Array.isArray(window.__webstirHotModules) ? window.__webstirHotModules : [];
+        for (let index = registrations.length - 1; index >= 0; index -= 1) {
+            const registration = registrations[index];
+            if (registration && normalizePath(registration.moduleId) === moduleId) {
+                return registration;
+            }
+        }
+
+        return null;
+    }
+
+    function withPreviousExports(context, asset) {
+        const previousExports = hotModuleExports.get(normalizePath(asset?.url ?? asset?.relativePath));
+        return previousExports === undefined ? context : { ...context, previousExports };
     }
 
     function swapStylesheet(asset, cacheBuster) {
