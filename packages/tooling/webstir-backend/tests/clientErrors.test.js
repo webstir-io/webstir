@@ -6,7 +6,6 @@ import {
   formatClientErrorReport,
   isClientErrorsPath,
   readClientErrorReport,
-  renderField,
 } from '../dist/index.js';
 
 function post(body, headers = {}) {
@@ -136,8 +135,8 @@ test('terminal output escapes control characters from every field', async () => 
   assert.equal(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(line.replace('\n  ', '')), false);
 });
 
-test('rendered fields are cut to a sane length', () => {
-  const rendered = renderField('x'.repeat(5_000));
-  assert.equal(rendered.length, 1_001);
-  assert.equal(rendered.endsWith('…'), true);
+test('rendered fields are cut to a sane length', async () => {
+  const outcome = await readClientErrorReport(post(JSON.stringify({ message: 'x'.repeat(5_000) })));
+  assert.equal(outcome.status, 204);
+  assert.equal(formatClientErrorReport(outcome.report), `error: ${'x'.repeat(1_000)}…`);
 });

@@ -67,7 +67,7 @@ export function formatClientErrorReport(report: ClientErrorReport): string {
   return `${renderField(report.type)}: ${message}${where}${correlation}${stack}`;
 }
 
-export function renderField(value: string): string {
+function renderField(value: string): string {
   const cut = value.length > MAX_RENDERED_FIELD ? `${value.slice(0, MAX_RENDERED_FIELD)}…` : value;
   // biome-ignore lint/suspicious/noControlCharactersInRegex: escaping control characters is the point
   return cut.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, (char) => {
