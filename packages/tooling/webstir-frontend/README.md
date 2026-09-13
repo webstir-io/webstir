@@ -37,6 +37,57 @@ Webstir watch mode follows a narrow fallback policy:
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
 - Current exception: the SSG docs-sidebar pilot also remounts on `src/frontend/content/_sidebar.json` edits.
 - Any cleanup failure or declined boundary update falls back to reload.
+- A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only queues the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client drains the queue into its own registry, so production bundles carry no hot-update code.
+
+### Moving an older workspace to the dev-only registry
+
+Workspaces scaffolded before this split still carry the registry in `app.ts`, where it installs `window.__webstirDispose` and `window.__webstirAccept`. The current client does not read those hooks; it warns once in the console when it finds them, because page handlers registered through them no longer run.
+
+1. Run `webstir repair`. When `app.ts` and `hmr.js` are both still the scaffold's own files, repair replaces the registry block in `app.ts` with the thin registration below and brings `hmr.js` up to the current client, in the same run. It never changes one without the other: if either file has been customized, it leaves both alone and prints a note saying which one and why. Pages that import `registerHotModule` from `app.ts` keep compiling and keep their handlers.
+2. If repair reports that `app.ts` was customized, do the replacement by hand. There are two separate ranges, with the error-handler section between them that stays as it is:
+   - Range A starts at the line `type HotAsset = {` and ends just before the comment `// Lazy-load error handler on first error`. It holds the hot-module types, the `declare global` block, the registry Map, and the `ensureRecord`, `normalizeModuleId`, `isPromise`, `withHistoryContext`, and `evaluateHandlerResult` helpers. Replace this range with the block below.
+   - Range B starts at the line `export function registerHotModule(` and ends just before the comment `// Set up error listeners`. It holds the old `registerHotModule` and the three `window.__webstir*` assignments. Delete this range.
+   - Keep `errorHandlerLoaded`, `loadErrorHandler`, the two `window.addEventListener` calls, and `export { loadErrorHandler };`. Then remove `src/frontend/app/hmr.js` and run `webstir repair` again to restore the current client.
+
+```ts
+export type HotAsset = {
+  type: 'js' | 'css';
+  url: string;
+  relativePath: string;
+};
+
+export type HotModuleContext = {
+  changedFile: string | null;
+  modules: ReadonlyArray<HotAsset>;
+  styles: ReadonlyArray<HotAsset>;
+  cacheBuster: string;
+  timestamp: number;
+  asset?: HotAsset;
+  previousExports?: unknown;
+};
+
+export type HotModuleHandlers = {
+  accept?: (moduleExports: unknown, context: HotModuleContext) => boolean | Promise<boolean>;
+  dispose?: (context: HotModuleContext) => void | Promise<void>;
+};
+
+export type HotModuleRegistration = { moduleId: string; handlers: HotModuleHandlers };
+
+declare global {
+  interface Window {
+    __webstirEventSource?: EventSource;
+    __webstirSetDevStatus?: (status: string, message?: string) => void;
+    __webstirOnHmrFallback?: (info: { reason?: string; payload?: unknown; details?: unknown }) => void;
+    __webstirHotModules?: HotModuleRegistration[];
+  }
+}
+
+export function registerHotModule(moduleId: string, handlers: HotModuleHandlers): void {
+  (window.__webstirHotModules ??= []).push({ moduleId, handlers });
+}
+```
+
+The current ssg template's `app.ts` is the reference for the finished file.
 
 ## Fragment Ownership Decision
 

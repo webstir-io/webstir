@@ -169,14 +169,24 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
         };
     }
 
+    // Pages register hot-update handlers through app.ts, which queues them in
+    // window.__webstirHotModules. This client drains that queue into a map keyed
+    // by normalized module id, so a module that re-registers after each update
+    // replaces its earlier handlers instead of piling up behind them. The app
+    // bundle carries no HMR machinery into production.
+    const hotModuleHandlers = new Map();
+    const hotModuleExports = new Map();
+    let warnedAboutLegacyHooks = false;
+    window.addEventListener('load', warnAboutLegacyHooks);
+
     async function invokeDispose(asset, context) {
-        const handler = window.__webstirDispose;
-        if (typeof handler !== 'function') {
+        const registration = findHotModule(asset.url ?? asset.relativePath);
+        if (!registration || typeof registration.handlers?.dispose !== 'function') {
             return true;
         }
 
         try {
-            const result = handler(asset, context);
+            const result = registration.handlers.dispose(withPreviousExports(context, asset));
             if (isPromise(result)) {
                 await result;
             }
@@ -188,22 +198,74 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     }
 
     async function invokeAccept(moduleExports, context) {
-        const handler = window.__webstirAccept;
-        if (typeof handler !== 'function') {
+        const asset = context.asset;
+        const registration = findHotModule(asset?.url ?? asset?.relativePath);
+        if (!registration) {
             return true;
         }
 
-        try {
-            const result = handler(moduleExports, context);
-            if (isPromise(result)) {
-                const resolved = await result;
-                return resolved !== false;
+        if (typeof registration.handlers?.accept === 'function') {
+            try {
+                const result = registration.handlers.accept(moduleExports, withPreviousExports(context, asset));
+                const resolved = isPromise(result) ? await result : result;
+                if (resolved === false) {
+                    return false;
+                }
+            } catch (error) {
+                console.error('[webstir-hmr] Accept handler threw.', error);
+                return false;
             }
-            return result !== false;
-        } catch (error) {
-            console.error('[webstir-hmr] Accept handler threw.', error);
-            return false;
         }
+
+        hotModuleExports.set(normalizePath(asset?.url ?? asset?.relativePath), moduleExports);
+        return true;
+    }
+
+    function findHotModule(candidate) {
+        takeRegistrations();
+        const moduleId = normalizePath(candidate);
+        return moduleId ? hotModuleHandlers.get(moduleId) ?? null : null;
+    }
+
+    function warnAboutLegacyHooks() {
+        if (warnedAboutLegacyHooks) {
+            return;
+        }
+        if (typeof window.__webstirDispose !== 'function' && typeof window.__webstirAccept !== 'function') {
+            return;
+        }
+        warnedAboutLegacyHooks = true;
+        console.warn(
+            '[webstir-hmr] app.ts still installs the old hot-update hooks (window.__webstirDispose / ' +
+            'window.__webstirAccept). They are no longer read, so page accept/dispose handlers ' +
+            'registered through them will not run. Run `webstir repair` to update app.ts.'
+        );
+    }
+
+    function takeRegistrations() {
+        warnAboutLegacyHooks();
+        const queue = window.__webstirHotModules;
+        if (!Array.isArray(queue) || queue.length === 0) {
+            return;
+        }
+
+        for (const registration of queue.splice(0, queue.length)) {
+            const moduleId = normalizePath(registration?.moduleId);
+            if (!moduleId) {
+                continue;
+            }
+
+            if (registration.handlers) {
+                hotModuleHandlers.set(moduleId, registration);
+            } else {
+                hotModuleHandlers.delete(moduleId);
+            }
+        }
+    }
+
+    function withPreviousExports(context, asset) {
+        const previousExports = hotModuleExports.get(normalizePath(asset?.url ?? asset?.relativePath));
+        return previousExports === undefined ? context : { ...context, previousExports };
     }
 
     function swapStylesheet(asset, cacheBuster) {

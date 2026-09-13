@@ -277,6 +277,119 @@ test('CLI watch remounts the docs sidebar boundary for JS edits without a full r
   }
 }, 120_000);
 
+test('CLI watch runs page handlers registered through registerHotModule for JS edits', async () => {
+  const workspaceCopy = await copyDemoWorkspace('ssg/site', 'webstir-ssg-watch-register');
+  const workspace = workspaceCopy.workspaceRoot;
+  const docsDir = path.join(workspace, 'src', 'frontend', 'pages', 'docs');
+  const docsScriptPath = path.join(docsDir, 'index.ts');
+  const originalDocsScript = await readFile(docsScriptPath, 'utf8');
+  const registration = [
+    '',
+    "import { registerHotModule } from '../../app/app.js';",
+    '',
+    "document.documentElement.dataset.docsVersion = 'docs-v1';",
+    '',
+    'registerHotModule(import.meta.url, {',
+    '  accept: (_, context) => {',
+    "    document.documentElement.dataset.hmrAccepted = context.asset?.relativePath ?? 'unknown';",
+    '    return true;',
+    '  },',
+    '  dispose: () => {',
+    "    document.documentElement.dataset.hmrDisposed = 'yes';",
+    '  },',
+    '});',
+    '',
+  ].join('\n');
+  await writeFile(docsScriptPath, `${originalDocsScript}${registration}`, 'utf8');
+
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnWatch(
+    workspace,
+    port,
+  );
+
+  let context: BrowserContext | undefined;
+  const browserLogs: string[] = [];
+
+  try {
+    await waitFor(async () => {
+      expect(await fetchText(port, '/docs/')).toContain('index.js');
+    }, 20_000);
+
+    context = await createBrowserContext();
+    const page = await context.newPage();
+    page.on('console', (message) => {
+      browserLogs.push(`${message.type()}: ${message.text()}`);
+    });
+    page.on('pageerror', (error) => {
+      browserLogs.push(`pageerror: ${error.message}`);
+    });
+
+    await page.goto(`http://127.0.0.1:${port}/docs/`, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(
+      () => document.documentElement.dataset.docsVersion === 'docs-v1',
+      undefined,
+      { timeout: 15_000 },
+    );
+    await page.evaluate(() => {
+      (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker = 'persist';
+    });
+    await waitForHmrRuntime(page);
+
+    // Each update re-runs the module, which registers again. The client must
+    // replace the earlier handlers rather than let them pile up.
+    for (const version of ['docs-v2', 'docs-v3', 'docs-v4']) {
+      await page.evaluate(() => {
+        delete document.documentElement.dataset.hmrAccepted;
+        delete document.documentElement.dataset.hmrDisposed;
+      });
+      await writeFile(
+        docsScriptPath,
+        `${originalDocsScript}${registration.replace('docs-v1', version)}`,
+        'utf8',
+      );
+
+      await page.waitForFunction(
+        (expected) => {
+          const data = document.documentElement.dataset;
+          return data.docsVersion === expected && data.hmrAccepted !== undefined;
+        },
+        version,
+        { timeout: 15_000 },
+      );
+      const data = await page.evaluate(() => ({ ...document.documentElement.dataset }));
+      expect(data.hmrDisposed).toBe('yes');
+      expect(data.hmrAccepted).toBe('pages/docs/index.js');
+      expect(
+        await page.evaluate(
+          () =>
+            (window as Window & { __webstirHotModules?: unknown[] }).__webstirHotModules?.length ??
+            null,
+        ),
+      ).toBe(0);
+    }
+    expect(
+      await page.evaluate(
+        () => (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker ?? null,
+      ),
+    ).toBe('persist');
+    expect(browserLogs.some((line) => line.includes('old hot-update hooks'))).toBe(false);
+  } catch (error) {
+    if (error instanceof Error && browserLogs.length > 0) {
+      error.message = `${error.message}\n\nbrowser:\n${browserLogs.join('\n')}`;
+    }
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    if (context) {
+      await closeBrowserContext(context);
+    }
+    await stopSpawnedProcess(child);
+    await settleOutputDrains(stdoutDrain, stderrDrain);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
+
 test('CLI watch remounts the docs boundary for _sidebar.json edits without a full reload', async () => {
   const workspaceCopy = await copyDemoWorkspace('ssg/base', 'webstir-ssg-watch-sidebar');
   const workspace = workspaceCopy.workspaceRoot;
