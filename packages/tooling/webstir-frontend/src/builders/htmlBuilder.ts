@@ -22,7 +22,7 @@ import {
   inlineCriticalCss,
 } from '../html/criticalCss.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
-import { inlineSourceScripts } from '../html/inlineScripts.js';
+import { inlineSourceScripts, inlineSourceScriptsInHtml } from '../html/inlineScripts.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
 import type { EnableFlags } from '../types.js';
 import {
@@ -171,9 +171,8 @@ async function publishHtml(context: BuilderContext): Promise<void> {
   }
 }
 
-// Bundles data-webstir-inline scripts in one HTML file. Fragments only carry
-// <head> and <main>, so the parse is a fragment parse and the same pieces are
-// handed back for merging.
+// Bundles data-webstir-inline scripts in one HTML file as a string transform,
+// so the shell and the page fragments reach the merge exactly as written.
 async function withInlineScripts(
   context: BuilderContext,
   html: string,
@@ -183,16 +182,14 @@ async function withInlineScripts(
   if (!html.includes('data-webstir-inline')) {
     return html;
   }
-  const isFragment = !/<html[\s>]/i.test(html);
-  const document = load(html, undefined, !isFragment);
-  await inlineSourceScripts(document, {
+  const result = await inlineSourceScriptsInHtml(html, {
     baseDir: path.dirname(filePath),
     frontendRoot: context.config.paths.src.frontend,
     workspaceRoot: context.config.paths.workspace,
     minify,
     describeContainer: path.relative(context.config.paths.workspace, filePath),
   });
-  return document.root().html() ?? html;
+  return result.html;
 }
 
 function mergeTemplates(appHtml: string, pageHtml: string): string {

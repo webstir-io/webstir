@@ -137,6 +137,66 @@ test('Bun-first SPA watch uses Bun dev serving and hot-applies JavaScript edits'
   }
 }, 120_000);
 
+test('Bun-first SPA watch inlines data-webstir-inline scripts and regenerates when their sources change', async () => {
+  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa-inline-');
+  const workspace = workspaceCopy.workspaceRoot;
+  const appDir = path.join(workspace, 'src', 'frontend', 'app');
+  const scriptsDir = path.join(appDir, 'scripts');
+  await mkdir(scriptsDir, { recursive: true });
+  const paintPath = path.join(scriptsDir, 'paint.ts');
+  await writeFile(
+    paintPath,
+    "export const firstPaintVersion = 'paint-v1';\ndocument.documentElement.dataset.firstPaint = firstPaintVersion;\n",
+    'utf8',
+  );
+  await writeFile(path.join(scriptsDir, 'first-paint.ts'), "import './paint.js';\n", 'utf8');
+  const appHtmlPath = path.join(appDir, 'app.html');
+  const appHtml = await readFile(appHtmlPath, 'utf8');
+  await writeFile(
+    appHtmlPath,
+    appHtml.replace(
+      '<head>',
+      '<head>\n    <script data-webstir-inline src="./scripts/first-paint.ts"></script>',
+    ),
+    'utf8',
+  );
+
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
+
+  try {
+    await waitFor(async () => {
+      const html = await fetchText(port, '/');
+      expect(html).toContain('data-webstir-inline="src/frontend/app/scripts/first-paint.ts"');
+      expect(html).toContain('paint-v1');
+      expect(html).not.toMatch(/data-webstir-inline[^>]*src=/);
+    }, 30_000);
+
+    // The tag's own source did not change; a file it imports did.
+    await writeFile(
+      paintPath,
+      (await readFile(paintPath, 'utf8')).replace('paint-v1', 'paint-v2'),
+      'utf8',
+    );
+    await waitFor(async () => {
+      const html = await fetchText(port, '/');
+      expect(html).toContain('paint-v2');
+      expect(html).not.toContain('paint-v1');
+    }, 30_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
+
 test('Bun-first SPA watch hot-applies CSS edits without a full page reload', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();

@@ -16,6 +16,7 @@ import { pathExists } from '../utils/fs.js';
 
 export const INLINE_SCRIPT_ATTRIBUTE = 'data-webstir-inline';
 const LARGE_INLINE_BYTES = 16 * 1024;
+const INLINE_TAG_PATTERN = /<script\b([^>]*\bdata-webstir-inline\b[^>]*)>\s*<\/script>/gi;
 
 export interface InlineScriptOptions {
   /** Directory the containing HTML file lives in; relative sources resolve here. */
@@ -29,6 +30,43 @@ export interface InlineScriptOptions {
   readonly describeContainer: string;
 }
 
+export interface InlineScriptResult {
+  readonly html: string;
+  /** Every file the inlined bundles were built from, absolute. */
+  readonly dependencies: readonly string[];
+}
+
+/** Inlines the tags in an HTML string without re-parsing the rest of it. */
+export async function inlineSourceScriptsInHtml(
+  html: string,
+  options: InlineScriptOptions,
+): Promise<InlineScriptResult> {
+  const dependencies = new Set<string>();
+  let output = '';
+  let cursor = 0;
+  for (const match of html.matchAll(INLINE_TAG_PATTERN)) {
+    const attributes = match[1] ?? '';
+    const sourcePath = resolveSource(
+      readAttribute(attributes, 'src'),
+      readAttribute(attributes, INLINE_SCRIPT_ATTRIBUTE),
+      options,
+    );
+    if (!sourcePath) {
+      continue;
+    }
+    const bundle = await inlineFromSource(sourcePath, options);
+    for (const input of bundle.inputs) {
+      dependencies.add(input);
+    }
+    output += html.slice(cursor, match.index);
+    output += `<script ${INLINE_SCRIPT_ATTRIBUTE}="${bundle.recorded}">${bundle.code}</script>`;
+    cursor = (match.index ?? 0) + match[0].length;
+  }
+  output += html.slice(cursor);
+  return { html: output, dependencies: [...dependencies] };
+}
+
+/** Inlines the tags in a parsed document; used where one is already loaded. */
 export async function inlineSourceScripts(
   document: CheerioAPI,
   options: InlineScriptOptions,
@@ -40,32 +78,51 @@ export async function inlineSourceScripts(
     if (!sourcePath) {
       continue;
     }
-    if (!(await pathExists(sourcePath))) {
-      throw new Error(
-        `Inline script source not found: ${sourcePath} (referenced from ${options.describeContainer}).`,
-      );
-    }
-
-    const code = await bundleInlineScript(sourcePath, options.minify);
-    const recorded = toPosix(path.relative(options.workspaceRoot, sourcePath));
-    if (Buffer.byteLength(code) > LARGE_INLINE_BYTES) {
-      emitDiagnostic({
-        code: 'frontend.inlineScript.large',
-        kind: 'html',
-        stage: options.minify ? 'html.publish' : 'html.build',
-        severity: 'warning',
-        message: `Inline script ${recorded} is ${Math.round(Buffer.byteLength(code) / 1024)} KB; it is sent with every page that includes it.`,
-        data: { source: recorded, bytes: Buffer.byteLength(code) },
-        suggestion:
-          'Keep pre-paint scripts small; move anything that can wait for the app bundle into it.',
-      });
-    }
-
+    const bundle = await inlineFromSource(sourcePath, options);
     node.removeAttr('src');
     node.removeAttr('type');
-    node.attr(INLINE_SCRIPT_ATTRIBUTE, recorded);
-    node.text(code);
+    node.attr(INLINE_SCRIPT_ATTRIBUTE, bundle.recorded);
+    node.text(bundle.code);
   }
+}
+
+/** The files the inline tags in this HTML depend on, for watchers. */
+export async function resolveInlineScriptDependencies(
+  html: string,
+  options: Omit<InlineScriptOptions, 'minify'>,
+): Promise<readonly string[]> {
+  if (!html.includes(INLINE_SCRIPT_ATTRIBUTE)) {
+    return [];
+  }
+  const result = await inlineSourceScriptsInHtml(html, { ...options, minify: false });
+  return result.dependencies;
+}
+
+async function inlineFromSource(
+  sourcePath: string,
+  options: InlineScriptOptions,
+): Promise<{ code: string; recorded: string; inputs: readonly string[] }> {
+  if (!(await pathExists(sourcePath))) {
+    throw new Error(
+      `Inline script source not found: ${sourcePath} (referenced from ${options.describeContainer}).`,
+    );
+  }
+  const bundle = await bundleInlineScript(sourcePath, options.minify);
+  const recorded = toPosix(path.relative(options.workspaceRoot, sourcePath));
+  const bytes = Buffer.byteLength(bundle.code);
+  if (bytes > LARGE_INLINE_BYTES) {
+    emitDiagnostic({
+      code: 'frontend.inlineScript.large',
+      kind: 'html',
+      stage: options.minify ? 'html.publish' : 'html.build',
+      severity: 'warning',
+      message: `Inline script ${recorded} is ${Math.round(bytes / 1024)} KB; it is sent with every page that includes it.`,
+      data: { source: recorded, bytes },
+      suggestion:
+        'Keep pre-paint scripts small; move anything that can wait for the app bundle into it.',
+    });
+  }
+  return { code: bundle.code, recorded, inputs: bundle.inputs };
 }
 
 function resolveSource(
@@ -89,11 +146,15 @@ function resolveSource(
   return null;
 }
 
-async function bundleInlineScript(sourcePath: string, minify: boolean): Promise<string> {
+async function bundleInlineScript(
+  sourcePath: string,
+  minify: boolean,
+): Promise<{ code: string; inputs: readonly string[] }> {
   const result = await esbuild({
     entryPoints: [sourcePath],
     bundle: true,
     write: false,
+    metafile: true,
     format: 'iife',
     target: 'es2020',
     platform: 'browser',
@@ -101,10 +162,24 @@ async function bundleInlineScript(sourcePath: string, minify: boolean): Promise<
     sourcemap: false,
     legalComments: 'none',
     logLevel: 'silent',
+    absWorkingDir: path.dirname(sourcePath),
   });
   const text = result.outputFiles[0]?.text ?? '';
+  const inputs = Object.keys(result.metafile?.inputs ?? {}).map((input) =>
+    path.resolve(path.dirname(sourcePath), input),
+  );
   // A closing script tag inside the bundle would end the inline tag early.
-  return text.trim().replace(/<\/script/gi, '<\\/script');
+  return { code: text.trim().replace(/<\/script/gi, '<\\/script'), inputs };
+}
+
+function readAttribute(attributes: string, name: string): string | undefined {
+  const match = attributes.match(
+    new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i'),
+  );
+  if (!match) {
+    return undefined;
+  }
+  return match[1] ?? match[2] ?? match[3] ?? '';
 }
 
 function toPosix(value: string): string {

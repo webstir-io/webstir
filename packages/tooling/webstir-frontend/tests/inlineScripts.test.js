@@ -6,7 +6,12 @@ import path from 'node:path';
 
 import { frontendProvider } from '../dist/index.js';
 
-async function createWorkspace({ shellScript = true, pageScript = true, missing = false } = {}) {
+async function createWorkspace({
+  shellScript = true,
+  pageScript = true,
+  missing = false,
+  bodyClass = '',
+} = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-inline-scripts-'));
   const appDir = path.join(root, 'src', 'frontend', 'app');
   const scriptsDir = path.join(appDir, 'scripts');
@@ -43,9 +48,11 @@ async function createWorkspace({ shellScript = true, pageScript = true, missing 
   );
 
   const pageTag = pageScript ? '<script data-webstir-inline src="./page-paint.ts"></script>' : '';
+  const bodyOpen = bodyClass ? `<body class="${bodyClass}">` : '';
+  const bodyClose = bodyClass ? '</body>' : '';
   await fs.writeFile(
     path.join(pageDir, 'index.html'),
-    `<head>${pageTag}<link rel="stylesheet" href="index.css"></head><main>Home</main>`,
+    `<head>${pageTag}<link rel="stylesheet" href="index.css"></head>${bodyOpen}<main>Home</main>${bodyClose}`,
   );
   await fs.writeFile(path.join(pageDir, 'index.css'), '@import "@app/app.css";');
   await fs.writeFile(
@@ -144,6 +151,21 @@ test('pages without inline scripts are untouched', async () => {
       'utf8',
     );
     assert.doesNotMatch(html, /data-webstir-inline/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('a page with an inline script keeps its body class through the merge', async () => {
+  const workspace = await createWorkspace({ bodyClass: 'page-home' });
+  try {
+    await build(workspace, 'build');
+    const html = await fs.readFile(
+      path.join(workspace, 'build', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    assert.match(html, /<body class="page-home">/);
+    assert.equal(scriptBodies(html).length, 2);
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }
