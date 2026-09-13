@@ -12,7 +12,21 @@ export type HotModuleMigration =
 
 export type HmrClientKind = 'current' | 'legacy' | 'custom';
 
-const LEGACY_HOOK = 'window.__webstirRegisterHotModule';
+// Any mention of these means the entry still speaks to the older client, so
+// only an exact scaffold match may rewrite it, and nothing else may refresh
+// the client underneath it.
+const LEGACY_HOOK_PATTERN = /__webstirRegisterHotModule|__webstirDispose|__webstirAccept/;
+// Definitions the rewrite removes; a reference to any of them outside the two
+// spans means the file has grown beyond the scaffold.
+const REMOVED_DEFINITIONS = [
+  'hotModuleRegistry',
+  'ensureRecord',
+  'normalizeModuleId',
+  'isPromise',
+  'withHistoryContext',
+  'evaluateHandlerResult',
+  'HotModuleRecord',
+];
 const TYPES_START = 'type HotAsset = {';
 const TYPES_END = '// Lazy-load error handler on first error';
 const REGISTRY_START = 'export function registerHotModule(';
@@ -76,8 +90,12 @@ export function registerHotModule(moduleId: string, handlers: HotModuleHandlers)
 
 `;
 
+export function usesLegacyHotModuleHooks(source: string): boolean {
+  return LEGACY_HOOK_PATTERN.test(source);
+}
+
 export function migrateHotModuleRegistry(source: string): HotModuleMigration {
-  if (!source.includes(LEGACY_HOOK)) {
+  if (!usesLegacyHotModuleHooks(source)) {
     return { kind: 'unchanged' };
   }
 
@@ -91,6 +109,18 @@ export function migrateHotModuleRegistry(source: string): HotModuleMigration {
   }
   if (normalizeNewlines(source.slice(registry.start, registry.end)) !== LEGACY_REGISTRY_BLOCK) {
     return customized('its registry block differs from the scaffold');
+  }
+
+  const remainder =
+    source.slice(0, types.start) +
+    source.slice(types.end, registry.start) +
+    source.slice(registry.end);
+  const stillUsed = REMOVED_DEFINITIONS.find((name) => new RegExp(`\\b${name}\\b`).test(remainder));
+  if (stillUsed) {
+    return customized(`code outside the registry still uses ${stillUsed}`);
+  }
+  if (usesLegacyHotModuleHooks(remainder)) {
+    return customized('code outside the registry still refers to the old hooks');
   }
 
   const rewritten =

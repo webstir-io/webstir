@@ -281,6 +281,33 @@ test('CLI repair leaves a scaffold app.ts and a customized hmr.js both unchanged
   }
 });
 
+test('CLI repair keeps a scaffold hmr.js under an app.ts that still installs the old hooks', async () => {
+  const legacy = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
+  const partial = legacy.replace('window.__webstirRegisterHotModule = registerHotModule;\n', '');
+  expect(partial).not.toBe(legacy);
+  const legacyClient = await readFile(
+    path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'),
+    'utf8',
+  );
+  const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-partial-', {
+    app: partial,
+    client: legacyClient,
+  });
+
+  try {
+    const result = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      'note: src/frontend/app/app.ts still installs the old hot-update hooks',
+    );
+    expect(result.stdout).not.toContain('  - src/frontend/app/hmr.js');
+    expect(await readFile(prepared.clientPath, 'utf8')).toBe(legacyClient);
+    expect(await readFile(prepared.appTsPath, 'utf8')).toContain('window.__webstirDispose = async');
+  } finally {
+    await removeDemoWorkspace(prepared.workspace);
+  }
+});
+
 test('CLI repair reports a customized hot-module registry instead of rewriting it', async () => {
   const legacy = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
   const customized = legacy.replace(

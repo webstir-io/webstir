@@ -93,6 +93,29 @@ test('an extra hook in the registry block blocks the rewrite', async () => {
   expect(migrateHotModuleRegistry(customized).kind).toBe('customized');
 });
 
+test('a helper still used outside the registry blocks the rewrite', async () => {
+  const legacy = await readFile(legacyAppPath, 'utf8');
+  const customized = `${legacy}\nexport const keep = normalizeModuleId('/docs');\n`;
+
+  const result = migrateHotModuleRegistry(customized);
+  expect(result.kind).toBe('customized');
+  if (result.kind === 'customized') {
+    expect(result.reason).toContain('normalizeModuleId');
+  }
+});
+
+test('an entry that dropped only the registration hook is still legacy, and customized', async () => {
+  const legacy = await readFile(legacyAppPath, 'utf8');
+  const customized = legacy.replace('window.__webstirRegisterHotModule = registerHotModule;\n', '');
+  expect(customized).not.toBe(legacy);
+
+  const result = migrateHotModuleRegistry(customized);
+  expect(result.kind).toBe('customized');
+  if (result.kind === 'customized') {
+    expect(result.reason).toContain('registry block differs');
+  }
+});
+
 test('the client is recognized as current, legacy, or custom', async () => {
   const current = await readFile(currentClientPath, 'utf8');
   expect(classifyHmrClient(current, current)).toBe('current');
