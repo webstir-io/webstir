@@ -84,6 +84,58 @@ test('DevServer serves static files with the expected cache headers', async () =
   }
 });
 
+test('DevServer takes browser error reports at /client-errors and hands them to the terminal', async () => {
+  const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-errors-'));
+  const received: Array<{ message: string; correlationId: string }> = [];
+  const server = new DevServer({
+    buildRoot,
+    host: '127.0.0.1',
+    port: 0,
+    onClientError: (report) => {
+      received.push({ message: report.message, correlationId: report.correlationId });
+    },
+  });
+
+  try {
+    const address = await server.start();
+
+    const taken = await fetch(`${address.origin}/client-errors`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-correlation-id': 'c-1' },
+      body: JSON.stringify({
+        type: 'error',
+        message: 'boom',
+        filename: 'app.js',
+        lineno: 1,
+        colno: 2,
+      }),
+    });
+    expect(taken.status).toBe(204);
+    expect(received).toEqual([{ message: 'boom', correlationId: 'c-1' }]);
+
+    const wrongType = await fetch(`${address.origin}/client-errors`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: 'boom',
+    });
+    expect(wrongType.status).toBe(415);
+
+    const tooLarge = await fetch(`${address.origin}/client-errors`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ message: 'x'.repeat(40 * 1024) }),
+    });
+    expect(tooLarge.status).toBe(413);
+
+    const wrongMethod = await fetch(`${address.origin}/client-errors`);
+    expect(wrongMethod.status).toBe(405);
+    expect(received).toHaveLength(1);
+  } finally {
+    await server.stop();
+    await rm(buildRoot, { recursive: true, force: true });
+  }
+});
+
 test('DevServer proxies API requests and rewrites same-origin redirects', async () => {
   const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-proxy-'));
   const upstream = Bun.serve({

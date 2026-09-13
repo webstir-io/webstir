@@ -4,6 +4,14 @@ export { backendProvider } from './provider.js';
 export { startBackendWatch } from './watch.js';
 export { getBackendScaffoldAssets } from './scaffold/assets.js';
 export { createDefaultBunBackendBootstrap, startBunBackend } from './runtime/bun.js';
+export {
+  CLIENT_ERROR_MAX_BYTES,
+  CLIENT_ERRORS_PATH,
+  formatClientErrorReport,
+  isClientErrorsPath,
+  readClientErrorReport,
+} from './runtime/client-errors.js';
+export type { ClientErrorOutcome, ClientErrorReport } from './runtime/client-errors.js';
 export type {
   BunRuntimeEnvLike,
   DefaultBunBackendBootstrapOptions,

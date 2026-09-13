@@ -39,6 +39,11 @@
       "import": "./dist/runtime/bun.js",
       "default": "./dist/runtime/bun.js"
     },
+    "./runtime/client-errors": {
+      "types": "./dist/runtime/client-errors.d.ts",
+      "import": "./dist/runtime/client-errors.js",
+      "default": "./dist/runtime/client-errors.js"
+    },
     "./runtime/deploy": {
       "types": "./dist/runtime/deploy.d.ts",
       "import": "./dist/runtime/deploy.js",

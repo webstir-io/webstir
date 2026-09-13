@@ -85,6 +85,20 @@ test.skipIf(!tcpListenAvailable)(
       assert.ok(metricsPayload.totalRequests >= 1);
       assert.ok((metricsPayload.byStatus?.['200'] ?? 0) >= 1);
 
+      const reportResponse = await fetch(`${server.origin}/client-errors`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'error', message: 'boom', correlationId: 'c-1' }),
+      });
+      assert.equal(reportResponse.status, 204);
+
+      const refusedReport = await fetch(`${server.origin}/client-errors`, {
+        method: 'POST',
+        headers: { 'content-type': 'text/plain' },
+        body: 'boom',
+      });
+      assert.equal(refusedReport.status, 415);
+
       const redirectResponse = await fetch(`${server.origin}/api/deploy/redirect`, {
         redirect: 'manual',
       });
