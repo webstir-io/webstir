@@ -20,7 +20,7 @@ Follow these steps after touching the frontend hot-update pipeline.
 2. Confirm the DOM injects a fresh stylesheet and console totals increment.
 
 ## Fallback Scenario
-1. From the browser console run `window.__webstirAccept = () => false;`.
+1. From the browser console, register a declining handler for the page module: `(window.__webstirHotModules ??= []).push({ moduleId: '/pages/home/index.js', handlers: { accept: () => false } });`.
 2. Edit the page script again.
 3. Confirm:
    - Console warning announces fallback with reasons and totals.

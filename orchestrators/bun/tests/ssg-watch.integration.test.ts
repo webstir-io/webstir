@@ -373,6 +373,7 @@ test('CLI watch runs page handlers registered through registerHotModule for JS e
         () => (window as Window & { __webstirDocsMarker?: string }).__webstirDocsMarker ?? null,
       ),
     ).toBe('persist');
+    expect(browserLogs.some((line) => line.includes('old hot-update hooks'))).toBe(false);
   } catch (error) {
     if (error instanceof Error && browserLogs.length > 0) {
       error.message = `${error.message}\n\nbrowser:\n${browserLogs.join('\n')}`;

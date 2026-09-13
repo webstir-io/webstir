@@ -173,25 +173,13 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     // window.__webstirHotModules. This client drains that queue into a map keyed
     // by normalized module id, so a module that re-registers after each update
     // replaces its earlier handlers instead of piling up behind them. The app
-    // bundle carries no HMR machinery into production. Older app entries that
-    // still install window.__webstirDispose / __webstirAccept keep working.
+    // bundle carries no HMR machinery into production.
     const hotModuleHandlers = new Map();
     const hotModuleExports = new Map();
+    let warnedAboutLegacyHooks = false;
+    window.addEventListener('load', warnAboutLegacyHooks);
 
     async function invokeDispose(asset, context) {
-        const legacy = window.__webstirDispose;
-        if (typeof legacy === 'function') {
-            try {
-                const result = legacy(asset, context);
-                if (isPromise(result)) {
-                    await result;
-                }
-            } catch (error) {
-                console.error(`[webstir-hmr] Dispose handler threw for '${asset.relativePath}'.`, error);
-                return false;
-            }
-        }
-
         const registration = findHotModule(asset.url ?? asset.relativePath);
         if (!registration || typeof registration.handlers?.dispose !== 'function') {
             return true;
@@ -210,20 +198,6 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
     }
 
     async function invokeAccept(moduleExports, context) {
-        const legacy = window.__webstirAccept;
-        if (typeof legacy === 'function') {
-            try {
-                const result = legacy(moduleExports, context);
-                const resolved = isPromise(result) ? await result : result;
-                if (resolved === false) {
-                    return false;
-                }
-            } catch (error) {
-                console.error('[webstir-hmr] Accept handler threw.', error);
-                return false;
-            }
-        }
-
         const asset = context.asset;
         const registration = findHotModule(asset?.url ?? asset?.relativePath);
         if (!registration) {
@@ -253,7 +227,23 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
         return moduleId ? hotModuleHandlers.get(moduleId) ?? null : null;
     }
 
+    function warnAboutLegacyHooks() {
+        if (warnedAboutLegacyHooks) {
+            return;
+        }
+        if (typeof window.__webstirDispose !== 'function' && typeof window.__webstirAccept !== 'function') {
+            return;
+        }
+        warnedAboutLegacyHooks = true;
+        console.warn(
+            '[webstir-hmr] app.ts still installs the old hot-update hooks (window.__webstirDispose / ' +
+            'window.__webstirAccept). They are no longer read, so page accept/dispose handlers ' +
+            'registered through them will not run. Run `webstir repair` to update app.ts.'
+        );
+    }
+
     function takeRegistrations() {
+        warnAboutLegacyHooks();
         const queue = window.__webstirHotModules;
         if (!Array.isArray(queue) || queue.length === 0) {
             return;

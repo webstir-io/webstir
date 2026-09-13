@@ -41,10 +41,10 @@ Webstir watch mode follows a narrow fallback policy:
 
 ### Moving an older workspace to the dev-only registry
 
-Workspaces scaffolded before this split keep working: `hmr.js` still honours the `window.__webstirDispose` and `window.__webstirAccept` hooks that the older `app.ts` installs. To drop that code from your production bundle:
+Workspaces scaffolded before this split still carry the registry in `app.ts`, where it installs `window.__webstirDispose` and `window.__webstirAccept`. The current client does not read those hooks; it warns once in the console when it finds them, because page handlers registered through them no longer run.
 
-1. Remove `src/frontend/app/hmr.js` and run `webstir repair` to restore the current client.
-2. In `src/frontend/app/app.ts`, delete everything from `type HotAsset = {` through the end of the `window.__webstirAccept = ...;` block (the registry Map, `ensureRecord`, `normalizeModuleId`, `withHistoryContext`, `evaluateHandlerResult`, and the three `window.__webstir*` assignments), and put this in its place. Pages that import `registerHotModule` from `app.ts` keep compiling and keep their handlers:
+1. Remove `src/frontend/app/hmr.js` and run `webstir repair`. Repair restores the current client and, when the registry block in `app.ts` is still the scaffold's own, replaces it with the thin registration below. Pages that import `registerHotModule` from `app.ts` keep compiling and keep their handlers.
+2. If repair reports that `app.ts` was customized, do the replacement by hand: delete everything from `type HotAsset = {` through the end of the `window.__webstirAccept = ...;` block (the registry Map, `ensureRecord`, `normalizeModuleId`, `withHistoryContext`, `evaluateHandlerResult`, and the three `window.__webstir*` assignments), and put this in its place:
 
 ```ts
 export type HotAsset = {

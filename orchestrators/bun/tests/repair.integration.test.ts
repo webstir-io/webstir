@@ -152,6 +152,83 @@ test('CLI repair restores enabled feature assets and wiring for the SSG site dem
   }
 });
 
+test('CLI repair replaces the scaffold hot-module registry in app.ts with the thin registration', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-hot-module-', {
+    workspaceName: 'site',
+  });
+
+  try {
+    const appTsPath = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
+    const legacy = await readFile(
+      path.join(packageRoot, 'test-support', 'fixtures', 'legacy-hot-module-app.ts.txt'),
+      'utf8',
+    );
+    await writeFile(appTsPath, legacy, 'utf8');
+
+    const dryRun = await runCli([
+      'repair',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+      '--dry-run',
+    ]);
+    expect(dryRun.exitCode).toBe(0);
+    expect(dryRun.stdout).toContain('src/frontend/app/app.ts');
+    expect(await readFile(appTsPath, 'utf8')).toBe(legacy);
+
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('src/frontend/app/app.ts');
+    expect(result.stdout).not.toContain('note:');
+
+    const updated = await readFile(appTsPath, 'utf8');
+    expect(updated).toContain('export function registerHotModule(');
+    expect(updated).toContain('window.__webstirHotModules ??= []');
+    expect(updated).not.toContain('__webstirDispose');
+    expect(updated).toContain('export { loadErrorHandler };');
+
+    const again = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    expect(again.stdout).not.toContain('src/frontend/app/app.ts');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI repair reports a customized hot-module registry instead of rewriting it', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-hot-module-custom-', {
+    workspaceName: 'site',
+  });
+
+  try {
+    const appTsPath = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
+    const legacy = await readFile(
+      path.join(packageRoot, 'test-support', 'fixtures', 'legacy-hot-module-app.ts.txt'),
+      'utf8',
+    );
+    const customized = legacy.replace(
+      'window.__webstirRegisterHotModule = registerHotModule;',
+      'window.__webstirRegisterHotModule = registerHotModule;\nwindow.__webstirRegisterHotBoundary = () => {};',
+    );
+    await writeFile(appTsPath, customized, 'utf8');
+
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(
+      'note: src/frontend/app/app.ts still installs the old hot-update hooks',
+    );
+    expect(result.stdout).toContain('__webstirRegisterHotBoundary');
+    const untouched = await readFile(appTsPath, 'utf8');
+    expect(untouched).toContain('window.__webstirRegisterHotBoundary = () => {};');
+    expect(untouched).toContain('window.__webstirDispose = async');
+    expect(untouched).not.toContain('window.__webstirHotModules ??= []');
+
+    const json = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot, '--json']);
+    const parsed = JSON.parse(json.stdout) as { notes: string[] };
+    expect(parsed.notes).toHaveLength(1);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI repair restores the s3-cloudfront deploy script and edge function', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-repair-ssg-s3-');
   try {

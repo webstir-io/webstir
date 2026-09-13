@@ -29,12 +29,11 @@ export function formatEnableSummary(result: EnableResult): string {
 
   if (result.changes.length === 0) {
     lines.push('changes: none');
-    return lines.join('\n');
-  }
-
-  lines.push(`changes: ${result.changes.length}`);
-  for (const change of result.changes) {
-    lines.push(`  - ${change}`);
+  } else {
+    lines.push(`changes: ${result.changes.length}`);
+    for (const change of result.changes) {
+      lines.push(`  - ${change}`);
+    }
   }
 
   return lines.join('\n');
@@ -68,12 +67,15 @@ export function formatRepairSummary(result: RepairResult): string {
 
   if (result.changes.length === 0) {
     lines.push('changes: none');
-    return lines.join('\n');
+  } else {
+    lines.push(`changes: ${result.changes.length}`);
+    for (const change of result.changes) {
+      lines.push(`  - ${change}`);
+    }
   }
 
-  lines.push(`changes: ${result.changes.length}`);
-  for (const change of result.changes) {
-    lines.push(`  - ${change}`);
+  for (const note of result.notes) {
+    lines.push(`note: ${note}`);
   }
 
   return lines.join('\n');
@@ -87,6 +89,7 @@ export function formatRepairJson(result: RepairResult): string {
       mode: result.mode,
       dryRun: result.dryRun,
       changes: result.changes,
+      notes: result.notes,
     },
     null,
     2,

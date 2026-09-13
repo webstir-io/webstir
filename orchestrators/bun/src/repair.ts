@@ -20,6 +20,7 @@ import {
   type PreflightedScaffoldAsset,
   type ScaffoldAssetDescriptor,
 } from './scaffold-path.ts';
+import { migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
 
@@ -62,6 +63,7 @@ export interface RepairResult {
   readonly mode: string;
   readonly dryRun: boolean;
   readonly changes: readonly string[];
+  readonly notes: readonly string[];
 }
 
 export async function runRepair(options: RunRepairOptions): Promise<RepairResult> {
@@ -71,6 +73,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as RepairPackageJson;
   const enable = packageJson.webstir?.enable ?? {};
   const changes: string[] = [];
+  const notes: string[] = [];
   const assets: RepairAsset[] = [
     ...getRootScaffoldAssets(),
     ...filterModeScaffoldAssets(await getModeScaffoldAssets(workspace.mode), enable),
@@ -106,6 +109,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     ? await readFrontendConfigDocument(workspace.root)
     : undefined;
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
+  await ensureAppHotModuleRegistration(workspace.root, changes, notes, dryRun);
 
   if (enable.clientNav) {
     await ensureAppImport(workspace.root, './scripts/features/client-nav.js', changes, dryRun);
@@ -161,6 +165,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     mode: workspace.mode,
     dryRun,
     changes: uniqueSorted(changes),
+    notes,
   };
 }
 
@@ -251,6 +256,38 @@ async function restoreScaffoldAssets(
 
     changes.push(asset.relativeTargetPath);
   }
+}
+
+// The hot-module registry moved from app.ts into the dev-only hmr.js. An app
+// entry that still carries the scaffold's registry block gets the thin
+// registration instead; one that was customized is reported, not rewritten.
+async function ensureAppHotModuleRegistration(
+  workspaceRoot: string,
+  changes: string[],
+  notes: string[],
+  dryRun: boolean,
+): Promise<void> {
+  const appTsPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
+  if (!existsSync(appTsPath)) {
+    return;
+  }
+
+  const relativePath = relativeWorkspacePath(workspaceRoot, appTsPath);
+  const migration = migrateHotModuleRegistry(await readTextFile(appTsPath));
+  if (migration.kind === 'unchanged') {
+    return;
+  }
+  if (migration.kind === 'customized') {
+    notes.push(
+      `${relativePath} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (see the webstir-frontend README, "Moving an older workspace to the dev-only registry").`,
+    );
+    return;
+  }
+
+  if (!dryRun) {
+    await Bun.write(appTsPath, migration.source);
+  }
+  changes.push(relativePath);
 }
 
 async function ensureAppImport(
