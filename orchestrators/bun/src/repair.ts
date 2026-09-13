@@ -20,7 +20,7 @@ import {
   type PreflightedScaffoldAsset,
   type ScaffoldAssetDescriptor,
 } from './scaffold-path.ts';
-import { migrateHotModuleRegistry } from './hot-module-migration.ts';
+import { classifyHmrClient, migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
 
@@ -109,7 +109,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     ? await readFrontendConfigDocument(workspace.root)
     : undefined;
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
-  await ensureAppHotModuleRegistration(workspace.root, changes, notes, dryRun);
+  await ensureHotModulePair(workspace.root, assets, changes, notes, dryRun);
 
   if (enable.clientNav) {
     await ensureAppImport(workspace.root, './scripts/features/client-nav.js', changes, dryRun);
@@ -258,36 +258,77 @@ async function restoreScaffoldAssets(
   }
 }
 
-// The hot-module registry moved from app.ts into the dev-only hmr.js. An app
-// entry that still carries the scaffold's registry block gets the thin
-// registration instead; one that was customized is reported, not rewritten.
-async function ensureAppHotModuleRegistration(
+// The hot-module registry moved from app.ts into the dev-only hmr.js, and the
+// two only work as a pair: the current client reads window.__webstirHotModules,
+// the older client read hooks the older app.ts installed. Repair moves both
+// forward together when each is still the scaffold's own file, and otherwise
+// leaves both alone and says why.
+async function ensureHotModulePair(
   workspaceRoot: string,
+  assets: readonly { sourcePath: string; targetPath: string }[],
   changes: string[],
   notes: string[],
   dryRun: boolean,
 ): Promise<void> {
-  const appTsPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
-  if (!existsSync(appTsPath)) {
+  const appPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
+  const clientPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'hmr.js');
+  const clientAsset = assets.find(
+    (asset) => normalizeRelativePath(asset.targetPath) === 'src/frontend/app/hmr.js',
+  );
+  if (!existsSync(appPath) || !clientAsset) {
     return;
   }
 
-  const relativePath = relativeWorkspacePath(workspaceRoot, appTsPath);
-  const migration = migrateHotModuleRegistry(await readTextFile(appTsPath));
-  if (migration.kind === 'unchanged') {
-    return;
-  }
+  const appRelative = relativeWorkspacePath(workspaceRoot, appPath);
+  const clientRelative = relativeWorkspacePath(workspaceRoot, clientPath);
+  const currentClient = await readTextFile(clientAsset.sourcePath);
+  const appSource = await readTextFile(appPath);
+  const migration = migrateHotModuleRegistry(appSource);
+  const clientKind = existsSync(clientPath)
+    ? classifyHmrClient(await readTextFile(clientPath), currentClient)
+    : 'current';
+  const manualSteps =
+    'see "Moving an older workspace to the dev-only registry" in the webstir-frontend README';
+
+  const refreshClient = async (): Promise<void> => {
+    if (!dryRun) {
+      await Bun.write(clientPath, currentClient);
+    }
+    changes.push(clientRelative);
+  };
+
   if (migration.kind === 'customized') {
     notes.push(
-      `${relativePath} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (see the webstir-frontend README, "Moving an older workspace to the dev-only registry").`,
+      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (${manualSteps}), then remove ${clientRelative} and run repair again.`,
     );
     return;
   }
 
-  if (!dryRun) {
-    await Bun.write(appTsPath, migration.source);
+  if (migration.kind === 'unchanged') {
+    if (clientKind === 'legacy') {
+      await refreshClient();
+    } else if (clientKind === 'custom' && appSource.includes('__webstirHotModules')) {
+      notes.push(
+        `${clientRelative} is customized and may not read the registrations ${appRelative} queues in window.__webstirHotModules; compare it with the scaffold's client (${manualSteps}).`,
+      );
+    }
+    return;
   }
-  changes.push(relativePath);
+
+  if (clientKind === 'custom') {
+    notes.push(
+      `${appRelative} still installs the old hot-update hooks, and ${clientRelative} is customized, so neither was changed; bring ${clientRelative} up to the scaffold's client (or remove it) and run repair again (${manualSteps}).`,
+    );
+    return;
+  }
+
+  if (clientKind === 'legacy') {
+    await refreshClient();
+  }
+  if (!dryRun) {
+    await Bun.write(appPath, migration.source);
+  }
+  changes.push(appRelative);
 }
 
 async function ensureAppImport(
