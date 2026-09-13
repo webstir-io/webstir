@@ -6,6 +6,7 @@ import {
   formatClientErrorReport,
   isClientErrorsPath,
   readClientErrorReport,
+  renderField,
 } from '../dist/index.js';
 
 function post(body, headers = {}) {
@@ -98,8 +99,45 @@ test('unreadable bodies are taken quietly and dropped', async () => {
   }
 });
 
-test('only the exact path is the client error route', () => {
+test('the route accepts an optional trailing slash and nothing else', () => {
   assert.equal(isClientErrorsPath('/client-errors'), true);
-  assert.equal(isClientErrorsPath('/client-errors/'), false);
+  assert.equal(isClientErrorsPath('/client-errors/'), true);
   assert.equal(isClientErrorsPath('/api/client-errors'), false);
+  assert.equal(isClientErrorsPath('/client-errors/x'), false);
+});
+
+test('terminal output escapes control characters from every field', async () => {
+  const forged = 'boom\n[webstir] build succeeded\u001b[2J';
+  const outcome = await readClientErrorReport(
+    post(
+      JSON.stringify({
+        type: 'error\r',
+        message: forged,
+        filename: 'app\u0007.js',
+        lineno: 1,
+        colno: 1,
+        stack: '\u001b[31mError: boom\u001b[0m\n    at run (app.js:1:1)',
+        correlationId: 'c-1\u2028',
+      }),
+    ),
+  );
+  assert.equal(outcome.status, 204);
+  // The structured report keeps the original values.
+  assert.equal(outcome.report.message, forged);
+
+  const line = formatClientErrorReport(outcome.report);
+  assert.equal(
+    line,
+    'error\\r: boom\\n[webstir] build succeeded\\x1b[2J at app\\x07.js:1:1 (c-1\\u2028)\n  \\x1b[31mError: boom\\x1b[0m',
+  );
+  // The only raw newline is the one the formatter adds before the stack line.
+  assert.equal(line.split('\n').length, 2);
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting none remain
+  assert.equal(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(line.replace('\n  ', '')), false);
+});
+
+test('rendered fields are cut to a sane length', () => {
+  const rendered = renderField('x'.repeat(5_000));
+  assert.equal(rendered.length, 1_001);
+  assert.equal(rendered.endsWith('…'), true);
 });

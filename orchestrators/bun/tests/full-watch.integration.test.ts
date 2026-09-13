@@ -205,8 +205,9 @@ test('CLI watch exposes a full home boundary that remounts cleanly', async () =>
       }, 200);
     });
     await waitFor(async () => {
-      expect(stderrBuffer.text).toContain('[webstir] client error: error: ');
-      expect(stderrBuffer.text).toContain('webstir-client-error-proof-2');
+      expect(stderrBuffer.text).toMatch(
+        /\[webstir\] client error: error: Uncaught Error: webstir-client-error-proof-2 \(c-[a-z0-9]+\)/,
+      );
     }, 15_000);
 
     await context.close();

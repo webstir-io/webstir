@@ -10,6 +10,7 @@ export {
   formatClientErrorReport,
   isClientErrorsPath,
   readClientErrorReport,
+  renderField,
 } from './runtime/client-errors.js';
 export type { ClientErrorOutcome, ClientErrorReport } from './runtime/client-errors.js';
 export type {

@@ -25,7 +25,7 @@ export type ClientErrorOutcome =
   | { readonly status: 413 | 415; readonly report: null };
 
 export function isClientErrorsPath(pathname: string): boolean {
-  return pathname === CLIENT_ERRORS_PATH;
+  return pathname === CLIENT_ERRORS_PATH || pathname === `${CLIENT_ERRORS_PATH}/`;
 }
 
 export async function readClientErrorReport(request: Request): Promise<ClientErrorOutcome> {
@@ -47,15 +47,45 @@ export async function readClientErrorReport(request: Request): Promise<ClientErr
   return { status: 204, report: parseReport(body, request.headers.get('x-correlation-id')) };
 }
 
+// Everything in a report came from a browser and goes to a terminal, so each
+// rendered field has its control characters escaped (a newline becomes the two
+// characters \\n, an escape byte becomes \\x1b) and is cut to a sane length.
+// The structured report keeps the original values.
+const MAX_RENDERED_FIELD = 1_000;
+
 export function formatClientErrorReport(report: ClientErrorReport): string {
-  const where = report.filename ? ` at ${report.filename}:${report.lineno}:${report.colno}` : '';
-  const correlation = report.correlationId ? ` (${report.correlationId})` : '';
+  const message = renderField(report.message);
+  const where = report.filename
+    ? ` at ${renderField(report.filename)}:${report.lineno}:${report.colno}`
+    : '';
+  const correlation = report.correlationId ? ` (${renderField(report.correlationId)})` : '';
   const firstStackLine = report.stack.split('\n').find((line) => line.trim().length > 0) ?? '';
   const stack =
     firstStackLine && !report.message.includes(firstStackLine.trim())
-      ? `\n  ${firstStackLine.trim()}`
+      ? `\n  ${renderField(firstStackLine.trim())}`
       : '';
-  return `${report.type}: ${report.message}${where}${correlation}${stack}`;
+  return `${renderField(report.type)}: ${message}${where}${correlation}${stack}`;
+}
+
+export function renderField(value: string): string {
+  const cut = value.length > MAX_RENDERED_FIELD ? `${value.slice(0, MAX_RENDERED_FIELD)}…` : value;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: escaping control characters is the point
+  return cut.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, (char) => {
+    switch (char) {
+      case '\n':
+        return '\\n';
+      case '\r':
+        return '\\r';
+      case '\t':
+        return '\\t';
+      default: {
+        const code = char.charCodeAt(0);
+        return code > 0xff
+          ? `\\u${code.toString(16).padStart(4, '0')}`
+          : `\\x${code.toString(16).padStart(2, '0')}`;
+      }
+    }
+  });
 }
 
 async function readBodyWithin(request: Request, maxBytes: number): Promise<string | null> {
