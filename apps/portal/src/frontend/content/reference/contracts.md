@@ -44,6 +44,9 @@ Current user-visible behaviors that Webstir documents and tests while the framew
   - Returns `204` on success; `415` for unsupported media type; `413` if payload too large.
   - Forwards to the error tracking hook with correlation id support (`X-Correlation-ID` or payload `correlationId`).
 
+## HTML
+- `<script data-webstir-inline src="…">` tags are bundled from their source at build time and inlined into the page; publish bundles them again, minified. Relative sources resolve against the containing file, leading-slash sources against `src/frontend`.
+
 ## Error Handling
 - Missing required inputs (base HTML, server entry) fails fast with clear messages.
 - Publish removes comments and source maps from outputs.
