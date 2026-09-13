@@ -116,6 +116,30 @@ test('an entry that dropped only the registration hook is still legacy, and cust
   }
 });
 
+test('a modifier added to a scaffold declaration reads as customization', async () => {
+  const legacy = await readFile(legacyAppPath, 'utf8');
+  const customized = legacy.replace('\ntype HotAsset = {', '\nexport type HotAsset = {');
+  expect(customized).not.toBe(legacy);
+
+  const result = migrateHotModuleRegistry(customized);
+  expect(result.kind).toBe('customized');
+  if (result.kind === 'customized') {
+    expect(result.reason).toContain('not laid out');
+  }
+});
+
+test('the rewritten entry is valid TypeScript', async () => {
+  const legacy = await readFile(legacyAppPath, 'utf8');
+  const result = migrateHotModuleRegistry(legacy);
+  expect(result.kind).toBe('rewritten');
+  if (result.kind !== 'rewritten') {
+    return;
+  }
+  const transpiler = new Bun.Transpiler({ loader: 'ts' });
+  expect(() => transpiler.transformSync(result.source)).not.toThrow();
+  expect(result.source).not.toContain('export export');
+});
+
 test('the client is recognized as current, legacy, or custom', async () => {
   const current = await readFile(currentClientPath, 'utf8');
   expect(classifyHmrClient(current, current)).toBe('current');

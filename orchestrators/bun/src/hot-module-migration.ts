@@ -139,20 +139,36 @@ export function classifyHmrClient(source: string, current: string): HmrClientKin
   return LEGACY_CLIENT_HASHES.has(sha256(normalized)) ? 'legacy' : 'custom';
 }
 
+// Markers must sit at the start of a line so a declaration with an added
+// modifier (`export type HotAsset = {`) reads as customized, not as the
+// scaffold's own line with something in front of it.
 function locateSpan(
   source: string,
   startMarker: string,
   endMarker: string,
 ): { readonly start: number; readonly end: number } | null {
-  const start = source.indexOf(startMarker);
-  if (start < 0 || source.indexOf(startMarker, start + 1) >= 0) {
+  const starts = lineStarts(source, startMarker);
+  if (starts.length !== 1) {
     return null;
   }
-  const end = source.indexOf(endMarker, start);
-  if (end < 0 || source.indexOf(endMarker, end + 1) >= 0) {
+  const start = starts[0] ?? -1;
+  const ends = lineStarts(source, endMarker).filter((index) => index > start);
+  if (ends.length !== 1) {
     return null;
   }
-  return { start, end };
+  return { start, end: ends[0] ?? -1 };
+}
+
+function lineStarts(source: string, marker: string): number[] {
+  const found: number[] = [];
+  let index = source.indexOf(marker);
+  while (index >= 0) {
+    if (index === 0 || source[index - 1] === '\n') {
+      found.push(index);
+    }
+    index = source.indexOf(marker, index + 1);
+  }
+  return found;
 }
 
 function normalizeNewlines(value: string): string {
