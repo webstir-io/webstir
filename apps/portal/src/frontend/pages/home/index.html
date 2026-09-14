@@ -1,23 +1,15 @@
 <head>
   <title>Webstir</title>
-  <meta name="description" content="A TypeScript web framework for Bun, built for agentic tools.">
+  <meta name="description" content="A server-first TypeScript web framework on Bun. Pages ship as working HTML, enhancement is opt-in, and the workspace stays legible to agentic tools.">
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
   <main>
     <section class="portal-hero">
       <div class="ws-container portal-hero__inner">
-        <img class="portal-hero__mark" src="/images/webstir.svg" alt="" width="112" height="112">
-        <h1 aria-label="A framework for building TypeScript web apps.">
-          <span class="portal-hero__headline portal-hero__headline--desktop" aria-hidden="true">
-            <span>A framework</span> <span>for building</span> <span>TypeScript</span> <span>web apps.</span>
-          </span>
-          <span class="portal-hero__headline portal-hero__headline--mobile" aria-hidden="true">
-            <span>A framework</span> <span>for building</span> <span>TypeScript</span> <span>web apps.</span>
-          </span>
-        </h1>
+        <h1>Web apps that work before the JavaScript arrives.</h1>
         <p class="portal-hero__lead">
-          Webstir runs on Bun and keeps TypeScript apps easy for agentic tools to read, change, test, and ship.
+          Webstir is a server-first TypeScript framework on Bun. Pages ship as working HTML, enhancement is opt-in, and the workspace stays legible to people and agentic tools.
         </p>
         <pre class="portal-hero__terminal" aria-label="Webstir command workflow"><code><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir init full my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir watch --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir test --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir publish --workspace my-app</span></code></pre>
         <div class="portal-hero__actions">
@@ -31,7 +23,7 @@
       <div class="ws-container">
         <div class="portal-section__header">
           <h2>Why Webstir</h2>
-          <p>Built for server-first multi-page apps, backoffice tools, and dashboards that should work before any JavaScript arrives.</p>
+          <p>Webstir is narrow on purpose: multi-page apps, backoffice tools, and dashboards where the server renders the page and the browser enhances it.</p>
         </div>
         <ul class="portal-feature-grid">
           <li class="portal-feature">
