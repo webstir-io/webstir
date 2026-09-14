@@ -10,6 +10,8 @@
     border-radius: 0;
     background: var(--ws-surface-1);
     padding: var(--ws-space-5) var(--ws-space-6);
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   .docs-panel__header {
@@ -120,6 +122,30 @@
     color: var(--ws-accent);
   }
 
+  .docs-sidebar .docs-nav__list {
+    --ws-link-list-gap: 0.125rem;
+  }
+
+  .docs-sidebar .docs-nav__link,
+  .docs-sidebar .docs-nav__label {
+    display: block;
+    padding-block: 0.375rem;
+    border-radius: var(--ws-radius-1);
+  }
+
+  .docs-sidebar .docs-nav__link {
+    padding-right: var(--ws-space-2);
+  }
+
+  .docs-sidebar .docs-nav__link:hover {
+    background: var(--ws-hover);
+  }
+
+  .docs-sidebar .docs-nav__link:focus-visible {
+    outline: 0.1875rem solid var(--ws-focus);
+    outline-offset: 0.125rem;
+  }
+
   .docs-nav__item[data-active="true"] > .docs-nav__link,
   .docs-nav__item[data-active-branch="true"] > .docs-nav__label {
     color: var(--ws-accent);
@@ -152,7 +178,9 @@
     .docs-toolbar {
       margin-bottom: var(--ws-space-2);
     }
+  }
 
+  @media (max-width: 50rem) {
     .app-nav__docs {
       display: block;
       padding-bottom: var(--ws-space-2);

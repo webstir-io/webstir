@@ -125,7 +125,7 @@
     display: inline-flex;
   }
 
-  @media (max-width: 40rem) {
+  @media (max-width: 50rem) {
     .app-menu__toggle.ws-icon-button {
       display: inline-flex;
     }

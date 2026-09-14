@@ -358,6 +358,7 @@ function openSearch(options?: { initialQuery?: string }): void {
 
     state.lastActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     activeDrawer.open();
+    void ensureIndexLoaded();
 
     const menu = document.querySelector<HTMLElement>('[data-app-menu]');
     if (menu?.classList.contains('is-open')) {
@@ -426,6 +427,10 @@ async function refreshResults(): Promise<void> {
 
     if (!input || !hint || !quickLinks || !quickLinksList || !matchesRoot || !resultsList || !scopes) {
         return;
+    }
+
+    if (state.entries === null && stripAndNormalize(input.value).length >= 2) {
+        hint.textContent = 'Loading search index…';
     }
 
     const entries = await ensureIndexLoaded();
@@ -521,6 +526,8 @@ function boot(): void {
     const trigger = ensureTrigger();
     if (trigger) {
         trigger.addEventListener('click', () => toggleSearch());
+        trigger.addEventListener('pointerenter', () => void ensureIndexLoaded(), { once: true });
+        trigger.addEventListener('focus', () => void ensureIndexLoaded(), { once: true });
     }
 
     document.addEventListener('keydown', (event) => {
