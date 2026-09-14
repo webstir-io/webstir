@@ -50,11 +50,13 @@
   }
 
   .portal-hero__figure {
-    --portal-mascot: clamp(10rem, 28vw, 13rem);
+    --portal-mascot: clamp(11rem, 44vw, 16rem);
     position: relative;
     margin: 0;
-    order: -1;
-    justify-self: start;
+    margin-right: calc(var(--portal-mascot) * -0.16);
+    margin-bottom: calc(-1 * var(--portal-hero-pad-b) - var(--portal-mascot) * 0.14);
+    margin-top: calc(var(--ws-space-8) * -1);
+    justify-self: end;
     width: var(--portal-mascot);
     aspect-ratio: 1;
   }
@@ -62,7 +64,7 @@
   .portal-hero__figure::before {
     content: "";
     position: absolute;
-    inset: -30%;
+    inset: -25%;
     border-radius: 50%;
     background: radial-gradient(
       closest-side,
@@ -124,9 +126,8 @@
 
     .portal-hero__figure {
       --portal-mascot: clamp(16rem, 30vw, 28rem);
-      order: 0;
-      justify-self: end;
       align-self: end;
+      margin-top: 0;
       margin-right: calc(var(--portal-mascot) * -0.1);
       margin-bottom: calc(-1 * var(--portal-hero-pad-b) - var(--portal-mascot) * 0.12);
     }
