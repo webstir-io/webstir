@@ -9,6 +9,9 @@
       inset-inline: 0;
       top: 100%;
       display: flex;
+      max-height: calc(100vh - var(--ws-header-sticky-offset, 0px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
       padding: var(--ws-space-2);
       border-bottom: 1px solid var(--ws-border);
       background: var(--ws-bg);
