@@ -13,6 +13,7 @@ import { getPageDirectories } from '../core/pages.js';
 import { readPageManifest, readSharedAssets } from '../assets/assetManifest.js';
 import { resolvePageAssetUrl, resolvePagesUrlPrefix } from '../utils/pagePaths.js';
 import { ensureDocsShellCriticalCss } from '../html/criticalCss.js';
+import { inlineSourceScriptsInHtml } from '../html/inlineScripts.js';
 import type { FrontendContentConfig } from '../types.js';
 
 interface ContentFrontmatter {
@@ -75,6 +76,23 @@ export function createContentBuilder(context: BuilderContext): Builder {
   };
 }
 
+async function readContentTemplate(
+  context: BuilderContext,
+  filePath: string,
+  minify: boolean,
+): Promise<string> {
+  const html = await readFile(filePath);
+  validateAppTemplate(html, filePath);
+  const result = await inlineSourceScriptsInHtml(html, {
+    baseDir: path.dirname(filePath),
+    frontendRoot: context.config.paths.src.frontend,
+    workspaceRoot: context.config.paths.workspace,
+    minify,
+    describeContainer: path.relative(context.config.paths.workspace, filePath),
+  });
+  return result.html;
+}
+
 async function buildContentPages(context: BuilderContext): Promise<void> {
   const { config } = context;
   const contentRoot = config.paths.src.content;
@@ -85,7 +103,11 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
 
   if (
     !isSidebarOverrideChange(context, contentRoot) &&
-    !shouldProcess(context, [{ directory: contentRoot, extensions: ['.md'] }])
+    !shouldProcess(context, [
+      { directory: contentRoot, extensions: ['.md'] },
+      // Shell inline sources and their app-local imports feed every content page.
+      { directory: config.paths.src.app },
+    ])
   ) {
     return;
   }
@@ -101,8 +123,7 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
     throw new Error(`Base application HTML file not found for content pages: ${appTemplatePath}`);
   }
 
-  const templateHtml = await readFile(appTemplatePath);
-  validateAppTemplate(templateHtml, appTemplatePath);
+  const templateHtml = await readContentTemplate(context, appTemplatePath, false);
 
   const buildPagesUrlPrefix = resolvePagesUrlPrefix(
     config.paths.build.frontend,
@@ -163,8 +184,7 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
     throw new Error(`Base application HTML file not found for content pages: ${appTemplatePath}`);
   }
 
-  const templateHtml = await readFile(appTemplatePath);
-  validateAppTemplate(templateHtml, appTemplatePath);
+  const templateHtml = await readContentTemplate(context, appTemplatePath, true);
 
   const pagesUrlPrefix = resolvePagesUrlPrefix(config.paths.dist.frontend, config.paths.dist.pages);
   const buildPagesUrlPrefix = resolvePagesUrlPrefix(
