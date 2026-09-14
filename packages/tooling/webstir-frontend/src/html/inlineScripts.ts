@@ -44,7 +44,9 @@ export interface InlineScriptResult {
  * Inlines the tags in an HTML string. The tags are found with an HTML parser
  * that reports source offsets, so comments stay comments and attribute names
  * match exactly; only the tags themselves are rewritten, and every other byte
- * of the file is kept as written.
+ * of the file is kept as written. Attribute values are decoded on the way in and
+ * escaped again on the way out, so a JSON attribute or an entity in src
+ * round-trips.
  */
 export async function inlineSourceScriptsInHtml(
   html: string,
@@ -54,7 +56,7 @@ export async function inlineSourceScriptsInHtml(
   const located = load(
     html,
     {
-      xml: { xmlMode: false, decodeEntities: false, withStartIndices: true, withEndIndices: true },
+      xml: { xmlMode: false, decodeEntities: true, withStartIndices: true, withEndIndices: true },
     },
     false,
   );

@@ -239,3 +239,42 @@ test('a commented-out inline tag is left alone and a data-src attribute is not a
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+test('attribute entities are decoded before the tag is rebuilt, in the source and in other attributes', async () => {
+  const workspace = await createWorkspace({
+    pageScript: false,
+    shellTagOverride:
+      '<script data-config="{&quot;mode&quot;:&quot;dark&quot;}" data-webstir-inline src="./scripts/paint&amp;theme.ts"></script>',
+  });
+  await fs.writeFile(
+    path.join(workspace, 'src', 'frontend', 'app', 'scripts', 'paint&theme.ts'),
+    "const themeMarker: string = 'entity-source';\ndocument.documentElement.dataset.theme = themeMarker;\n",
+  );
+  try {
+    await build(workspace, 'build');
+    const built = await fs.readFile(
+      path.join(workspace, 'build', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    const builtTag = built.match(/<script[^>]*data-webstir-inline[^>]*>/)[0];
+    assert.match(builtTag, /data-config="\{&quot;mode&quot;:&quot;dark&quot;\}"/);
+    assert.doesNotMatch(builtTag, /&amp;quot;/);
+    assert.match(
+      builtTag,
+      /data-webstir-inline="src\/frontend\/app\/scripts\/paint&amp;theme\.ts"/,
+    );
+    assert.match(built, /entity-source/);
+
+    await build(workspace, 'publish');
+    const published = await fs.readFile(
+      path.join(workspace, 'dist', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    const publishedTag = published.match(/<script[^>]*data-webstir-inline[^>]*>/)[0];
+    assert.match(publishedTag, /data-config="\{&quot;mode&quot;:&quot;dark&quot;\}"/);
+    assert.doesNotMatch(publishedTag, /&amp;quot;/);
+    assert.match(published, /entity-source/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
