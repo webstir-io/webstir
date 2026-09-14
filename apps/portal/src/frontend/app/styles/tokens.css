@@ -9,7 +9,8 @@
 
     --ws-accent: #2563eb;
     --ws-accent-hover: #1d4ed8;
-    --ws-focus: rgba(37, 99, 235, 0.35);
+    --ws-accent-fg: #ffffff;
+    --ws-focus: var(--ws-accent);
 
     --ws-radius-1: 8px;
     --ws-radius-2: 10px;
@@ -88,7 +89,8 @@
 
     --ws-accent: #60a5fa;
     --ws-accent-hover: #3b82f6;
-    --ws-focus: rgba(96, 165, 250, 0.35);
+    --ws-accent-fg: #0b1220;
+    --ws-focus: var(--ws-accent);
     --ws-logo-filter: brightness(0) saturate(100%) invert(75%) sepia(32%) saturate(947%)
       hue-rotate(179deg) brightness(101%) contrast(96%);
   }

@@ -23,17 +23,17 @@
     {
       "path": "/docs/how-to/",
       "title": "How-to Guides",
-      "order": 0
+      "order": 10
     },
     {
       "path": "/docs/reference/",
       "title": "Reference",
-      "order": 0
+      "order": 20
     },
     {
       "path": "/docs/explanations/",
       "title": "Explanations",
-      "order": 0
+      "order": 30
     }
   ]
 }
