@@ -11,6 +11,7 @@ async function createWorkspace({
   pageScript = true,
   missing = false,
   bodyClass = '',
+  shellTagOverride = null,
 } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-inline-scripts-'));
   const appDir = path.join(root, 'src', 'frontend', 'app');
@@ -19,9 +20,11 @@ async function createWorkspace({
   await fs.mkdir(scriptsDir, { recursive: true });
   await fs.mkdir(pageDir, { recursive: true });
 
-  const shellTag = shellScript
-    ? `<script data-webstir-inline src="${missing ? './scripts/nope.ts' : './scripts/first-paint.ts'}"></script>`
-    : '';
+  const shellTag =
+    shellTagOverride ??
+    (shellScript
+      ? `<script data-webstir-inline src="${missing ? './scripts/nope.ts' : './scripts/first-paint.ts'}"></script>`
+      : '');
   await fs.writeFile(
     path.join(appDir, 'app.html'),
     `<!doctype html><html><head>${shellTag}<link rel="stylesheet" href="/app/app.css"></head><body><main></main></body></html>`,
@@ -166,6 +169,72 @@ test('a page with an inline script keeps its body class through the merge', asyn
     );
     assert.match(html, /<body class="page-home">/);
     assert.equal(scriptBodies(html).length, 2);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('attributes other than src and type are carried onto the inlined tag', async () => {
+  const workspace = await createWorkspace({
+    pageScript: false,
+    shellTagOverride:
+      '<script id="first-paint" nonce="n0nce" data-purpose="pre-paint" type="module" data-webstir-inline src="./scripts/first-paint.ts"></script>',
+  });
+  try {
+    await build(workspace, 'build');
+    const built = await fs.readFile(
+      path.join(workspace, 'build', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    const builtTag = built.match(/<script[^>]*data-webstir-inline[^>]*>/)[0];
+    assert.match(builtTag, /\bid="first-paint"/);
+    assert.match(builtTag, /\bnonce="n0nce"/);
+    assert.match(builtTag, /\bdata-purpose="pre-paint"/);
+    assert.match(builtTag, /\bdata-webstir-inline="src\/frontend\/app\/scripts\/first-paint\.ts"/);
+    assert.doesNotMatch(builtTag, /\bsrc=/);
+    assert.doesNotMatch(builtTag, /\btype=/);
+
+    await build(workspace, 'publish');
+    const published = await fs.readFile(
+      path.join(workspace, 'dist', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    const publishedTag = published.match(/<script[^>]*data-webstir-inline[^>]*>/)[0];
+    assert.match(publishedTag, /\bid="first-paint"/);
+    assert.match(publishedTag, /\bnonce="n0nce"/);
+    assert.doesNotMatch(publishedTag, /\bsrc=/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('a commented-out inline tag is left alone and a data-src attribute is not a source', async () => {
+  const workspace = await createWorkspace({
+    pageScript: false,
+    shellTagOverride: [
+      '<!-- <script data-webstir-inline src="./scripts/nope.ts"></script> -->',
+      '<script data-webstir-inline data-src="./scripts/nope.ts"></script>',
+      '<script data-webstir-inline src="./scripts/first-paint.ts"></script>',
+    ].join(''),
+  });
+  try {
+    await build(workspace, 'build');
+    const html = await fs.readFile(
+      path.join(workspace, 'build', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    assert.match(
+      html,
+      /<!-- <script data-webstir-inline src="\.\/scripts\/nope\.ts"><\/script> -->/,
+    );
+    // The tag without a source is passed through untouched (the merge step
+    // serializes its bare attribute as data-webstir-inline="").
+    assert.match(
+      html,
+      /<script data-webstir-inline(?:="")? data-src="\.\/scripts\/nope\.ts"><\/script>/,
+    );
+    assert.equal(scriptBodies(html).length, 1);
+    assert.match(scriptBodies(html)[0].code, /firstPaintMoment/);
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

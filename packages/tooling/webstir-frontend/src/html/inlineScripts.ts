@@ -1,5 +1,7 @@
 import path from 'node:path';
+import { load } from 'cheerio';
 import type { CheerioAPI } from 'cheerio';
+import type { Element } from 'domhandler';
 import { build as esbuild } from 'esbuild';
 import { emitDiagnostic } from '../core/diagnostics.js';
 import { pathExists } from '../utils/fs.js';
@@ -16,7 +18,9 @@ import { pathExists } from '../utils/fs.js';
 
 export const INLINE_SCRIPT_ATTRIBUTE = 'data-webstir-inline';
 const LARGE_INLINE_BYTES = 16 * 1024;
-const INLINE_TAG_PATTERN = /<script\b([^>]*\bdata-webstir-inline\b[^>]*)>\s*<\/script>/gi;
+// Attributes the inlined tag does not carry forward: the source it was built
+// from, and a module type that would change how the inline code is evaluated.
+const DROPPED_ATTRIBUTES = new Set(['src', 'type']);
 
 export interface InlineScriptOptions {
   /** Directory the containing HTML file lives in; relative sources resolve here. */
@@ -36,19 +40,41 @@ export interface InlineScriptResult {
   readonly dependencies: readonly string[];
 }
 
-/** Inlines the tags in an HTML string without re-parsing the rest of it. */
+/**
+ * Inlines the tags in an HTML string. The tags are found with an HTML parser
+ * that reports source offsets, so comments stay comments and attribute names
+ * match exactly; only the tags themselves are rewritten, and every other byte
+ * of the file is kept as written.
+ */
 export async function inlineSourceScriptsInHtml(
   html: string,
   options: InlineScriptOptions,
 ): Promise<InlineScriptResult> {
   const dependencies = new Set<string>();
+  const located = load(
+    html,
+    {
+      xml: { xmlMode: false, decodeEntities: false, withStartIndices: true, withEndIndices: true },
+    },
+    false,
+  );
+  const elements = (located(`script[${INLINE_SCRIPT_ATTRIBUTE}]`).toArray() as Element[])
+    .filter(
+      (element) => typeof element.startIndex === 'number' && typeof element.endIndex === 'number',
+    )
+    .sort((left, right) => (left.startIndex ?? 0) - (right.startIndex ?? 0));
+
   let output = '';
   let cursor = 0;
-  for (const match of html.matchAll(INLINE_TAG_PATTERN)) {
-    const attributes = match[1] ?? '';
+  for (const element of elements) {
+    const start = element.startIndex ?? 0;
+    const end = (element.endIndex ?? 0) + 1;
+    if (start < cursor) {
+      continue;
+    }
     const sourcePath = resolveSource(
-      readAttribute(attributes, 'src'),
-      readAttribute(attributes, INLINE_SCRIPT_ATTRIBUTE),
+      element.attribs.src,
+      element.attribs[INLINE_SCRIPT_ATTRIBUTE],
       options,
     );
     if (!sourcePath) {
@@ -58,12 +84,36 @@ export async function inlineSourceScriptsInHtml(
     for (const input of bundle.inputs) {
       dependencies.add(input);
     }
-    output += html.slice(cursor, match.index);
-    output += `<script ${INLINE_SCRIPT_ATTRIBUTE}="${bundle.recorded}">${bundle.code}</script>`;
-    cursor = (match.index ?? 0) + match[0].length;
+    output += html.slice(cursor, start);
+    output += `<script${serializeAttributes(element.attribs, bundle.recorded)}>${bundle.code}</script>`;
+    cursor = end;
   }
   output += html.slice(cursor);
   return { html: output, dependencies: [...dependencies] };
+}
+
+function serializeAttributes(attribs: Record<string, string>, recorded: string): string {
+  const entries: Array<[string, string]> = [];
+  for (const [name, value] of Object.entries(attribs)) {
+    if (DROPPED_ATTRIBUTES.has(name.toLowerCase())) {
+      continue;
+    }
+    entries.push([name, name === INLINE_SCRIPT_ATTRIBUTE ? recorded : value]);
+  }
+  if (!entries.some(([name]) => name === INLINE_SCRIPT_ATTRIBUTE)) {
+    entries.unshift([INLINE_SCRIPT_ATTRIBUTE, recorded]);
+  }
+  return entries
+    .map(([name, value]) =>
+      value === '' && name !== INLINE_SCRIPT_ATTRIBUTE
+        ? ` ${name}`
+        : ` ${name}="${escapeAttribute(value)}"`,
+    )
+    .join('');
+}
+
+function escapeAttribute(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
 }
 
 /** Inlines the tags in a parsed document; used where one is already loaded. */
@@ -170,16 +220,6 @@ async function bundleInlineScript(
   );
   // A closing script tag inside the bundle would end the inline tag early.
   return { code: text.trim().replace(/<\/script/gi, '<\\/script'), inputs };
-}
-
-function readAttribute(attributes: string, name: string): string | undefined {
-  const match = attributes.match(
-    new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i'),
-  );
-  if (!match) {
-    return undefined;
-  }
-  return match[1] ?? match[2] ?? match[3] ?? '';
 }
 
 function toPosix(value: string): string {
