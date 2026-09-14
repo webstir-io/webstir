@@ -215,6 +215,47 @@ function clearAppMenuDocsNav(): void {
     const appNav = document.querySelector<HTMLElement>(APP_NAV_SELECTOR);
     const existing = appNav?.querySelector<HTMLElement>(APP_NAV_DOCS_SELECTOR);
     existing?.remove();
+    appNav?.removeAttribute('data-docs-menu');
+}
+
+function renderAppMenuLink(node: NavNode, currentPath: string, label = node.title): HTMLLIElement {
+    const item = document.createElement('li');
+    item.className = 'docs-nav__item';
+
+    const link = document.createElement('a');
+    link.className = 'docs-nav__link';
+    link.href = withBasePath(node.path);
+    link.textContent = label;
+    if (node.path === currentPath) {
+        item.dataset.active = 'true';
+        link.setAttribute('aria-current', 'page');
+    }
+
+    item.appendChild(link);
+    return item;
+}
+
+function renderAppMenuSection(node: NavNode, currentPath: string): HTMLElement {
+    const details = document.createElement('details');
+    details.className = 'app-nav__section';
+    const isBranch = currentPath.startsWith(node.path);
+    if (isBranch) {
+        details.open = true;
+        details.dataset.activeBranch = 'true';
+    }
+
+    const summary = document.createElement('summary');
+    summary.className = 'app-nav__section-summary';
+    summary.textContent = node.title;
+    details.appendChild(summary);
+
+    const list = renderNavList(node.children, currentPath, 1);
+    if (node.isPage) {
+        list.prepend(renderAppMenuLink(node, currentPath, 'Overview'));
+    }
+    details.appendChild(list);
+
+    return details;
 }
 
 function renderAppMenuDocsNav(tree: NavNode, currentPath: string): void {
@@ -233,17 +274,25 @@ function renderAppMenuDocsNav(tree: NavNode, currentPath: string): void {
             ? topNodes[0].children
             : topNodes;
 
-    const list = renderNavList(nodes, currentPath);
-    section.appendChild(list);
+    const list = document.createElement('ul');
+    list.className = 'app-nav__docs-list';
 
-    const docsHref = withBasePath('/docs/');
-    const docsHrefNoSlash = docsHref.endsWith('/') ? docsHref.slice(0, -1) : docsHref;
-    const docsLink = appNav.querySelector<HTMLAnchorElement>(`a[href="${docsHref}"], a[href="${docsHrefNoSlash}"]`);
-    if (docsLink) {
-        docsLink.insertAdjacentElement('afterend', section);
-    } else {
-        appNav.appendChild(section);
+    const sorted = [...nodes].sort((a, b) => a.position - b.position);
+    for (const node of sorted) {
+        if (node.children.length === 0) {
+            list.appendChild(renderAppMenuLink(node, currentPath));
+            continue;
+        }
+
+        const item = document.createElement('li');
+        item.className = 'app-nav__docs-item';
+        item.appendChild(renderAppMenuSection(node, currentPath));
+        list.appendChild(item);
     }
+
+    section.appendChild(list);
+    appNav.dataset.docsMenu = 'true';
+    appNav.prepend(section);
 }
 
 function renderBreadcrumb(

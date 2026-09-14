@@ -32,6 +32,7 @@
     --ws-shell-container: 80rem;
     --ws-article: 72ch;
     --ws-bp-sm: 40rem;
+    --ws-bp-header: 50rem;
 
     /* Surface + motion */
     --ws-surface-1: color-mix(in srgb, var(--ws-fg) 2%, transparent);
