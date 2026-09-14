@@ -47,26 +47,21 @@
   }
 
   .portal-hero__figure {
-    --portal-mascot: clamp(8rem, 13vw, 12rem);
-    position: relative;
-    width: min(100%, 36rem);
+    --portal-mascot: clamp(9rem, 20vw, 18rem);
     margin: 0;
-    padding-top: calc(var(--portal-mascot) * 0.8);
+    order: -1;
     justify-self: start;
   }
 
   .portal-hero__mascot {
-    position: absolute;
-    top: 0;
-    left: clamp(1rem, 6%, 2.5rem);
+    display: block;
     width: var(--portal-mascot);
     height: var(--portal-mascot);
     color: var(--ws-mascot);
   }
 
   .portal-hero__terminal {
-    position: relative;
-    z-index: 1;
+    width: min(100%, 34rem);
     margin: 0;
     padding: 1rem 1.25rem;
     overflow-x: auto;
@@ -108,7 +103,9 @@
     }
 
     .portal-hero__figure {
-      justify-self: end;
+      order: 0;
+      justify-self: center;
+      align-self: center;
     }
   }
 
@@ -305,10 +302,6 @@
     .portal-hero h1 {
       max-width: none;
       font-size: clamp(2.25rem, 10vw, 3.25rem);
-    }
-
-    .portal-hero__figure {
-      justify-self: stretch;
     }
 
     .portal-feature-grid,
