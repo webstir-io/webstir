@@ -445,3 +445,52 @@ test('Markdown code, callouts, and GFM content survive build and publish', async
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+test('content pages inline shell sources during build, source rebuild, and publish', async () => {
+  const { runBuild, runRebuild, runPublish } = await import('../dist/index.js');
+  const workspace = await createWorkspaceWithContent();
+  try {
+    const appDir = path.join(workspace, 'src/frontend/app');
+    const templatePath = path.join(appDir, 'app.html');
+    await fs.writeFile(
+      templatePath,
+      (await fs.readFile(templatePath, 'utf8')).replace(
+        '<head>',
+        '<head><script nonce="content-proof" data-webstir-inline src="./first-paint.ts"></script>',
+      ),
+    );
+    await fs.writeFile(path.join(appDir, 'first-paint.ts'), "import './paint.js';\n");
+    const sourcePath = path.join(appDir, 'paint.ts');
+    await fs.writeFile(
+      sourcePath,
+      "const contentPaintVersion: string = 'paint-v1'; document.documentElement.dataset.paint = contentPaintVersion;\n",
+    );
+    const builtPath = path.join(workspace, 'build/frontend/pages/docs/readme/index.html');
+    await runBuild({ workspaceRoot: workspace });
+    const built = await fs.readFile(builtPath, 'utf8');
+    assert.match(built, /paint-v1/);
+    assert.match(built, /nonce="content-proof"/);
+    assert.doesNotMatch(built, /data-webstir-inline[^>]*src=/);
+
+    await fs.writeFile(
+      sourcePath,
+      (await fs.readFile(sourcePath, 'utf8')).replace('paint-v1', 'paint-v2'),
+    );
+    await runRebuild({ workspaceRoot: workspace, changedFile: sourcePath });
+    const rebuilt = await fs.readFile(builtPath, 'utf8');
+    assert.match(rebuilt, /paint-v2/);
+    assert.doesNotMatch(rebuilt, /paint-v1/);
+
+    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    const published = await fs.readFile(
+      path.join(workspace, 'dist/frontend/docs/readme/index.html'),
+      'utf8',
+    );
+    assert.match(published, /paint-v2/);
+    assert.match(published, /nonce="content-proof"/);
+    assert.doesNotMatch(published, /contentPaintVersion/);
+    assert.doesNotMatch(published, /data-webstir-inline[^>]*src=/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
