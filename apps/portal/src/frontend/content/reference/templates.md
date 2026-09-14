@@ -60,7 +60,7 @@ Typical backend scaffold:
   - A relative `src` resolves against the file that contains the tag; a leading `/` resolves against `src/frontend`, the way `/app/app.js` does.
 - The bundle is an immediately-invoked script with its imports included, readable in development and minified on publish. `webstir watch` rebuilds the page HTML when the source or anything it imports under `src/frontend/app` or the page changes.
 - The build keeps the source path in the attribute (`data-webstir-inline="src/frontend/app/scripts/first-paint.ts"`) and drops `src`; client-side navigation leaves inline head scripts in place, so they run on full loads only.
-- A missing source fails the build. A bundle over 16 KB gets a `frontend.inlineScript.large` warning, because it travels with every page that includes it.
+- A missing source fails the build. A published (minified) bundle over 16 KB gets a `frontend.inlineScript.large` warning, because it travels with every page that includes it; the readable build output is not measured.
 
 ## Client Error Reporting
 - The SPA and full templates install a lightweight client error reporter: `src/frontend/app/app.ts` listens for `window` `error` and `unhandledrejection`, loads `src/frontend/app/error.ts` on the first one, and reports to `POST /client-errors` using `sendBeacon` (fallback to `fetch`).

@@ -278,3 +278,62 @@ test('attribute entities are decoded before the tag is rebuilt, in the source an
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+async function captureWarnings(run) {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const warnings = [];
+  console.log = () => {};
+  console.warn = (message) => {
+    warnings.push(String(message));
+  };
+  try {
+    await run();
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+  return warnings.filter((line) => line.includes('frontend.inlineScript.large'));
+}
+
+test('the size warning judges the minified publish bundle, not the readable build', async () => {
+  const workspace = await createWorkspace({ pageScript: false });
+  // Long names and whitespace: well over 16 KB readable, a few KB minified.
+  const padded = Array.from(
+    { length: 400 },
+    (_, index) =>
+      `const aVeryLongIdentifierThatMinifiesAway${index}: number = ${index};\n` +
+      `runningTotalOfEveryIdentifier += aVeryLongIdentifierThatMinifiesAway${index};`,
+  ).join('\n');
+  await fs.writeFile(
+    path.join(workspace, 'src', 'frontend', 'app', 'scripts', 'first-paint.ts'),
+    `let runningTotalOfEveryIdentifier = 0;\n${padded}\ndocument.documentElement.dataset.sum = String(runningTotalOfEveryIdentifier);\n`,
+  );
+  try {
+    assert.deepEqual(await captureWarnings(() => build(workspace, 'build')), []);
+    const built = await fs.readFile(
+      path.join(workspace, 'build', 'frontend', 'pages', 'home', 'index.html'),
+      'utf8',
+    );
+    assert.ok(Buffer.byteLength(scriptBodies(built)[0].code) > 16 * 1024);
+    assert.deepEqual(await captureWarnings(() => build(workspace, 'publish')), []);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('a publish bundle over 16 KB warns once, naming the source', async () => {
+  const workspace = await createWorkspace({ pageScript: false });
+  await fs.writeFile(
+    path.join(workspace, 'src', 'frontend', 'app', 'scripts', 'first-paint.ts'),
+    `document.documentElement.dataset.blob = "${'x'.repeat(17 * 1024)}";\n`,
+  );
+  try {
+    assert.deepEqual(await captureWarnings(() => build(workspace, 'build')), []);
+    const warnings = await captureWarnings(() => build(workspace, 'publish'));
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /src\/frontend\/app\/scripts\/first-paint\.ts is 17 KB/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
