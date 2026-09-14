@@ -1,6 +1,9 @@
 @layer overrides {
   .portal-hero {
-    padding: clamp(2.5rem, 5vw, 4.5rem) 0 clamp(2rem, 4vw, 3.5rem);
+    --portal-hero-pad-b: clamp(3rem, 6vw, 5rem);
+    position: relative;
+    overflow: hidden;
+    padding: clamp(3.5rem, 7vw, 6rem) 0 var(--portal-hero-pad-b);
     border-bottom: 1px solid var(--ws-border);
     background: var(--ws-bg);
   }
@@ -18,12 +21,12 @@
   }
 
   .portal-hero h1 {
-    max-width: 14ch;
+    max-width: 13ch;
     margin: 0;
-    font-size: clamp(2.5rem, 4.6vw, 4rem);
-    line-height: 1;
+    font-size: clamp(2.75rem, 5.2vw, 4.75rem);
+    line-height: 0.98;
     font-weight: 760;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
     text-wrap: balance;
   }
 
@@ -32,10 +35,10 @@
   }
 
   .portal-hero__lead {
-    max-width: 34rem;
+    max-width: 32rem;
     margin: 0;
     color: var(--ws-muted);
-    font-size: clamp(1.05rem, 1.6vw, 1.2rem);
+    font-size: clamp(1.05rem, 1.6vw, 1.25rem);
     line-height: 1.5;
     text-wrap: pretty;
   }
@@ -47,21 +50,38 @@
   }
 
   .portal-hero__figure {
-    --portal-mascot: clamp(9rem, 20vw, 18rem);
+    --portal-mascot: clamp(10rem, 28vw, 13rem);
+    position: relative;
     margin: 0;
     order: -1;
     justify-self: start;
+    width: var(--portal-mascot);
+    aspect-ratio: 1;
+  }
+
+  .portal-hero__figure::before {
+    content: "";
+    position: absolute;
+    inset: -30%;
+    border-radius: 50%;
+    background: radial-gradient(
+      closest-side,
+      color-mix(in srgb, var(--ws-accent) 18%, transparent),
+      transparent
+    );
+    pointer-events: none;
   }
 
   .portal-hero__mascot {
+    position: relative;
     display: block;
-    width: var(--portal-mascot);
-    height: var(--portal-mascot);
+    width: 100%;
+    height: 100%;
     color: var(--ws-mascot);
   }
 
   .portal-hero__terminal {
-    width: min(100%, 34rem);
+    width: min(100%, 32rem);
     margin: 0;
     padding: 1rem 1.25rem;
     overflow-x: auto;
@@ -98,14 +118,17 @@
 
   @media (min-width: 50rem) {
     .portal-hero__inner {
-      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-      gap: clamp(2rem, 5vw, 5rem);
+      grid-template-columns: minmax(0, 40rem) minmax(0, 1fr);
+      gap: clamp(2rem, 6vw, 6rem);
     }
 
     .portal-hero__figure {
+      --portal-mascot: clamp(16rem, 30vw, 28rem);
       order: 0;
-      justify-self: center;
-      align-self: center;
+      justify-self: end;
+      align-self: end;
+      margin-right: calc(var(--portal-mascot) * -0.1);
+      margin-bottom: calc(-1 * var(--portal-hero-pad-b) - var(--portal-mascot) * 0.12);
     }
   }
 
