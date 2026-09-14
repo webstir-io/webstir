@@ -161,12 +161,14 @@ async function inlineFromSource(
   }
   const bundle = await bundleInlineScript(sourcePath, options.minify);
   const recorded = toPosix(path.relative(options.workspaceRoot, sourcePath));
+  // Only the minified publish bundle is what a visitor downloads, so only its
+  // size is judged; the readable build output is larger by design.
   const bytes = Buffer.byteLength(bundle.code);
-  if (bytes > LARGE_INLINE_BYTES) {
+  if (options.minify && bytes > LARGE_INLINE_BYTES) {
     emitDiagnostic({
       code: 'frontend.inlineScript.large',
       kind: 'html',
-      stage: options.minify ? 'html.publish' : 'html.build',
+      stage: 'html.publish',
       severity: 'warning',
       message: `Inline script ${recorded} is ${Math.round(bytes / 1024)} KB; it is sent with every page that includes it.`,
       data: { source: recorded, bytes },
