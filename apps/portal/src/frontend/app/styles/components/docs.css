@@ -9,12 +9,39 @@
     margin: 0;
   }
 
-  .docs-index__list {
-    list-style: decimal;
-    margin: 0;
-    padding-left: var(--ws-docs-index-indent, 1.25rem);
+  .docs-index {
     display: grid;
-    gap: var(--ws-space-2);
+    gap: var(--ws-space-7);
+  }
+
+  .docs-index__group {
+    display: grid;
+    gap: var(--ws-space-3);
+  }
+
+  .docs-index__heading {
+    margin: 0;
+    padding-bottom: var(--ws-space-2);
+    border-bottom: 1px solid var(--ws-border);
+    font-size: 1.25rem;
+  }
+
+  .docs-index__heading-link {
+    color: var(--ws-fg);
+    text-decoration: none;
+  }
+
+  .docs-index__heading-link:hover {
+    color: var(--ws-accent);
+  }
+
+  .docs-index__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: var(--ws-space-2) var(--ws-space-4);
   }
 
   .docs-index__link {

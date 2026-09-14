@@ -1,6 +1,14 @@
 type DocsNavEntry = {
   path: string;
   title: string;
+  section?: string;
+};
+
+type DocsIndexGroup = {
+  key: string;
+  title: string;
+  path?: string;
+  pages: DocsNavEntry[];
 };
 
 const BASE_PATH = resolveBasePath();
@@ -60,10 +68,58 @@ async function populateDocsIndex(root: HTMLElement): Promise<void> {
     return;
   }
 
-  const list = document.createElement('ol');
-  list.className = 'docs-index__list';
+  for (const group of groupDocsEntries(entries)) {
+    root.appendChild(renderDocsIndexGroup(group));
+  }
+}
+
+function groupDocsEntries(entries: readonly DocsNavEntry[]): DocsIndexGroup[] {
+  const groups = new Map<string, DocsIndexGroup>();
 
   for (const entry of entries) {
+    const key = entry.section ?? sectionFromPath(entry.path);
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, title: toTitleCase(key.replace(/[-_]/g, ' ')), pages: [] };
+      groups.set(key, group);
+    }
+
+    if (isSectionIndex(entry.path, key)) {
+      group.title = entry.title;
+      group.path = entry.path;
+    } else {
+      group.pages.push(entry);
+    }
+  }
+
+  return Array.from(groups.values());
+}
+
+function renderDocsIndexGroup(group: DocsIndexGroup): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'docs-index__group';
+
+  const heading = document.createElement('h2');
+  heading.className = 'docs-index__heading';
+  if (group.path) {
+    const link = document.createElement('a');
+    link.className = 'docs-index__heading-link';
+    link.href = withBasePath(group.path);
+    link.textContent = group.title;
+    heading.appendChild(link);
+  } else {
+    heading.textContent = group.title;
+  }
+  section.appendChild(heading);
+
+  if (group.pages.length === 0) {
+    return section;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'docs-index__list';
+
+  for (const entry of group.pages) {
     const item = document.createElement('li');
     item.className = 'docs-index__item';
 
@@ -76,7 +132,26 @@ async function populateDocsIndex(root: HTMLElement): Promise<void> {
     list.appendChild(item);
   }
 
-  root.appendChild(list);
+  section.appendChild(list);
+  return section;
+}
+
+function sectionFromPath(value: string): string {
+  const segments = value.split('/').filter(Boolean);
+  return segments.length > 1 ? segments[1] : segments[0] ?? 'docs';
+}
+
+function isSectionIndex(value: string, section: string): boolean {
+  const normalized = value.endsWith('/') ? value : `${value}/`;
+  return normalized === `/docs/${section}/`;
+}
+
+function toTitleCase(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
 }
 
 async function fetchDocsNav(): Promise<DocsNavEntry[]> {
@@ -93,7 +168,8 @@ async function fetchDocsNav(): Promise<DocsNavEntry[]> {
       .filter((entry): entry is DocsNavEntry => Boolean(entry && entry.path && entry.title))
       .map((entry) => ({
         path: String(entry.path),
-        title: String(entry.title)
+        title: String(entry.title),
+        section: typeof entry.section === 'string' ? entry.section : undefined
       }));
   } catch {
     return [];

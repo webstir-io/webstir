@@ -34,6 +34,14 @@
     padding-right: var(--ws-space-6);
   }
 
+  @media (min-width: 68.75rem) {
+    .docs-layout__inner {
+      grid-template-columns:
+        var(--ws-docs-sidebar-width) minmax(0, var(--ws-article)) minmax(11rem, 14rem);
+      justify-content: start;
+    }
+  }
+
   @media (max-width: 40rem) {
     .docs-layout__inner {
       grid-template-columns: minmax(0, 1fr);

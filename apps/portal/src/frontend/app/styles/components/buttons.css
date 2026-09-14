@@ -89,7 +89,7 @@
 
   :where([data-ui="btn"][data-variant="solid"][data-tone="accent"]) {
     background: var(--ws-accent);
-    color: #ffffff;
+    color: var(--ws-accent-fg);
     border-color: var(--ws-accent);
   }
 

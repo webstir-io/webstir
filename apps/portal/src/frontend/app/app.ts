@@ -46,3 +46,4 @@ export function registerHotModule(moduleId: string, handlers: HotModuleHandlers)
 import "./scripts/features/client-nav.js";
 import "./scripts/features/search.js";
 import "./scripts/features/content-nav.js";
+import "./scripts/features/page-nav.js";

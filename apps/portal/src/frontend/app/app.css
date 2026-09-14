@@ -13,6 +13,7 @@
 @import "./styles/components/buttons.css";
 @import "./styles/features/content-nav.css";
 @import "./styles/features/search.css";
+@import "./styles/features/page-nav.css";
 @import "./styles/shell.css";
 @import "./styles/utilities.css";
 @import "./styles/portal.css";
