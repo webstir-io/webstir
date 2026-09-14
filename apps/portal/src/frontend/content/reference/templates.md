@@ -54,6 +54,14 @@ Typical backend scaffold:
 - Place static app assets under `src/frontend/app/*`.
 - Place Images, Fonts, and Media under `src/frontend/{images|fonts|media}/**`.
 
+## Inline Scripts
+- A script tag marked `data-webstir-inline` names a TypeScript or JavaScript source that the build bundles and writes into the tag itself, so it runs before anything paints. Use it for the small things that must be right on the first frame, such as a theme or a computed backdrop:
+  - `<script data-webstir-inline src="./scripts/first-paint.ts"></script>` in `src/frontend/app/app.html` runs on every page; the same tag in a page's `index.html` runs on that page.
+  - A relative `src` resolves against the file that contains the tag; a leading `/` resolves against `src/frontend`, the way `/app/app.js` does.
+- The bundle is an immediately-invoked script with its imports included, readable in development and minified on publish. `webstir watch` rebuilds the page HTML when the source or anything it imports under `src/frontend/app` or the page changes.
+- The build keeps the source path in the attribute (`data-webstir-inline="src/frontend/app/scripts/first-paint.ts"`) and drops `src`; client-side navigation leaves inline head scripts in place, so they run on full loads only.
+- A missing source fails the build. A bundle over 16 KB gets a `frontend.inlineScript.large` warning, because it travels with every page that includes it.
+
 ## Client Error Reporting
 - The SPA and full templates install a lightweight client error reporter: `src/frontend/app/app.ts` listens for `window` `error` and `unhandledrejection`, loads `src/frontend/app/error.ts` on the first one, and reports to `POST /client-errors` using `sendBeacon` (fallback to `fetch`).
 - The SSG template does not include it: a static site has no server to report to.

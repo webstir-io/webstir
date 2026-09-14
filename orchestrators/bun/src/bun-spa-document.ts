@@ -2,6 +2,10 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  inlineSourceScriptsInHtml,
+  resolveInlineScriptDependencies,
+} from '@webstir-io/webstir-frontend';
 
 export interface BunSpaEntryPaths {
   readonly workspaceRoot: string;
@@ -115,8 +119,18 @@ export async function prepareBunSpaGeneratedEntries(options: {
 export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOptions): Promise<void> {
   const generatedPaths = resolveBunSpaGeneratedPagePaths(options.paths, options.page);
   await mkdir(generatedPaths.generatedPageRoot, { recursive: true });
-  const appTemplate = await readFile(options.paths.appTemplatePath, 'utf8');
-  const pageHtml = await readFile(options.page.htmlPath, 'utf8');
+  // Inline scripts are bundled from source before the asset tags are stripped,
+  // so a data-webstir-inline tag survives as its code rather than as a src.
+  const appTemplate = await inlineDocumentScripts(
+    await readFile(options.paths.appTemplatePath, 'utf8'),
+    options.paths,
+    options.paths.appTemplatePath,
+  );
+  const pageHtml = await inlineDocumentScripts(
+    await readFile(options.page.htmlPath, 'utf8'),
+    options.paths,
+    options.page.htmlPath,
+  );
   const title = extractTitle(pageHtml) ?? extractTitle(appTemplate) ?? 'Webstir SPA';
   const appHead = stripTitle(extractTagContents(appTemplate, 'head') ?? '');
   const pageHead = stripAssetTags(stripTitle(extractTagContents(pageHtml, 'head') ?? ''));
@@ -155,6 +169,44 @@ export async function regenerateBunSpaEntry(options: RegenerateBunSpaEntryOption
 `;
 
   await writeFile(generatedPaths.generatedEntryPath, output, 'utf8');
+}
+
+/** Files the inline scripts in one HTML file are built from, for the watch graph. */
+export async function resolveBunSpaInlineDependencies(
+  paths: BunSpaEntryPaths,
+  htmlPath: string,
+): Promise<readonly string[]> {
+  let html: string;
+  try {
+    html = await readFile(htmlPath, 'utf8');
+  } catch {
+    return [];
+  }
+  return await resolveInlineScriptDependencies(html, inlineOptions(paths, htmlPath));
+}
+
+async function inlineDocumentScripts(
+  html: string,
+  paths: BunSpaEntryPaths,
+  htmlPath: string,
+): Promise<string> {
+  if (!html.includes('data-webstir-inline')) {
+    return html;
+  }
+  const result = await inlineSourceScriptsInHtml(html, {
+    ...inlineOptions(paths, htmlPath),
+    minify: false,
+  });
+  return result.html;
+}
+
+function inlineOptions(paths: BunSpaEntryPaths, htmlPath: string) {
+  return {
+    baseDir: path.dirname(htmlPath),
+    frontendRoot: path.join(paths.workspaceRoot, 'src', 'frontend'),
+    workspaceRoot: paths.workspaceRoot,
+    describeContainer: normalizeForwardSlashes(path.relative(paths.workspaceRoot, htmlPath)),
+  };
 }
 
 async function resolveOptionalFile(

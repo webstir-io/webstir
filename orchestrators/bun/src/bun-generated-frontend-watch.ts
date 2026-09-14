@@ -8,6 +8,7 @@ import { readWorkspacePageRoutes, type PageRoute } from '@webstir-io/webstir-bac
 import {
   prepareBunSpaGeneratedEntries,
   regenerateBunSpaEntry,
+  resolveBunSpaInlineDependencies,
   resolveBunSpaGeneratedPagePaths,
   resolveBunSpaEntryPaths,
   resolveBunSpaPages,
@@ -189,6 +190,9 @@ async function resolveRegenerationTargets(
   for (const dependency of await resolveLocalCssDependencyGraph(paths.appCssPath)) {
     addTargetPages(pagesByTarget, dependency, allPageNames);
   }
+  for (const dependency of await resolveBunSpaInlineDependencies(paths, paths.appTemplatePath)) {
+    addTargetPages(pagesByTarget, dependency, allPageNames);
+  }
 
   for (const page of pages) {
     addTargetPages(pagesByTarget, page.htmlPath, [page.name]);
@@ -196,6 +200,9 @@ async function resolveRegenerationTargets(
       for (const dependency of await resolveLocalCssDependencyGraph(page.cssPath)) {
         addTargetPages(pagesByTarget, dependency, [page.name]);
       }
+    }
+    for (const dependency of await resolveBunSpaInlineDependencies(paths, page.htmlPath)) {
+      addTargetPages(pagesByTarget, dependency, [page.name]);
     }
   }
 

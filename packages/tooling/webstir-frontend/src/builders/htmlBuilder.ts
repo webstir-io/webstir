@@ -22,6 +22,7 @@ import {
   inlineCriticalCss,
 } from '../html/criticalCss.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
+import { inlineSourceScripts, inlineSourceScriptsInHtml } from '../html/inlineScripts.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
 import type { EnableFlags } from '../types.js';
 import {
@@ -51,7 +52,11 @@ async function buildHtml(context: BuilderContext): Promise<void> {
         directory: config.paths.src.pages,
         extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx'],
       },
-      { directory: config.paths.src.app, extensions: [EXTENSIONS.html, EXTENSIONS.js] },
+      // Inline scripts in app.html are bundled from app-directory sources.
+      {
+        directory: config.paths.src.app,
+        extensions: [EXTENSIONS.html, EXTENSIONS.js, EXTENSIONS.ts, '.tsx', '.jsx'],
+      },
       // `webstir enable ...` modifies package.json and can change which opt-in scripts should be injected.
       { directory: config.paths.workspace, extensions: ['.json'] },
     ])
@@ -64,8 +69,9 @@ async function buildHtml(context: BuilderContext): Promise<void> {
     throw new Error(`Base application HTML file not found: ${appTemplatePath}`);
   }
 
-  const templateHtml = await readFile(appTemplatePath);
-  validateAppTemplate(templateHtml, appTemplatePath);
+  const rawTemplateHtml = await readFile(appTemplatePath);
+  validateAppTemplate(rawTemplateHtml, appTemplatePath);
+  const templateHtml = await withInlineScripts(context, rawTemplateHtml, appTemplatePath, false);
 
   const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
   const pages = await getPageDirectories(config.paths.src.pages);
@@ -87,8 +93,9 @@ async function buildHtml(context: BuilderContext): Promise<void> {
 
     for (const relativeHtml of pageHtmlFiles) {
       const sourceHtmlPath = path.join(page.directory, relativeHtml);
-      const fragment = await readFile(sourceHtmlPath);
-      validatePageFragment(fragment, sourceHtmlPath);
+      const rawFragment = await readFile(sourceHtmlPath);
+      validatePageFragment(rawFragment, sourceHtmlPath);
+      const fragment = await withInlineScripts(context, rawFragment, sourceHtmlPath, false);
 
       const mergedHtml = mergeTemplates(templateHtml, fragment);
       const mergedWithScripts = injectOptInScripts(
@@ -106,7 +113,7 @@ async function buildHtml(context: BuilderContext): Promise<void> {
   // Copy the app template for reference in the build output.
   const buildAppDir = path.join(config.paths.build.frontend, FOLDERS.app);
   await ensureDir(buildAppDir);
-  await writeFile(path.join(buildAppDir, FILE_NAMES.htmlAppTemplate), templateHtml);
+  await writeFile(path.join(buildAppDir, FILE_NAMES.htmlAppTemplate), rawTemplateHtml);
 }
 
 async function publishHtml(context: BuilderContext): Promise<void> {
@@ -162,6 +169,27 @@ async function publishHtml(context: BuilderContext): Promise<void> {
       await handlePrecompression(context, outputPath);
     }
   }
+}
+
+// Bundles data-webstir-inline scripts in one HTML file as a string transform,
+// so the shell and the page fragments reach the merge exactly as written.
+async function withInlineScripts(
+  context: BuilderContext,
+  html: string,
+  filePath: string,
+  minify: boolean,
+): Promise<string> {
+  if (!html.includes('data-webstir-inline')) {
+    return html;
+  }
+  const result = await inlineSourceScriptsInHtml(html, {
+    baseDir: path.dirname(filePath),
+    frontendRoot: context.config.paths.src.frontend,
+    workspaceRoot: context.config.paths.workspace,
+    minify,
+    describeContainer: path.relative(context.config.paths.workspace, filePath),
+  });
+  return result.html;
 }
 
 function mergeTemplates(appHtml: string, pageHtml: string): string {
@@ -320,6 +348,13 @@ async function rewriteForPublish(
   );
 
   removeDevScripts(document);
+  await inlineSourceScripts(document, {
+    baseDir: pageDirectory,
+    frontendRoot: context.config.paths.src.frontend,
+    workspaceRoot: context.config.paths.workspace,
+    minify: true,
+    describeContainer: `${pageName} (published)`,
+  });
 
   const appCssHref = shared?.css ? `/app/${shared.css}` : `/${FOLDERS.app}/app.css`;
   if (shared?.css) {
