@@ -40,6 +40,7 @@
     --ws-hover: color-mix(in srgb, var(--ws-fg) 4%, transparent);
     --ws-accent-soft: color-mix(in srgb, var(--ws-accent) 35%, transparent);
     --ws-logo-filter: none;
+    --ws-mascot: #0b314f;
     --ws-duration-fast: 120ms;
     --ws-ease-standard: ease;
     --ws-flow-space: var(--ws-space-4);
@@ -92,6 +93,7 @@
     --ws-accent-hover: #3b82f6;
     --ws-accent-fg: #0b1220;
     --ws-focus: var(--ws-accent);
+    --ws-mascot: var(--ws-accent);
     --ws-logo-filter: brightness(0) saturate(100%) invert(75%) sepia(32%) saturate(947%)
       hue-rotate(179deg) brightness(101%) contrast(96%);
   }

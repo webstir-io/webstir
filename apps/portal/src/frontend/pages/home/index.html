@@ -1,29 +1,35 @@
 <head>
   <title>Webstir</title>
-  <meta name="description" content="A TypeScript web framework for Bun, built for agentic tools.">
+  <meta name="description" content="The HTML-first framework for Bun. You write TypeScript and ship working HTML. Enhancement is opt-in, and the workspace stays legible to agentic tools.">
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
   <main>
     <section class="portal-hero">
       <div class="ws-container portal-hero__inner">
-        <img class="portal-hero__mark" src="/images/webstir.svg" alt="" width="112" height="112">
-        <h1 aria-label="A framework for building TypeScript web apps.">
-          <span class="portal-hero__headline portal-hero__headline--desktop" aria-hidden="true">
-            <span>A framework</span> <span>for building</span> <span>TypeScript</span> <span>web apps.</span>
-          </span>
-          <span class="portal-hero__headline portal-hero__headline--mobile" aria-hidden="true">
-            <span>A framework</span> <span>for building</span> <span>TypeScript</span> <span>web apps.</span>
-          </span>
-        </h1>
-        <p class="portal-hero__lead">
-          Webstir runs on Bun and keeps TypeScript apps easy for agentic tools to read, change, test, and ship.
-        </p>
-        <pre class="portal-hero__terminal" aria-label="Webstir command workflow"><code><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir init full my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir watch --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir test --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir publish --workspace my-app</span></code></pre>
-        <div class="portal-hero__actions">
-          <a data-ui="btn" data-variant="solid" data-tone="accent" data-size="lg" href="/docs/tutorials/getting-started">Start guide</a>
-          <a data-ui="btn" data-size="lg" href="/docs/reference/cli">CLI reference</a>
+        <div class="portal-hero__copy">
+          <h1>The <span class="portal-hero__nowrap">HTML-first</span> framework for Bun.</h1>
+          <p class="portal-hero__lead">
+            You write TypeScript and ship working HTML. Enhancement is opt-in, and the workspace stays legible to people and agentic tools.
+          </p>
+          <div class="portal-hero__actions">
+            <a data-ui="btn" data-variant="solid" data-tone="accent" data-size="lg" href="/docs/tutorials/getting-started">Start guide</a>
+            <a data-ui="btn" data-size="lg" href="/docs/reference/cli">CLI reference</a>
+          </div>
+          <pre class="portal-hero__terminal" aria-label="Webstir command workflow"><code><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir init full my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir watch --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir test --workspace my-app</span><span class="portal-hero__line"><span class="portal-hero__prompt">$</span> webstir publish --workspace my-app</span></code></pre>
         </div>
+        <figure class="portal-hero__figure">
+          <svg class="portal-hero__mascot" viewBox="0 0 512 512" aria-hidden="true" focusable="false" fill="none" stroke="currentColor">
+            <path stroke-width="21.13" d="m 249.65652,23.205994 h 12.98856 c 111.69719,0 201.61948,84.744156 201.61948,190.009326 v 85.56936 c 0,105.26517 -89.92229,190.00933 -201.61948,190.00933 h -12.98856 c -111.69719,0 -201.619472,-84.74416 -201.619472,-190.00933 v -85.56936 c 0,-105.26517 89.922282,-190.009326 201.619472,-190.009326 z"/>
+            <path stroke-width="18.21" d="m 44.058391,191.97153 c -14.470037,0 -26.119524,9.07711 -26.119524,20.35258 v 75.32063 c 0,11.2755 11.649487,20.35261 26.119524,20.35261 0.93247,0 1.852137,-0.0404 2.7588,-0.1141 V 192.08544 c -0.906663,-0.0736 -1.826333,-0.11396 -2.7588,-0.11396 z"/>
+            <path stroke-width="18.21" d="m 467.94159,307.9973 c 14.47005,0 26.11954,-9.07712 26.11954,-20.35259 v -75.32062 c 0,-11.27551 -11.64949,-20.35261 -26.11954,-20.35261 -0.93248,0 -1.85214,0.0404 -2.75881,0.11409 v 115.79781 c 0.90667,0.0736 1.82635,0.11397 2.75881,0.11397 z"/>
+            <path stroke-width="21.13" d="m 160.69324,296.77823 a 65.878456,81.300491 0 0 1 -67.611696,-79.07673 65.878456,81.300491 0 0 1 64.054706,-83.46498 65.878456,81.300491 0 0 1 67.65302,79.02287 65.878456,81.300491 0 0 1 -64.01105,83.51598"/>
+            <path stroke-width="21.13" d="M 114.77974,274.25154 200.01157,154.27256"/>
+            <path stroke-width="21.13" d="m 354.84541,296.77823 a 65.878456,81.300491 0 0 1 -67.61169,-79.07673 65.878456,81.300491 0 0 1 64.05471,-83.46498 65.878456,81.300491 0 0 1 67.65302,79.02287 65.878456,81.300491 0 0 1 -64.01105,83.51598"/>
+            <path stroke-width="21.13" d="M 308.93213,274.25154 394.16395,154.27256"/>
+            <path stroke-width="21.13" stroke-linecap="round" stroke-linejoin="round" d="m 152.65356,346.81827 52.6043,61.04578 49.70484,-57.83284 50.94746,58.23445 52.1901,-60.64414"/>
+          </svg>
+        </figure>
       </div>
     </section>
 
@@ -31,7 +37,7 @@
       <div class="ws-container">
         <div class="portal-section__header">
           <h2>Why Webstir</h2>
-          <p>Built for server-first multi-page apps, backoffice tools, and dashboards that should work before any JavaScript arrives.</p>
+          <p>Webstir is narrow on purpose: multi-page apps, backoffice tools, and dashboards where the server renders the page and the browser enhances it.</p>
         </div>
         <ul class="portal-feature-grid">
           <li class="portal-feature">
@@ -56,31 +62,27 @@
     <section class="portal-section">
       <div class="ws-container">
         <div class="portal-section__header">
-          <h2>Start building</h2>
-          <p>Go from a new Bun workspace to a tested, publishable app.</p>
+          <h2>Documentation</h2>
+          <p>Tutorials to start, guides for daily work, reference for the details, and explanations for the reasoning behind them.</p>
         </div>
-        <div class="portal-link-grid">
-          <a class="portal-link portal-link--primary" href="/docs/tutorials/getting-started">
-            <span>Start guide</span>
-            <p>Install Webstir, scaffold a full app, and start the Bun watcher.</p>
-          </a>
-          <a class="portal-link" href="/docs/tutorials/first-app">
-            <span>Shape the app</span>
-            <p>Add client navigation, inspect form flow, and adapt the scaffold.</p>
-          </a>
-          <a class="portal-link" href="/docs/reference/workflows">
-            <span>CLI workflows</span>
-            <p>Build, watch, test, and publish from the same command surface.</p>
+        <nav class="portal-link-grid" aria-label="Documentation sections">
+          <a class="portal-link" href="/docs/tutorials">
+            <span>Tutorials</span>
+            <p>Step-by-step guides that teach by doing, from install to a published app.</p>
           </a>
           <a class="portal-link" href="/docs/how-to">
-            <span>How-to guides</span>
+            <span>How-to Guides</span>
             <p>Task-focused recipes for daily project work.</p>
           </a>
           <a class="portal-link" href="/docs/reference">
             <span>Reference</span>
             <p>Commands, templates, manifests, and package contracts.</p>
           </a>
-        </div>
+          <a class="portal-link" href="/docs/explanations">
+            <span>Explanations</span>
+            <p>Architecture, design decisions, and the rationale behind them.</p>
+          </a>
+        </nav>
       </div>
     </section>
   </main>
