@@ -1,9 +1,9 @@
 @layer overrides {
   .portal-hero {
-    --portal-hero-pad-b: clamp(3rem, 6vw, 5rem);
+    --portal-hero-pad-b: clamp(3.5rem, 7vw, 6rem);
     position: relative;
     overflow: hidden;
-    padding: clamp(3.5rem, 7vw, 6rem) 0 var(--portal-hero-pad-b);
+    padding: clamp(4rem, 8vw, 7rem) 0 var(--portal-hero-pad-b);
     border-bottom: 1px solid var(--ws-border);
     background: var(--ws-bg);
   }
@@ -18,8 +18,16 @@
 
   .portal-hero__copy {
     display: grid;
-    gap: var(--ws-space-5);
+    gap: var(--ws-space-6);
     justify-items: center;
+  }
+
+  .portal-hero__actions {
+    margin-top: var(--ws-space-2);
+  }
+
+  .portal-hero__copy .portal-hero__terminal {
+    margin-top: var(--ws-space-4);
   }
 
   .portal-hero h1 {
@@ -175,7 +183,7 @@
   }
 
   .portal-section {
-    padding: clamp(2.35rem, 4vw, 3.4rem) 0 5rem;
+    padding: clamp(3rem, 5vw, 4.5rem) 0 clamp(4rem, 6vw, 5.5rem);
     background: color-mix(in srgb, var(--ws-fg) 1.8%, var(--ws-bg));
   }
 
@@ -186,7 +194,7 @@
 
   .portal-section__header {
     max-width: 46rem;
-    margin-bottom: var(--ws-space-7);
+    margin-bottom: var(--ws-space-8);
   }
 
   .portal-section__header h2 {
