@@ -56,7 +56,7 @@ bun run webstir -- init ssg ./my-site
 
 ### Apps & Demos
 
-- **`apps/portal`** — Docusaurus 3 documentation site, deployed to GitHub Pages.
+- **`apps/portal`** — Documentation site for webstir.io, built as a Webstir SSG workspace (app shell in `src/frontend/app/`, static pages in `src/frontend/pages/`, Markdown content in `src/frontend/content/`, sidebar order in `src/frontend/content/_sidebar.json`). `bun run --filter webstir-portal build` publishes `dist/frontend/`, which GitHub Pages deploys on pushes to `main`.
 - **`examples/demos/*`** — Validation workspaces (spa, api, full, auth-crud, dashboard, ssg) that verify framework behavior against local package changes.
 
 ### Key Patterns
