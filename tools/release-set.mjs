@@ -160,6 +160,9 @@ export function classifyRegistryVersion({
   };
 }
 
+const registryWaitTimeoutMs = 10 * 60_000;
+const registryPollIntervalMs = 10_000;
+
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -250,28 +253,33 @@ function assertPublishedMetadata(packageName, version, commit, state) {
   }
 }
 
-async function waitForPublishedPackage(packageName, version, commit) {
-  let state;
-  for (let attempt = 1; attempt <= 12; attempt += 1) {
-    state = await readRegistryVersionState(packageName, version);
-    if (state.kind === 'published') {
-      assertPublishedMetadata(packageName, version, commit, state);
-      return;
-    }
-    if (attempt < 12) {
-      await sleep(Math.min(1_000 * attempt, 5_000));
-    }
-  }
-  assertPublishedMetadata(packageName, version, commit, state);
-}
-
-async function waitForRegistryConvergence(packageName, version) {
+async function pollRegistryVersion(packageName, version, isSettled) {
+  const deadline = Date.now() + registryWaitTimeoutMs;
   let state = await readRegistryVersionState(packageName, version);
-  for (let attempt = 1; state.kind === 'partial' && attempt < 12; attempt += 1) {
-    await sleep(Math.min(1_000 * attempt, 5_000));
+  while (!isSettled(state) && Date.now() < deadline) {
+    await sleep(registryPollIntervalMs);
     state = await readRegistryVersionState(packageName, version);
   }
   return state;
+}
+
+async function waitForPublishedPackage(packageName, version, commit) {
+  const state = await pollRegistryVersion(
+    packageName,
+    version,
+    (current) => current.kind === 'published',
+  );
+  assertPublishedMetadata(packageName, version, commit, state);
+}
+
+async function waitForPublishedPackages(packageNames, version, commit) {
+  await Promise.all(
+    packageNames.map((packageName) => waitForPublishedPackage(packageName, version, commit)),
+  );
+}
+
+function waitForRegistryConvergence(packageName, version) {
+  return pollRegistryVersion(packageName, version, (current) => current.kind !== 'partial');
 }
 
 function run(command, args, cwd, { quiet = false } = {}) {
@@ -345,7 +353,8 @@ async function verifyCleanInstall(plan) {
 
   try {
     let installed = false;
-    for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const deadline = Date.now() + registryWaitTimeoutMs;
+    while (!installed) {
       const result = run(
         'npm',
         [
@@ -358,10 +367,10 @@ async function verifyCleanInstall(plan) {
       );
       if (result.exitCode === 0) {
         installed = true;
+      } else if (Date.now() < deadline) {
+        await sleep(registryPollIntervalMs);
+      } else {
         break;
-      }
-      if (attempt < 4) {
-        await sleep(2_000 * attempt);
       }
     }
     if (!installed) {
@@ -422,14 +431,14 @@ async function publishReleasePlan(plan, repoRoot, commit) {
           `npm publish failed for ${entry.packageName}@${plan.version}, and registry verification did not confirm publication: ${error.message}`,
         );
       }
-      continue;
     }
-    await waitForPublishedPackage(entry.packageName, plan.version, commit);
   }
 
-  for (const entry of plan.publishPackages) {
-    await waitForPublishedPackage(entry.packageName, plan.version, commit);
-  }
+  await waitForPublishedPackages(
+    plan.publishPackages.map((entry) => entry.packageName),
+    plan.version,
+    commit,
+  );
   await verifyCleanInstall(plan);
   console.log(
     `[webstir][release] verified ${plan.group.name}@${plan.version}: registry, provenance, gitHead, and fresh install`,
