@@ -121,6 +121,10 @@ function resolveContentConfig(rawConfig: unknown): FrontendContentConfig {
     rawContent && typeof rawContent === 'object'
       ? (rawContent as Record<string, unknown>).label
       : undefined;
+  const titleTemplateValue =
+    rawContent && typeof rawContent === 'object'
+      ? (rawContent as Record<string, unknown>).titleTemplate
+      : undefined;
 
   const basePath =
     typeof basePathValue === 'string' && basePathValue.trim()
@@ -134,12 +138,27 @@ function resolveContentConfig(rawConfig: unknown): FrontendContentConfig {
         ? 'Docs'
         : toTitleCase(pageName.replace(/[-_]/g, ' '));
 
+  const titleTemplate = normalizeContentTitleTemplate(titleTemplateValue);
+
   return {
     basePath,
     label,
     navManifest: `${pageName}-nav.json`,
     pageName,
+    ...(titleTemplate ? { titleTemplate } : {}),
   };
+}
+
+function normalizeContentTitleTemplate(value: unknown): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || !value.includes('{title}')) {
+    throw new Error(
+      `Expected frontend content.titleTemplate to be a string containing "{title}": ${String(value)}`,
+    );
+  }
+  return value.trim();
 }
 
 function extractContentConfig(value: unknown): unknown {

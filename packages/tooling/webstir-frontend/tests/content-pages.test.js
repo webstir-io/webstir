@@ -303,6 +303,57 @@ test('content builder supports configured content base path and nav manifest', a
   }
 });
 
+test('content titleTemplate sets content page titles in build and publish', async (t) => {
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { runBuild, runPublish } = frontend;
+  const workspace = await createWorkspaceWithContent({
+    content: {
+      basePath: '/company/',
+      label: 'Company',
+      titleTemplate: '{title} | Example Co',
+    },
+  });
+
+  try {
+    await runBuild({ workspaceRoot: workspace });
+    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+
+    for (const pagePath of [
+      path.join(workspace, 'build', 'frontend', 'pages', 'company', 'section', 'one', 'index.html'),
+      path.join(workspace, 'dist', 'frontend', 'company', 'section', 'one', 'index.html'),
+    ]) {
+      const html = await fs.readFile(pagePath, 'utf8');
+      const titles = html.match(/<title>[^<]*<\/title>/g) ?? [];
+      assert.equal(titles.length, 1, `expected one title in ${pagePath}`);
+      assert.match(titles[0], /^<title>\S[^<]* \| Example Co<\/title>$/);
+      assert.ok(!titles[0].includes('My Site'), 'titleTemplate should replace the app title');
+      const pageTitle = titles[0].slice('<title>'.length, -'</title>'.length);
+      assert.ok(
+        html.includes(`property="og:title" content="${pageTitle}"`),
+        'expected og:title to match the templated title',
+      );
+    }
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('content titleTemplate must include the {title} placeholder', async (t) => {
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { runBuild } = frontend;
+  const workspace = await createWorkspaceWithContent({
+    content: { basePath: '/company/', label: 'Company', titleTemplate: 'Example Co' },
+  });
+
+  try {
+    await assert.rejects(runBuild({ workspaceRoot: workspace }), /content\.titleTemplate/);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
 test('content nav manifest respects sidebar order across content folders', async (t) => {
   const frontend = await loadFrontendModuleOrSkip(t);
   if (!frontend) return;

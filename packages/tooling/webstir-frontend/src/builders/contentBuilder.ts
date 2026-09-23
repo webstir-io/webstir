@@ -1021,7 +1021,14 @@ function mergeContentIntoTemplate(
 
   // Best-effort: ensure the document has a sensible title for the content page.
   const title = head.find('title').first();
-  if (title.length === 0) {
+  if (contentConfig.titleTemplate) {
+    const templatedTitle = contentConfig.titleTemplate.replaceAll('{title}', pageName);
+    if (title.length === 0) {
+      head.append(`<title>${escapeHtml(templatedTitle)}</title>`);
+    } else {
+      title.text(templatedTitle);
+    }
+  } else if (title.length === 0) {
     head.append(`<title>${escapeHtml(pageName)}</title>`);
   } else if (!title.text().trim()) {
     title.text(pageName);
