@@ -7,11 +7,9 @@ Monorepo baseline for Webstir.
 - `packages/tooling/*`: canonical publishable TypeScript framework/tooling packages.
 - `apps/portal`: first-party docs app workspace.
 - `examples/demos/*`: example workspaces used to verify framework behavior.
-- `orchestrators/dotnet`: the .NET orchestrator, CLI, engine, and embedded framework copies.
 
 ## Source Of Truth
 - Prefer editing `packages/**` when changing the publishable TypeScript packages.
-- Treat `orchestrators/dotnet/**` as a frozen archival tree. Do not sync canonical package changes into it unless the task is explicitly about historical `.NET` maintenance.
 - When docs refer to repo paths, prefer the monorepo layout above rather than the legacy single-repo names.
 
 ## Code Size
@@ -20,7 +18,6 @@ Monorepo baseline for Webstir.
 
 ## Validation
 - JS/TS work: use `bun` from the repo root when possible.
-- .NET orchestrator work: run `dotnet` commands from the repo root or `orchestrators/dotnet`.
 - Prefer package-local validation first, then widen to repo-level checks when the change warrants it.
 
 ## Path-Specific Notes
@@ -34,8 +31,3 @@ Monorepo baseline for Webstir.
 - Validate with `bun run build` and `bun run test`; use the repo required gate for cross-package changes.
 - The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
 - Prepare synchronized production releases from the repo root with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>`.
-
-### `orchestrators/dotnet`
-- Read `.codex/instructions.md`, `.codex/style.md`, and `.codex/testing.md` before edits.
-- Use `./Utilities/scripts/format-build.sh` before handoff.
-- Keep diffs minimal and behavior-preserving; prefer repo helpers such as `AppWorkspace` and `Engine.Extensions` for paths and file operations when appropriate.

@@ -18,7 +18,7 @@ Expect APIs, contracts, generated scaffolds, and workflows to change. Treat the 
 - `packages/tooling` — publishable JavaScript/TypeScript tooling packages.
 - `apps` — first-party apps and docs sites built on the framework.
 - `examples` — demo workspaces that validate consumer flows against local packages.
-- `orchestrators` — orchestration runtimes and hosts, including the Bun orchestrator, Bun-owned deployment helpers, and an archived historical `.NET` orchestrator tree.
+- `orchestrators` — orchestration runtimes and hosts, including the Bun orchestrator and Bun-owned deployment helpers.
 
 ## Getting Started
 
@@ -56,7 +56,6 @@ bun run webstir -- publish --workspace "$PWD/examples/demos/ssg/site"
 - `bun run test` and `bun run check:required` run the same required gate: repository checks, one framework graph build, package tests, browser proofs, the npm-package install smoke, and the portal build.
 - Dependency auditing runs when `bun.lock` changes and on a weekly schedule, so registry availability cannot stall unrelated pull requests or package publishing.
 - Published npm package names remain unchanged.
-- `orchestrators/dotnet` remains in-tree as a frozen historical snapshot only; active local workflows, releases, and package maintenance go through the Bun monorepo.
 - For Bun scaffolds and bundled feature assets, edit `orchestrators/bun/resources/**`; `orchestrators/bun/assets/**` is generated package content and is verified by `bun run --filter @webstir-io/webstir check:assets`.
 - Supported Bun deployment contract for published `api` and `full`: `orchestrators/bun/resources/deployment/docker`; `orchestrators/bun/assets/deployment/docker` is the generated packaged copy.
 - Demo and app workspaces are kept in-repo so they can validate against local package changes.

@@ -45,7 +45,7 @@ Binary aliases: `webstir-testing`, `webstir-testing-runner`, `webstir-testing-ad
 | `webstir-testing-add <name>` | Scaffolds a sample test file. | `--workspace` to control destination. |
 
 Tips:
-- Set `WEBSTIR_TEST_RUNTIME=<frontend|backend|all>` to limit discovery to a single runtime (defaults to `all`). This mirrors the flag exposed through the `.NET` CLI (`webstir test --runtime backend`).
+- Set `WEBSTIR_TEST_RUNTIME=<frontend|backend|all>` to limit discovery to a single runtime (defaults to `all`).
 
 ### Event Stream
 

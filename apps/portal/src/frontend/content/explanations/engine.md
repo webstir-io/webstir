@@ -8,7 +8,7 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 - Chooses the active build plan from `webstir.mode`.
 - Loads the canonical frontend, backend, and testing packages.
 - Coordinates build, publish, watch, test, and scaffold flows.
-- Keeps the live runtime Bun-first while leaving the older `.NET` tree archival.
+- Keeps the live runtime Bun-first.
 
 ## Responsibilities
 
@@ -85,7 +85,7 @@ That boundary is the active source of truth for build and runtime behavior.
 
 ## Testing
 
-Favor end-to-end command coverage and provider/package tests over internal-unit archaeology. The active test surfaces live in `orchestrators/bun/tests/**` and the package `tests/**` directories, not in the archived `.NET` harness.
+Favor end-to-end command coverage and provider/package tests over internal-unit archaeology. The active test surfaces live in `orchestrators/bun/tests/**` and the package `tests/**` directories.
 
 ## Related Docs
 

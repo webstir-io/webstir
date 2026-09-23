@@ -4,7 +4,7 @@ Webstir is an HTML-first full-stack solution. The active system is the Bun orche
 
 Webstir is still experimental. The current Bun-first workflow is the active path in this repo, but its APIs and operational guidance can still change.
 
-> Active path: the Bun orchestrator in `orchestrators/bun`. Historical `.NET` material remains in-tree for reference only.
+> Active path: the Bun orchestrator in `orchestrators/bun`.
 
 ## What It Optimizes For
 
