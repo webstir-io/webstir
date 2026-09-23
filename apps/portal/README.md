@@ -1,6 +1,6 @@
 # Webstir Portal
 
-Docs hub for the Webstir ecosystem, built as a Webstir SSG workspace and deployed to GitHub Pages with the custom domain `webstir.io`. Content covers tutorials, how-to guides, reference material, and explanations.
+Docs hub for the Webstir ecosystem, built as a Webstir SSG workspace and deployed to GitHub Pages with the custom domain `webstir.dev`. Content covers tutorials, how-to guides, reference material, and explanations.
 
 ## Run locally
 
