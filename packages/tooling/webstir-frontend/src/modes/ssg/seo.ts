@@ -202,12 +202,35 @@ async function targetExistsInDist(distRoot: string, pathname: string): Promise<b
   return pathExists(asIndex);
 }
 
+async function isNoIndexPage(page: HtmlPage): Promise<boolean> {
+  const doc = load(await readFile(page.filePath));
+  return doc('meta')
+    .toArray()
+    .some((element) => {
+      const meta = doc(element);
+      if (meta.attr('name')?.trim().toLowerCase() !== 'robots') {
+        return false;
+      }
+      const directives = (meta.attr('content') ?? '')
+        .toLowerCase()
+        .split(',')
+        .map((directive) => directive.trim());
+      return directives.includes('noindex') || directives.includes('none');
+    });
+}
+
 async function writeSitemap(
   distRoot: string,
   pages: readonly HtmlPage[],
   options: SsgSeoOptions,
 ): Promise<void> {
-  const urls = pages
+  const indexable: HtmlPage[] = [];
+  for (const page of pages) {
+    if (!(await isNoIndexPage(page))) {
+      indexable.push(page);
+    }
+  }
+  const urls = indexable
     .map((page) => page.urlPath)
     .filter((url) => url.startsWith('/'))
     .filter((url) => !isNotFoundPath(url));
