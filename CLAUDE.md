@@ -69,7 +69,6 @@ bun run webstir -- init ssg ./my-site
 ## Source of Truth
 
 - Edit `packages/**` for publishable TypeScript packages.
-- `orchestrators/dotnet` is a frozen archival tree — do not modify unless the task explicitly involves .NET maintenance.
 - Prefer package-local validation first (`bun run --filter <pkg> build && test`), then widen to repo-level checks.
 
 ## Conventions

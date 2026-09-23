@@ -2,7 +2,7 @@
 
 Repo-level utility commands for the active Bun/TypeScript monorepo.
 
-The current monorepo does not use the older `utilities/` .NET helper scripts as part of the supported workflow. Start from Bun commands at the repo root instead.
+Start from Bun commands at the repo root.
 
 ## Common Commands
 
@@ -59,7 +59,6 @@ bun run webstir -- --help
 - Run commands from the repo root unless a package README says otherwise.
 - `bun run test` and `bun run check:required` are aliases for the same required CI mirror.
 - Use package-local `smoke` scripts only for focused backend or testing-provider diagnosis; the required gate invokes their already-built variants after one shared framework build.
-- The archived `.NET` tree has its own historical tooling, but it is not part of the active Bun workflow.
 
 ## Related Docs
 

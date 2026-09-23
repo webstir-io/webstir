@@ -2,8 +2,6 @@
 
 Active command reference for the Bun orchestrator. The default user-facing path is an installed `webstir` binary; the repo-local `bun run webstir -- <command>` form is for contributors working inside this monorepo. The CLI is optimized for server-first HTML apps with deliberate progressive enhancement, not for broad framework replacement.
 
-> Historical note: the archived `.NET` orchestrator remains in-tree under `orchestrators/dotnet`, but it is no longer the active CLI for local development or framework evolution.
-
 ## Overview
 - Package binary name: `webstir`
 - Default packaged install path:

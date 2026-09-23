@@ -54,7 +54,6 @@ In this repo, `examples/demos/full` is the canonical workspace for the `webstir 
 
 ## What We Avoid
 
-- Treating archived `.NET` harnesses as the current source of truth
 - Documenting unsupported flags or workflows as if they were active
 - Locking tests to private implementation details when a contract-level assertion is enough
 

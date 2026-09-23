@@ -12,7 +12,6 @@ const assetsRoot = path.join(packageRoot, 'assets');
 const resourcesRoot = path.join(packageRoot, 'resources');
 const templateSourcesRoot = path.join(resourcesRoot, 'templates');
 const deploymentSourcesRoot = path.join(resourcesRoot, 'deployment');
-const dotnetRoot = path.join(repoRoot, 'orchestrators', 'dotnet');
 const demosRoot = path.join(repoRoot, 'examples', 'demos');
 const checkOnly = process.argv.includes('--check');
 
@@ -221,7 +220,6 @@ function assertNoLegacyAssetReads() {
     deploymentSourcesRoot,
   ];
 
-  assertSourcesOutsideRoot(dotnetRoot, 'orchestrators/dotnet', sources);
   assertSourcesOutsideRoot(demosRoot, 'examples/demos', sources);
 }
 

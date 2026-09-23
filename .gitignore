@@ -7,5 +7,3 @@ build
 .pnpm-store
 !packages/tooling/webstir-backend/src/build/
 !packages/tooling/webstir-backend/src/build/**
-!orchestrators/dotnet/Framework/Backend/src/build/
-!orchestrators/dotnet/Framework/Backend/src/build/**

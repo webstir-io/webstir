@@ -5,10 +5,6 @@
 			"path": "apps/portal"
 		},
 		{
-			"name": "webstir-dotnet",
-			"path": "orchestrators/dotnet"
-		},
-		{
 			"name": "webstir-frontend",
 			"path": "packages/tooling/webstir-frontend"
 		},
