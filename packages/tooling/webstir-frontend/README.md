@@ -187,6 +187,22 @@ Publish always injects the small app-shell reset and typography critical CSS. St
 
 Standard pages keep TypeScript in `src/frontend/pages/<page>/index.ts`, while their HTML references `index.js`; publish rewrites that browser-safe reference to the fingerprinted bundle. Publishing fails if emitted HTML still references `.ts`, `.tsx`, or `.jsx`, or if an emitted document points at a local asset that is absent from `dist/frontend`.
 
+## Content Pages
+
+Markdown under `src/frontend/content/` is published beneath `content.basePath` (default `/docs/`) and labeled with `content.label` in breadcrumbs and navigation:
+
+```jsonc
+{
+  "content": {
+    "basePath": "/company/",
+    "label": "Company",
+    "titleTemplate": "{title} | Example Co"
+  }
+}
+```
+
+`titleTemplate` is optional. When set, each content page's `<title>` and `og:title` become the template with `{title}` replaced by the page title; the template must include `{title}`. Without it, content pages combine the page title with the app shell's `<title>`, if one exists.
+
 ## Lifecycle Hooks
 
 Hooks live in `webstir.config.mjs` (or `.js` / `.cjs`) at the workspace root:

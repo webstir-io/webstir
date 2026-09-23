@@ -73,6 +73,7 @@ export interface FrontendContentConfig {
   readonly label: string;
   readonly navManifest: string;
   readonly pageName: string;
+  readonly titleTemplate?: string;
 }
 
 export interface AddPageCommandOptions extends FrontendCommandOptions {
