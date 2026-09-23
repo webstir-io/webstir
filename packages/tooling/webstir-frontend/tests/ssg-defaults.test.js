@@ -160,6 +160,18 @@ test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', asy
   await fs.mkdir(path.join(distPages, 'home'), { recursive: true });
   await fs.mkdir(path.join(distPages, 'docs', 'guide'), { recursive: true });
   await fs.mkdir(path.join(distPages, '404'), { recursive: true });
+  await fs.mkdir(path.join(distPages, 'moved'), { recursive: true });
+  await fs.mkdir(path.join(distPages, 'internal'), { recursive: true });
+  await fs.writeFile(
+    path.join(distPages, 'moved', 'index.html'),
+    '<!doctype html><head><meta name="robots" content="noindex"></head><main>moved</main>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(distPages, 'internal', 'index.html'),
+    '<!doctype html><head><meta name="ROBOTS" content="NoIndex, NoFollow"></head><main>internal</main>',
+    'utf8',
+  );
   await fs.writeFile(
     path.join(distPages, 'home', 'index.html'),
     '<!doctype html><main>home</main>',
@@ -207,6 +219,8 @@ test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', asy
     assert.match(sitemap, /<loc>https:\/\/webstir\.io\/docs\/guide<\/loc>/);
     assert.doesNotMatch(sitemap, /<loc>https:\/\/webstir\.io\/docs\/guide\/<\/loc>/);
     assert.doesNotMatch(sitemap, /<loc>https:\/\/webstir\.io\/404<\/loc>/);
+    assert.doesNotMatch(sitemap, /webstir\.io\/moved/, 'noindex pages stay out of the sitemap');
+    assert.doesNotMatch(sitemap, /webstir\.io\/internal/, 'robots matching is case-insensitive');
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }
