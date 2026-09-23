@@ -23,7 +23,7 @@
   },
   "webstir": {
     "mode": "ssg",
-    "siteUrl": "https://webstir.io",
+    "siteUrl": "https://webstir.dev",
     "trailingSlash": false,
     "enable": {
       "clientNav": true,
