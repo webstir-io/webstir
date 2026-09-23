@@ -16,4 +16,4 @@ We are a community-driven project and respond to requests as time allows. Please
 - Follow the private disclosure process in the [Security Policy](./SECURITY.md).
 
 ## Commercial & Partnership Inquiries
-- Email **oss@electriccoding.com** for coordination with the maintainers.
+- Email **oss@sqwarelogics.com** for coordination with the maintainers.

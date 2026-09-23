@@ -16,7 +16,7 @@ Thanks for your interest in improving the Webstir ecosystem! These guidelines co
 ## Communication Channels
 - GitHub Issues: bug reports, feature requests, and roadmap discussions.
 - Discussions (where enabled): questions, proposals, or design exploration.
-- Email **oss@electriccoding.com** for private coordination questions.
+- Email **oss@sqwarelogics.com** for private coordination questions.
 
 ## Security & Trademark Notices
 - Disclose vulnerabilities privately following the [Security Policy](./SECURITY.md).

@@ -1,8 +1,6 @@
 # Webstir™ Trademark Guidelines
 
-Webstir™ and the Webstir logo are trademarks of **Electric Coding LLC**.
-Sqware Logics, LLC is authorized to use the marks for promotion and distribution
-of the open-source project under the Collaboration & Revenue-Share Agreement.
+Webstir™ and the Webstir logo are trademarks of **Sqware Logics, LLC**.
 
 All other rights are reserved.
 
@@ -15,4 +13,4 @@ You may **not**:
 - Alter or combine the logo with another brand mark.
 - Register domain names or products that could cause confusion.
 
-Trademark inquiries: **trademarks@electriccoding.com**
+Trademark inquiries: **oss@sqwarelogics.com**
