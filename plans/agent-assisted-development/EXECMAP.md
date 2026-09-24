@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make Webstir easier and faster to build with using coding agents, and establish repeatable evidence for that public product promise.
+Make Webstir easier to build with using coding agents, with verified onboarding, complete recipes, useful diagnostics, and honest public positioning; a comparative speed claim remains future work.
 
 ## Guardrails
 
@@ -56,19 +56,19 @@ Make Webstir easier and faster to build with using coding agents, and establish 
   - Give the agent a documented path from framework checks to application-specific tests and browser verification; passing starter tests alone cannot establish task completion.
   - **Exit:** the repair task is diagnosable from available output, customizations survive, and deliberately broken acceptance cases cannot be reported as completed by the evaluation.
 
-- [ ] **5. Demonstrate the outcome and prepare public positioning.**
-  - Repeat the frozen tasks on the candidate package with the same agent settings, budgets, and scoring; run the holdout variation too. Use an installed candidate tarball outside the checkout until a public release is authorized.
-  - Compare completion and intervention rates first, then elapsed time and cost with failure accounting. Report the full small sample and limitations. Revisit earlier steps if the predeclared criteria are not met.
+- [x] **5. Document the demonstrated capabilities and prepare public positioning.**
+  - Retain and report every completed or interrupted candidate attempt from the installed tarball, using the frozen settings and scoring. Further benchmark runs and the holdout are outside this delivery after the scope amendment below.
+  - Report outcomes, interventions, elapsed time, available usage, and limitations. Explicitly leave the original benchmark gate unestablished and make no comparative speed or completion-rate improvement claim.
   - Run relevant focused tests and the required repo gate for implementation changes. Verify generated guidance, assets, package installation, and browser behavior through consumer paths.
   - Produce one reproducible tutorial/demo that builds an app and then changes it, plus a concise [results report](RESULTS.md). Draft homepage/docs copy around demonstrated capabilities.
   - Use design-intent language such as "designed for building with AI coding agents" for capability positioning. Use "faster" only with a supported, stated comparison; do not infer superiority to other frameworks from a Webstir before/after comparison.
   - Prepare the release verification checklist. After a separately authorized release, repeat a fresh registry-install smoke before describing the new package behavior as publicly available.
-  - **Exit:** reviewed implementation and consumer proof, a runnable walkthrough, an honest baseline/candidate comparison, and publication-ready copy with clear availability status.
+  - **Exit:** reviewed implementation and consumer proof, a runnable walkthrough, an honest record of the partial baseline/candidate experiment, and publication-ready copy with clear availability status.
 
 ## Done When
 
 - New app guidance and the initial agent setup work from an installed package without framework-source knowledge.
-- The build, extend, and repair tasks have repeated agent outcomes checked against independent functional/browser criteria, with a holdout result and failures retained.
+- Completed build, extend, and repair attempts have independent functional/browser results; all attempts, the operator interruption, and the unrun holdout are disclosed. Completion of the original benchmark gate is not a shipping requirement under the amended scope.
 - The selected feature recipes produce complete working behavior, and repair preserves unrelated application work.
 - The baseline's improvement criteria are met or the claim/scope is explicitly narrowed to what the evidence supports. Quantified claims identify their comparator, versions, settings, sample size, and limitations.
 - Required implementation checks, package-install proof, and the relevant browser checks pass.
@@ -88,7 +88,8 @@ Make Webstir easier and faster to build with using coding agents, and establish 
 - Baseline v2 regrade: **9/9 passed**, all original/copy source/config hashes unchanged. Corrected protocol fingerprint: `7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9`. The corrected oracle still rejects both seeded defects; evaluator regression tests passed (9 tests, 61 assertions). Runner fixes prevent evidence overwrites, bound readiness, and resolve both hoisted and bundled package layouts without changing task requirements.
 - Onboarding/repair checks passed: 8 new guidance tests, 29 existing init/doctor/repair tests, TypeScript and asset synchronization. Independent review found no remaining preservation or filesystem-boundary issue.
 - Recipe proof passed: 3 browser/consumer tests with 50 assertions, including lazy storage initialization, migration, CSRF/owner isolation, validation, and persistence. Review caught and resolved eager database writes during module inspection.
-- Candidate tarball SHA-256: `e91c165ec469f6afcb5c91c011be77850c1ecb281d18bb01ce5392051498d022`. A fresh install outside the repository verified guidance and diagnostics, then built a copied notes recipe and passed 9 app tests using registry dependencies, with no monorepo links. Candidate campaigns are running with the corrected frozen protocol.
-- Full `bun run check:required` passed: 23 tooling, 120 backend, 87 frontend, 14 testing-package, 193 core orchestrator, and 26 browser tests, plus contract checks, smoke/install checks, formatting/lint, asset checks, and portal build. Initial attempts exposed a corrected test inventory count and intermittent deployment-test startup failures; the exact failed fixture and narrow/full backend reruns pass. Test startup output is now retained; the original cause remains unproven. Existing lint warnings remain unchanged.
-- Remaining delivery work: candidate sample and holdout, final results and claim review, final integrated review, and authorized PR merge.
+- Candidate tarball SHA-256: `e91c165ec469f6afcb5c91c011be77850c1ecb281d18bb01ce5392051498d022`. A fresh install outside the repository verified guidance and diagnostics, then built a copied notes recipe and passed 9 app tests using registry dependencies, with no monorepo links. Candidate campaigns used the corrected frozen protocol; final dispositions are recorded in [RESULTS.md](RESULTS.md) and [runs.json](runs.json).
+- Full `bun run check:required` passed again after integrating `0.1.66`: 23 tooling, 120 backend, 87 frontend, 14 testing-package, 195 core orchestrator, and 26 browser tests, plus contract checks, smoke/install checks, formatting/lint, asset checks, and portal build. Initial attempts exposed a corrected test inventory count and intermittent deployment-test startup failures; the exact failed fixture and narrow/full backend reruns pass. Test startup output is now retained; the original cause remains unproven. Existing lint warnings remain unchanged.
+- Scope amendment: after the user asked whether the candidate trials needed to finish, delivery was narrowed to the verified implementation and capability positioning. Optional benchmarking stopped: 8 candidate runs completed and passed, 1 build attempt was operator-interrupted, and the holdout was not run. Its artifact passed independent checks, but that does not count as an unassisted completed run. The original predeclared benchmark gate remains unestablished. No speed claim is supported.
+- Implementation, the amended capability evidence, and required checks are complete. The active plan is closed for GitHub delivery; GitHub remains authoritative for merge state. Package publication and any future comparative benchmark remain separate.
 - A separate `0.1.66` release landed on `main` as `b8aba02` during the trials. Preserve it when integrating this branch. The benchmark CLI artifacts stay fixed, but generated apps use compatible dependency ranges, and some later candidate apps resolved `0.1.66`. Record actual app versions per attempt and narrow the evidence to observed task capability, not a fully version-frozen speed comparison. The upstream backend/frontend/module-contract diff contains version/range metadata only; its production code change is the separate CLI static-site 404 fix. Retain all attempts without silently changing their inputs.

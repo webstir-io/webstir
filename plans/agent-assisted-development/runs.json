@@ -1,0 +1,1733 @@
+{
+  "schemaVersion": 1,
+  "evaluatorFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+  "baseline": "@webstir-io/webstir@0.1.65 from registry",
+  "candidate": {
+    "version": "0.1.65",
+    "source": "Unpublished standalone candidate tarball",
+    "sha256": "e91c165ec469f6afcb5c91c011be77850c1ecb281d18bb01ce5392051498d022"
+  },
+  "packagePayloadComparison": {
+    "comparedApplications": [
+      "baseline-build-1",
+      "candidate-build-2"
+    ],
+    "versions": [
+      "0.1.65",
+      "0.1.66"
+    ],
+    "excludedDirectories": [
+      "nested node_modules"
+    ],
+    "backend": {
+      "files": 146,
+      "differingFiles": [
+        "package.json"
+      ]
+    },
+    "frontend": {
+      "files": 181,
+      "differingFiles": [
+        "package.json"
+      ]
+    },
+    "moduleContract": {
+      "files": 13,
+      "differingFiles": [
+        "package.json"
+      ]
+    },
+    "testing": {
+      "version": "0.1.9",
+      "files": 38,
+      "differingFiles": []
+    },
+    "testingContract": {
+      "version": "0.1.9",
+      "files": 7,
+      "differingFiles": []
+    },
+    "conclusion": "Installed executable JavaScript, declarations and source payloads are byte-identical in the compared packages; version and internal dependency range metadata differ. Source range d61456e..b8aba02 changes only those manifest versions/ranges; the separate CLI dev-server custom-404 fix is outside the unchanged candidate CLI archive.",
+    "interpretation": "Task behavior has no identified app runtime code change from this resolution drift, but the experiment is not exactly version-frozen and supports capability-only conclusions."
+  },
+  "correction": "All baseline app artifacts uniformly regraded under v2 without changing model inputs, settings, original timings, or source/config. V1 outcomes retained.",
+  "rows": [
+    {
+      "id": "baseline-build-1",
+      "phase": "baseline",
+      "task": "build",
+      "repeat": 1,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T04:57:47.399Z",
+      "finishedAt": "2026-09-24T05:02:32.170Z",
+      "elapsedMs": 282502,
+      "usage": {
+        "input_tokens": 775388,
+        "cached_input_tokens": 729472,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7747,
+        "reasoning_output_tokens": 1116
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "9ccf86b3d07281f632b38e4c557aa1389b35d5cebb0855412f3b98642d8e189a",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d32bf7d704dcad6fc84ef9644297991b4225bbc42346aae35eae98395330cb5c",
+      "genericSkillsRead": [],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-build-2",
+      "phase": "baseline",
+      "task": "build",
+      "repeat": 2,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:02:32.171Z",
+      "finishedAt": "2026-09-24T05:06:43.198Z",
+      "elapsedMs": 249100,
+      "usage": {
+        "input_tokens": 506699,
+        "cached_input_tokens": 466432,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7155,
+        "reasoning_output_tokens": 501
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "40272b5a496a45a8194fb771e93af877ffa771145432d36b7502ba63c88847a9",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d32bf7d704dcad6fc84ef9644297991b4225bbc42346aae35eae98395330cb5c",
+      "genericSkillsRead": [],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [
+        "/private/tmp/webstir-notes-bun-cache"
+      ],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-build-3",
+      "phase": "baseline",
+      "task": "build",
+      "repeat": 3,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:06:43.199Z",
+      "finishedAt": "2026-09-24T05:12:03.589Z",
+      "elapsedMs": 318555,
+      "usage": {
+        "input_tokens": 1000220,
+        "cached_input_tokens": 947072,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 8604,
+        "reasoning_output_tokens": 774
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "8d7ff505959fb261ba8042c10bc16923643f1b988007604fc45e82281b6f7619",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d32bf7d704dcad6fc84ef9644297991b4225bbc42346aae35eae98395330cb5c",
+      "genericSkillsRead": [],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-extend-1",
+      "phase": "baseline",
+      "task": "extend",
+      "repeat": 1,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "task_failure",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T04:57:51.292Z",
+      "finishedAt": "2026-09-24T05:01:22.824Z",
+      "elapsedMs": 203888,
+      "usage": {
+        "input_tokens": 403268,
+        "cached_input_tokens": 366976,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5968,
+        "reasoning_output_tokens": 807
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "status-filter",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "d2d9d8438c560878289011001b7e26c2262934a81ea4f546e83c29e9f21d238a",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d2035f73f1ee49ca5cc420495bef187cfb76b38679acc5b04406a0cdf7589ea6",
+      "genericSkillsRead": [],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-extend-2",
+      "phase": "baseline",
+      "task": "extend",
+      "repeat": 2,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "task_failure",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:01:22.824Z",
+      "finishedAt": "2026-09-24T05:04:48.831Z",
+      "elapsedMs": 198407,
+      "usage": {
+        "input_tokens": 333383,
+        "cached_input_tokens": 294144,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5579,
+        "reasoning_output_tokens": 805
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "status-filter",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "edc1ccceb4754455a88eccd9cc2816c5dd6f6136685253d24965e0ba67756f80",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d2035f73f1ee49ca5cc420495bef187cfb76b38679acc5b04406a0cdf7589ea6",
+      "genericSkillsRead": [],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-extend-3",
+      "phase": "baseline",
+      "task": "extend",
+      "repeat": 3,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "task_failure",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:04:48.831Z",
+      "finishedAt": "2026-09-24T05:08:16.622Z",
+      "elapsedMs": 199985,
+      "usage": {
+        "input_tokens": 294252,
+        "cached_input_tokens": 235520,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5815,
+        "reasoning_output_tokens": 621
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "status-filter",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "dae3c2faa73d17664e9fe12b833c676107aa37d7ff7765b4143fc6fd3af4db74",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d2035f73f1ee49ca5cc420495bef187cfb76b38679acc5b04406a0cdf7589ea6",
+      "genericSkillsRead": [],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-repair-1",
+      "phase": "baseline",
+      "task": "repair",
+      "repeat": 1,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T04:57:55.221Z",
+      "finishedAt": "2026-09-24T05:00:56.464Z",
+      "elapsedMs": 178564,
+      "usage": {
+        "input_tokens": 368952,
+        "cached_input_tokens": 331136,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4861,
+        "reasoning_output_tokens": 459
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "customization",
+          "passed": true
+        },
+        {
+          "name": "managed-file",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "a5b670f5a7541824e66458a1fd7d8da76c602ba0af34164078af8e576424a66c",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "7e019ad8565787fbd88d2468f2f7841e9fa577f00020500f37b595dc30f5e27c",
+      "genericSkillsRead": [
+        "debug"
+      ],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-repair-2",
+      "phase": "baseline",
+      "task": "repair",
+      "repeat": 2,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:00:56.465Z",
+      "finishedAt": "2026-09-24T05:04:02.487Z",
+      "elapsedMs": 183514,
+      "usage": {
+        "input_tokens": 369549,
+        "cached_input_tokens": 333056,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 4947,
+        "reasoning_output_tokens": 502
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "customization",
+          "passed": true
+        },
+        {
+          "name": "managed-file",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "259eb1fd2293c35c0949e031c4c2aa9bb8f7a80bcd81562dd362891ced322fc3",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "7e019ad8565787fbd88d2468f2f7841e9fa577f00020500f37b595dc30f5e27c",
+      "genericSkillsRead": [
+        "debug"
+      ],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "baseline-repair-3",
+      "phase": "baseline",
+      "task": "repair",
+      "repeat": 3,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:04:02.487Z",
+      "finishedAt": "2026-09-24T05:07:07.013Z",
+      "elapsedMs": 182098,
+      "usage": {
+        "input_tokens": 425933,
+        "cached_input_tokens": 391040,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5015,
+        "reasoning_output_tokens": 608
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "customization",
+          "passed": true
+        },
+        {
+          "name": "managed-file",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "f780e68d0dd3581c0db4419cb2e7e43514901b316bf88e651aede68e7a8e6b70",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "517060c1d57c919f96ddbe8e5fc1c326d268658256df85fa8f3b9af47d95c58e",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "7e019ad8565787fbd88d2468f2f7841e9fa577f00020500f37b595dc30f5e27c",
+      "genericSkillsRead": [
+        "debug"
+      ],
+      "installedGuidesRead": [],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-build-1",
+      "phase": "candidate",
+      "task": "build",
+      "repeat": 1,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:13:48.844Z",
+      "finishedAt": "2026-09-24T05:19:18.950Z",
+      "elapsedMs": 327956,
+      "usage": {
+        "input_tokens": 1149565,
+        "cached_input_tokens": 1098112,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 8812,
+        "reasoning_output_tokens": 596
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "8e84d90bbf6e8c65b9a3d70edbc62eef068db9fee0b3db819a95794795007e9a",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d32bf7d704dcad6fc84ef9644297991b4225bbc42346aae35eae98395330cb5c",
+      "genericSkillsRead": [
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-build-2",
+      "phase": "candidate",
+      "task": "build",
+      "repeat": 2,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:19:18.950Z",
+      "finishedAt": "2026-09-24T05:23:57.231Z",
+      "elapsedMs": 276404,
+      "usage": {
+        "input_tokens": 708908,
+        "cached_input_tokens": 664832,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6921,
+        "reasoning_output_tokens": 214
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "c774ed04bb119386ef7f97beb5d65b1df0de7417ed88fad54fae739465d230ea",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d32bf7d704dcad6fc84ef9644297991b4225bbc42346aae35eae98395330cb5c",
+      "genericSkillsRead": [
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.66",
+        "@webstir-io/webstir-frontend": "0.1.66",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-build-3",
+      "phase": "candidate",
+      "task": "build",
+      "repeat": 3,
+      "outcome": "operator_interrupted",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": false,
+      "operatorInterruption": "Delivery scope was narrowed after the user asked whether more trials were needed; the parent stopped optional benchmarking and terminated the exact active Codex process tree. Raw CLI exited 0 and post-stop grading passed, but no completed agent turn or final usage was emitted; this is not a completed trial pass.",
+      "startedAt": "2026-09-24T05:23:57.232Z",
+      "finishedAt": "2026-09-24T05:28:22.457Z",
+      "elapsedMs": 263251,
+      "usage": null,
+      "humanInterventions": 1,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "822ebf0bc4df644ea0048e57a1dc41b6caaeb8d535c8316540eabe96c8b98a91",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d32bf7d704dcad6fc84ef9644297991b4225bbc42346aae35eae98395330cb5c",
+      "genericSkillsRead": [
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.66",
+        "@webstir-io/webstir-frontend": "0.1.66",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-extend-1",
+      "phase": "candidate",
+      "task": "extend",
+      "repeat": 1,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:13:52.057Z",
+      "finishedAt": "2026-09-24T05:18:46.132Z",
+      "elapsedMs": 291412,
+      "usage": {
+        "input_tokens": 428545,
+        "cached_input_tokens": 385664,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 8117,
+        "reasoning_output_tokens": 1331
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "status-filter",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "4b7bc431fe6114f91993cef56d7ea6aacee942cb260de23c476f396576b39507",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d2035f73f1ee49ca5cc420495bef187cfb76b38679acc5b04406a0cdf7589ea6",
+      "genericSkillsRead": [
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes",
+        "recipes/projects"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [
+        "/private/tmp/notes-status-tests.XXXXXX",
+        "/private/tmp/notes-browser.XXXXXX"
+      ],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-extend-2",
+      "phase": "candidate",
+      "task": "extend",
+      "repeat": 2,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:18:46.133Z",
+      "finishedAt": "2026-09-24T05:23:12.575Z",
+      "elapsedMs": 262986,
+      "usage": {
+        "input_tokens": 474764,
+        "cached_input_tokens": 428544,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7520,
+        "reasoning_output_tokens": 1086
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "status-filter",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "94e82b761fcebdd732a4eecdc5ed96480653dacbbc338b73f63944ba9012cd07",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d2035f73f1ee49ca5cc420495bef187cfb76b38679acc5b04406a0cdf7589ea6",
+      "genericSkillsRead": [
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/projects"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-extend-3",
+      "phase": "candidate",
+      "task": "extend",
+      "repeat": 3,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:23:12.575Z",
+      "finishedAt": "2026-09-24T05:28:03.154Z",
+      "elapsedMs": 287920,
+      "usage": {
+        "input_tokens": 423466,
+        "cached_input_tokens": 386560,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 8546,
+        "reasoning_output_tokens": 1351
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "status-filter",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "a17627a8720a5c37ec7a0f8bb1aaba6d9075b8b0b371a09ed88b753f51be93ec",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "d2035f73f1ee49ca5cc420495bef187cfb76b38679acc5b04406a0cdf7589ea6",
+      "genericSkillsRead": [
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes",
+        "recipes/projects"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [
+        "/private/tmp/notes-status-tests.XXXXXX",
+        "/private/tmp/notes-status-browser.XXXXXX"
+      ],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.66",
+        "@webstir-io/webstir-frontend": "0.1.66",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-repair-1",
+      "phase": "candidate",
+      "task": "repair",
+      "repeat": 1,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:13:55.330Z",
+      "finishedAt": "2026-09-24T05:18:57.498Z",
+      "elapsedMs": 299707,
+      "usage": {
+        "input_tokens": 624275,
+        "cached_input_tokens": 587136,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 8448,
+        "reasoning_output_tokens": 1264
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "customization",
+          "passed": true
+        },
+        {
+          "name": "managed-file",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "d90eb5af310d7e023dd3936f7332206583105ce6db710c104d444bcb4ba35867",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "7e019ad8565787fbd88d2468f2f7841e9fa577f00020500f37b595dc30f5e27c",
+      "genericSkillsRead": [
+        "debug",
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes",
+        "recipes/projects"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-repair-2",
+      "phase": "candidate",
+      "task": "repair",
+      "repeat": 2,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:18:57.499Z",
+      "finishedAt": "2026-09-24T05:23:53.274Z",
+      "elapsedMs": 292603,
+      "usage": {
+        "input_tokens": 643777,
+        "cached_input_tokens": 607872,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 7794,
+        "reasoning_output_tokens": 1188
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "customization",
+          "passed": true
+        },
+        {
+          "name": "managed-file",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "7431f2448bcfb5c82176fa3f8b86db91a8cf7db9d763aeced5731682ebd502c6",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "7e019ad8565787fbd88d2468f2f7841e9fa577f00020500f37b595dc30f5e27c",
+      "genericSkillsRead": [
+        "debug",
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes",
+        "recipes/projects"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [
+        "/private/tmp/notes-repair-src-before",
+        "/private/tmp/notes-regression.XXXXXX",
+        "/private/tmp/notes-browser-check.mjs",
+        "/private/tmp/notes-browser-",
+        "/private/tmp/notes-restart-check.mjs",
+        "/private/tmp/notes-restart-",
+        "/private/tmp/notes-repair-src-before/frontend/app/app.css",
+        "/private/tmp/notes-repair-src-before/backend/index.ts",
+        "/private/tmp/notes-final-inspect.json"
+      ],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.66",
+        "@webstir-io/webstir-frontend": "0.1.66",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    },
+    {
+      "id": "candidate-repair-3",
+      "phase": "candidate",
+      "task": "repair",
+      "repeat": 3,
+      "outcome": "passed",
+      "gradedOutcome": "passed",
+      "originalOutcome": "passed",
+      "agentTurnCompleted": true,
+      "operatorInterruption": null,
+      "startedAt": "2026-09-24T05:23:53.274Z",
+      "finishedAt": "2026-09-24T05:27:52.508Z",
+      "elapsedMs": 236448,
+      "usage": {
+        "input_tokens": 633343,
+        "cached_input_tokens": 577152,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 6093,
+        "reasoning_output_tokens": 510
+      },
+      "humanInterventions": 0,
+      "rawHumanInterventions": 0,
+      "retries": 0,
+      "agentExitCode": 0,
+      "timedOut": false,
+      "checks": [
+        {
+          "name": "framework-build",
+          "passed": true
+        },
+        {
+          "name": "framework-test",
+          "passed": true
+        },
+        {
+          "name": "browser-crud",
+          "passed": true
+        },
+        {
+          "name": "server-validation",
+          "passed": true
+        },
+        {
+          "name": "authorization",
+          "passed": true
+        },
+        {
+          "name": "customization",
+          "passed": true
+        },
+        {
+          "name": "managed-file",
+          "passed": true
+        },
+        {
+          "name": "restart-persistence",
+          "passed": true
+        }
+      ],
+      "artifactSha256": "4df16034ff073d227058001faeb8862d73e6dde03899d65f43f46d5f402b843f",
+      "sourceHashScope": "App files excluding node_modules, build, dist, .webstir, .git, data, .tmp, .cache; symlink targets hashed as text.",
+      "originalGraderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "graderFingerprint": "7bb25790148af446ee374d0d7da503f95d6f13403b33f215250044f75e06d0e9",
+      "normalizedPromptSha256": "7e019ad8565787fbd88d2468f2f7841e9fa577f00020500f37b595dc30f5e27c",
+      "genericSkillsRead": [
+        "debug",
+        "playwright"
+      ],
+      "installedGuidesRead": [
+        "guides/README.md",
+        "recipes/notes"
+      ],
+      "traceBoundaryFindings": [],
+      "externalTemporaryPathsReferenced": [],
+      "cliVersions": {
+        "@webstir-io/webstir": "0.1.65",
+        "@webstir-io/webstir-backend": "0.1.65",
+        "@webstir-io/webstir-frontend": "0.1.65",
+        "@webstir-io/webstir-testing": "0.1.9",
+        "@webstir-io/module-contract": "0.1.65",
+        "@webstir-io/testing-contract": "0.1.9"
+      },
+      "appVersions": {
+        "@webstir-io/webstir-backend": "0.1.66",
+        "@webstir-io/webstir-frontend": "0.1.66",
+        "@webstir-io/webstir-testing": "0.1.9"
+      },
+      "runtime": {
+        "codex": "codex-cli 0.156.1",
+        "bun": "1.4.1"
+      },
+      "model": "gpt-6-astra",
+      "reasoningEffort": "high",
+      "sandbox": "workspace-write",
+      "networkAccess": true,
+      "budgetMs": 480000
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "runs": 9,
+      "counts": {
+        "passed": 9
+      },
+      "humanInterventions": 0,
+      "mediansCorrectMs": {
+        "build": 282502,
+        "extend": 199985,
+        "repair": 182098
+      },
+      "usageTotals": {
+        "input_tokens": 4477644,
+        "cached_input_tokens": 4094848,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 55691,
+        "reasoning_output_tokens": 6193
+      },
+      "usageAvailableRuns": 9,
+      "usageMissingRuns": [],
+      "usageTotalsComplete": true
+    },
+    "candidate": {
+      "runs": 9,
+      "counts": {
+        "passed": 8,
+        "operator_interrupted": 1
+      },
+      "humanInterventions": 1,
+      "mediansCorrectMs": {
+        "build": 302180,
+        "extend": 287920,
+        "repair": 292603
+      },
+      "usageTotals": {
+        "input_tokens": 5086643,
+        "cached_input_tokens": 4735872,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 62251,
+        "reasoning_output_tokens": 7540
+      },
+      "usageAvailableRuns": 8,
+      "usageMissingRuns": [
+        "candidate-build-3"
+      ],
+      "usageTotalsComplete": false
+    }
+  },
+  "holdout": {
+    "outcome": "not_run",
+    "reason": "Optional benchmarking stopped before holdout dispatch; no holdout agent was launched."
+  },
+  "benchmarkGate": {
+    "completed": false,
+    "reason": "Candidate build-3 was operator-interrupted and holdout was not run. The predeclared complete candidate gate is not established; report supports only the capability independently checked in completed trials."
+  },
+  "limitations": [
+    "Small local sample on one model and host; not a cross-framework benchmark. Delivery scope was narrowed after eight completed candidate passes; one active trial was interrupted and the holdout was not run.",
+    "Shared package caches, concurrent task campaigns, generic local skills, and sandbox permissions affect the measured experience.",
+    "A compatible registry release during the sample changed some candidate app frontend/backend resolutions from 0.1.65 to 0.1.66. CLI candidate archive/model/task settings stayed fixed; appVersions are recorded per run. This is not a strictly pinned installation comparison and supports no speed claim.",
+    "Trace audit observed no forbidden product/evaluator/other-run source access or installed-package edits unless recorded in traceBoundaryFindings; generic local skill access is disclosed. Some task-owned verification scripts/source snapshots were created in shared temporary directories outside the app despite app-only guidance; referenced paths are recorded, so filesystem isolation is not claimed.",
+    "Independent acceptance does not exhaust security cases or independently seed legacy/default-status behavior.",
+    "Usage retains CLI token accounting; no subscription dollar estimate. Interrupted candidate build-3 emitted no final usage; candidate totals cover eight completed turns and exclude its unreported consumption."
+  ]
+}
