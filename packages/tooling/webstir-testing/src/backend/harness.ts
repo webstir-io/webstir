@@ -10,6 +10,7 @@ import type { BackendTestContext, BackendTestHarness } from './types.js';
 
 const DEFAULT_READY_TEXT = 'API server running';
 const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_START_ATTEMPTS = 10;
 
 export { getBackendTestContext, setBackendTestContext };
 
@@ -23,7 +24,7 @@ export async function createBackendTestHarness(): Promise<BackendTestHarness> {
     path.join(workspaceRoot, '.webstir', 'backend-manifest.json');
   const readyText = process.env.WEBSTIR_BACKEND_TEST_READY ?? DEFAULT_READY_TEXT;
   const timeoutMs = readInt(process.env.WEBSTIR_BACKEND_TEST_READY_TIMEOUT, DEFAULT_TIMEOUT_MS);
-  const port = await findOpenPort(readInt(process.env.WEBSTIR_BACKEND_TEST_PORT, 4100));
+  const requestedPort = readInt(process.env.WEBSTIR_BACKEND_TEST_PORT, 0);
 
   if (!existsSync(entry)) {
     throw new Error(
@@ -31,19 +32,13 @@ export async function createBackendTestHarness(): Promise<BackendTestHarness> {
     );
   }
 
-  const env = createRuntimeEnv(workspaceRoot, port);
-  const server = spawn(process.execPath, [entry], {
-    cwd: workspaceRoot,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  try {
-    await waitForReady(server, readyText, timeoutMs);
-  } catch (error) {
-    await stopProcess(server);
-    throw error;
-  }
+  const { server, env, port } = await startServer(
+    workspaceRoot,
+    entry,
+    requestedPort,
+    readyText,
+    timeoutMs,
+  );
 
   const manifest = await loadManifest(manifestPath);
   const baseUrl = new URL(env.API_BASE_URL ?? `http://127.0.0.1:${port}`);
@@ -65,6 +60,47 @@ export async function createBackendTestHarness(): Promise<BackendTestHarness> {
       await stopProcess(server);
     },
   };
+}
+
+async function startServer(
+  workspaceRoot: string,
+  entry: string,
+  requestedPort: number,
+  readyText: string,
+  timeoutMs: number,
+): Promise<{ server: ChildProcess; env: Record<string, string>; port: number }> {
+  let nextExplicitPort = requestedPort;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < MAX_START_ATTEMPTS; attempt += 1) {
+    const port =
+      requestedPort > 0 ? await findOpenPort(nextExplicitPort) : await reserveEphemeralPort();
+    const env = createRuntimeEnv(workspaceRoot, port);
+    const server = spawn(process.execPath, [entry], {
+      cwd: workspaceRoot,
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const output = captureOutput(server);
+    const closed = once(server, 'close').catch(() => undefined);
+
+    try {
+      await waitForReady(server, readyText, timeoutMs);
+      output.stop();
+      return { server, env, port };
+    } catch (error) {
+      await stopProcess(server);
+      await closed;
+      output.stop();
+      if (!indicatesPortInUse(output.read(), error)) {
+        throw error;
+      }
+      lastError = error;
+      nextExplicitPort = port + 1;
+    }
+  }
+
+  throw lastError;
 }
 
 function createRuntimeEnv(workspaceRoot: string, port: number): Record<string, string> {
@@ -93,6 +129,54 @@ async function findOpenPort(start: number, attempts = 10): Promise<number> {
   }
 
   throw new Error(`Unable to find an open port for backend tests (starting at ${start}).`);
+}
+
+function reserveEphemeralPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(0, () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close(() => {
+        if (port > 0) {
+          resolve(port);
+        } else {
+          reject(new Error('Unable to reserve an open port for backend tests.'));
+        }
+      });
+    });
+  });
+}
+
+function captureOutput(child: ChildProcess): { stop(): void; read(): string } {
+  let output = '';
+  const onData = (chunk: Buffer | string) => {
+    output += chunk.toString();
+  };
+
+  child.stdout?.on('data', onData);
+  child.stderr?.on('data', onData);
+
+  return {
+    stop() {
+      child.stdout?.off('data', onData);
+      child.stderr?.off('data', onData);
+    },
+    read() {
+      return output;
+    },
+  };
+}
+
+function indicatesPortInUse(output: string, error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return [output, message].some(
+    (value) =>
+      value.includes('EADDRINUSE') ||
+      value.includes('address already in use') ||
+      value.includes('Failed to listen at'),
+  );
 }
 
 function isPortAvailable(port: number): Promise<boolean> {
