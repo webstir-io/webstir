@@ -41,6 +41,7 @@ async function main() {
     await cp(path.join(packageRoot, 'assets'), path.join(stageRoot, 'assets'), { recursive: true });
     await cp(path.join(packageRoot, 'src'), path.join(stageRoot, 'src'), { recursive: true });
     await cp(path.join(packageRoot, 'README.md'), path.join(stageRoot, 'README.md'));
+    await cp(path.join(packageRoot, 'LICENSE'), path.join(stageRoot, 'LICENSE'));
 
     const packageJson = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
     const originalDependencies = { ...packageJson.dependencies };
