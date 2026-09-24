@@ -5,6 +5,7 @@
   "bin": {
     "webstir": "src/cli.ts"
   },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/webstir-io/webstir.git",
