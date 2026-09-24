@@ -12,10 +12,12 @@ const assetsRoot = path.join(packageRoot, 'assets');
 const resourcesRoot = path.join(packageRoot, 'resources');
 const templateSourcesRoot = path.join(resourcesRoot, 'templates');
 const deploymentSourcesRoot = path.join(resourcesRoot, 'deployment');
+const guideSourcesRoot = path.join(resourcesRoot, 'guides');
 const demosRoot = path.join(repoRoot, 'examples', 'demos');
 const checkOnly = process.argv.includes('--check');
 
 const rootAssets = [
+  'AGENTS.md',
   'Errors.404.html',
   'Errors.500.html',
   'Errors.default.html',
@@ -128,6 +130,7 @@ async function materializeAssets(targetAssetsRoot) {
   }
 
   await cp(deploymentSourcesRoot, deploymentRoot, { recursive: true });
+  await cp(guideSourcesRoot, path.join(targetAssetsRoot, 'guides'), { recursive: true });
 }
 
 async function assertAssetsInSync() {
@@ -218,6 +221,7 @@ function assertNoLegacyAssetReads() {
     ...modeTemplates.flatMap((template) => template.roots.map((root) => root.source)),
     ...features.map((feature) => feature.source),
     deploymentSourcesRoot,
+    guideSourcesRoot,
   ];
 
   assertSourcesOutsideRoot(demosRoot, 'examples/demos', sources);

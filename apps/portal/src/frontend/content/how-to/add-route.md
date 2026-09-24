@@ -1,6 +1,6 @@
 # Add a Backend Route
 
-This guide shows how to add a backend route to your module manifest.
+This guide shows how to record backend route metadata and implement its handler. `add-route` writes metadata to `package.json`; it does not create a working endpoint.
 
 Use this when a backend endpoint needs explicit manifest metadata, schema references, or `backend-inspect` visibility. For the default `full` app path, keep document pages in `src/frontend/pages/**` and keep form-handling logic in `src/backend/module.ts`, then add manifest-backed route entries as those backend surfaces stabilize.
 
@@ -22,50 +22,22 @@ Use this when a backend endpoint needs explicit manifest metadata, schema refere
    - `webstir add-route sign-in --workspace "$PWD" --method POST --path /api/sign-in --interaction mutation --session required --session-write --form-urlencoded --csrf`
    - `webstir add-route account-panel --workspace "$PWD" --method POST --path /api/account/panel --interaction mutation --fragment-target account-panel --fragment-mode replace`
 ## Wire the handler
-After writing the manifest entry, implement the handler in `src/backend/module.ts`. The template already exports a manifest and route list—extend it with your logic:
+After writing the manifest entry, implement the handler in `src/backend/module.ts`. For example, record `webstir add-route hello --path /api/hello --workspace "$PWD"`, then add this entry to the existing `routes` array:
 
 ```ts
-// src/backend/module.ts
-import { createDatabaseClient } from './db/connection';
-// RouteContext is already defined earlier in the scaffold file.
-
-const routes = [
-  {
-    definition: {
-      name: 'listAccounts',
-      method: 'GET',
-      path: '/api/accounts',
-      summary: 'Return the current accounts',
-      description: 'Demonstrates auth + db helpers'
-    },
-    handler: async (ctx: RouteContext) => {
-      if (!ctx.auth?.userId) {
-        return { status: 401, errors: [{ code: 'auth', message: 'Sign in required' }] };
-      }
-
-      const db = await createDatabaseClient();
-      const accounts = await db.query('select id, email from accounts where owner_id = ?', [ctx.auth.userId]);
-      await db.close();
-
-      return { status: 200, body: { accounts } };
-    }
-  }
-];
-
-export const module = {
-  manifest: {
-    contractVersion: '1.0.0',
-    name: '@demo/backend',
-    version: '0.1.0',
-    kind: 'backend',
-    capabilities: ['http'],
-    routes: routes.map((route) => route.definition)
+{
+  definition: {
+    name: 'hello',
+    method: 'GET',
+    path: '/api/hello',
+    summary: 'Return a greeting',
   },
-  routes
-};
+  handler: () => ({ status: 200, body: { message: 'Hello from Webstir' } }),
+},
 ```
 
-- The scaffolded `RouteContext` exposes `params`, `query`, `body`, `auth`, `env`, `logger`, and `now()` helpers.
+- Preserve the exported module and its `manifest.routes: routes.map((route) => route.definition)` mapping. The default `full` starter has a deliberately narrow local `RouteContext` type for its demo; use the public backend runtime types when your feature needs more context.
+- Persistence and authentication require application wiring. The [coding-agent tutorial](../tutorials/build-with-an-agent.md) describes the complete persisted-form recipe and its package availability.
 - The backend provider auto-loads `build/backend/module.js`, logs the manifest summary, and mounts every exported route. No manual registration is required when you edit `src/backend/module.ts`.
 
 ## Verify the manifest
@@ -77,10 +49,10 @@ export const module = {
 ## Notes
 - The CLI prevents duplicate entries for the same method+path.
 - The backend provider also validates the manifest and emits diagnostics on duplicates.
-- Route handler scaffolding is optional and intended as a starting point; adapt it to your server style.
+- `add-route` records metadata only. Verify the implemented endpoint with an HTTP request or browser, in addition to inspecting the manifest.
 - `--session required` declares that a session must already exist. The runtime enforces it: requests without a session get `401` with a `session_required` error before the handler runs, and the rejection never creates a session. The declaration in `package.json` is applied to the matching `method` + `path` handler in `src/backend/module.ts` even when that handler states no `session` metadata; if the two disagree on `session.mode`, `required` wins and `backend-inspect`/startup report a warning. It does not check identity. Gate signed-in access in the handler (or a request hook) with `ctx.auth` or your own session data.
 - `--form-urlencoded`, `--csrf`, and `--fragment-*` only declare the contract. Your handler in `src/backend/module.ts` still needs to implement the actual form, redirect, or fragment behavior.
-- Schema references can point at Zod files (`zod:Type@path/to/file.ts`), JSON schema, or ts-rest routers. They only record metadata; the backend provider enforces the manifest at build time.
+- Schema references can point at Zod files (`zod:Type@path/to/file.ts`), JSON schema, or ts-rest routers. They only record metadata; implement request and response validation in application code.
 
 ## See Also
 - CLI reference: `../reference/cli.md#add-route`

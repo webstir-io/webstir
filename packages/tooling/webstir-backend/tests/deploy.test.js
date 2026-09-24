@@ -48,10 +48,9 @@ test.skipIf(!tcpListenAvailable)(
     );
 
     const port = await getOpenPort();
-    const server = await startPublishedWorkspaceServer({
+    const server = await startWithCapturedOutput({
       workspaceRoot: workspace,
       port,
-      io: quietIo,
     });
 
     try {
@@ -118,10 +117,9 @@ test.skipIf(!tcpListenAvailable)(
     await buildRuntimeWorkspace(workspace, 'api');
 
     const port = await getOpenPort();
-    const server = await startPublishedWorkspaceServer({
+    const server = await startWithCapturedOutput({
       workspaceRoot: workspace,
       port,
-      io: quietIo,
     });
 
     try {
@@ -360,11 +358,19 @@ async function canListenOnTcp() {
   });
 }
 
-const quietIo = {
-  stdout: {
-    write() {},
-  },
-  stderr: {
-    write() {},
-  },
-};
+async function startWithCapturedOutput(options) {
+  let output = '';
+  const stream = {
+    write(chunk) {
+      output += chunk;
+    },
+  };
+  try {
+    return await startPublishedWorkspaceServer({
+      ...options,
+      io: { stdout: stream, stderr: stream },
+    });
+  } catch (error) {
+    throw new Error(`${error.message}\n${output}`, { cause: error });
+  }
+}

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, mkdir } from 'node:fs/promises';
+import { chmod, lstat, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
@@ -95,9 +95,21 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     assets.push(...(await getBackendScaffoldAssets()));
   }
 
+  // Generated instructions become app-owned. Existing files, links, or directories
+  // must not block unrelated scaffold repairs or be rewritten by the framework.
+  let hasAppInstructions = false;
+  try {
+    await lstat(path.join(workspace.root, 'AGENTS.md'));
+    hasAppInstructions = true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw error;
+    }
+  }
+
   const preparedAssets = await preflightScaffoldAssets(
     workspace.root,
-    assets,
+    hasAppInstructions ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md') : assets,
     'restore scaffold assets',
   );
   await preflightWorkspaceWriteTargets(
@@ -226,11 +238,15 @@ function filterModeScaffoldAssets(
   assets: readonly { sourcePath: string; targetPath: string }[],
   enable: RepairEnableFlags,
 ): readonly { sourcePath: string; targetPath: string }[] {
+  // Starter tests belong to the app after init; deleted examples are not runtime drift.
+  const runtimeAssets = assets.filter(
+    (asset) => !normalizeRelativePath(asset.targetPath).split('/').includes('tests'),
+  );
   if (!enable.backend) {
-    return assets;
+    return runtimeAssets;
   }
 
-  return assets.filter(
+  return runtimeAssets.filter(
     (asset) => !normalizeRelativePath(asset.targetPath).startsWith('src/backend/'),
   );
 }

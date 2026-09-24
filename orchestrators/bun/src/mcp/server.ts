@@ -161,7 +161,8 @@ export function createMcpServer(): McpServer {
     'scaffold_route',
     {
       title: 'Scaffold Route',
-      description: 'Create a backend route through the stable Webstir scaffold flow.',
+      description:
+        'Record backend route metadata in package.json. Implement the matching handler in src/backend/module.ts separately.',
       inputSchema: scaffoldRouteSchema,
     },
     async (input) =>

@@ -237,11 +237,16 @@ test('CLI agent scaffold-route records backend route metadata and inspects it', 
     const parsed = JSON.parse(result.stdout) as {
       goal: string;
       success: boolean;
+      scaffold?: { note?: string; changes: string[] };
+      steps: { summary: string }[];
       inspect?: { manifest: { routes?: unknown[] } };
     };
 
     expect(parsed.goal).toBe('scaffold-route');
     expect(parsed.success).toBe(true);
+    expect(parsed.scaffold?.changes).toEqual(['package.json']);
+    expect(parsed.scaffold?.note).toContain('Implement the matching handler');
+    expect(parsed.steps.some((step) => step.summary.includes('handler implementation'))).toBe(true);
     expect(Array.isArray(parsed.inspect?.manifest.routes)).toBe(true);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
