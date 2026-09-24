@@ -3,6 +3,7 @@ import { load } from 'cheerio';
 import { ensureDir, pathExists, readFile, writeFile } from '../../utils/fs.js';
 import { FILES } from '../../core/constants.js';
 import { scanGlob } from '../../utils/glob.js';
+import { createCompressedVariants } from '../../assets/precompression.js';
 
 interface HtmlPage {
   readonly filePath: string;
@@ -17,8 +18,10 @@ export interface SsgSeoOptions {
 export async function runSsgSeo(distRoot: string, options: SsgSeoOptions = {}): Promise<void> {
   const pages = await discoverHtmlPages(distRoot);
   await validateInternalLinks(pages, distRoot);
-  await writeSitemap(distRoot, pages, options);
+  const indexable = await selectIndexablePages(pages);
+  await writeSitemap(distRoot, indexable, options);
   await writeRobots(distRoot, options.siteUrl);
+  await writeCanonicalUrls(indexable, options);
 }
 
 async function discoverHtmlPages(distRoot: string): Promise<HtmlPage[]> {
@@ -219,21 +222,26 @@ async function isNoIndexPage(page: HtmlPage): Promise<boolean> {
     });
 }
 
-async function writeSitemap(
-  distRoot: string,
-  pages: readonly HtmlPage[],
-  options: SsgSeoOptions,
-): Promise<void> {
+async function selectIndexablePages(pages: readonly HtmlPage[]): Promise<HtmlPage[]> {
   const indexable: HtmlPage[] = [];
   for (const page of pages) {
-    if (!(await isNoIndexPage(page))) {
+    if (
+      page.urlPath.startsWith('/') &&
+      !isNotFoundPath(page.urlPath) &&
+      !(await isNoIndexPage(page))
+    ) {
       indexable.push(page);
     }
   }
-  const urls = indexable
-    .map((page) => page.urlPath)
-    .filter((url) => url.startsWith('/'))
-    .filter((url) => !isNotFoundPath(url));
+  return indexable;
+}
+
+async function writeSitemap(
+  distRoot: string,
+  indexable: readonly HtmlPage[],
+  options: SsgSeoOptions,
+): Promise<void> {
+  const urls = indexable.map((page) => page.urlPath);
   const unique = Array.from(
     new Set(urls.map((url) => formatSitemapPath(url, options.trailingSlash))),
   ).sort((a, b) => a.localeCompare(b));
@@ -259,6 +267,54 @@ async function writeSitemap(
   const outputPath = path.join(distRoot, 'sitemap.xml');
   await ensureDir(path.dirname(outputPath));
   await writeFile(outputPath, xml);
+}
+
+// Each indexable page names the same address the sitemap lists, so hosts that
+// answer both /about and /about/ do not split one page into two search results.
+// Tags the page already declares are left alone.
+async function writeCanonicalUrls(
+  indexable: readonly HtmlPage[],
+  options: SsgSeoOptions,
+): Promise<void> {
+  const baseUrl = normalizeSiteUrl(options.siteUrl);
+  if (!baseUrl) {
+    return;
+  }
+
+  for (const page of indexable) {
+    const html = await readFile(page.filePath);
+    const headEnd = html.search(/<\/head>/i);
+    if (headEnd === -1) {
+      continue;
+    }
+
+    const doc = load(html);
+    const href = escapeXml(
+      new URL(formatSitemapPath(page.urlPath, options.trailingSlash), baseUrl).href,
+    );
+    const tags: string[] = [];
+    if (doc('link[rel="canonical"]').length === 0) {
+      tags.push(`<link rel="canonical" href="${href}">`);
+    }
+    if (doc('meta[property="og:url"]').length === 0) {
+      tags.push(`<meta property="og:url" content="${href}">`);
+    }
+    if (tags.length === 0) {
+      continue;
+    }
+
+    await writeFile(
+      page.filePath,
+      `${html.slice(0, headEnd)}${tags.join('')}${html.slice(headEnd)}`,
+    );
+    await refreshCompressedVariants(page.filePath);
+  }
+}
+
+async function refreshCompressedVariants(filePath: string): Promise<void> {
+  if ((await pathExists(`${filePath}.br`)) || (await pathExists(`${filePath}.gz`))) {
+    await createCompressedVariants(filePath);
+  }
 }
 
 function isNotFoundPath(pathname: string): boolean {

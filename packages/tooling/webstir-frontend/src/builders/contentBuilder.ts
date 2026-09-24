@@ -1045,7 +1045,11 @@ function mergeContentIntoTemplate(
     ensureMetaProperty(head, 'og:description', effectiveDescription);
   }
   ensureMetaProperty(head, 'og:type', 'website');
-  ensureMetaName(head, 'twitter:card', 'summary');
+  // Keep a card type the app template chose; otherwise match the share image, if any.
+  if (head.find('meta[name="twitter:card"]').length === 0) {
+    const hasShareImage = head.find('meta[property="og:image"]').length > 0;
+    ensureMetaName(head, 'twitter:card', hasShareImage ? 'summary_large_image' : 'summary');
+  }
   ensureMetaName(head, 'twitter:title', effectiveTitle);
   if (effectiveDescription) {
     ensureMetaName(head, 'twitter:description', effectiveDescription);

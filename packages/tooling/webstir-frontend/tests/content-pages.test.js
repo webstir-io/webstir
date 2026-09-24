@@ -36,7 +36,7 @@ async function createWorkspaceWithContent(options = {}) {
 
   await fs.writeFile(
     path.join(appDir, 'app.html'),
-    '<!DOCTYPE html><html><head><title>My Site</title></head><body><main></main></body></html>',
+    `<!DOCTYPE html><html><head><title>My Site</title>${options.appHead ?? ''}</head><body><main></main></body></html>`,
     'utf8',
   );
   await fs.writeFile(path.join(appDir, 'app.css'), 'body{font-family:sans-serif;}', 'utf8');
@@ -73,6 +73,7 @@ async function createWorkspaceWithContent(options = {}) {
         private: true,
         webstir: {
           mode: 'ssg',
+          ...(options.siteUrl ? { siteUrl: options.siteUrl } : {}),
           enable: {
             contentNav: true,
           },
@@ -334,6 +335,61 @@ test('content titleTemplate sets content page titles in build and publish', asyn
         'expected og:title to match the templated title',
       );
     }
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('content pages pick a card type from the share image unless the app sets one', async (t) => {
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { runBuild } = frontend;
+  const shareImage = '<meta property="og:image" content="https://example.com/share.png">';
+  const cases = [
+    { appHead: '', expected: 'summary' },
+    { appHead: shareImage, expected: 'summary_large_image' },
+    { appHead: `${shareImage}<meta name="twitter:card" content="summary">`, expected: 'summary' },
+  ];
+
+  for (const { appHead, expected } of cases) {
+    const workspace = await createWorkspaceWithContent({ appHead });
+    try {
+      await runBuild({ workspaceRoot: workspace });
+      const html = await fs.readFile(
+        path.join(workspace, 'build', 'frontend', 'pages', 'docs', 'section', 'one', 'index.html'),
+        'utf8',
+      );
+      const cards = html.match(/<meta name="twitter:card" content="[^"]*"/g) ?? [];
+      assert.deepEqual(cards, [`<meta name="twitter:card" content="${expected}"`]);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  }
+});
+
+test('published content pages name their canonical address', async (t) => {
+  const frontend = await loadFrontendModuleOrSkip(t);
+  if (!frontend) return;
+  const { runBuild, runPublish } = frontend;
+  const workspace = await createWorkspaceWithContent({ siteUrl: 'https://example.com' });
+
+  try {
+    await runBuild({ workspaceRoot: workspace });
+    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    const html = await fs.readFile(
+      path.join(workspace, 'dist', 'frontend', 'docs', 'section', 'one', 'index.html'),
+      'utf8',
+    );
+    assert.equal(
+      (
+        html.match(/<link rel="canonical" href="https:\/\/example\.com\/docs\/section\/one\/">/g) ??
+        []
+      ).length,
+      1,
+    );
+    assert.ok(
+      html.includes('<meta property="og:url" content="https://example.com/docs/section/one/">'),
+    );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

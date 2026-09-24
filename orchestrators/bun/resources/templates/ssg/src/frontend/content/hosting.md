@@ -45,6 +45,8 @@ Or add to `package.json`:
 }
 ```
 
+The same address becomes each indexable page's `<link rel="canonical">` and `og:url`, so hosts that answer both `/about` and `/about/` still point search engines at one URL. A page that declares its own canonical keeps it, and `noindex` pages and the 404 page get none.
+
 ## Broken link checks
 
 During SSG publish, Webstir validates internal links and `#hash` anchors across the generated HTML pages and fails with actionable errors if anything is broken.

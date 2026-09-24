@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 import { applySsgRouting, generateSsgViewData } from '../dist/modes/ssg/index.js';
 
@@ -179,7 +180,7 @@ test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', asy
   );
   await fs.writeFile(
     path.join(distPages, 'docs', 'guide', 'index.html'),
-    '<!doctype html><main>guide</main>',
+    '<!doctype html><head><title>Guide</title></head><main>guide</main>',
     'utf8',
   );
   await fs.writeFile(
@@ -221,6 +222,83 @@ test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', asy
     assert.doesNotMatch(sitemap, /<loc>https:\/\/webstir\.io\/404<\/loc>/);
     assert.doesNotMatch(sitemap, /webstir\.io\/moved/, 'noindex pages stay out of the sitemap');
     assert.doesNotMatch(sitemap, /webstir\.io\/internal/, 'robots matching is case-insensitive');
+
+    const canonical = '<link rel="canonical" href="https://webstir.io/docs/guide">';
+    for (const guidePath of [
+      path.join(distFrontend, 'docs', 'guide', 'index.html'),
+      path.join(distFrontend, 'docs', 'guide.html'),
+    ]) {
+      const guide = await fs.readFile(guidePath, 'utf8');
+      assert.ok(
+        guide.includes(canonical),
+        `expected the sitemap address as canonical in ${guidePath}`,
+      );
+      assert.ok(guide.includes('<meta property="og:url" content="https://webstir.io/docs/guide">'));
+    }
+    for (const skipped of ['moved', 'internal', '404']) {
+      const html = await fs.readFile(path.join(distFrontend, skipped, 'index.html'), 'utf8');
+      assert.doesNotMatch(
+        html,
+        /rel="canonical"/,
+        `${skipped} is not indexable and gets no canonical`,
+      );
+    }
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test('ssg canonical urls keep declared tags and refresh compressed copies', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-canonical-'));
+  const distFrontend = path.join(workspace, 'dist', 'frontend');
+
+  await fs.mkdir(path.join(distFrontend, 'about'), { recursive: true });
+  await fs.writeFile(
+    path.join(distFrontend, 'index.html'),
+    '<!doctype html><html><head><title>Home</title></head><main>home</main></html>',
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(distFrontend, 'about', 'index.html'),
+    '<!doctype html><html><head><link rel="canonical" href="https://elsewhere.example/about/"></head><main>about</main></html>',
+    'utf8',
+  );
+  await fs.writeFile(path.join(distFrontend, 'about', 'index.html.br'), 'stale', 'utf8');
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify({
+      name: 'webstir-project',
+      webstir: { mode: 'ssg', siteUrl: 'https://webstir.io' },
+    }),
+    'utf8',
+  );
+
+  const config = createFrontendConfig(workspace);
+  config.paths.dist.pages = distFrontend;
+  config.paths.dist.content = path.join(distFrontend, 'docs');
+
+  try {
+    await applySsgRouting(config);
+
+    const home = await fs.readFile(path.join(distFrontend, 'index.html'), 'utf8');
+    assert.ok(
+      home.includes(
+        '<link rel="canonical" href="https://webstir.io/"><meta property="og:url" content="https://webstir.io/"></head>',
+      ),
+    );
+
+    const aboutPath = path.join(distFrontend, 'about', 'index.html');
+    const about = await fs.readFile(aboutPath, 'utf8');
+    assert.equal((about.match(/rel="canonical"/g) ?? []).length, 1, 'a declared canonical is kept');
+    assert.ok(about.includes('href="https://elsewhere.example/about/"'));
+    assert.ok(about.includes('<meta property="og:url" content="https://webstir.io/about/">'));
+
+    const brotli = await fs.readFile(`${aboutPath}.br`);
+    assert.equal(
+      zlib.brotliDecompressSync(brotli).toString('utf8'),
+      about,
+      'compressed copy matches',
+    );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }
