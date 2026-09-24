@@ -2,7 +2,7 @@
 
 Use a coding agent to build and change a server-first Webstir app. The agent edits your application; Webstir provides the project structure, inspection, scaffolding, and checks.
 
-The development version adds generated `AGENTS.md` instructions, installed feature recipes, and repair that preserves deliberately removed starter tests. These changes are not in npm versions `0.1.65` or `0.1.66`; they will be available in a subsequent package release. Existing published versions support the basic CLI workflow below. This guide does not claim a measured speedup or support for every agent product.
+Generated `AGENTS.md` instructions, installed feature recipes, and repair that preserves deliberately removed starter tests require Webstir `0.1.67` or later. Earlier versions support the basic CLI workflow below. This guide does not claim a measured speedup or support for every agent product.
 
 ## Start a consumer workspace
 
@@ -22,7 +22,7 @@ bun install
 
 Open `my-app` in your coding agent. Supply the absolute CLI path in its first request; a new terminal or agent session does not inherit a previous shell's `WEBSTIR` variable. The initial integration is exercised with Codex CLI. Other agents can use the CLI, but need their own verification before assuming equivalent behavior.
 
-In packages with the new guidance, `--help` prints the installed recipe directory and current starter instructions. New apps include a short `AGENTS.md`; read it alongside the app's existing code. Existing instruction files belong to the app and are preserved by repair. Missing instructions alone do not make an app unhealthy.
+In Webstir `0.1.67` and later, `--help` prints the installed recipe directory and current starter instructions. New apps include a short `AGENTS.md`; read it alongside the app's existing code. Existing instruction files belong to the app and are preserved by repair. Missing instructions alone do not make an app unhealthy.
 
 ## Ask for a complete feature
 
@@ -53,7 +53,7 @@ Check successful submissions, invalid input, reloads, and persistence after rest
 
 `add-route` records route metadata; the application still needs a matching handler. `inspect` describes framework state, and `agent validate` runs diagnosis plus tests. Use the behavior you requested as the acceptance criteria.
 
-When diagnosing scaffold drift, start with `repair --dry-run --json --workspace "$PWD"`. In the development version, repair restores framework support files while leaving app-owned instructions and starter tests under your control. Older versions may recreate deleted starter tests, so inspect the proposed paths before applying repair. Application bugs require application code changes. `refresh` replaces the workspace with a scaffold and is unsuitable for routine repair.
+When diagnosing scaffold drift, start with `repair --dry-run --json --workspace "$PWD"`. In Webstir `0.1.67` and later, repair restores framework support files while leaving app-owned instructions and starter tests under your control. Older versions may recreate deleted starter tests, so inspect the proposed paths before applying repair. Application bugs require application code changes. `refresh` replaces the workspace with a scaffold and is unsuitable for routine repair.
 
 ## Optional MCP connection
 
