@@ -143,6 +143,7 @@ Notes:
 - `validate` runs `doctor` and then `test`
 - `repair` runs `doctor`, applies scaffold repair when available, and then re-checks health
 - `scaffold-page`, `scaffold-route`, and `scaffold-job` call the matching scaffold commands and then verify the resulting workspace state
+- `scaffold-route` records metadata and reports that the matching application handler still needs implementation and behavioral tests
 
 ### build
 Usage: `webstir build --workspace <path>`

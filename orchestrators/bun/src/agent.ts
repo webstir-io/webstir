@@ -325,7 +325,7 @@ export async function runAgentScaffoldRoute(
   steps.push({
     id: 'add-route',
     status: 'completed',
-    summary: `Scaffolded route ${scaffold.target}.`,
+    summary: `Recorded route metadata for ${scaffold.target}; handler implementation and behavior tests are still required in the app.`,
   });
 
   const inspect = await runBackendInspect({

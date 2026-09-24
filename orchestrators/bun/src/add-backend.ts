@@ -35,6 +35,7 @@ export async function runAddRouteScaffold(
     subject: 'route',
     target: result.target,
     changes: result.changes,
+    note: 'Route metadata recorded. Implement the matching handler in src/backend/module.ts and test its behavior.',
   };
 }
 

@@ -72,25 +72,31 @@ export async function runDoctor(options: RunDoctorOptions): Promise<DoctorResult
     rawArgs: ['--dry-run'],
   });
 
-  if (repairResult.changes.length > 0) {
+  // App instructions are optional guidance, not required runtime scaffold state.
+  const requiredChanges = repairResult.changes.filter((change) => change !== 'AGENTS.md');
+
+  if (requiredChanges.length > 0) {
     checks.push({
       id: 'scaffold',
       status: 'fail',
-      summary: `${repairResult.changes.length} scaffold-managed change(s) required.`,
-      changes: repairResult.changes,
+      summary: `${requiredChanges.length} scaffold-managed change(s) required.`,
+      changes: requiredChanges,
     });
     issues.push({
       code: 'scaffold_drift',
       severity: 'error',
       message: 'Scaffold-managed files or wiring have drifted from the expected workspace shape.',
       repairable: true,
-      changes: repairResult.changes,
+      changes: requiredChanges,
     });
   } else {
     checks.push({
       id: 'scaffold',
       status: 'pass',
-      summary: 'Scaffold-managed files and wiring match the expected workspace shape.',
+      summary: 'Required scaffold-managed files and wiring match the expected workspace shape.',
+      ...(repairResult.changes.includes('AGENTS.md')
+        ? { detail: 'Optional app instructions (AGENTS.md) can be restored with repair.' }
+        : {}),
     });
   }
 

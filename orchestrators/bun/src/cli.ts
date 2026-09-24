@@ -4,6 +4,8 @@ import path from 'node:path';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { assetsRoot } from './paths.ts';
+
 import {
   formatAddSummary,
   formatAgentJson,
@@ -93,6 +95,10 @@ Options:
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
   -h, --help               Show this help text.
+
+Installed app guidance:
+  Recipes and coding-agent setup: ${path.join(assetsRoot, 'guides', 'README.md')}
+  Starter app instructions: ${path.join(assetsRoot, 'templates', 'shared', 'AGENTS.md')}
 `;
 
 export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Promise<number> {
@@ -192,6 +198,10 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         workspaceRoot,
       });
       io.stdout.write(`${formatInitSummary(result)}\n`);
+      io.stdout.write(`Read app instructions: ${path.join(result.workspaceRoot, 'AGENTS.md')}\n`);
+      io.stdout.write(
+        `Installed recipes and setup: ${path.join(assetsRoot, 'guides', 'README.md')}\n`,
+      );
       return 0;
     }
 

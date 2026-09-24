@@ -10,6 +10,7 @@ const testsDir = path.join(packageRoot, 'tests');
 const browserTestFile = 'tests/progressive-enhancement.browser.integration.test.ts';
 const browserTestFiles = [
   browserTestFile,
+  'tests/agent-recipes.integration.test.ts',
   'tests/runtime-boundary.integration.test.ts',
   'tests/bun-first-spa.integration.test.ts',
   'tests/ssg-watch.integration.test.ts',

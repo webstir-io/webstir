@@ -218,13 +218,14 @@ test('MCP scaffold_route keeps the route creation flow narrow and typed', async 
       command: string;
       goal: string;
       success: boolean;
-      scaffold?: { target: string };
+      scaffold?: { target: string; note?: string };
       inspect?: { manifest: { routes?: Array<Record<string, unknown>> } };
     };
     expect(content.command).toBe('agent');
     expect(content.goal).toBe('scaffold-route');
     expect(content.success).toBe(true);
     expect(content.scaffold?.target).toBe('POST /session/sign-in');
+    expect(content.scaffold?.note).toContain('Implement the matching handler');
 
     const packageJson = JSON.parse(
       await readFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'), 'utf8'),

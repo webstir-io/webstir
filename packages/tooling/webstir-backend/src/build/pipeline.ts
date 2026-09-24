@@ -138,7 +138,7 @@ async function runTypeCheck(
   }
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('tsc', ['-p', tsconfigPath, '--noEmit'], {
+    const child = spawn('tsc', ['-p', tsconfigPath, '--noEmit', '--pretty', 'false'], {
       stdio: 'pipe',
       env: {
         ...process.env,
@@ -182,9 +182,16 @@ async function runTypeCheck(
           diagnostics.push({ severity: 'error', message: stderr.trim() });
         }
         if (stdout.trim()) {
-          diagnostics.push({ severity: 'info', message: stdout.trim() });
+          diagnostics.push({ severity: 'error', message: stdout.trim() });
         }
-        reject(new Error('Type checking failed.'));
+        const output = [stdout.trim(), stderr.trim()].filter(Boolean).join('\n');
+        reject(
+          new Error(
+            output
+              ? `Type checking failed.\n${output}`
+              : `Type checking failed (exit code ${code}) for ${tsconfigPath}.`,
+          ),
+        );
       }
     });
   });

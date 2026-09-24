@@ -18,6 +18,7 @@ const fullTemplateRoot = path.join(templatesRoot, 'full');
 
 export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
   return [
+    createAsset(sharedTemplateRoot, 'AGENTS.md', 'AGENTS.md'),
     createAsset(sharedTemplateRoot, 'Errors.404.html', 'Errors.404.html'),
     createAsset(sharedTemplateRoot, 'Errors.500.html', 'Errors.500.html'),
     createAsset(sharedTemplateRoot, 'Errors.default.html', 'Errors.default.html'),

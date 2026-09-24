@@ -2,7 +2,7 @@
 
 ## Active Plan
 
-None
+- [Agent-assisted development](plans/agent-assisted-development/EXECMAP.md)
 
 ## Completed Plans
 
