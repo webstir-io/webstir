@@ -84,6 +84,61 @@ test('DevServer serves static files with the expected cache headers', async () =
   }
 });
 
+test('DevServer serves the 404 page for missing page addresses', async () => {
+  const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-not-found-'));
+  const server = new DevServer({ buildRoot, host: '127.0.0.1', port: 0 });
+  const html = { accept: 'text/html,application/xhtml+xml' };
+
+  try {
+    await mkdir(path.join(buildRoot, 'pages', '404'), { recursive: true });
+    await writeFile(path.join(buildRoot, 'pages', '404', 'index.html'), '<h1>Missing</h1>', 'utf8');
+
+    const address = await server.start();
+
+    const pageResponse = await fetch(`${address.origin}/no/such/page/`, { headers: html });
+    expect(pageResponse.status).toBe(404);
+    expect(pageResponse.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(pageResponse.headers.get('cache-control')).toBe('no-cache, no-store, must-revalidate');
+    expect(await pageResponse.text()).toBe('<h1>Missing</h1>');
+
+    const headResponse = await fetch(`${address.origin}/no/such/page/`, {
+      method: 'HEAD',
+      headers: html,
+    });
+    expect(headResponse.status).toBe(404);
+    expect(await headResponse.text()).toBe('');
+
+    const assetResponse = await fetch(`${address.origin}/images/missing.png`);
+    expect(assetResponse.status).toBe(404);
+    expect(assetResponse.headers.get('content-type')).toBe('text/plain; charset=utf-8');
+    expect(await assetResponse.text()).toBe('Not found.');
+
+    const pageRouteResponse = await fetch(`${address.origin}/404/`, { headers: html });
+    expect(pageRouteResponse.status).toBe(200);
+  } finally {
+    await server.stop();
+    await rm(buildRoot, { recursive: true, force: true });
+  }
+});
+
+test('DevServer answers missing pages with plain text when the workspace has no 404 page', async () => {
+  const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-no-not-found-'));
+  const server = new DevServer({ buildRoot, host: '127.0.0.1', port: 0 });
+
+  try {
+    const address = await server.start();
+    const response = await fetch(`${address.origin}/missing/`, {
+      headers: { accept: 'text/html' },
+    });
+
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe('Not found.');
+  } finally {
+    await server.stop();
+    await rm(buildRoot, { recursive: true, force: true });
+  }
+});
+
 test('DevServer takes browser error reports at /client-errors and hands them to the terminal', async () => {
   const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-errors-'));
   const received: Array<{ message: string; correlationId: string }> = [];
