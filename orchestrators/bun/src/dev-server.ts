@@ -48,6 +48,7 @@ const MIME_TYPES: Record<string, string> = {
   '.map': 'application/json; charset=utf-8',
 };
 
+const NOT_FOUND_PAGE_PATH = 'pages/404/index.html';
 const RESERVED_PREFIXES = ['__webstir', 'api', 'fonts', 'images', 'media', 'pages', 'sse'];
 const STATIC_EXTENSIONS = new Set([
   '.css',
@@ -199,7 +200,7 @@ export class DevServer {
         ]);
     }
     if (!resolved) {
-      return textResponse(404, 'Not found.');
+      return await this.notFoundResponse(request, method);
     }
 
     const lowerRelativePath = resolved.relativePath.toLowerCase();
@@ -218,6 +219,24 @@ export class DevServer {
 
     return new Response(Bun.file(resolved.absolutePath), {
       status: 200,
+      headers,
+    });
+  }
+
+  // Page requests for a missing address get the workspace's 404 page, as the
+  // published site would; other requests keep the plain-text response.
+  private async notFoundResponse(request: Request, method: string): Promise<Response> {
+    const notFoundPage = acceptsHtml(request)
+      ? await resolveStaticFile(this.buildRoot, [NOT_FOUND_PAGE_PATH])
+      : null;
+    if (!notFoundPage) {
+      return textResponse(404, 'Not found.');
+    }
+
+    const headers = new Headers({ 'Content-Type': MIME_TYPES['.html'] });
+    setNoCacheHeaders(headers);
+    return new Response(method === 'HEAD' ? null : Bun.file(notFoundPage.absolutePath), {
+      status: 404,
       headers,
     });
   }
@@ -479,6 +498,10 @@ function setNoCacheHeaders(headers: Headers): void {
   headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   headers.set('Pragma', 'no-cache');
   headers.set('Expires', '0');
+}
+
+function acceptsHtml(request: Request): boolean {
+  return (request.headers.get('accept') ?? '').includes('text/html');
 }
 
 function textResponse(statusCode: number, body: string): Response {

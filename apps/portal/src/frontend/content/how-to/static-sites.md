@@ -95,4 +95,4 @@ Attach the generated `utils/cloudfront-rewrite-directory-index.js` as a CloudFro
 
 ### Error pages
 
-Add a `404` page to the workspace and point the distribution's custom error responses for 403 and 404 at `/404/index.html`. The 404 page is excluded from the sitemap automatically.
+Add a `404` page to the workspace and point the distribution's custom error responses for 403 and 404 at `/404/index.html`. The 404 page is excluded from the sitemap automatically, and `webstir watch` serves it with a 404 status for any page address that does not exist, so you can see it locally.
