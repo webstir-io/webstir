@@ -99,7 +99,8 @@ export function elementOf(candidates: readonly SchemaLike[]): SchemaResult {
     } else if (typeName === 'ZodArray') {
       found.push(...flattenSchema(candidate._def.type as SchemaLike));
     } else if (typeName === 'ZodSet') {
-      found.push(...flattenSchema(candidate._def.valueType as SchemaLike));
+      // A parsed set is a Set, not an array, and the renderer loops over arrays only.
+      kinds.add('a set (use z.array)');
     } else if (typeName === 'ZodTuple') {
       for (const item of candidate._def.items as SchemaLike[]) {
         found.push(...flattenSchema(item));

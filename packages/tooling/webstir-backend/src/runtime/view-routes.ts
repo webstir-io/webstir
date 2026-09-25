@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 
-import { isStaticAssetPath } from './deploy-static.js';
+import { isStaticAssetPath, staticFileExists } from './deploy-static.js';
 import { compileViews, matchView, type CompiledView } from './views.js';
 
 export const VIEW_ROUTES_FILE = 'views.json';
@@ -59,10 +59,11 @@ export async function hasRenderedViewRoutes(workspaceRoot: string): Promise<bool
  * Answers whether a request path belongs to a view the backend renders: a view that names a
  * page, with or without bindings, since its loader must run either way. Watch and the published
  * server proxy those paths to the backend instead of serving the page's template as a file.
- * Asset requests, such as a page's stylesheet, never match a view.
+ * Only an asset that exists as a file, such as a page's stylesheet, is served in its place.
  */
 export function createRenderedViewMatcher(options: {
   readonly workspaceRoot: string;
+  readonly frontendRoot: string;
 }): (pathname: string) => Promise<boolean> {
   let cached: { mtimeMs: number; views: CompiledView[] } | undefined;
 
@@ -88,10 +89,12 @@ export function createRenderedViewMatcher(options: {
   };
 
   return async (pathname: string) => {
-    if (isStaticAssetPath(pathname)) {
+    if (!matchView(await load(), pathname)?.view.definition?.page) {
       return false;
     }
-    return Boolean(matchView(await load(), pathname)?.view.definition?.page);
+    return !(
+      isStaticAssetPath(pathname) && (await staticFileExists(options.frontendRoot, pathname))
+    );
   };
 }
 

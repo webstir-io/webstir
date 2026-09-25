@@ -81,18 +81,31 @@ export async function startBunGeneratedFrontendWatch(
     host,
     startFrontendServer(host, port, servedEntries, fetchOptions),
   );
-  const watchers = await watchRegenerationTargets(paths, pages, pageRoutes, async (nextEntries) => {
-    if (isSpa) {
-      await checkSpaTemplates(options.workspaceRoot).catch((error: unknown) => {
-        console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
-      });
-    }
-    const reloadOptions: Parameters<ReloadableServeServer['reload']>[0] = {
-      fetch: createBunFrontendFetchHandler(fetchOptions),
-      routes: createBunSpaRoutes(nextEntries),
-    };
-    servedAddress.server.reload(reloadOptions);
-  });
+  // An SPA edit that adds a binding is not regenerated, so watch keeps serving the last valid pages.
+  const canRegenerate = isSpa
+    ? async () => {
+        try {
+          await checkSpaTemplates(options.workspaceRoot);
+          return true;
+        } catch (error) {
+          console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
+          return false;
+        }
+      }
+    : undefined;
+  const watchers = await watchRegenerationTargets(
+    paths,
+    pages,
+    pageRoutes,
+    canRegenerate,
+    async (nextEntries) => {
+      const reloadOptions: Parameters<ReloadableServeServer['reload']>[0] = {
+        fetch: createBunFrontendFetchHandler(fetchOptions),
+        routes: createBunSpaRoutes(nextEntries),
+      };
+      servedAddress.server.reload(reloadOptions);
+    },
+  );
 
   return createSession(servedAddress, watchers);
 }
@@ -135,6 +148,7 @@ async function watchRegenerationTargets(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
   pageRoutes: readonly PageRoute[],
+  canRegenerate: (() => Promise<boolean>) | undefined,
   onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>,
 ): Promise<Set<FSWatcher>> {
   const watchers = new Set<FSWatcher>();
@@ -182,6 +196,9 @@ async function watchRegenerationTargets(
       const affectedPages = pages.filter((page) => affectedPageNames.has(page.name));
 
       await refreshWatchedGraph();
+      if (canRegenerate && !(await canRegenerate())) {
+        continue;
+      }
       await regenerateAndReloadSpaEntries(
         paths,
         pages,

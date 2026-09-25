@@ -62,6 +62,11 @@ export function isStaticAssetPath(pathname: string): boolean {
   return extension === '.html' || STATIC_EXTENSIONS.has(extension);
 }
 
+/** Whether a request resolves to a file under the frontend root, as static serving would find it. */
+export async function staticFileExists(frontendRoot: string, pathname: string): Promise<boolean> {
+  return (await resolveStaticFile(frontendRoot, getStaticCandidatePaths(pathname))) !== null;
+}
+
 /** Compiled render programs are build artifacts, never served, however the path is spelled. */
 export function isRenderProgramPath(relativePath: string): boolean {
   return relativePath.split(/[\\/]/).pop()?.toLowerCase().endsWith('.program.json') === true;

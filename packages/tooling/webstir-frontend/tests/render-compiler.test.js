@@ -309,6 +309,7 @@ test('schema checks cover each, text, attributes and the framework flash', async
       '<p data-if="missing"></p>',
       '<p data-text="flag"></p>',
       '<input data-attr-disabled="flag" />',
+      '<p data-each="tags as tag"></p>',
       '</main>',
     ].join('\n'),
   );
@@ -318,6 +319,7 @@ test('schema checks cover each, text, attributes and the framework flash', async
     flag: z.boolean(),
     table: z.object({ rows: z.array(z.array(z.string())) }),
     sections: z.array(z.object({ items: z.array(z.string()) })),
+    tags: z.set(z.string()),
   });
   const messages = validateRenderProgram(program, schema, 'fixture').map(
     (issue) => `${issue.loc.line}: ${issue.message.replace(' (view fixture)', '')}`,
@@ -327,8 +329,9 @@ test('schema checks cover each, text, attributes and the framework flash', async
     '9: data-text="table": `table` needs a string or number, but it can be an object',
     '10: data-attr-href="table.rows": `table.rows` needs a string, number or boolean, but it can be an array',
     '11: data-text="sections": `sections` needs a string or number, but it can be an array',
-    '12: data-if="missing": the view data has no `missing`; it has `flag`, `sections`, `table`, `title`',
+    '12: data-if="missing": the view data has no `missing`; it has `flag`, `sections`, `table`, `tags`, `title`',
     '13: data-text="flag": `flag` needs a string or number, but it can be a boolean',
+    '15: data-each="tags as tag": `tags` needs an array, but it can be a set (use z.array)',
   ]);
 
   const inner = collectOps(program.nodes).find(

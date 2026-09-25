@@ -44,9 +44,9 @@ export async function startBunSsgFrontendWatch(
   const operations = await loadFrontendOperations();
 
   await operations.runBuild({ workspaceRoot });
-  await options.afterBuild?.().catch((error: unknown) => {
-    console.error(`[webstir] frontend build failed: ${formatError(error)}`);
-  });
+  // A template or loader that fails at startup stops watch, as a failed build does, rather than
+  // serving pages that never rendered.
+  await options.afterBuild?.();
 
   let stopping = false;
   let stopPromise: Promise<void> | null = null;
@@ -116,7 +116,7 @@ export async function startBunSsgFrontendWatch(
     apiProxyOrigin: options.apiProxyOrigin,
     pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
     isRenderedView: options.apiProxyOrigin
-      ? createRenderedViewMatcher({ workspaceRoot })
+      ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
       : undefined,
     renderedPage: options.renderedPage,
     host: options.host,

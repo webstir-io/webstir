@@ -5,6 +5,7 @@ import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { runBuild } from '../src/build.ts';
 import { runPublish } from '../src/publish.ts';
 import { packageRoot } from '../src/paths.ts';
+import { startBunSsgFrontendWatch } from '../src/bun-ssg-watch.ts';
 import { createSsgDevPages } from '../src/ssg-dev-pages.ts';
 import {
   copyDemoWorkspace,
@@ -100,6 +101,27 @@ test('watch renders SSG pages from the build and hides the bare template', async
   );
   await pages.refresh();
   expect(pages.lookup('/blog/launch')).toContain('<h1>Launch day</h1>');
+}, 120_000);
+
+test('watch does not start when an SSG view fails to render', async () => {
+  const workspace = await createBlogWorkspace();
+  const modulePath = path.join(workspace, 'src', 'backend', 'module.ts');
+  await writeFile(
+    modulePath,
+    (await readFile(modulePath, 'utf8')).replace(
+      "title: 'Launch'",
+      'title: 42 as unknown as string',
+    ),
+  );
+  const pages = createSsgDevPages(workspace);
+  await expect(
+    startBunSsgFrontendWatch({
+      workspaceRoot: workspace,
+      port: 0,
+      afterBuild: () => pages.refresh(),
+      renderedPage: (pathname) => pages.lookup(pathname),
+    }),
+  ).rejects.toThrow(/view post returned data for \/blog\/launch that does not match its schema/);
 }, 120_000);
 
 test('webstir build fails an SPA whose template has bindings', async () => {
