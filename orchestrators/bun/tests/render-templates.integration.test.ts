@@ -169,7 +169,7 @@ test('webstir watch renders a view through the dev server and proxies its form p
   const origin = `http://127.0.0.1:${port}`;
 
   try {
-    await exerciseWatch(workspace, origin, stderr);
+    await exerciseWatch(workspace, origin, stdout, stderr);
   } catch (error) {
     throw appendWatchLogs(error, stdout.text, stderr.text);
   } finally {
@@ -183,6 +183,7 @@ test('webstir watch renders a view through the dev server and proxies its form p
 async function exerciseWatch(
   workspace: string,
   origin: string,
+  stdout: { text: string },
   stderr: { text: string },
 ): Promise<void> {
   let html = '';
@@ -236,7 +237,15 @@ async function exerciseWatch(
   expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
     '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
   );
+  // Restoring the module restarts the backend; the next step starts once it serves again.
+  const restarts = (stdout.text.match(/backend restarted/g) ?? []).length;
   await writeFile(modulePath, moduleSource, 'utf8');
+  await waitFor(async () => {
+    expect((stdout.text.match(/backend restarted/g) ?? []).length).toBeGreaterThan(restarts);
+    expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
+      '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
+    );
+  }, 30_000);
 
   const current = await readFile(pagePath, 'utf8');
   await writeFile(
@@ -250,9 +259,11 @@ async function exerciseWatch(
     );
   }, 20_000);
   // The rejected edit leaves the last accepted program, so the page still shows the names.
-  expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
-    '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
-  );
+  await waitFor(async () => {
+    expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
+      '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
+    );
+  }, 10_000);
 }
 
 test('the published server renders views and keeps programs private', async () => {
