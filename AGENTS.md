@@ -34,8 +34,14 @@ Monorepo baseline for Webstir.
 
 ## Releasing
 - Prepare on a branch: `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (use `testing` for the testing pair), then open a PR. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full flow.
-- Merge only after Codex's GitHub review has no unresolved findings, CI is green, and the maintainer has said to merge. For release PRs, also run a local `codex review --base main` at high effort and resolve what it finds.
+- Merge only after Codex's GitHub review is done (see Review Loop), CI is green, and the maintainer has said to merge.
 - After the merge commit passes `main` CI, push `release-set/<group>/v<version>`; the Release Package workflow publishes to npm. Confirm the new versions on the registry before calling the release done.
+
+## Review Loop
+- Before opening a PR, review the diff for failure cases in the areas below and run `codex review --base main`; the PR's own review should come back close to clean.
+- Fix each finding as a class: find its siblings (the same pattern elsewhere, the same rule in other shapes) and cover them with one table-driven test.
+- A review is done when no P1 findings remain, every P2 is fixed or answered with a reason, and the last round found only edge cases.
+- Plan large work whole, but open a PR per layer so each review sees a few hundred lines.
 
 ## Code Review Rules
 - Rendered HTML: every bound value must be escaped; URL attributes must block unsafe schemes; POST forms rendered with a session carry the CSRF field; `*.program.json` files must never be served, however the path is spelled.

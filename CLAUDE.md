@@ -84,4 +84,10 @@ CI runs a required repo gate plus a separate portal build when portal-specific i
 
 ## Releasing and Review
 
-Follow the `Releasing` and `Code Review Rules` sections of `AGENTS.md`. Codex reviews every PR on GitHub; treat its findings like any review: verify each against the code, fix the real ones, and say why the others are not. Never merge a PR until its review is resolved, CI is green, and Chris has said to merge it.
+Follow the `Releasing`, `Review Loop` and `Code Review Rules` sections of `AGENTS.md`. Codex reviews every PR on GitHub; treat its findings like any review: verify each against the code, fix the real ones, and say why the others are not. Never merge a PR until its review is resolved, CI is green, and Chris has said to merge it.
+
+Passing tests are necessary, not done. Before opening a PR:
+
+1. Review the diff in a fresh context, hunting for failure cases in the `Code Review Rules` areas rather than confirming the happy path.
+2. Run `codex review --base main` and resolve what it finds, so the PR's own review comes back close to clean.
+3. Fix each finding as a class: look for the same pattern elsewhere and the same rule in other shapes, then cover them with one table-driven test.
