@@ -39,6 +39,11 @@ export async function publishSsgSite(config: FrontendConfig): Promise<void> {
   }
   for (const entry of rendered) {
     const target = path.join(distRoot, ...entry.path.split('/').filter(Boolean), FILES.indexHtml);
+    if (!path.resolve(target).startsWith(path.resolve(distRoot) + path.sep)) {
+      throw new Error(
+        `[webstir-frontend] view ${entry.view} would publish ${entry.path} outside ${distRoot}.`,
+      );
+    }
     await ensureDir(path.dirname(target));
     await writeFile(target, entry.html);
     if (config.features.precompression) {

@@ -288,10 +288,25 @@ function checkBoundAttributeName(name: string, element: Element): string | undef
   if (FORBIDDEN_ATTRIBUTES.has(name) || isBindingAttribute(name)) {
     return `\`${name}\` cannot be bound`;
   }
+  // Whether a form posts decides its CSRF field at build time, so what makes it post is written.
   if (element.name === 'form' && name === 'method') {
     return 'form method must be written in the HTML';
   }
+  if (name === 'formmethod') {
+    return 'formmethod must be written in the HTML';
+  }
+  if (name === 'form' && isSubmitControl(element)) {
+    return 'the form a submit control posts must be written in the HTML';
+  }
   return undefined;
+}
+
+function isSubmitControl(element: Element): boolean {
+  const type = (element.attribs.type ?? '').trim().toLowerCase();
+  return (
+    element.name === 'button' ||
+    (element.name === 'input' && (type === 'submit' || type === 'image'))
+  );
 }
 
 function renderStaticAttributes(element: Element, bound: ReadonlySet<string>): string {

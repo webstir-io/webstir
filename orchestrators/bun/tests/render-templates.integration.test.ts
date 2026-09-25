@@ -221,15 +221,18 @@ async function exerciseWatch(
   // A backend edit that no longer fits the template keeps the running backend.
   const modulePath = path.join(workspace, 'src', 'backend', 'module.ts');
   const moduleSource = await readFile(modulePath, 'utf8');
-  const renamed = moduleSource.replace(
-    'z.array(z.object({ name: z.string(), href: z.string() }))',
-    'z.array(z.object({ label: z.string(), href: z.string() }))',
-  );
+  const renamed = moduleSource
+    .replace(
+      'z.array(z.object({ name: z.string(), href: z.string() }))',
+      'z.array(z.object({ label: z.string(), href: z.string() }))',
+    )
+    .replace("path: '/clients/', page: 'clients'", "path: '/customers/', page: 'clients'");
   expect(renamed).not.toBe(moduleSource);
   await writeFile(modulePath, renamed, 'utf8');
   await waitFor(async () => {
     expect(stderr.text).toContain('keeping the current runtime process');
   }, 30_000);
+  // The retained backend keeps its routing too, so /clients/ is still its rendered page.
   expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
     '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
   );
@@ -246,6 +249,10 @@ async function exerciseWatch(
       'src/frontend/pages/clients/index.html:16: data-text="client.nmae": `client` has no `nmae`',
     );
   }, 20_000);
+  // The rejected edit leaves the last accepted program, so the page still shows the names.
+  expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
+    '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
+  );
 }
 
 test('the published server renders views and keeps programs private', async () => {

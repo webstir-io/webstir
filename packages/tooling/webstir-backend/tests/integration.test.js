@@ -1854,7 +1854,10 @@ const checkClientDefinition = {
   form: {
     contentType: 'application/x-www-form-urlencoded',
     session: { write: true },
-    flash: { consume: ['client-created'] }
+    flash: {
+      consume: ['client-created'],
+      publish: [{ key: 'check-failed', level: 'error', message: 'Fix the highlighted fields.', when: 'error' }]
+    }
   }
 };
 
@@ -2046,6 +2049,13 @@ async function assertRenderedViewRuntimeBehavior() {
     assert.equal(bounced.status, 303);
     const nextCookie = extractCookieHeader(bounced.headers.get('set-cookie')) || createdCookie;
 
+    // A HEAD request has no body to show messages in, so it leaves them for the page.
+    const peek = await fetch(`${base}/clients`, {
+      method: 'HEAD',
+      headers: { cookie: nextCookie },
+    });
+    assert.equal(peek.status, 200);
+
     const withFlash = await fetch(`${base}/clients`, { headers: { cookie: nextCookie } });
     const withFlashHtml = await withFlash.text();
     assert.match(
@@ -2084,11 +2094,20 @@ async function assertRenderedViewRuntimeBehavior() {
     const checkedHtml = await checked.text();
     assert.match(checkedHtml, /<p class="flash" data-tone="success">Client created\.<\/p>/);
     assert.match(checkedHtml, /<p class="flash" data-tone="warning">Check the details\.<\/p>/);
+    assert.match(
+      checkedHtml,
+      /<p class="flash" data-tone="error">Fix the highlighted fields\.<\/p>/,
+    );
     const checkedCookie = extractCookieHeader(checked.headers.get('set-cookie')) || againCookie;
     const afterCheck = await (
       await fetch(`${base}/clients`, { headers: { cookie: checkedCookie } })
     ).text();
     assert.doesNotMatch(afterCheck, /Client created\./, 'the consumed message was shown once');
+    assert.doesNotMatch(
+      afterCheck,
+      /Fix the highlighted fields/,
+      'a message shown on the re-render is not queued',
+    );
     assert.match(afterCheck, /Invitation sent to/, 'messages the action did not consume stay');
 
     const broken = await fetch(`${base}/broken`, { method: 'POST', redirect: 'manual' });

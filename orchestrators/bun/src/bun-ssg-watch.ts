@@ -1,4 +1,5 @@
 import { createRenderedViewMatcher, readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { DevServer, type DevServerAddress } from './dev-server.ts';
@@ -193,6 +194,8 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
   let hotUpdate: HotUpdatePayload | null = null;
   const changedPath = getSingleWorkspaceWatchEventPath(event);
   await options.exclusive(async () => {
+    // A rebuild the checks reject leaves the last accepted programs for the backend to render.
+    const accepted = options.afterBuild ? await readPrograms(buildRoot) : undefined;
     if (event.type === 'change') {
       await operations.runRebuild({
         workspaceRoot,
@@ -201,7 +204,12 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
     } else {
       await operations.runBuild({ workspaceRoot });
     }
-    await options.afterBuild?.();
+    try {
+      await options.afterBuild?.();
+    } catch (error) {
+      if (accepted) await restorePrograms(buildRoot, accepted);
+      throw error;
+    }
   });
 
   if (changedPath) {
@@ -221,6 +229,30 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
 
   await server.publishStatus('hmr-fallback');
   await server.publishReload();
+}
+
+async function readPrograms(buildRoot: string): Promise<Map<string, string>> {
+  const programs = new Map<string, string>();
+  const files = await readdir(buildRoot, { recursive: true }).catch(() => [] as string[]);
+  for (const relative of files) {
+    if (relative.endsWith('.program.json')) {
+      programs.set(relative, await readFile(path.join(buildRoot, relative), 'utf8'));
+    }
+  }
+  return programs;
+}
+
+async function restorePrograms(
+  buildRoot: string,
+  accepted: ReadonlyMap<string, string>,
+): Promise<void> {
+  for (const relative of (await readPrograms(buildRoot)).keys()) {
+    if (!accepted.has(relative)) await rm(path.join(buildRoot, relative), { force: true });
+  }
+  for (const [relative, source] of accepted) {
+    await mkdir(path.dirname(path.join(buildRoot, relative)), { recursive: true });
+    await writeFile(path.join(buildRoot, relative), source, 'utf8');
+  }
 }
 
 export function mergeWorkspaceWatchEvents(

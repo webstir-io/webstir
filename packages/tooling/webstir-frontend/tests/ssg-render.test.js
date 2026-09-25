@@ -162,6 +162,22 @@ test('SSG publish needs the addresses a parameterized view publishes', async () 
   }
 });
 
+test('SSG publish refuses static paths that leave the site', async () => {
+  const root = await createWorkspace('ssg', {
+    home: '<main><h1>Home</h1></main>',
+    post: POST_HTML,
+  });
+  try {
+    await writeViews(root, [POST_VIEW.replace("'/blog/launch'", "'/blog/../../src'")]);
+    await assert.rejects(
+      publish(root),
+      /view post lists \/blog\/\.\.\/\.\.\/src; static paths cannot contain \. or \.\. segments/,
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('SSG publish fails on a template with bindings that no view renders', async () => {
   const root = await createWorkspace('ssg', {
     home: '<main><h1>Home</h1></main>',

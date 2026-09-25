@@ -1,5 +1,6 @@
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { startBackendWatch } from '@webstir-io/webstir-backend';
+import { startBackendWatch, VIEW_ROUTES_FILE } from '@webstir-io/webstir-backend';
 
 import { BackendRuntimeSupervisor } from './backend-runtime.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
@@ -57,6 +58,8 @@ export async function startApiWatchSession(
   await runtime.prepare();
 
   let initialReadyLogged = false;
+  const viewsPath = path.join(workspace.root, 'build', 'backend', VIEW_ROUTES_FILE);
+  let acceptedViews: string | undefined;
   const watchHandle = await startBackendWatch({
     workspaceRoot: workspace.root,
     env: runtimeEnv,
@@ -74,6 +77,8 @@ export async function startApiWatchSession(
         try {
           await hooks.beforeRestart();
         } catch (error) {
+          // The retained process keeps its routing: views.json goes back to what it serves.
+          if (acceptedViews !== undefined) await writeFile(viewsPath, acceptedViews, 'utf8');
           io.stderr.write(
             `[webstir] ${error instanceof Error ? error.message : String(error)}\n[webstir] keeping the current runtime process.\n`,
           );
@@ -81,6 +86,7 @@ export async function startApiWatchSession(
         }
       }
       await runtime.restart();
+      acceptedViews = await readFile(viewsPath, 'utf8').catch(() => undefined);
       if (!initialReadyLogged) {
         initialReadyLogged = true;
         io.stdout.write(`[webstir] backend ready at ${runtime.getOrigin()}\n`);

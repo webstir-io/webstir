@@ -83,6 +83,11 @@ export async function renderSsgViews(options: {
 
     for (const rawPath of staticPaths) {
       const urlPath = normalizePath(rawPath);
+      if (urlPath.split('/').some((segment) => segment === '.' || segment === '..')) {
+        throw new Error(
+          `[webstir-frontend] view ${name} lists ${urlPath}; static paths cannot contain . or .. segments.`,
+        );
+      }
       const params = deriveRouteParams(definition.path ?? '', urlPath);
       if (!params) {
         throw new Error(

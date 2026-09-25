@@ -506,6 +506,27 @@ test('prepareViewData merges session flash first and fits unions and strict sche
   assert.match(failed.error, /title: Expected string, received number/);
 });
 
+test('what makes a form post must be written, not bound', () => {
+  const issues = (html) => {
+    try {
+      compileRenderProgram(`<main>${html}</main>`, { page: 'fixture', source: 'fixture.html' });
+      return [];
+    } catch (error) {
+      return error.issues.map((issue) => issue.message);
+    }
+  };
+  assert.deepEqual(issues('<form data-attr-method="method"></form>'), [
+    'data-attr-method="method": form method must be written in the HTML',
+  ]);
+  assert.deepEqual(issues('<form><button data-attr-formmethod="method">Go</button></form>'), [
+    'data-attr-formmethod="method": formmethod must be written in the HTML',
+  ]);
+  assert.deepEqual(issues('<button data-attr-form="target">Go</button>'), [
+    'data-attr-form="target": the form a submit control posts must be written in the HTML',
+  ]);
+  assert.deepEqual(issues('<input type="text" data-attr-form="target" />'), []);
+});
+
 test('every way a form can post gets a CSRF field, and only that form', () => {
   const csrfForms = (html) => {
     const program = compileRenderProgram(`<main>${html}</main>`, {

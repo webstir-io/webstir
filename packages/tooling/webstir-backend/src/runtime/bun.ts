@@ -29,7 +29,7 @@ import {
 import {
   parseCookieHeader,
   prepareSessionState,
-  type ResultFlashMessageLike,
+  resolvePublishedFlash,
   type SessionCookieConfig,
   type SessionFlashMessage,
   createInMemorySessionStore,
@@ -526,6 +526,11 @@ async function handleRequest<
 
       const finalResult = afterHandler.result ?? handlerResult;
       if (finalResult.rerender) {
+        const rerenderFlash = resolvePublishedFlash(
+          routeMatch.route.definition,
+          { status: finalResult.status ?? 422, flash: finalResult.flash },
+          now,
+        );
         let rerendered: { html: string; session: TSession | null; location: string };
         try {
           rerendered = await renderFormRerender({
@@ -542,8 +547,8 @@ async function handleRequest<
             logger: structuredLogger,
             requestId,
             now,
-            // The re-rendered page is where the action's messages are seen.
-            flash: [...toViewFlash(sessionState.flash), ...toResultFlash(finalResult.flash)],
+            // The re-rendered page is where the action's messages are seen, so they are not queued.
+            flash: toViewFlash([...sessionState.flash, ...rerenderFlash]),
           });
         } catch (error) {
           const control = readViewControl(error);
@@ -571,6 +576,7 @@ async function handleRequest<
           session: rerendered.session,
           route: routeMatch.route.definition,
           result: { status },
+          publishFlash: false,
         });
         const headers = new Headers({
           ...(finalResult.headers ?? {}),
@@ -669,7 +675,8 @@ async function handleViewRequest<
     cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
     config: env.sessions,
     store: options.sessionStore,
-    consumeAllFlash: rendersPage,
+    // A HEAD response has no body, so it must not use up messages meant for the page.
+    consumeAllFlash: rendersPage && method !== 'HEAD',
     now,
   });
   let session = sessionState.session;
@@ -688,7 +695,7 @@ async function handleViewRequest<
       logger: structuredLogger,
       requestId,
       now,
-      flash: rendersPage ? toViewFlash(sessionState.flash) : undefined,
+      flash: rendersPage && method !== 'HEAD' ? toViewFlash(sessionState.flash) : undefined,
       forms: createSessionFormReader(() => session),
       csrfToken: () => {
         const ensured = ensureSessionCsrfToken(session);
@@ -760,12 +767,6 @@ async function createViewControlResponse(
 
 function toViewFlash(flash: readonly SessionFlashMessage[]): ViewFlashMessage[] {
   return flash.map((entry) => ({ level: entry.level, message: entry.message ?? entry.key }));
-}
-
-function toResultFlash(flash: readonly ResultFlashMessageLike[] | undefined): ViewFlashMessage[] {
-  return (flash ?? [])
-    .filter((entry) => typeof entry?.message === 'string' && entry.message.length > 0)
-    .map((entry) => ({ level: entry.level ?? 'info', message: entry.message }));
 }
 
 function createCommittedResponse<

@@ -385,7 +385,8 @@ function resolveConsumedFlash(
   return { flash: delivered, remaining };
 }
 
-function resolvePublishedFlash<
+/** The messages a route publishes for a result: those it declares for that outcome, then the result's own. */
+export function resolvePublishedFlash<
   TResult extends {
     status?: number;
     errors?: unknown;
