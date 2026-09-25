@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import { schemaDeclaresField } from '@webstir-io/module-contract';
 
 import {
   RenderTemplateError,
@@ -411,6 +412,57 @@ test('structural mistakes fail compilation with file and line', async () => {
       return true;
     });
   }
+});
+
+test('url-bearing attributes are marked for scheme checks', () => {
+  const program = compileRenderProgram(
+    [
+      '<main>',
+      '<object data-attr-data="asset"></object>',
+      '<img data-attr-srcset="images" data-attr-alt="label" />',
+      '<div data-attr-data-id="id"></div>',
+      '</main>',
+    ].join('\n'),
+    { page: 'fixture', source: 'fixture.html' },
+  );
+  const urls = Object.fromEntries(
+    collectOps(program.nodes)
+      .filter((op) => op.op === 'attr')
+      .map((op) => [op.name, op.url]),
+  );
+  assert.deepEqual(urls, { data: true, srcset: true, alt: false, 'data-id': false });
+});
+
+test('schemaDeclaresField looks through wrappers to the object', () => {
+  const plain = z.object({ title: z.string() }).strict();
+  const withFlash = z.object({ title: z.string(), flash: z.array(z.unknown()) }).strict();
+  assert.equal(schemaDeclaresField(plain, 'flash'), false);
+  assert.equal(schemaDeclaresField(withFlash, 'flash'), true);
+  assert.equal(schemaDeclaresField(plain.optional(), 'flash'), false);
+  assert.equal(schemaDeclaresField(withFlash.optional(), 'flash'), true);
+  assert.equal(
+    schemaDeclaresField(
+      plain.refine(() => true),
+      'flash',
+    ),
+    false,
+  );
+  assert.equal(
+    schemaDeclaresField(
+      withFlash.refine(() => true),
+      'flash',
+    ),
+    true,
+  );
+  assert.equal(
+    schemaDeclaresField(
+      withFlash.transform((value) => value),
+      'flash',
+    ),
+    true,
+  );
+  assert.equal(schemaDeclaresField(z.union([plain, withFlash]), 'flash'), true);
+  assert.equal(schemaDeclaresField(z.any(), 'flash'), false);
 });
 
 test('partials that include each other are rejected', async () => {

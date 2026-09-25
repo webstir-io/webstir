@@ -95,7 +95,9 @@ function run(
         } else if (value !== false && value !== null && value !== undefined) {
           const label = `data-attr-${node.name}="${node.path.source}"`;
           const text = toText(value, node.loc, label);
-          out.push(` ${node.name}="${escapeAttribute(node.url ? safeUrl(text) : text)}"`);
+          out.push(
+            ` ${node.name}="${escapeAttribute(node.url ? safeAttributeUrl(node.name, text) : text)}"`,
+          );
         }
         break;
       }
@@ -150,6 +152,55 @@ function toText(value: unknown, loc: RenderSourceLocation, label: string): strin
     return String(value);
   }
   throw new RenderProgramError(loc, `${label} needs a string or number, got ${describe(value)}`);
+}
+
+/** Every URL in the value is checked: `srcset` lists candidates, `ping` lists URLs. */
+function safeAttributeUrl(name: string, value: string): string {
+  if (name === 'srcset' || name === 'imagesrcset') {
+    return value
+      .split(',')
+      .map((candidate) => {
+        const [url = '', ...descriptors] = candidate.trim().split(/\s+/);
+        return [safeUrl(url), ...descriptors].join(' ');
+      })
+      .join(', ');
+  }
+  if (name === 'ping') {
+    return value.split(/\s+/).filter(Boolean).map(safeUrl).join(' ');
+  }
+  return safeUrl(value);
+}
+
+/**
+ * Whether a zod-style schema's underlying object declares `field`, looking through wrappers
+ * such as optional, default, refine and transform, and into unions and intersections. A schema
+ * with no object inside declares nothing.
+ */
+export function schemaDeclaresField(schema: unknown, field: string): boolean {
+  return declares(schema, field, new Set());
+}
+
+function declares(schema: unknown, field: string, seen: Set<unknown>): boolean {
+  if (!schema || typeof schema !== 'object' || seen.has(schema)) {
+    return false;
+  }
+  seen.add(schema);
+  const shape = (schema as { shape?: unknown }).shape;
+  if (shape && typeof shape === 'object') {
+    return field in shape;
+  }
+  const def = (schema as { _def?: Record<string, unknown> })._def;
+  if (!def) {
+    return false;
+  }
+  const inner: unknown[] = [def.innerType, def.schema, def.in, def.type, def.left, def.right];
+  if (typeof def.getter === 'function') {
+    inner.push((def.getter as () => unknown)());
+  }
+  if (Array.isArray(def.options)) {
+    inner.push(...def.options);
+  }
+  return inner.some((candidate) => declares(candidate, field, seen));
 }
 
 function safeUrl(value: string): string {

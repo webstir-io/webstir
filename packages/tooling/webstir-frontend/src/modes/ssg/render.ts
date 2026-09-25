@@ -1,6 +1,10 @@
 import path from 'node:path';
 
-import { executeRenderProgram, readRenderProgram } from '@webstir-io/module-contract';
+import {
+  executeRenderProgram,
+  readRenderProgram,
+  schemaDeclaresField,
+} from '@webstir-io/module-contract';
 
 import type { WorkspacePackageJson } from '../../config/workspaceManifest.js';
 import { loadBackendModuleDefinition } from '../../utils/backendModule.js';
@@ -103,7 +107,7 @@ export async function renderSsgViews(options: {
           `[webstir-frontend] view ${name} failed to load ${urlPath}: ${describeError(error)}`,
         );
       }
-      const input = schemaDeclaresFlash(view.data) ? withEmptyFlash(loaded) : loaded;
+      const input = schemaDeclaresField(view.data, 'flash') ? withEmptyFlash(loaded) : loaded;
       const data = parseViewData(view.data, input, name, urlPath);
       rendered.push({ path: urlPath, page, view: name, html: render(withEmptyFlash(data)) });
     }
@@ -141,12 +145,6 @@ function withEmptyFlash(value: unknown): unknown {
     return value;
   }
   return { ...value, flash: [] };
-}
-
-/** Whether an object schema names `flash`; a schema whose shape is unknown is assumed to. */
-function schemaDeclaresFlash(schema: unknown): boolean {
-  const shape = (schema as { shape?: unknown } | undefined)?.shape;
-  return !shape || typeof shape !== 'object' || 'flash' in shape;
 }
 
 function isSchemaLike(value: unknown): value is SchemaLike {

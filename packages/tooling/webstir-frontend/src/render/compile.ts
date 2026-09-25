@@ -52,6 +52,10 @@ const URL_ATTRIBUTES = new Set([
   'background',
   'ping',
   'xlink:href',
+  'srcset',
+  'imagesrcset',
+  'longdesc',
+  'manifest',
 ]);
 const ATTRIBUTE_NAME_PATTERN = /^[a-z_][a-z0-9_.:-]*$/;
 const FORBIDDEN_ATTRIBUTES = new Set(['srcdoc', SOURCE_STAMP_ATTRIBUTE]);
@@ -221,7 +225,7 @@ function compileElement(
     attributeOps.push({
       op: 'attr',
       name: target,
-      url: URL_ATTRIBUTES.has(target),
+      url: URL_ATTRIBUTES.has(target) || (element.name === 'object' && target === 'data'),
       path: resolvePath(value.trim(), parsed, innerScopes),
       loc,
     });

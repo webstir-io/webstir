@@ -71,6 +71,19 @@ test('url attributes block unsafe schemes and keep safe ones', () => {
   assert.equal(render('mailto:hi@example.com'), '<a href="mailto:hi@example.com">');
 });
 
+test('list url attributes check every url they hold', () => {
+  const render = (name, value) =>
+    executeRenderProgram(
+      program(['<img', { op: 'attr', name, url: true, path: root('value'), loc }, '>']),
+      { value },
+    );
+  assert.equal(
+    render('srcset', '/a.png 1x, javascript:alert(1) 2x'),
+    '<img srcset="/a.png 1x, about:invalid 2x">',
+  );
+  assert.equal(render('ping', '/track javascript:alert(1)'), '<img ping="/track about:invalid">');
+});
+
 test('if follows the falsy rules and negation', () => {
   const nodes = [
     { op: 'if', negate: false, path: root('value'), loc, body: ['yes'] },

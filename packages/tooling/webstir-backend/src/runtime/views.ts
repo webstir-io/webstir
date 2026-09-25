@@ -2,7 +2,7 @@ import { resolveWorkspaceRoot } from '../workspace.js';
 
 export { notFound, redirect } from './view-control.js';
 export type { ViewRedirectStatus } from './view-control.js';
-import { executeRenderProgram, programUsesCsrf } from './render.js';
+import { executeRenderProgram, programUsesCsrf, schemaDeclaresField } from './render.js';
 import {
   loadFrontendDocument,
   loadPageArtifact,
@@ -230,19 +230,15 @@ function prepareViewData(
   }
   // The framework supplies `flash`; it joins the loader's data first only when the schema
   // declares it, so a strict schema without it still accepts what the loader returned.
-  const parsed = schema.safeParse(schemaDeclaresFlash(schema) ? withFlash(loaded, flash) : loaded);
+  const parsed = schema.safeParse(
+    schemaDeclaresField(schema, 'flash') ? withFlash(loaded, flash) : loaded,
+  );
   if (!parsed.success) {
     throw new Error(
       `View ${view.name} returned data that does not match its schema: ${describeSchemaError(parsed.error)}`,
     );
   }
   return withFlash(parsed.data, flash);
-}
-
-/** Whether an object schema names `flash`; a schema whose shape is unknown is assumed to. */
-function schemaDeclaresFlash(schema: unknown): boolean {
-  const shape = (schema as { shape?: unknown }).shape;
-  return !shape || typeof shape !== 'object' || 'flash' in shape;
 }
 
 function withFlash(value: unknown, flash: readonly ViewFlashMessage[]): unknown {
