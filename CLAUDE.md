@@ -80,4 +80,8 @@ bun run webstir -- init ssg ./my-site
 
 ## CI
 
-CI runs a required repo gate plus a separate portal build when portal-specific inputs change. Extended browser/watch coverage runs in its own workflow. Release publishing is triggered by `release/**` tags with npm provenance.
+CI runs a required repo gate plus a separate portal build when portal-specific inputs change. Extended browser/watch coverage runs in its own workflow. Release publishing is triggered by `release-set/<group>/v<version>` tags with npm provenance.
+
+## Releasing and Review
+
+Follow the `Releasing` and `Code Review Rules` sections of `AGENTS.md`. Codex reviews every PR on GitHub; treat its findings like any review: verify each against the code, fix the real ones, and say why the others are not. Never merge a PR until its review is resolved, CI is green, and Chris has said to merge it.
