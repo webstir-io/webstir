@@ -11,6 +11,7 @@ import {
   type EnvAccessorLike,
   type FormStateReaderLike,
   type LoggerLike,
+  type ViewFlashMessage,
 } from './views.js';
 
 export function createSessionFormReader(
@@ -38,6 +39,8 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   readonly logger: LoggerLike;
   readonly requestId?: string;
   readonly now: () => Date;
+  /** Messages this page shows: those the action consumed, then those it returned. */
+  readonly flash?: readonly ViewFlashMessage[];
 }): Promise<{ html: string; session: TSession | null; location: string }> {
   const { rerender } = options;
   const view = findView(options.views, rerender.view);
@@ -53,7 +56,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   }
 
   const params = rerender.params ?? options.routeParams;
-  const url = viewUrl(view.definition.path, params, options.url);
+  const url = viewUrl(view, params, options.url, rerender.form.id);
   let session = options.session;
   const failed = createFormState(rerender.form.values, rerender.form.issues);
   const rendered = await renderRequestTimeView({
@@ -69,7 +72,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
     logger: options.logger,
     requestId: options.requestId,
     now: options.now,
-    flash: [],
+    flash: options.flash ?? [],
     csrfToken: () => {
       const ensured = ensureSessionCsrfToken(session);
       session = ensured.session;
@@ -82,8 +85,17 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   return { html: rendered.html, session, location: `${url.pathname}${url.search}` };
 }
 
-/** The view's path with its parameters filled in, or the posted address when one is missing. */
-function viewUrl(pattern: string | undefined, params: Record<string, string>, posted: URL): URL {
+/**
+ * The view's own address, with its parameters filled in and the posted query kept. A parameter
+ * the action cannot supply is a mistake in the action, not a reason to report the post's address.
+ */
+function viewUrl(
+  view: CompiledView,
+  params: Record<string, string>,
+  posted: URL,
+  formId: string,
+): URL {
+  const pattern = view.definition?.path;
   if (!pattern) return posted;
   const segments: string[] = [];
   for (const segment of pattern.split('/')) {
@@ -92,7 +104,11 @@ function viewUrl(pattern: string | undefined, params: Record<string, string>, po
       continue;
     }
     const value = params[segment.slice(1)];
-    if (value === undefined) return posted;
+    if (value === undefined) {
+      throw new Error(
+        `Form ${formId} re-renders view "${view.name}", whose path ${pattern} needs \`${segment.slice(1)}\`; pass it in rerender.params.`,
+      );
+    }
     segments.push(encodeURIComponent(value));
   }
   const url = new URL(segments.join('/'), posted);

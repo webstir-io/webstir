@@ -506,26 +506,43 @@ test('prepareViewData merges session flash first and fits unions and strict sche
   assert.match(failed.error, /title: Expected string, received number/);
 });
 
-test('a form that posts through its submit button gets a CSRF field', () => {
-  const program = compileRenderProgram(
-    '<main><form action="/save"><button type="submit" formmethod="post">Save</button></form></main>',
-    { page: 'fixture', source: 'fixture.html' },
-  );
-  assert.equal(
-    collectOps(program.nodes).some((op) => op.op === 'csrf'),
-    true,
-  );
-  const get = compileRenderProgram(
-    '<main><form action="/find"><button>Find</button></form></main>',
-    {
+test('every way a form can post gets a CSRF field, and only that form', () => {
+  const csrfForms = (html) => {
+    const program = compileRenderProgram(`<main>${html}</main>`, {
       page: 'fixture',
       source: 'fixture.html',
-    },
-  );
-  assert.equal(
-    collectOps(get.nodes).some((op) => op.op === 'csrf'),
-    false,
-  );
+    });
+    const forms = [];
+    const walk = (nodes, current) => {
+      for (const node of nodes) {
+        if (typeof node === 'string') {
+          const opened = [...node.matchAll(/<form[^>]*id="([^"]+)"/g)].at(-1);
+          if (opened) current = opened[1];
+        } else if (node.op === 'csrf') {
+          forms.push(current);
+        } else if (node.body) {
+          walk(node.body, current);
+        }
+      }
+    };
+    walk(program.nodes, undefined);
+    return forms;
+  };
+  const cases = [
+    ['<form id="a" method="post"></form>', ['a']],
+    ['<form id="a"><button formmethod="post">Save</button></form>', ['a']],
+    ['<form id="a"><input type="submit" formmethod="POST" /></form>', ['a']],
+    ['<form id="a"></form><button form="a" formmethod="post">Save</button>', ['a']],
+    [
+      '<form id="a"><button form="b" formmethod="post">Save</button></form><form id="b"></form>',
+      ['b'],
+    ],
+    ['<form id="a"><button>Find</button></form>', []],
+    ['<form id="a"><button formmethod="get">Find</button></form>', []],
+  ];
+  for (const [html, expected] of cases) {
+    assert.deepEqual(csrfForms(html), expected, html);
+  }
 });
 
 test('partials that include each other are rejected', async () => {

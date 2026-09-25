@@ -1845,6 +1845,38 @@ const createClientRoute = {
   }
 };
 
+// A failed form that consumes a message shows it on the re-rendered page, with its own.
+const checkClientDefinition = {
+  name: 'checkClient',
+  method: 'POST',
+  path: '/check',
+  interaction: 'mutation',
+  form: {
+    contentType: 'application/x-www-form-urlencoded',
+    session: { write: true },
+    flash: { consume: ['client-created'] }
+  }
+};
+
+const checkClientRoute = {
+  definition: checkClientDefinition,
+  handler: () => ({
+    status: 422,
+    rerender: { view: 'clientsPage', form: { id: 'createClient', values: {}, issues: [] } },
+    flash: [{ level: 'warning', message: 'Check the details.' }]
+  })
+};
+
+// Re-rendering a parameterized view without its parameters is a mistake in the action.
+const brokenDefinition = { name: 'broken', method: 'POST', path: '/broken', interaction: 'mutation' };
+const brokenRoute = {
+  definition: brokenDefinition,
+  handler: () => ({
+    status: 422,
+    rerender: { view: 'missingPage', form: { id: 'createClient', values: {}, issues: [] } }
+  })
+};
+
 const clientsView = {
   definition: { name: 'clientsPage', path: '/clients', page: 'clients' },
   load: async () => ({
@@ -1885,10 +1917,10 @@ export const module = {
     version: '0.1.0',
     kind: 'backend',
     capabilities: ['http', 'views'],
-    routes: [createClientDefinition],
+    routes: [createClientDefinition, checkClientDefinition, brokenDefinition],
     views: [clientsView.definition]
   },
-  routes: [createClientRoute],
+  routes: [createClientRoute, checkClientRoute, brokenRoute],
   views: [clientsView, guardedView, missingView, strictView]
 };
 `;
@@ -2033,6 +2065,34 @@ async function assertRenderedViewRuntimeBehavior() {
     const guarded = await fetch(`${base}/guarded`, { redirect: 'manual' });
     assert.equal(guarded.status, 303);
     assert.equal(guarded.headers.get('location'), '/sign-in/?returnTo=%2Fguarded');
+
+    const createdAgain = await fetch(`${base}/clients`, {
+      method: 'POST',
+      headers: { cookie: afterCookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: `_csrf=${encodeURIComponent(token)}`,
+      redirect: 'manual',
+    });
+    assert.equal(createdAgain.status, 303);
+    const againCookie = extractCookieHeader(createdAgain.headers.get('set-cookie')) || afterCookie;
+    const checked = await fetch(`${base}/check`, {
+      method: 'POST',
+      headers: { cookie: againCookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: '',
+      redirect: 'manual',
+    });
+    assert.equal(checked.status, 422);
+    const checkedHtml = await checked.text();
+    assert.match(checkedHtml, /<p class="flash" data-tone="success">Client created\.<\/p>/);
+    assert.match(checkedHtml, /<p class="flash" data-tone="warning">Check the details\.<\/p>/);
+    const checkedCookie = extractCookieHeader(checked.headers.get('set-cookie')) || againCookie;
+    const afterCheck = await (
+      await fetch(`${base}/clients`, { headers: { cookie: checkedCookie } })
+    ).text();
+    assert.doesNotMatch(afterCheck, /Client created\./, 'the consumed message was shown once');
+    assert.match(afterCheck, /Invitation sent to/, 'messages the action did not consume stay');
+
+    const broken = await fetch(`${base}/broken`, { method: 'POST', redirect: 'manual' });
+    assert.equal(broken.status, 500);
 
     const strict = await fetch(`${base}/strict`);
     assert.equal(strict.status, 200);

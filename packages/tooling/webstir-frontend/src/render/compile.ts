@@ -65,6 +65,8 @@ interface CompileState {
   readonly source: string;
   readonly issues: RenderIssue[];
   readonly dynamic: Set<AnyNode>;
+  /** Forms a submit control elsewhere in the document posts, through `form` and `formmethod`. */
+  readonly postedForms: ReadonlySet<string>;
   bindings: number;
 }
 
@@ -73,16 +75,23 @@ export function compileRenderProgram(
   options: CompileRenderProgramOptions,
 ): RenderProgram {
   const $ = load(html);
+  const postedForms = new Set(
+    $('button[form][formmethod], input[form][formmethod]')
+      .toArray()
+      .filter((control) => isPost(control.attribs.formmethod))
+      .map((control) => control.attribs.form!.trim()),
+  );
   const state: CompileState = {
     $,
     source: options.source,
     issues: [],
     dynamic: new Set(),
+    postedForms,
     bindings: 0,
   };
   const roots = $.root().contents().toArray();
   for (const node of roots) {
-    markDynamic(node, state.dynamic);
+    markDynamic(node, state);
   }
 
   const nodes: RenderNode[] = [];
@@ -104,18 +113,18 @@ export function programNeedsRuntime(program: RenderProgram): boolean {
   return program.nodes.some((node) => typeof node !== 'string');
 }
 
-function markDynamic(node: AnyNode, dynamic: Set<AnyNode>): boolean {
+function markDynamic(node: AnyNode, state: CompileState): boolean {
   if (!isElement(node)) {
     return false;
   }
-  let result = hasBindingAttribute(node.attribs) || isPostForm(node);
+  let result = hasBindingAttribute(node.attribs) || isPostForm(node, state);
   for (const child of node.children) {
-    if (markDynamic(child, dynamic)) {
+    if (markDynamic(child, state)) {
       result = true;
     }
   }
   if (result) {
-    dynamic.add(node);
+    state.dynamic.add(node);
   }
   return result;
 }
@@ -246,7 +255,7 @@ function compileElement(
     return;
   }
 
-  if (isPostForm(element)) {
+  if (isPostForm(element, state)) {
     container.push({ op: 'csrf' });
   }
 
@@ -316,20 +325,31 @@ function pushStatic(target: RenderNode[], html: string): void {
   target.push(html);
 }
 
-/** A form that posts: by its own method, or through a submit button's `formmethod`. */
-function isPostForm(element: Element): boolean {
+/**
+ * A form that posts: by its own method, or through a submit control's `formmethod`, whether the
+ * control sits inside it or names it with `form` from elsewhere.
+ */
+function isPostForm(element: Element, state: CompileState): boolean {
+  if (element.name !== 'form') {
+    return false;
+  }
+  const id = element.attribs.id?.trim();
   return (
-    element.name === 'form' &&
-    (isPost(element.attribs.method) || hasPostSubmitter(element.children))
+    isPost(element.attribs.method) ||
+    hasPostSubmitter(element.children, id) ||
+    (id !== undefined && state.postedForms.has(id))
   );
 }
 
-function hasPostSubmitter(nodes: readonly AnyNode[]): boolean {
+/** A descendant submitter posts this form unless its `form` attribute names another. */
+function hasPostSubmitter(nodes: readonly AnyNode[], formId: string | undefined): boolean {
   return nodes.some(
     (node) =>
       isElement(node) &&
-      ((['button', 'input'].includes(node.name) && isPost(node.attribs.formmethod)) ||
-        hasPostSubmitter(node.children)),
+      ((['button', 'input'].includes(node.name) &&
+        isPost(node.attribs.formmethod) &&
+        (node.attribs.form === undefined || node.attribs.form.trim() === formId)) ||
+        hasPostSubmitter(node.children, formId)),
   );
 }
 

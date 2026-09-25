@@ -29,6 +29,7 @@ import {
 import {
   parseCookieHeader,
   prepareSessionState,
+  type ResultFlashMessageLike,
   type SessionCookieConfig,
   type SessionFlashMessage,
   createInMemorySessionStore,
@@ -541,6 +542,8 @@ async function handleRequest<
             logger: structuredLogger,
             requestId,
             now,
+            // The re-rendered page is where the action's messages are seen.
+            flash: [...toViewFlash(sessionState.flash), ...toResultFlash(finalResult.flash)],
           });
         } catch (error) {
           const control = readViewControl(error);
@@ -551,11 +554,13 @@ async function handleRequest<
             method,
             requestId,
             workspaceRoot: options.resolveWorkspaceRoot(),
+            // No page rendered, so every message waits for the page the loader sends it to.
             commit: (status) =>
               sessionState.commit({
                 session: ctx.session,
                 route: routeMatch.route.definition,
-                result: { status },
+                result: { status, flash: finalResult.flash },
+                retainFlash: true,
               }),
           });
           responseStatus = response.status;
@@ -755,6 +760,12 @@ async function createViewControlResponse(
 
 function toViewFlash(flash: readonly SessionFlashMessage[]): ViewFlashMessage[] {
   return flash.map((entry) => ({ level: entry.level, message: entry.message ?? entry.key }));
+}
+
+function toResultFlash(flash: readonly ResultFlashMessageLike[] | undefined): ViewFlashMessage[] {
+  return (flash ?? [])
+    .filter((entry) => typeof entry?.message === 'string' && entry.message.length > 0)
+    .map((entry) => ({ level: entry.level ?? 'info', message: entry.message }));
 }
 
 function createCommittedResponse<
