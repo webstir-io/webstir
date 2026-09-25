@@ -302,3 +302,24 @@ async function readStream(reader: ReadableStreamDefaultReader<Uint8Array>): Prom
 
   return text;
 }
+
+test('DevServer never serves a render program, however its path is spelled', async () => {
+  const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-program-'));
+  const server = new DevServer({ buildRoot, host: '127.0.0.1', port: 0 });
+  try {
+    await mkdir(path.join(buildRoot, 'pages', 'clients'), { recursive: true });
+    await writeFile(path.join(buildRoot, 'pages', 'clients', 'index.program.json'), '{}', 'utf8');
+    const address = await server.start();
+    for (const spelling of [
+      '/pages/clients/index.program.json',
+      '/pages/clients/index%2eprogram%2ejson',
+      '/pages/clients/index.program.json/',
+      '/pages/clients/INDEX.PROGRAM.JSON',
+    ]) {
+      expect((await fetch(`${address.origin}${spelling}`)).status, spelling).toBe(404);
+    }
+  } finally {
+    await server.stop();
+    await rm(buildRoot, { recursive: true, force: true });
+  }
+});

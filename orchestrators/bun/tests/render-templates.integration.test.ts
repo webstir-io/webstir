@@ -248,8 +248,13 @@ test('the published server renders views and keeps programs private', async () =
     expectDesignClientsHtml(html);
     expect(html).not.toContain('/refresh.js');
 
-    const program = await fetch(`${server.origin}/pages/clients/index.program.json`);
-    expect(program.status).toBe(404);
+    for (const spelling of [
+      '/pages/clients/index.program.json',
+      '/pages/clients/index%2eprogram%2ejson',
+      '/pages/clients/index.program.json/',
+    ]) {
+      expect((await fetch(`${server.origin}${spelling}`)).status, spelling).toBe(404);
+    }
 
     const home = await fetch(`${server.origin}/`);
     expect(home.status).toBe(200);

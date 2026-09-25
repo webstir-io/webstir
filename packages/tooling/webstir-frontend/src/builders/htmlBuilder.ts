@@ -271,6 +271,11 @@ function mergeTemplates(appHtml: string, pageHtml: string): string {
 
   appHead.append(pageHead.children());
   appMain.html(pageMain.html() ?? '');
+  // The page's <main> carries its own attributes, bindings included; classes join the app's.
+  for (const [name, value] of Object.entries(pageMain.attr() ?? {})) {
+    const existing = name === 'class' ? appMain.attr('class') : undefined;
+    appMain.attr(name, existing ? `${existing} ${value}` : value);
+  }
 
   return app.root().html() ?? '';
 }

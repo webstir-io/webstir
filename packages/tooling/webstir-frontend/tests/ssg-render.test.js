@@ -216,6 +216,37 @@ test('an SPA fails on bindings, with the file and line, and builds POST forms wi
   }
 });
 
+test('a page <main> keeps its attributes and bindings, and a strict schema needs no flash', async () => {
+  const page =
+    '<main class="note" data-attr-data-tone="tone"><h1 data-text="title">Title</h1></main>';
+  const view = `{
+    definition: { name: 'note', path: '/notes/:slug', page: 'note', staticPaths: ['/notes/calm'] },
+    data: z.object({ title: z.string(), tone: z.string() }).strict(),
+    load: ({ params }) => ({ title: params.slug, tone: params.slug }),
+  }`;
+  const root = await createWorkspace('ssg', { home: '<main><h1>Home</h1></main>', note: page });
+  try {
+    await writeViews(root, [view], '');
+    await publish(root);
+    const html = await fs.readFile(
+      path.join(root, 'dist', 'frontend', 'notes', 'calm', 'index.html'),
+      'utf8',
+    );
+    assert.match(html, /<main class="note" data-tone="calm"><h1>calm<\/h1><\/main>/);
+
+    await fs.writeFile(
+      path.join(root, 'src', 'frontend', 'pages', 'note', 'index.html'),
+      page.replace('data-attr-data-tone="tone"', 'data-if="tone"'),
+    );
+    await assert.rejects(
+      publish(root),
+      /src\/frontend\/pages\/note\/index.html:1: data-if="tone": not allowed on <main>, which every page keeps/,
+    );
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('the module loader sees each rebuild and survives concurrent loads', async () => {
   const { loadBackendModuleDefinition } = await import('../dist/utils/backendModule.js');
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-module-load-'));

@@ -41,7 +41,7 @@ export async function startPublishedWorkspaceServer(
   }
   const pageRoutes = frontendRoot ? await readWorkspacePageRoutes(workspaceRoot) : [];
   const isRenderedView = frontendRoot
-    ? createRenderedViewMatcher({ workspaceRoot, frontendRoot })
+    ? createRenderedViewMatcher({ workspaceRoot })
     : async () => false;
 
   const internalPort = await getOpenPort();

@@ -87,6 +87,8 @@ export interface PreparedSessionState<TSession, TResult> {
     result?: TResult;
     /** Set to false when the request was rejected before its route ran (default true). */
     publishFlash?: boolean;
+    /** Keep every stored message for a later page, as when a request renders none (default false). */
+    retainFlash?: boolean;
   }): SessionCommitResult<TSession>;
 }
 
@@ -159,12 +161,19 @@ export function prepareSessionState<
   return {
     session: initialSession,
     flash: delivered.flash,
-    commit({ session, route, result, publishFlash: shouldPublishFlash = true }) {
+    commit({
+      session,
+      route,
+      result,
+      publishFlash: shouldPublishFlash = true,
+      retainFlash = false,
+    }) {
       const publishFlash = shouldPublishFlash
         ? resolvePublishedFlash(route ?? options.route, result, now)
         : [];
       const normalized = normalizeSessionValue<TSession>(session);
       const renewed = isSessionRenewed(session);
+      const kept = retainFlash ? readStoredFlash(initialRecord) : delivered.remaining;
 
       if (initialRecord) {
         store.delete(initialRecord.id);
@@ -173,8 +182,8 @@ export function prepareSessionState<
       const shouldPersist =
         normalized.session !== null ||
         publishFlash.length > 0 ||
-        (initialRecord !== undefined && delivered.remaining.length > 0) ||
-        hasPendingConsumption ||
+        (initialRecord !== undefined && kept.length > 0) ||
+        (hasPendingConsumption && !retainFlash) ||
         hasSessionRuntimeState(normalized.runtime);
 
       if (!shouldPersist) {
@@ -195,7 +204,7 @@ export function prepareSessionState<
           ? undefined
           : (normalized.metadata?.id ?? (publishFlash.length > 0 ? undefined : initialRecord?.id)),
         initialRecord: renewed ? undefined : initialRecord,
-        flash: [...delivered.remaining, ...publishFlash],
+        flash: [...kept, ...publishFlash],
         config: options.config,
         now,
       });

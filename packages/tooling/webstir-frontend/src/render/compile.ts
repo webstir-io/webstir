@@ -40,7 +40,8 @@ const VOID_ELEMENTS = new Set([
   'wbr',
 ]);
 const RAW_TEXT_ELEMENTS = new Set(['script', 'style', 'template', 'noscript', 'iframe', 'xmp']);
-const DOCUMENT_ELEMENTS = new Set(['html', 'head', 'body']);
+// Every document keeps these; <main> is also what client navigation swaps between pages.
+const DOCUMENT_ELEMENTS = new Set(['html', 'head', 'body', 'main']);
 const URL_ATTRIBUTES = new Set([
   'href',
   'src',
@@ -151,7 +152,10 @@ function compileElement(
   if (attribs['data-each'] !== undefined || attribs['data-if'] !== undefined) {
     if (DOCUMENT_ELEMENTS.has(element.name)) {
       const attribute = attribs['data-each'] !== undefined ? 'data-each' : 'data-if';
-      report(attribute, `not allowed on <${element.name}>`);
+      report(
+        attribute,
+        `not allowed on <${element.name}>, which every page keeps; put it on an element inside`,
+      );
     }
   }
 

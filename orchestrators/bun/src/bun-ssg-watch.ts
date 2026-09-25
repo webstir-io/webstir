@@ -116,7 +116,7 @@ export async function startBunSsgFrontendWatch(
     apiProxyOrigin: options.apiProxyOrigin,
     pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
     isRenderedView: options.apiProxyOrigin
-      ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
+      ? createRenderedViewMatcher({ workspaceRoot })
       : undefined,
     renderedPage: options.renderedPage,
     host: options.host,

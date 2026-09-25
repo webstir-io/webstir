@@ -2,6 +2,7 @@ import {
   type ClientErrorReport,
   formatClientErrorReport,
   isClientErrorsPath,
+  isRenderProgramPath,
   matchPageRoute,
   type PageRoute,
   readClientErrorReport,
@@ -229,7 +230,7 @@ export class DevServer {
           `pages/${match.route.page}/index.html`,
         ]);
     }
-    if (!resolved) {
+    if (!resolved || isRenderProgramPath(resolved.relativePath)) {
       return await this.notFoundResponse(request, method);
     }
 

@@ -107,7 +107,7 @@ test('webstir build fails an SPA whose template has bindings', async () => {
   copies.push(copy);
   const page = path.join(copy.workspaceRoot, 'src', 'frontend', 'pages', 'home', 'index.html');
   const html = await readFile(page, 'utf8');
-  await writeFile(page, html.replace('<main', '<main data-if="ready"'));
+  await writeFile(page, html.replace(/<main([^>]*)>/, '<main$1><p data-text="greeting">Hello</p>'));
   await expect(runBuild({ workspaceRoot: copy.workspaceRoot })).rejects.toThrow(
     /src\/frontend\/pages\/home\/index.html:\d+: page 'home' has bindings, but an SPA has no server to render them/,
   );

@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { access, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 
+import { isStaticAssetPath } from './deploy-static.js';
 import { compileViews, matchView, type CompiledView } from './views.js';
 
 export const VIEW_ROUTES_FILE = 'views.json';
@@ -56,12 +57,12 @@ export async function hasRenderedViewRoutes(workspaceRoot: string): Promise<bool
 
 /**
  * Answers whether a request path belongs to a view the backend renders: a view that names a
- * page whose build produced a render program. Watch and the published server proxy those
- * paths to the backend instead of serving the page's template as a static file.
+ * page, with or without bindings, since its loader must run either way. Watch and the published
+ * server proxy those paths to the backend instead of serving the page's template as a file.
+ * Asset requests, such as a page's stylesheet, never match a view.
  */
 export function createRenderedViewMatcher(options: {
   readonly workspaceRoot: string;
-  readonly frontendRoot: string;
 }): (pathname: string) => Promise<boolean> {
   let cached: { mtimeMs: number; views: CompiledView[] } | undefined;
 
@@ -87,32 +88,11 @@ export function createRenderedViewMatcher(options: {
   };
 
   return async (pathname: string) => {
-    if (path.posix.extname(pathname) !== '') {
+    if (isStaticAssetPath(pathname)) {
       return false;
     }
-    const matched = matchView(await load(), pathname);
-    const page = matched?.view.definition?.page;
-    if (!page) {
-      return false;
-    }
-    return await hasProgram(options.frontendRoot, page);
+    return Boolean(matchView(await load(), pathname)?.view.definition?.page);
   };
-}
-
-async function hasProgram(frontendRoot: string, page: string): Promise<boolean> {
-  const candidates = [path.join(frontendRoot, 'pages', page, 'index.program.json')];
-  if (page === 'home') {
-    candidates.push(path.join(frontendRoot, 'index.program.json'));
-  }
-  for (const candidate of candidates) {
-    try {
-      await access(candidate);
-      return true;
-    } catch {
-      // try the next location
-    }
-  }
-  return false;
 }
 
 function viewRoutesPath(workspaceRoot: string): string {

@@ -103,7 +103,8 @@ export async function renderSsgViews(options: {
           `[webstir-frontend] view ${name} failed to load ${urlPath}: ${describeError(error)}`,
         );
       }
-      const data = parseViewData(view.data, withEmptyFlash(loaded), name, urlPath);
+      const input = schemaDeclaresFlash(view.data) ? withEmptyFlash(loaded) : loaded;
+      const data = parseViewData(view.data, input, name, urlPath);
       rendered.push({ path: urlPath, page, view: name, html: render(withEmptyFlash(data)) });
     }
   }
@@ -140,6 +141,12 @@ function withEmptyFlash(value: unknown): unknown {
     return value;
   }
   return { ...value, flash: [] };
+}
+
+/** Whether an object schema names `flash`; a schema whose shape is unknown is assumed to. */
+function schemaDeclaresFlash(schema: unknown): boolean {
+  const shape = (schema as { shape?: unknown } | undefined)?.shape;
+  return !shape || typeof shape !== 'object' || 'flash' in shape;
 }
 
 function isSchemaLike(value: unknown): value is SchemaLike {

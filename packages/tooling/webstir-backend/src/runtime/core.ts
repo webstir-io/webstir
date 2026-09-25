@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import {
   resolveRequestHooks,
@@ -8,6 +8,7 @@ import {
   type RequestHookHandler,
   type RequestHookReferenceLike,
 } from './request-hooks.js';
+import { importCurrent } from '../utils/import-current.js';
 import type { SessionAwareRouteDefinitionLike } from './session.js';
 import type { FormRerender } from './forms.js';
 import type { ResultFlashMessageLike } from './session.js';
@@ -608,7 +609,7 @@ async function tryLoadModuleDefinition<
   for (const rel of candidates) {
     const full = path.join(here, rel);
     try {
-      const imported = await import(`${pathToFileURL(full).href}?t=${Date.now()}`);
+      const imported = await importCurrent(full);
       const definition = extractModuleDefinition<TContext, TResult, TRouteDefinition>(imported);
       if (definition) {
         return { definition, source: rel };

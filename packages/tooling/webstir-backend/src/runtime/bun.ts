@@ -700,7 +700,8 @@ async function handleViewRequest<
       method,
       requestId,
       workspaceRoot: options.resolveWorkspaceRoot(),
-      commit: (status) => sessionState.commit({ session, result: { status } }),
+      // No page rendered, so its flash waits for the page the redirect leads to.
+      commit: (status) => sessionState.commit({ session, result: { status }, retainFlash: true }),
     });
   }
   const commit = sessionState.commit({

@@ -224,18 +224,25 @@ function prepareViewData(
   loaded: unknown,
   flash: readonly ViewFlashMessage[],
 ): unknown {
-  const input = withFlash(loaded, flash);
   const schema = view.data as ViewDataSchemaLike | undefined;
   if (!schema || typeof schema.safeParse !== 'function') {
-    return input;
+    return withFlash(loaded, flash);
   }
-  const parsed = schema.safeParse(input);
+  // The framework supplies `flash`; it joins the loader's data first only when the schema
+  // declares it, so a strict schema without it still accepts what the loader returned.
+  const parsed = schema.safeParse(schemaDeclaresFlash(schema) ? withFlash(loaded, flash) : loaded);
   if (!parsed.success) {
     throw new Error(
       `View ${view.name} returned data that does not match its schema: ${describeSchemaError(parsed.error)}`,
     );
   }
   return withFlash(parsed.data, flash);
+}
+
+/** Whether an object schema names `flash`; a schema whose shape is unknown is assumed to. */
+function schemaDeclaresFlash(schema: unknown): boolean {
+  const shape = (schema as { shape?: unknown }).shape;
+  return !shape || typeof shape !== 'object' || 'flash' in shape;
 }
 
 function withFlash(value: unknown, flash: readonly ViewFlashMessage[]): unknown {

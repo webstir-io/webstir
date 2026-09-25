@@ -432,3 +432,54 @@ test('scaffold assets expose core backend templates', async () => {
   assert.match(migrateSource, /^#!\/usr\/bin\/env bun/m);
   assert.match(migrateSource, /bun src\/backend\/db\/migrate\.ts \[--list\]/);
 });
+
+test('views.json lists only views the module renders, not package page routes', async () => {
+  const workspace = await createTempWorkspace();
+  await seedBackendEntry(workspace);
+  await fs.writeFile(
+    path.join(workspace, 'src', 'backend', 'module.ts'),
+    `export const module = {
+  manifest: { contractVersion: '1.0.0', name: '@demo/views', version: '1.0.0', kind: 'backend' },
+  views: [{ definition: { name: 'clients', path: '/clients', page: 'clients' }, load: () => ({}) }]
+};
+`,
+    'utf8',
+  );
+  const env = {
+    WEBSTIR_MODULE_MODE: 'build',
+    PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
+  };
+
+  await fs.writeFile(
+    path.join(workspace, 'package.json'),
+    JSON.stringify({
+      name: '@demo/views',
+      version: '1.0.0',
+      type: 'module',
+      webstir: {
+        moduleManifest: { views: [{ name: 'record', path: '/records/:id', page: 'record' }] },
+      },
+    }),
+    'utf8',
+  );
+  await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+  const listed = JSON.parse(
+    await fs.readFile(path.join(workspace, 'build', 'backend', 'views.json'), 'utf8'),
+  );
+  assert.deepEqual(listed, [{ name: 'clients', path: '/clients', page: 'clients' }]);
+
+  await fs.writeFile(
+    path.join(workspace, 'src', 'backend', 'module.ts'),
+    `export const module = { manifest: { contractVersion: '1.0.0', name: '@demo/views', version: '1.0.0', kind: 'backend' } };\n`,
+    'utf8',
+  );
+  const result = await backendProvider.build({ workspaceRoot: workspace, env, incremental: false });
+  assert.deepEqual(result.manifest.module?.views, [
+    { name: 'record', path: '/records/:id', page: 'record' },
+  ]);
+  assert.deepEqual(
+    JSON.parse(await fs.readFile(path.join(workspace, 'build', 'backend', 'views.json'), 'utf8')),
+    [],
+    'a page route in package.json is served by the frontend, so the backend does not claim it',
+  );
+});

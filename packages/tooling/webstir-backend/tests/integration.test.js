@@ -1866,6 +1866,18 @@ const missingView = {
   load: () => notFound()
 };
 
+// A strict schema without \`flash\`: the framework adds it after checking the loader's data.
+const strictView = {
+  definition: { name: 'strictPage', path: '/strict', page: 'clients' },
+  data: {
+    shape: { title: {} },
+    safeParse: (value) => Object.keys(value).every((key) => key === 'title')
+      ? { success: true, data: value }
+      : { success: false, error: { issues: [{ path: [], message: 'Unrecognized key(s) in object' }] } }
+  },
+  load: () => ({ title: 'Strict' })
+};
+
 export const module = {
   manifest: {
     contractVersion: '1.0.0',
@@ -1877,7 +1889,7 @@ export const module = {
     views: [clientsView.definition]
   },
   routes: [createClientRoute],
-  views: [clientsView, guardedView, missingView]
+  views: [clientsView, guardedView, missingView, strictView]
 };
 `;
 }
@@ -1992,7 +2004,15 @@ async function assertRenderedViewRuntimeBehavior() {
       redirect: 'manual',
     });
     assert.equal(created.status, 303);
-    const nextCookie = extractCookieHeader(created.headers.get('set-cookie')) || cookie;
+    const createdCookie = extractCookieHeader(created.headers.get('set-cookie')) || cookie;
+
+    // A loader that redirects renders no page, so the flash waits for the next one.
+    const bounced = await fetch(`${base}/guarded`, {
+      headers: { cookie: createdCookie },
+      redirect: 'manual',
+    });
+    assert.equal(bounced.status, 303);
+    const nextCookie = extractCookieHeader(bounced.headers.get('set-cookie')) || createdCookie;
 
     const withFlash = await fetch(`${base}/clients`, { headers: { cookie: nextCookie } });
     const withFlashHtml = await withFlash.text();
@@ -2013,6 +2033,10 @@ async function assertRenderedViewRuntimeBehavior() {
     const guarded = await fetch(`${base}/guarded`, { redirect: 'manual' });
     assert.equal(guarded.status, 303);
     assert.equal(guarded.headers.get('location'), '/sign-in/?returnTo=%2Fguarded');
+
+    const strict = await fetch(`${base}/strict`);
+    assert.equal(strict.status, 200);
+    assert.match(await strict.text(), /<title>Strict<\/title>/);
 
     const missing = await fetch(`${base}/clients/nobody`);
     assert.equal(missing.status, 404);
