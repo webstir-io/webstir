@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { schemaDeclaresField } from '@webstir-io/module-contract';
+import { prepareViewData, schemaDeclaresField } from '@webstir-io/module-contract';
 
 import {
   RenderTemplateError,
@@ -463,6 +463,69 @@ test('schemaDeclaresField looks through wrappers to the object', () => {
   );
   assert.equal(schemaDeclaresField(z.union([plain, withFlash]), 'flash'), true);
   assert.equal(schemaDeclaresField(z.any(), 'flash'), false);
+});
+
+test('prepareViewData merges session flash first and fits unions and strict schemas', () => {
+  const note = { level: 'success', message: 'Saved.' };
+  const own = { level: 'info', message: 'From the loader.' };
+  const flashSchema = z.array(z.object({ level: z.string(), message: z.string() }));
+  const withFlash = z.object({ title: z.string(), flash: flashSchema }).strict();
+  const strict = z.object({ title: z.string() }).strict();
+
+  assert.deepEqual(prepareViewData(withFlash, { title: 'A', flash: [] }, [note]), {
+    ok: true,
+    data: { title: 'A', flash: [note] },
+  });
+  assert.deepEqual(prepareViewData(withFlash, { title: 'A', flash: [own] }, [note]).data.flash, [
+    note,
+    own,
+  ]);
+  assert.deepEqual(prepareViewData(strict, { title: 'A' }, [note]), {
+    ok: true,
+    data: { title: 'A', flash: [note] },
+  });
+  assert.equal(
+    prepareViewData(
+      strict.refine(() => true),
+      { title: 'A' },
+      [note],
+    ).ok,
+    true,
+  );
+
+  const union = z.union([strict, z.object({ kind: z.literal('x'), flash: flashSchema }).strict()]);
+  assert.equal(
+    prepareViewData(union, { title: 'A' }, [note]).ok,
+    true,
+    'a strict branch without flash still matches',
+  );
+  assert.equal(prepareViewData(union, { kind: 'x' }, [note]).ok, true);
+
+  const failed = prepareViewData(withFlash, { title: 42 }, []);
+  assert.equal(failed.ok, false);
+  assert.match(failed.error, /title: Expected string, received number/);
+});
+
+test('a form that posts through its submit button gets a CSRF field', () => {
+  const program = compileRenderProgram(
+    '<main><form action="/save"><button type="submit" formmethod="post">Save</button></form></main>',
+    { page: 'fixture', source: 'fixture.html' },
+  );
+  assert.equal(
+    collectOps(program.nodes).some((op) => op.op === 'csrf'),
+    true,
+  );
+  const get = compileRenderProgram(
+    '<main><form action="/find"><button>Find</button></form></main>',
+    {
+      page: 'fixture',
+      source: 'fixture.html',
+    },
+  );
+  assert.equal(
+    collectOps(get.nodes).some((op) => op.op === 'csrf'),
+    false,
+  );
 });
 
 test('partials that include each other are rejected', async () => {

@@ -2,7 +2,11 @@ import { resolveWorkspaceRoot } from '../workspace.js';
 
 export { notFound, redirect } from './view-control.js';
 export type { ViewRedirectStatus } from './view-control.js';
-import { executeRenderProgram, programUsesCsrf, schemaDeclaresField } from './render.js';
+import {
+  executeRenderProgram,
+  prepareViewData as prepareSharedViewData,
+  programUsesCsrf,
+} from './render.js';
 import {
   loadFrontendDocument,
   loadPageArtifact,
@@ -224,42 +228,13 @@ function prepareViewData(
   loaded: unknown,
   flash: readonly ViewFlashMessage[],
 ): unknown {
-  const schema = view.data as ViewDataSchemaLike | undefined;
-  if (!schema || typeof schema.safeParse !== 'function') {
-    return withFlash(loaded, flash);
-  }
-  // The framework supplies `flash`; it joins the loader's data first only when the schema
-  // declares it, so a strict schema without it still accepts what the loader returned.
-  const parsed = schema.safeParse(
-    schemaDeclaresField(schema, 'flash') ? withFlash(loaded, flash) : loaded,
-  );
-  if (!parsed.success) {
+  const prepared = prepareSharedViewData(view.data, loaded, flash);
+  if (!prepared.ok) {
     throw new Error(
-      `View ${view.name} returned data that does not match its schema: ${describeSchemaError(parsed.error)}`,
+      `View ${view.name} returned data that does not match its schema: ${prepared.error}`,
     );
   }
-  return withFlash(parsed.data, flash);
-}
-
-function withFlash(value: unknown, flash: readonly ViewFlashMessage[]): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || 'flash' in value) {
-    return value;
-  }
-  return { ...value, flash: [...flash] };
-}
-
-function describeSchemaError(error: unknown): string {
-  const issues = (error as { issues?: { path?: unknown[]; message?: string }[] })?.issues;
-  if (!Array.isArray(issues) || issues.length === 0) {
-    return error instanceof Error ? error.message : String(error);
-  }
-  return issues
-    .map((issue) => {
-      const where =
-        Array.isArray(issue.path) && issue.path.length > 0 ? issue.path.join('.') : '(root)';
-      return `${where}: ${issue.message ?? 'invalid'}`;
-    })
-    .join('; ');
+  return prepared.data;
 }
 
 export function toHeaderRecord(

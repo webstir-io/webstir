@@ -823,6 +823,7 @@ export {
   readRenderProgram,
   RENDER_CSRF_FIELD,
   RenderProgramError,
+  prepareViewData,
   schemaDeclaresField,
 } from './render-execute.js';
-export type { ExecuteRenderProgramOptions } from './render-execute.js';
+export type { ExecuteRenderProgramOptions, PreparedViewData } from './render-execute.js';

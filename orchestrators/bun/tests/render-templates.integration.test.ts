@@ -218,6 +218,23 @@ async function exerciseWatch(
     expect(await (await fetch(`${origin}/clients/`)).text()).toContain('All clients</h1>');
   }, 20_000);
 
+  // A backend edit that no longer fits the template keeps the running backend.
+  const modulePath = path.join(workspace, 'src', 'backend', 'module.ts');
+  const moduleSource = await readFile(modulePath, 'utf8');
+  const renamed = moduleSource.replace(
+    'z.array(z.object({ name: z.string(), href: z.string() }))',
+    'z.array(z.object({ label: z.string(), href: z.string() }))',
+  );
+  expect(renamed).not.toBe(moduleSource);
+  await writeFile(modulePath, renamed, 'utf8');
+  await waitFor(async () => {
+    expect(stderr.text).toContain('keeping the current runtime process');
+  }, 30_000);
+  expect(await (await fetch(`${origin}/clients/`)).text()).toContain(
+    '<span class="client-row-name">Acme &lt;Logistics&gt;</span>',
+  );
+  await writeFile(modulePath, moduleSource, 'utf8');
+
   const current = await readFile(pagePath, 'utf8');
   await writeFile(
     pagePath,

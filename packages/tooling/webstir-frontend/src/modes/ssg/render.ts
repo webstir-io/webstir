@@ -2,8 +2,8 @@ import path from 'node:path';
 
 import {
   executeRenderProgram,
+  prepareViewData,
   readRenderProgram,
-  schemaDeclaresField,
 } from '@webstir-io/module-contract';
 
 import type { WorkspacePackageJson } from '../../config/workspaceManifest.js';
@@ -24,10 +24,6 @@ export interface SsgRenderedPage {
   readonly page: string;
   readonly view: string;
   readonly html: string;
-}
-
-interface SchemaLike {
-  safeParse(value: unknown): { success: true; data: unknown } | { success: false; error: unknown };
 }
 
 interface PageViewLike {
@@ -107,9 +103,14 @@ export async function renderSsgViews(options: {
           `[webstir-frontend] view ${name} failed to load ${urlPath}: ${describeError(error)}`,
         );
       }
-      const input = schemaDeclaresField(view.data, 'flash') ? withEmptyFlash(loaded) : loaded;
-      const data = parseViewData(view.data, input, name, urlPath);
-      rendered.push({ path: urlPath, page, view: name, html: render(withEmptyFlash(data)) });
+      // Static pages carry no flash messages; views bind `flash` like any other page.
+      const prepared = prepareViewData(view.data, loaded, []);
+      if (!prepared.ok) {
+        throw new Error(
+          `[webstir-frontend] view ${name} returned data for ${urlPath} that does not match its schema: ${prepared.error}`,
+        );
+      }
+      rendered.push({ path: urlPath, page, view: name, html: render(prepared.data) });
     }
   }
   return rendered;
@@ -124,41 +125,6 @@ async function loadPageDocument(directory: string): Promise<(data: unknown) => s
   }
   const html = await readFile(path.join(directory, 'index.html'));
   return () => html;
-}
-
-function parseViewData(schema: unknown, value: unknown, name: string, urlPath: string): unknown {
-  if (!isSchemaLike(schema)) {
-    return value;
-  }
-  const parsed = schema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(
-      `[webstir-frontend] view ${name} returned data for ${urlPath} that does not match its schema: ${describeSchemaError(parsed.error)}`,
-    );
-  }
-  return parsed.data;
-}
-
-/** Static pages carry no flash messages; views bind `flash` like any other page. */
-function withEmptyFlash(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value) || 'flash' in value) {
-    return value;
-  }
-  return { ...value, flash: [] };
-}
-
-function isSchemaLike(value: unknown): value is SchemaLike {
-  return Boolean(value && typeof (value as SchemaLike).safeParse === 'function');
-}
-
-function describeSchemaError(error: unknown): string {
-  const issues = (error as { issues?: { path?: unknown[]; message?: string }[] })?.issues;
-  if (!Array.isArray(issues) || issues.length === 0) {
-    return describeError(error);
-  }
-  return issues
-    .map((issue) => `${(issue.path ?? []).join('.') || '(root)'}: ${issue.message ?? 'invalid'}`)
-    .join('; ');
 }
 
 function describeError(error: unknown): string {

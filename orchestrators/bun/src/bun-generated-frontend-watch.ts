@@ -37,6 +37,7 @@ export interface BunGeneratedFrontendWatchOptions {
   readonly port?: number;
   readonly apiProxyOrigin?: string;
   readonly afterBuild?: () => Promise<void>;
+  readonly exclusive?: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
 export interface BunGeneratedFrontendWatchSession {

@@ -171,6 +171,73 @@ function safeAttributeUrl(name: string, value: string): string {
   return safeUrl(value);
 }
 
+interface ViewDataSchemaLike {
+  safeParse(value: unknown): { success: true; data: unknown } | { success: false; error: unknown };
+}
+
+export type PreparedViewData =
+  | { readonly ok: true; readonly data: unknown }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Checks a loader's data against its view schema and supplies `flash`, which the framework
+ * owns: the session's messages come first, then any the loader returned. Whether the schema
+ * wants `flash` can depend on the branch a union picks, so the data is parsed with it and,
+ * failing that, without it, starting with what the schema declares.
+ */
+export function prepareViewData(
+  schema: unknown,
+  loaded: unknown,
+  flash: readonly unknown[],
+): PreparedViewData {
+  const withFlash = mergeFlash(loaded, flash);
+  if (!schema || typeof (schema as ViewDataSchemaLike).safeParse !== 'function') {
+    return { ok: true, data: withFlash };
+  }
+  const attempts = schemaDeclaresField(schema, 'flash') ? [withFlash, loaded] : [loaded, withFlash];
+  let firstError: unknown;
+  for (const [index, input] of attempts.entries()) {
+    const parsed = (schema as ViewDataSchemaLike).safeParse(input);
+    if (parsed.success) {
+      return { ok: true, data: ensureFlash(parsed.data, flash) };
+    }
+    if (index === 0) {
+      firstError = parsed.error;
+    }
+  }
+  return { ok: false, error: describeSchemaError(firstError) };
+}
+
+function mergeFlash(value: unknown, flash: readonly unknown[]): unknown {
+  if (!isPlainObject(value)) {
+    return value;
+  }
+  const own = (value as { flash?: unknown }).flash;
+  if (own !== undefined && !Array.isArray(own)) {
+    return value;
+  }
+  return { ...value, flash: [...flash, ...(own ?? [])] };
+}
+
+function ensureFlash(value: unknown, flash: readonly unknown[]): unknown {
+  return isPlainObject(value) && !('flash' in value) ? { ...value, flash: [...flash] } : value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function describeSchemaError(error: unknown): string {
+  const issues = (error as { issues?: { path?: unknown[]; message?: string }[] } | undefined)
+    ?.issues;
+  if (!Array.isArray(issues) || issues.length === 0) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return issues
+    .map((issue) => `${(issue.path ?? []).join('.') || '(root)'}: ${issue.message ?? 'invalid'}`)
+    .join('; ');
+}
+
 /**
  * Whether a zod-style schema's underlying object declares `field`, looking through wrappers
  * such as optional, default, refine and transform, and into unions and intersections. A schema

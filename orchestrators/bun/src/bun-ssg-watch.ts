@@ -14,6 +14,12 @@ export interface BunSsgFrontendWatchOptions {
   readonly apiProxyOrigin?: string;
   /** Runs after every frontend build; a throw is reported as a failed rebuild. */
   readonly afterBuild?: () => Promise<void>;
+  /**
+   * Runs each build and its afterBuild as one step that nothing else holding the same lock
+   * overlaps, such as the backend checking templates before a restart while the build output
+   * is being replaced.
+   */
+  readonly exclusive?: <T>(task: () => Promise<T>) => Promise<T>;
   /** Serves pages rendered in memory ahead of the build output; see DevServerOptions. */
   readonly renderedPage?: (pathname: string) => string | null | undefined;
 }
@@ -43,10 +49,13 @@ export async function startBunSsgFrontendWatch(
   const buildRoot = path.join(workspaceRoot, 'build', 'frontend');
   const operations = await loadFrontendOperations();
 
-  await operations.runBuild({ workspaceRoot });
+  const exclusive = options.exclusive ?? (<T>(task: () => Promise<T>) => task());
   // A template or loader that fails at startup stops watch, as a failed build does, rather than
   // serving pages that never rendered.
-  await options.afterBuild?.();
+  await exclusive(async () => {
+    await operations.runBuild({ workspaceRoot });
+    await options.afterBuild?.();
+  });
 
   let stopping = false;
   let stopPromise: Promise<void> | null = null;
@@ -72,6 +81,7 @@ export async function startBunSsgFrontendWatch(
           buildRoot,
           verbose: options.verbose === true,
           afterBuild: options.afterBuild,
+          exclusive,
         });
       } catch (error) {
         await reportBuildFailure(server, error);
@@ -168,6 +178,7 @@ interface RunWatchEventOptions {
   readonly buildRoot: string;
   readonly verbose: boolean;
   readonly afterBuild?: () => Promise<void>;
+  readonly exclusive: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
 async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
@@ -181,15 +192,17 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
 
   let hotUpdate: HotUpdatePayload | null = null;
   const changedPath = getSingleWorkspaceWatchEventPath(event);
-  if (event.type === 'change') {
-    await operations.runRebuild({
-      workspaceRoot,
-      changedFile: event.path,
-    });
-  } else {
-    await operations.runBuild({ workspaceRoot });
-  }
-  await options.afterBuild?.();
+  await options.exclusive(async () => {
+    if (event.type === 'change') {
+      await operations.runRebuild({
+        workspaceRoot,
+        changedFile: event.path,
+      });
+    } else {
+      await operations.runBuild({ workspaceRoot });
+    }
+    await options.afterBuild?.();
+  });
 
   if (changedPath) {
     hotUpdate = createHotUpdatePayload({

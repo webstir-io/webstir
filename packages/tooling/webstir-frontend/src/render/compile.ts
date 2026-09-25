@@ -316,8 +316,25 @@ function pushStatic(target: RenderNode[], html: string): void {
   target.push(html);
 }
 
+/** A form that posts: by its own method, or through a submit button's `formmethod`. */
 function isPostForm(element: Element): boolean {
-  return element.name === 'form' && (element.attribs.method ?? '').trim().toLowerCase() === 'post';
+  return (
+    element.name === 'form' &&
+    (isPost(element.attribs.method) || hasPostSubmitter(element.children))
+  );
+}
+
+function hasPostSubmitter(nodes: readonly AnyNode[]): boolean {
+  return nodes.some(
+    (node) =>
+      isElement(node) &&
+      ((['button', 'input'].includes(node.name) && isPost(node.attribs.formmethod)) ||
+        hasPostSubmitter(node.children)),
+  );
+}
+
+function isPost(method: string | undefined): boolean {
+  return (method ?? '').trim().toLowerCase() === 'post';
 }
 
 function isElement(node: AnyNode): node is Element {
