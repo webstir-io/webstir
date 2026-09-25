@@ -39,9 +39,52 @@ Use this path when you need package-level control without going through the top-
 
 If you are using the top-level CLI against a non-`ssg` workspace, the equivalent override is `webstir publish --workspace "$PWD" --frontend-mode ssg`.
 
+## Pages Rendered from Data
+
+A page template can bind data with `data-text`, `data-attr-*`, `data-if`, `data-each`, and `data-include`, the same template language full workspaces render on each request. In an `ssg` workspace the rendering happens once, at publish: a view in `src/backend/module.ts` names the page, the addresses to publish, a zod schema for its data, and a loader.
+
+```ts
+import { z } from 'zod';
+
+export const module = {
+  views: [
+    {
+      definition: {
+        name: 'post',
+        path: '/blog/:slug',
+        page: 'post',
+        staticPaths: ['/blog/hello', '/blog/launch'],
+      },
+      data: z.object({ title: z.string(), tags: z.array(z.string()) }),
+      load: ({ params }) => readPost(params.slug),
+    },
+  ],
+};
+```
+
+```html
+<!-- src/frontend/pages/post/index.html -->
+<head><title data-text="title">Post</title></head>
+<main>
+  <h1 data-text="title">A post</h1>
+  <ul><li data-each="tags as tag" data-text="tag">tag</li></ul>
+</main>
+```
+
+What happens:
+
+- `webstir publish` compiles the module (no server is built), runs each loader for each static path, checks the result against the schema, and writes finished HTML to `dist/frontend/blog/hello/index.html` and `dist/frontend/blog/launch/index.html`.
+- The build fails with the file and line when a template binds a path the schema does not have, when a page has bindings no view renders, or when a loader returns data that does not match its schema.
+- A parameterized path needs `staticPaths`: a static site publishes only the addresses it names.
+- The page's own address (`/post/`) is not published, since the bare template holds placeholder content; neither are the compiled `*.program.json` files.
+- POST forms render without a CSRF field, because a static site has no session. Point them at a service that accepts them.
+- `webstir watch` serves the same pages, rendered after each change to a template or to the module.
+
+An `spa` workspace has no server and no build-time data, so a template with bindings fails its build. Use `full` for pages rendered per request, or `ssg` for pages rendered at publish.
+
 ## Static Paths from Module Metadata
 
-You can describe SSG views in `package.json` under `webstir.moduleManifest.views`. SSG publish uses these hints to create additional `index.html` aliases and, when a backend view loader exists, generate per-page `view-data.json`.
+You can describe SSG views in `package.json` under `webstir.moduleManifest.views`. SSG publish uses these hints to create additional `index.html` aliases and, for views with a loader that do not name a `page`, generate per-page `view-data.json`.
 
 Example:
 

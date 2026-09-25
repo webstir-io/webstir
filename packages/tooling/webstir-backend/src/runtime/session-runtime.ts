@@ -15,6 +15,7 @@ export interface SessionRuntimeStoredFormState {
 }
 
 export interface SessionRuntimeFormState {
+  token?: string;
   csrf: Record<string, string>;
   states: Record<string, SessionRuntimeStoredFormState>;
 }
@@ -97,6 +98,7 @@ export function hasSessionRuntimeState(runtime: SessionRuntimeState | undefined)
   }
 
   return (
+    typeof runtime.form.token === 'string' ||
     Object.keys(runtime.form.csrf ?? {}).length > 0 ||
     Object.keys(runtime.form.states ?? {}).length > 0
   );
@@ -120,6 +122,9 @@ export function mergeSessionRuntimeState(
     form:
       leftClone.form || rightClone.form
         ? {
+            ...((rightClone.form?.token ?? leftClone.form?.token)
+              ? { token: rightClone.form?.token ?? leftClone.form?.token }
+              : {}),
             csrf: {
               ...(leftClone.form?.csrf ?? {}),
               ...(rightClone.form?.csrf ?? {}),
@@ -141,6 +146,7 @@ export function pruneSessionRuntimeState(session: Record<string, unknown>): void
 
   if (
     runtime.form &&
+    runtime.form.token === undefined &&
     Object.keys(runtime.form.csrf ?? {}).length === 0 &&
     Object.keys(runtime.form.states ?? {}).length === 0
   ) {
@@ -174,6 +180,7 @@ function cloneSessionRuntimeFormState(value: unknown): SessionRuntimeFormState |
   }
 
   return {
+    ...(typeof value.token === 'string' && value.token.length > 0 ? { token: value.token } : {}),
     csrf: cloneSessionRuntimeCsrfState(value.csrf),
     states: cloneSessionRuntimeStoredStateMap(value.states),
   };

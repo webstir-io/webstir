@@ -34,7 +34,18 @@ import {
   createInMemorySessionStore,
   type SessionStore,
 } from './session.js';
-import { matchView, renderRequestTimeView, type CompiledView, type LoggerLike } from './views.js';
+import { ensureSessionCsrfToken } from './forms.js';
+import { createSessionFormReader, renderFormRerender } from './rerender.js';
+import { readRequestBody } from './request-body.js';
+import { isViewRedirect, readViewControl } from './view-control.js';
+import { loadNotFoundDocument } from './view-documents.js';
+import {
+  matchView,
+  renderRequestTimeView,
+  type CompiledView,
+  type LoggerLike,
+  type ViewFlashMessage,
+} from './views.js';
 
 export type { RouteHandlerResult } from './core.js';
 
@@ -512,7 +523,65 @@ async function handleRequest<
         result: handlerResult,
       });
 
-      const response = createCommittedResponse(afterHandler.result ?? handlerResult, {
+      const finalResult = afterHandler.result ?? handlerResult;
+      if (finalResult.rerender) {
+        let rerendered: { html: string; session: TSession | null; location: string };
+        try {
+          rerendered = await renderFormRerender({
+            rerender: finalResult.rerender,
+            views: runtime.views,
+            workspaceRoot: options.resolveWorkspaceRoot(),
+            url,
+            routeParams: routeMatch.params,
+            cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
+            headers: toRequestHeadersRecord(request.headers),
+            auth: ctx.auth,
+            session: ctx.session,
+            env: envAccessor,
+            logger: structuredLogger,
+            requestId,
+            now,
+          });
+        } catch (error) {
+          const control = readViewControl(error);
+          if (!control) {
+            throw error;
+          }
+          const response = await createViewControlResponse(control, {
+            method,
+            requestId,
+            workspaceRoot: options.resolveWorkspaceRoot(),
+            commit: (status) =>
+              sessionState.commit({
+                session: ctx.session,
+                route: routeMatch.route.definition,
+                result: { status },
+              }),
+          });
+          responseStatus = response.status;
+          return response;
+        }
+        const status = finalResult.status ?? 422;
+        const commit = sessionState.commit({
+          session: rerendered.session,
+          route: routeMatch.route.definition,
+          result: { status },
+        });
+        const headers = new Headers({
+          ...(finalResult.headers ?? {}),
+          'cache-control': 'no-store',
+          'content-type': 'text/html; charset=utf-8',
+          'content-location': rerendered.location,
+          'x-request-id': requestId,
+        });
+        if (commit.setCookie) {
+          headers.append('set-cookie', commit.setCookie);
+        }
+        responseStatus = status;
+        return new Response(method === 'HEAD' ? null : rerendered.html, { status, headers });
+      }
+
+      const response = createCommittedResponse(finalResult, {
         method,
         sessionState,
         session: ctx.session,
@@ -590,28 +659,52 @@ async function handleViewRequest<
     now,
     options,
   } = args;
+  const rendersPage = Boolean(matchedView.view.definition?.page);
   const sessionState = prepareSessionState<TSession, RouteHandlerResult>({
     cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
     config: env.sessions,
     store: options.sessionStore,
+    consumeAllFlash: rendersPage,
     now,
   });
-  const rendered = await renderRequestTimeView({
-    workspaceRoot: options.resolveWorkspaceRoot(),
-    url,
-    view: matchedView.view,
-    params: matchedView.params,
-    cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
-    headers: toRequestHeadersRecord(request.headers),
-    auth: await options.resolveRequestAuth(request, env.auth, structuredLogger),
-    session: sessionState.session,
-    env: envAccessor,
-    logger: structuredLogger,
-    requestId,
-    now,
-  });
+  let session = sessionState.session;
+  let rendered: Awaited<ReturnType<typeof renderRequestTimeView>>;
+  try {
+    rendered = await renderRequestTimeView({
+      workspaceRoot: options.resolveWorkspaceRoot(),
+      url,
+      view: matchedView.view,
+      params: matchedView.params,
+      cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
+      headers: toRequestHeadersRecord(request.headers),
+      auth: await options.resolveRequestAuth(request, env.auth, structuredLogger),
+      session,
+      env: envAccessor,
+      logger: structuredLogger,
+      requestId,
+      now,
+      flash: rendersPage ? toViewFlash(sessionState.flash) : undefined,
+      forms: createSessionFormReader(() => session),
+      csrfToken: () => {
+        const ensured = ensureSessionCsrfToken(session);
+        session = ensured.session;
+        return ensured.token;
+      },
+    });
+  } catch (error) {
+    const control = readViewControl(error);
+    if (!control) {
+      throw error;
+    }
+    return await createViewControlResponse(control, {
+      method,
+      requestId,
+      workspaceRoot: options.resolveWorkspaceRoot(),
+      commit: (status) => sessionState.commit({ session, result: { status } }),
+    });
+  }
   const commit = sessionState.commit({
-    session: sessionState.session,
+    session,
     result: { status: 200 },
   });
 
@@ -629,6 +722,38 @@ async function handleViewRequest<
     status: 200,
     headers,
   });
+}
+
+async function createViewControlResponse(
+  control: NonNullable<ReturnType<typeof readViewControl>>,
+  options: {
+    method: string;
+    requestId: string;
+    workspaceRoot: string;
+    commit: (status: number) => { setCookie?: string };
+  },
+): Promise<Response> {
+  const redirecting = isViewRedirect(control);
+  const status = redirecting ? control.status : 404;
+  const headers = new Headers({ 'cache-control': 'no-store', 'x-request-id': options.requestId });
+  const { setCookie } = options.commit(status);
+  if (setCookie) {
+    headers.append('set-cookie', setCookie);
+  }
+  if (redirecting) {
+    headers.set('location', control.location);
+    return new Response(null, { status, headers });
+  }
+  const page = await loadNotFoundDocument(options.workspaceRoot);
+  headers.set('content-type', page ? 'text/html; charset=utf-8' : 'text/plain; charset=utf-8');
+  return new Response(options.method === 'HEAD' ? null : (page ?? 'Not found.'), {
+    status,
+    headers,
+  });
+}
+
+function toViewFlash(flash: readonly SessionFlashMessage[]): ViewFlashMessage[] {
+  return flash.map((entry) => ({ level: entry.level, message: entry.message ?? entry.key }));
 }
 
 function createCommittedResponse<
@@ -683,43 +808,6 @@ function createCommittedResponse<
     return new Response(Buffer.from(payload), { status, headers });
   }
   return jsonResponse(status, payload, options.requestId, headers);
-}
-
-async function readRequestBody(request: Request, maxBodyBytes: number): Promise<unknown> {
-  const method = (request.method ?? 'GET').toUpperCase();
-  if (method === 'GET' || method === 'HEAD') {
-    return undefined;
-  }
-
-  const declaredContentLength = Number(request.headers.get('content-length') ?? '');
-  if (Number.isFinite(declaredContentLength) && declaredContentLength > maxBodyBytes) {
-    throw new RequestBodyTooLargeError(maxBodyBytes);
-  }
-
-  const bodyBuffer = await request.arrayBuffer();
-  if (bodyBuffer.byteLength === 0) {
-    return undefined;
-  }
-  if (bodyBuffer.byteLength > maxBodyBytes) {
-    throw new RequestBodyTooLargeError(maxBodyBytes);
-  }
-
-  const bodyText = Buffer.from(bodyBuffer).toString('utf8');
-  const contentType = request.headers.get('content-type') ?? '';
-  if (contentType.includes('application/json')) {
-    try {
-      return JSON.parse(bodyText);
-    } catch {
-      return undefined;
-    }
-  }
-  if (contentType.includes('application/x-www-form-urlencoded')) {
-    return Object.fromEntries(new URLSearchParams(bodyText).entries());
-  }
-  if (contentType.includes('text/plain')) {
-    return bodyText;
-  }
-  return bodyText;
 }
 
 function createBunRequestLogger<TLogger extends RuntimeLogger>(

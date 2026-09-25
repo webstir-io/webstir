@@ -24,6 +24,13 @@ import {
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import { inlineSourceScripts, inlineSourceScriptsInHtml } from '../html/inlineScripts.js';
 import { emitDiagnostic } from '../core/diagnostics.js';
+import {
+  mayContainBindings,
+  prepareTemplateSource,
+  stripSourceStamps,
+  writePageProgram,
+  type TemplateSourceOptions,
+} from '../render/index.js';
 import type { EnableFlags } from '../types.js';
 import {
   resolvePageAssetUrl,
@@ -71,7 +78,16 @@ async function buildHtml(context: BuilderContext): Promise<void> {
 
   const rawTemplateHtml = await readFile(appTemplatePath);
   validateAppTemplate(rawTemplateHtml, appTemplatePath);
-  const templateHtml = await withInlineScripts(context, rawTemplateHtml, appTemplatePath, false);
+  const renderSource: TemplateSourceOptions = {
+    workspaceRoot: config.paths.workspace,
+    partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+  };
+  const templateHtml = await withInlineScripts(
+    context,
+    await prepareTemplateSource(rawTemplateHtml, appTemplatePath, renderSource),
+    appTemplatePath,
+    false,
+  );
 
   const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
   const pages = await getPageDirectories(config.paths.src.pages);
@@ -95,7 +111,18 @@ async function buildHtml(context: BuilderContext): Promise<void> {
       const sourceHtmlPath = path.join(page.directory, relativeHtml);
       const rawFragment = await readFile(sourceHtmlPath);
       validatePageFragment(rawFragment, sourceHtmlPath);
-      const fragment = await withInlineScripts(context, rawFragment, sourceHtmlPath, false);
+      const isPageIndex = relativeHtml === `${FILES.index}${EXTENSIONS.html}`;
+      if (!isPageIndex && mayContainBindings(rawFragment)) {
+        throw new Error(
+          `Template bindings only render in a page's index.html (${path.relative(config.paths.workspace, sourceHtmlPath)}).`,
+        );
+      }
+      const preparedFragment = await prepareTemplateSource(
+        rawFragment,
+        sourceHtmlPath,
+        renderSource,
+      );
+      const fragment = await withInlineScripts(context, preparedFragment, sourceHtmlPath, false);
 
       const mergedHtml = mergeTemplates(templateHtml, fragment);
       const mergedWithScripts = injectOptInScripts(
@@ -107,6 +134,13 @@ async function buildHtml(context: BuilderContext): Promise<void> {
       );
       const targetPath = path.join(targetDir, path.basename(relativeHtml));
       await writeFile(targetPath, mergedWithScripts);
+      if (isPageIndex) {
+        await writePageProgram(mergedWithScripts, {
+          page: page.name,
+          source: path.relative(config.paths.workspace, sourceHtmlPath).split(path.sep).join('/'),
+          targetDir,
+        });
+      }
     }
   }
 
@@ -165,7 +199,20 @@ async function publishHtml(context: BuilderContext): Promise<void> {
       );
       const outputPath = path.join(distDir, relativeHtml);
       await ensureDir(path.dirname(outputPath));
-      await writeFile(outputPath, rewritten);
+      if (relativeHtml === `${FILES.index}${EXTENSIONS.html}`) {
+        await writePageProgram(rewritten, {
+          page: page.name,
+          source: path
+            .relative(
+              config.paths.workspace,
+              path.join(config.paths.src.pages, page.name, relativeHtml),
+            )
+            .split(path.sep)
+            .join('/'),
+          targetDir: path.dirname(outputPath),
+        });
+      }
+      await writeFile(outputPath, stripSourceStamps(rewritten));
       await handlePrecompression(context, outputPath);
     }
   }

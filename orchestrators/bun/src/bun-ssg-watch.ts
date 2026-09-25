@@ -1,4 +1,4 @@
-import { readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
+import { createRenderedViewMatcher, readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
 import path from 'node:path';
 
 import { DevServer, type DevServerAddress } from './dev-server.ts';
@@ -12,6 +12,10 @@ export interface BunSsgFrontendWatchOptions {
   readonly port?: number;
   readonly verbose?: boolean;
   readonly apiProxyOrigin?: string;
+  /** Runs after every frontend build; a throw is reported as a failed rebuild. */
+  readonly afterBuild?: () => Promise<void>;
+  /** Serves pages rendered in memory ahead of the build output; see DevServerOptions. */
+  readonly renderedPage?: (pathname: string) => string | null | undefined;
 }
 
 export interface BunSsgFrontendWatchSession {
@@ -40,6 +44,9 @@ export async function startBunSsgFrontendWatch(
   const operations = await loadFrontendOperations();
 
   await operations.runBuild({ workspaceRoot });
+  await options.afterBuild?.().catch((error: unknown) => {
+    console.error(`[webstir] frontend build failed: ${formatError(error)}`);
+  });
 
   let stopping = false;
   let stopPromise: Promise<void> | null = null;
@@ -64,6 +71,7 @@ export async function startBunSsgFrontendWatch(
           frontendSourceRoot,
           buildRoot,
           verbose: options.verbose === true,
+          afterBuild: options.afterBuild,
         });
       } catch (error) {
         await reportBuildFailure(server, error);
@@ -107,6 +115,10 @@ export async function startBunSsgFrontendWatch(
     buildRoot,
     apiProxyOrigin: options.apiProxyOrigin,
     pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
+    isRenderedView: options.apiProxyOrigin
+      ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
+      : undefined,
+    renderedPage: options.renderedPage,
     host: options.host,
     port: options.port,
   });
@@ -155,6 +167,7 @@ interface RunWatchEventOptions {
   readonly frontendSourceRoot: string;
   readonly buildRoot: string;
   readonly verbose: boolean;
+  readonly afterBuild?: () => Promise<void>;
 }
 
 async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
@@ -176,6 +189,7 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
   } else {
     await operations.runBuild({ workspaceRoot });
   }
+  await options.afterBuild?.();
 
   if (changedPath) {
     hotUpdate = createHotUpdatePayload({
@@ -251,8 +265,11 @@ async function loadFrontendOperations(): Promise<FrontendOperationsModule> {
 
 async function reportBuildFailure(server: DevServer, error: unknown): Promise<void> {
   await server.publishStatus('error');
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`[webstir] frontend rebuild failed: ${message}`);
+  console.error(`[webstir] frontend rebuild failed: ${formatError(error)}`);
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function getSingleWorkspaceWatchEventPath(event: WorkspaceWatchEvent): string | undefined {

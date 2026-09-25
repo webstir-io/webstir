@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   createInMemorySessionStore,
   prepareSessionState,
+  renewSession,
   resetInMemorySessionStore,
 } from '../dist/runtime/session.js';
 import { prepareFormState, processFormSubmission } from '../dist/runtime/forms.js';
@@ -236,6 +237,56 @@ test('prepareSessionState preserves session ids for updates and rotates after cl
     config.cookieName,
   );
   assert.notEqual(nextId, firstId);
+});
+
+test('a renewed session moves to a new id with a fresh lifetime and drops the old record', () => {
+  const store = createInMemorySessionStore();
+  let now = new Date('2026-09-01T00:00:00Z');
+  const anonymous = prepareSessionState({
+    cookies: '',
+    route: accountRoute,
+    config,
+    store,
+    now: () => now,
+  });
+  const { session: withToken } = prepareFormState({
+    session: anonymous.session,
+    formId: 'signIn',
+    csrf: true,
+  });
+  const anonymousCommit = anonymous.commit({
+    session: withToken,
+    route: accountRoute,
+    result: { status: 200 },
+  });
+  const anonymousCookie = extractCookieHeader(anonymousCommit.setCookie);
+  const anonymousId = extractSessionId(anonymousCookie, config.cookieName);
+
+  now = new Date('2026-09-01T00:00:30Z');
+  const signIn = prepareSessionState({
+    cookies: anonymousCookie,
+    route: loginRoute,
+    config,
+    store,
+    now: () => now,
+  });
+  const signedIn = signIn.commit({
+    session: renewSession({ userId: 'ada@example.com' }),
+    route: loginRoute,
+    result: { status: 303, redirect: { location: '/' } },
+  });
+  const renewedId = extractSessionId(extractCookieHeader(signedIn.setCookie), config.cookieName);
+
+  assert.notEqual(renewedId, anonymousId);
+  assert.equal(store.get(anonymousId), undefined);
+  const record = store.get(renewedId);
+  assert.equal(record.value.userId, 'ada@example.com');
+  assert.equal(record.createdAt, now.toISOString());
+  assert.equal(
+    record.expiresAt,
+    new Date(now.getTime() + config.maxAgeSeconds * 1000).toISOString(),
+  );
+  assert.equal(Object.getOwnPropertySymbols(record.value).length, 0);
 });
 
 test('processFormSubmission consumes valid csrf tokens so replay fails with retry state', () => {

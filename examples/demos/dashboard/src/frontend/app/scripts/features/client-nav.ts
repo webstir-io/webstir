@@ -3,6 +3,7 @@ import {
     buildEnhancedFormRequest,
     normalizeFormEnctype,
     normalizeFormMethod,
+    resolveDocumentResponseUrl,
     resolveEnhancedFormResponse,
     resolveFragmentResponseMetadata,
     resolveFragmentInsertionBehavior
@@ -268,7 +269,11 @@ async function submitForm(
     if (resolution.kind === 'document') {
         await renderDocumentResponse(response, requestId, {
             pushHistory: true,
-            url: response.url || submission.url
+            url: resolveDocumentResponseUrl({
+                contentLocation: response.headers.get('content-location'),
+                responseUrl: response.url,
+                requestUrl: submission.url
+            })
         });
         return;
     }

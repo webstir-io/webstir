@@ -1,13 +1,14 @@
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import type { FrontendConfig } from '../../types.js';
 import { ensureDir, pathExists, readJson, writeJson } from '../../utils/fs.js';
 import { FOLDERS } from '../../core/constants.js';
+import { loadBackendModuleDefinition } from '../../utils/backendModule.js';
 import type { WorkspaceModuleView, WorkspacePackageJson } from '../../config/workspaceManifest.js';
 
-interface ViewDefinitionLike {
+export interface ViewDefinitionLike {
   readonly name?: string;
   readonly path?: string;
+  readonly page?: string;
   readonly renderMode?: 'ssg' | 'ssr' | 'spa';
   readonly staticPaths?: readonly string[];
 }
@@ -36,7 +37,7 @@ export async function generateSsgViewData(config: FrontendConfig): Promise<void>
   const workspaceMode = pkg?.webstir?.mode;
   const isSsgWorkspace = typeof workspaceMode === 'string' && workspaceMode.toLowerCase() === 'ssg';
 
-  const moduleDefinition = await loadBackendModuleDefinition(workspaceRoot);
+  const moduleDefinition = await loadBackendModuleDefinition<ModuleDefinitionLike>(workspaceRoot);
   if (!moduleDefinition?.views || moduleDefinition.views.length === 0) {
     return;
   }
@@ -50,7 +51,8 @@ export async function generateSsgViewData(config: FrontendConfig): Promise<void>
     const meta = findViewMetadata(viewMetadata, viewName, viewPathTemplate);
     const renderMode =
       meta?.renderMode ?? definition.renderMode ?? (isSsgWorkspace ? 'ssg' : undefined);
-    if (renderMode !== 'ssg') {
+    // A view that names a page is rendered into HTML instead (see render.ts).
+    if (renderMode !== 'ssg' || definition.page) {
       continue;
     }
 
@@ -113,7 +115,7 @@ export async function generateSsgViewData(config: FrontendConfig): Promise<void>
   }
 }
 
-function findViewMetadata(
+export function findViewMetadata(
   views: readonly WorkspaceModuleView[],
   name: string,
   templatePath: string,
@@ -127,55 +129,7 @@ function findViewMetadata(
   );
 }
 
-async function loadBackendModuleDefinition(
-  workspaceRoot: string,
-): Promise<ModuleDefinitionLike | undefined> {
-  const buildRoot = path.join(workspaceRoot, 'build', 'backend');
-  const candidates = [
-    path.join(buildRoot, 'module.js'),
-    path.join(buildRoot, 'module.mjs'),
-    path.join(buildRoot, 'module', 'index.js'),
-    path.join(buildRoot, 'module', 'index.mjs'),
-  ];
-
-  for (const fullPath of candidates) {
-    if (!(await pathExists(fullPath))) {
-      continue;
-    }
-
-    try {
-      const url = `${pathToFileURL(fullPath).href}?t=${Date.now()}`;
-      const imported = (await import(url)) as Record<string, unknown>;
-      const candidate = extractModuleDefinition(imported);
-      if (candidate) {
-        return candidate;
-      }
-    } catch (error) {
-      throw new Error(
-        `[webstir-frontend] failed to import backend module definition from ${fullPath}: ${formatErrorMessage(error)}`,
-      );
-    }
-  }
-
-  return undefined;
-}
-
-function extractModuleDefinition(
-  exports: Record<string, unknown>,
-): ModuleDefinitionLike | undefined {
-  const keys = ['module', 'moduleDefinition', 'default', 'backendModule'];
-  for (const key of keys) {
-    if (key in exports) {
-      const value = exports[key as keyof typeof exports];
-      if (value && typeof value === 'object') {
-        return value as ModuleDefinitionLike;
-      }
-    }
-  }
-  return undefined;
-}
-
-function normalizePath(value: string): string {
+export function normalizePath(value: string): string {
   let s = value.trim();
   if (!s.startsWith('/')) {
     s = `/${s}`;
@@ -202,7 +156,7 @@ function firstPathSegment(pathname: string): string | undefined {
   return segment;
 }
 
-function deriveRouteParams(template: string, actual: string): Record<string, string> | null {
+export function deriveRouteParams(template: string, actual: string): Record<string, string> | null {
   if (!template || !actual) {
     return {};
   }
@@ -234,7 +188,7 @@ function deriveRouteParams(template: string, actual: string): Record<string, str
   return params;
 }
 
-function createMinimalSsrContext(pathname: string, params: Record<string, string>): unknown {
+export function createMinimalSsrContext(pathname: string, params: Record<string, string>): unknown {
   const url = new URL(`http://localhost${pathname}`);
 
   const envAccessor = {
@@ -285,10 +239,13 @@ function createMinimalSsrContext(pathname: string, params: Record<string, string
     env: envAccessor,
     logger,
     now: () => new Date(),
+    forms: {
+      read: () => ({ submitted: false, values: {}, issues: [], errors: {} }),
+    },
   };
 }
 
-function getEffectiveStaticPaths(
+export function getEffectiveStaticPaths(
   meta: WorkspaceModuleView | undefined,
   definition: ViewDefinitionLike,
   isSsgWorkspace: boolean,

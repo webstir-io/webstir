@@ -9,6 +9,8 @@ import {
   type RequestHookReferenceLike,
 } from './request-hooks.js';
 import type { SessionAwareRouteDefinitionLike } from './session.js';
+import type { FormRerender } from './forms.js';
+import type { ResultFlashMessageLike } from './session.js';
 import {
   compileViews,
   type CompiledView,
@@ -41,6 +43,8 @@ export interface RouteHandlerResult {
     body: unknown;
   };
   errors?: { code: string; message: string; details?: unknown }[];
+  rerender?: FormRerender;
+  flash?: ResultFlashMessageLike[];
 }
 
 export type NormalizedRouteHandlerResult = RouteHandlerResult & {

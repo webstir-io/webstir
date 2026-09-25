@@ -8,6 +8,7 @@ import {
   resolveFragmentInsertionBehavior,
   resolveFragmentResponseMetadata,
   readFragmentResponseMetadata,
+  resolveDocumentResponseUrl,
   shouldReplaceFragmentTarget,
 } from '../resources/features/client_nav/form_enhancement.ts';
 import { resolveDocumentNavigationResponse } from '../resources/features/client_nav/document_navigation.ts';
@@ -285,6 +286,27 @@ test('resolveEnhancedFormResponse distinguishes document, redirect, and non-html
     location: 'https://example.com/actions/fragment',
     reason: 'non-html',
   });
+});
+
+test('resolveDocumentResponseUrl keeps a re-rendered form at the page it names', () => {
+  const requestUrl = 'https://example.com/clients/acme/comments/?conversation=all';
+  expect(
+    resolveDocumentResponseUrl({
+      contentLocation: '/clients/acme?conversation=all',
+      responseUrl: requestUrl,
+      requestUrl,
+    }),
+  ).toBe('https://example.com/clients/acme?conversation=all');
+  expect(
+    resolveDocumentResponseUrl({ contentLocation: null, responseUrl: requestUrl, requestUrl }),
+  ).toBe(requestUrl);
+  expect(
+    resolveDocumentResponseUrl({
+      contentLocation: 'https://elsewhere.example/',
+      responseUrl: '',
+      requestUrl,
+    }),
+  ).toBe(requestUrl);
 });
 
 test('shouldReplaceFragmentTarget prefers replacing the target for matching fragment roots', () => {

@@ -40,6 +40,29 @@ interface RouteHandlerResultLike {
     location: string;
   };
   errors?: { code: string; message: string; details?: unknown }[];
+  rerender?: FormRerender;
+}
+
+export interface FormRerender {
+  view: string;
+  params?: Record<string, string>;
+  form: {
+    id: string;
+    values: FormValues;
+    issues: FormIssue[];
+  };
+}
+
+export interface FormRerenderTarget {
+  view: string;
+  params?: Record<string, string>;
+}
+
+export interface FormState {
+  submitted: boolean;
+  values: FormValues;
+  issues: FormIssue[];
+  errors: Record<string, string>;
 }
 
 export type FormSubmissionResult<TSession extends Record<string, unknown>, TAuth> =
@@ -96,6 +119,7 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
   csrf?: boolean;
   csrfFieldName?: string;
   redirectTo?: string;
+  rerender?: string | FormRerenderTarget;
   requireAuth?:
     | boolean
     | {
@@ -111,17 +135,24 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
   const csrfFieldName = options.csrfFieldName ?? DEFAULT_CSRF_FIELD_NAME;
   const values = normalizeFormValues(options.body, csrfFieldName);
   const redirectTo = options.redirectTo;
+  const rerender =
+    typeof options.rerender === 'string' ? { view: options.rerender } : options.rerender;
 
   if (isCsrfEnabled(options)) {
     const expectedToken = ensureCsrfToken(store, options.formId);
     const providedToken = readCsrfToken(options.body, csrfFieldName);
-    if (!providedToken || !tokensMatch(providedToken, expectedToken)) {
+    const matches =
+      providedToken !== undefined &&
+      (tokensMatch(providedToken, expectedToken) ||
+        (store.token !== undefined && tokensMatch(providedToken, store.token)));
+    if (!matches) {
       return failSubmission({
         session,
         store,
         formId: options.formId,
         values,
         redirectTo,
+        rerender,
         now,
         issues: [
           {
@@ -165,6 +196,7 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
       formId: options.formId,
       values,
       redirectTo,
+      rerender,
       now,
       issues: validationIssues.map((issue) => ({
         ...issue,
@@ -181,6 +213,53 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
     values,
     auth: options.auth,
   };
+}
+
+export function readFormState(session: Record<string, unknown> | null, formId: string): FormState {
+  if (!session) {
+    return createFormState(undefined, undefined);
+  }
+  const store = getFormRuntimeStore(session);
+  const stored = store.states[formId];
+  if (stored) {
+    delete store.states[formId];
+  }
+  cleanupFormRuntimeStore(session);
+  return createFormState(stored?.values, stored?.issues);
+}
+
+export function createFormState(
+  values: FormValues | undefined,
+  issues: readonly FormIssue[] | undefined,
+): FormState {
+  const clonedIssues = cloneIssues(issues);
+  return {
+    submitted: values !== undefined || clonedIssues.length > 0,
+    values: cloneFormValues(values),
+    issues: clonedIssues,
+    errors: formErrors(clonedIssues),
+  };
+}
+
+export function formErrors(issues: readonly FormIssue[] | undefined): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const issue of issues ?? []) {
+    if (!issue?.message) {
+      continue;
+    }
+    const key = issue.field ?? 'form';
+    errors[key] ??= issue.message;
+  }
+  return errors;
+}
+
+export function ensureSessionCsrfToken<TSession extends Record<string, unknown>>(
+  session: TSession | null,
+): { session: TSession; token: string } {
+  const ensured = ensureSession(session);
+  const store = getFormRuntimeStore(ensured);
+  store.token ??= randomUUID();
+  return { session: ensured, token: store.token };
 }
 
 export function groupFormIssuesByField(issues: readonly FormIssue[] | undefined): {
@@ -211,9 +290,34 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
   formId: string;
   values: FormValues;
   redirectTo?: string;
+  rerender?: FormRerenderTarget;
   issues: FormIssue[];
   now: () => Date;
 }): FormSubmissionResult<TSession, never> {
+  if (options.rerender) {
+    // The failure renders in this response, so nothing waits in the session for a later page.
+    delete options.store.states[options.formId];
+    cleanupFormRuntimeStore(options.session);
+    return {
+      ok: false,
+      session: options.session,
+      values: options.values,
+      issues: options.issues,
+      result: {
+        status: options.issues.some((issue) => issue.code === 'csrf') ? 403 : 422,
+        rerender: {
+          view: options.rerender.view,
+          ...(options.rerender.params ? { params: { ...options.rerender.params } } : {}),
+          form: {
+            id: options.formId,
+            values: cloneFormValues(options.values),
+            issues: cloneIssues(options.issues),
+          },
+        },
+      },
+    };
+  }
+
   options.store.states[options.formId] = {
     values: cloneFormValues(options.values),
     issues: cloneIssues(options.issues),

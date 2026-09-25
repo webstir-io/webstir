@@ -21,6 +21,7 @@ import {
 } from './deploy-shared.js';
 import { servePublishedStaticFile } from './deploy-static.js';
 import { readWorkspacePageRoutes, type PageRoute } from './page-routes.js';
+import { createRenderedViewMatcher } from './view-routes.js';
 
 export type { DeploymentIo, PublishedWorkspaceServer, PublishedWorkspaceServerOptions };
 
@@ -39,6 +40,9 @@ export async function startPublishedWorkspaceServer(
     await assertExists(frontendRoot, 'published frontend output');
   }
   const pageRoutes = frontendRoot ? await readWorkspacePageRoutes(workspaceRoot) : [];
+  const isRenderedView = frontendRoot
+    ? createRenderedViewMatcher({ workspaceRoot, frontendRoot })
+    : async () => false;
 
   const internalPort = await getOpenPort();
   const processRecord = startBackendProcess({
@@ -46,6 +50,7 @@ export async function startPublishedWorkspaceServer(
     backendEntry,
     port: internalPort,
     env: options.env,
+    frontendRoot,
     io,
   });
   const backendOrigin = `http://127.0.0.1:${internalPort}`;
@@ -73,6 +78,7 @@ export async function startPublishedWorkspaceServer(
         frontendRoot,
         backendOrigin,
         pageRoutes,
+        isRenderedView,
       }),
     error: (error) => textResponse(500, error.message),
   });
@@ -120,6 +126,7 @@ async function handlePublishedWorkspaceRequest(options: {
   readonly frontendRoot?: string;
   readonly backendOrigin: string;
   readonly pageRoutes: readonly PageRoute[];
+  readonly isRenderedView: (pathname: string) => Promise<boolean>;
 }): Promise<Response> {
   const requestUrl = new URL(options.request.url);
   const pathname = requestUrl.pathname;
@@ -128,7 +135,10 @@ async function handlePublishedWorkspaceRequest(options: {
     return await proxyRequest(options.request, requestUrl, pathname, options.backendOrigin, 'api');
   }
 
-  if (shouldProxyToBackend(options.request, pathname)) {
+  if (
+    shouldProxyToBackend(options.request, pathname) ||
+    (options.mode === 'full' && (await options.isRenderedView(pathname)))
+  ) {
     const proxyPath = getFullWorkspaceProxyPath(pathname);
     return await proxyRequest(
       options.request,

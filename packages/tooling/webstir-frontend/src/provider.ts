@@ -18,7 +18,8 @@ import { prepareWorkspaceConfig } from './config/setup.js';
 import type { FrontendConfig } from './types.js';
 import { emptyDir, readJson } from './utils/fs.js';
 import { scanGlob } from './utils/glob.js';
-import { applySsgRouting, assertNoSsgRoutes, generateSsgViewData } from './modes/ssg/index.js';
+import { assertNoSsgRoutes, publishSsgSite } from './modes/ssg/index.js';
+import { checkSpaTemplates } from './operations.js';
 import { validatePublishedHtml } from './html/publishValidation.js';
 
 interface PackageJson {
@@ -53,6 +54,8 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
 
   if (shouldRunSsgPublish) {
     await assertNoSsgRoutes(config.paths.workspace);
+  } else if (workspaceMode.mode?.toLowerCase() === 'spa') {
+    await checkSpaTemplates(options.workspaceRoot);
   }
   if (!options.incremental) {
     await emptyOutputRoot(publishConfig, mode);
@@ -67,8 +70,7 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
   });
 
   if (shouldRunSsgPublish) {
-    await generateSsgViewData(publishConfig);
-    await applySsgRouting(publishConfig);
+    await publishSsgSite(publishConfig);
   }
   if (mode === 'publish') {
     await validatePublishedHtml(publishConfig.paths.dist.frontend);

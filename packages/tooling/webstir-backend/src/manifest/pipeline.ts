@@ -10,6 +10,7 @@ import type {
 } from '@webstir-io/module-contract';
 
 import { readTextFile } from '../utils/bun.js';
+import { writeViewRoutes } from '../runtime/view-routes.js';
 import { getRouteMetadataKey, reconcileRouteSessionMetadata } from '../runtime/route-metadata.js';
 
 interface WorkspacePackageJson {
@@ -220,6 +221,7 @@ export async function loadBackendModuleManifest(
     // ignore
   }
 
+  await writeViewRoutes(buildRoot, manifest.views);
   return manifest;
 }
 

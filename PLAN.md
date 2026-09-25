@@ -5,7 +5,7 @@ checkbox state live in the linked `EXECMAP.md`, not here.
 
 ## Active Plan
 
-- None
+- [Webstir plan](plans/plan.md) — a better framework without React; next: server-rendered HTML from data, batteries, less app plumbing
 
 ## Completed Plans
 

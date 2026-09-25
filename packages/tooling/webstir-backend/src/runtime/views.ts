@@ -1,8 +1,14 @@
-import path from 'node:path';
-import { access, stat } from 'node:fs/promises';
-
 import { resolveWorkspaceRoot } from '../workspace.js';
-import { readTextFile } from '../utils/bun.js';
+
+export { notFound, redirect } from './view-control.js';
+export type { ViewRedirectStatus } from './view-control.js';
+import { executeRenderProgram, programUsesCsrf } from './render.js';
+import {
+  loadFrontendDocument,
+  loadPageArtifact,
+  type LoadedDocument,
+  type RequestTimeDocumentCacheStatus,
+} from './view-documents.js';
 
 export interface EnvAccessorLike {
   get(name: string): string | undefined;
@@ -23,10 +29,20 @@ export interface LoggerLike {
 export interface ViewDefinitionLike {
   name?: string;
   path?: string;
+  page?: string;
   renderMode?: 'ssg' | 'ssr' | 'spa';
 }
 
-export type RequestTimeDocumentCacheStatus = 'miss' | 'hit' | 'stale';
+export interface ViewFlashMessage {
+  readonly level: 'info' | 'success' | 'warning' | 'error';
+  readonly message: string;
+}
+
+interface ViewDataSchemaLike {
+  safeParse(value: unknown): { success: true; data: unknown } | { success: false; error: unknown };
+}
+
+export type { RequestTimeDocumentCacheStatus };
 
 export interface RequestTimeDocumentCacheMetadata {
   readonly status: RequestTimeDocumentCacheStatus;
@@ -36,6 +52,15 @@ export interface RequestTimeDocumentCacheMetadata {
 export interface RenderedRequestTimeView {
   readonly html: string;
   readonly documentCache: RequestTimeDocumentCacheMetadata;
+}
+
+export interface FormStateReaderLike {
+  read(formId: string): {
+    submitted: boolean;
+    values: Record<string, string | string[]>;
+    issues: { code?: string; field?: string; message: string }[];
+    errors: Record<string, string>;
+  };
 }
 
 export interface SSRContextLike {
@@ -49,10 +74,12 @@ export interface SSRContextLike {
   readonly logger: LoggerLike;
   readonly requestId?: string;
   readonly now: () => Date;
+  readonly forms: FormStateReaderLike;
 }
 
 export interface ModuleViewLike {
   readonly definition?: ViewDefinitionLike;
+  readonly data?: unknown;
   readonly load?: (context: SSRContextLike) => Promise<unknown> | unknown;
 }
 
@@ -60,6 +87,7 @@ export interface CompiledView {
   readonly name: string;
   readonly pathPattern: string;
   readonly definition?: ViewDefinitionLike;
+  readonly data?: unknown;
   readonly load?: ModuleViewLike['load'];
   readonly match: (pathname: string) => {
     matched: boolean;
@@ -75,11 +103,20 @@ export function compileViews(views: readonly ModuleViewLike[]): CompiledView[] {
       name: view.definition?.name ?? pathPattern,
       pathPattern,
       definition: view.definition,
+      data: view.data,
       load: view.load,
       match: createPathMatcher(pathPattern),
     });
   }
   return compiled;
+}
+
+const EMPTY_FORMS: FormStateReaderLike = {
+  read: () => ({ submitted: false, values: {}, issues: [], errors: {} }),
+};
+
+export function findView(views: readonly CompiledView[], name: string): CompiledView | undefined {
+  return views.find((view) => view.name === name);
 }
 
 export function matchView(
@@ -111,6 +148,9 @@ export async function renderRequestTimeView(options: {
   logger: LoggerLike;
   requestId?: string;
   now?: () => Date;
+  flash?: readonly ViewFlashMessage[];
+  csrfToken?: () => string;
+  forms?: FormStateReaderLike;
 }): Promise<RenderedRequestTimeView> {
   const {
     workspaceRoot,
@@ -126,7 +166,11 @@ export async function renderRequestTimeView(options: {
     requestId,
   } = options;
   const now = options.now ?? (() => new Date());
-  const document = await loadFrontendDocument(resolveWorkspaceRoot(workspaceRoot), url.pathname);
+  const root = resolveWorkspaceRoot(workspaceRoot);
+  const page = view.definition?.page;
+  const document: LoadedDocument = page
+    ? await loadPageArtifact(root, page)
+    : await loadFrontendDocument(root, url.pathname);
 
   const viewData = view.load
     ? await view.load({
@@ -140,8 +184,24 @@ export async function renderRequestTimeView(options: {
         logger,
         requestId,
         now,
+        forms: options.forms ?? EMPTY_FORMS,
       })
     : null;
+
+  if (page) {
+    const program = document.program;
+    return {
+      html: program
+        ? executeRenderProgram(program, prepareViewData(view, viewData, options.flash ?? []), {
+            csrfToken: programUsesCsrf(program) ? options.csrfToken?.() : undefined,
+          })
+        : document.html,
+      documentCache: {
+        status: document.cacheStatus,
+        documentPath: document.path,
+      },
+    };
+  }
 
   return {
     html: injectViewState(document.html, {
@@ -157,6 +217,46 @@ export async function renderRequestTimeView(options: {
       documentPath: document.path,
     },
   };
+}
+
+function prepareViewData(
+  view: CompiledView,
+  loaded: unknown,
+  flash: readonly ViewFlashMessage[],
+): unknown {
+  const input = withFlash(loaded, flash);
+  const schema = view.data as ViewDataSchemaLike | undefined;
+  if (!schema || typeof schema.safeParse !== 'function') {
+    return input;
+  }
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) {
+    throw new Error(
+      `View ${view.name} returned data that does not match its schema: ${describeSchemaError(parsed.error)}`,
+    );
+  }
+  return withFlash(parsed.data, flash);
+}
+
+function withFlash(value: unknown, flash: readonly ViewFlashMessage[]): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || 'flash' in value) {
+    return value;
+  }
+  return { ...value, flash: [...flash] };
+}
+
+function describeSchemaError(error: unknown): string {
+  const issues = (error as { issues?: { path?: unknown[]; message?: string }[] })?.issues;
+  if (!Array.isArray(issues) || issues.length === 0) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return issues
+    .map((issue) => {
+      const where =
+        Array.isArray(issue.path) && issue.path.length > 0 ? issue.path.join('.') : '(root)';
+      return `${where}: ${issue.message ?? 'invalid'}`;
+    })
+    .join('; ');
 }
 
 export function toHeaderRecord(
@@ -205,119 +305,6 @@ function normalizePath(value: string | undefined): string {
   }
   const trimmed = value.endsWith('/') ? value.slice(0, -1) : value;
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
-}
-
-function firstPathSegment(pathname: string): string | undefined {
-  const normalized = normalizePath(pathname);
-  if (normalized === '/') {
-    return undefined;
-  }
-  const parts = normalized.split('/').filter(Boolean);
-  return parts[0];
-}
-
-const documentTemplateCache = new Map<
-  string,
-  {
-    html: string;
-    ctimeMs: number;
-    mtimeMs: number;
-    size: number;
-  }
->();
-
-async function loadFrontendDocument(
-  workspaceRoot: string,
-  pathname: string,
-): Promise<{
-  path: string;
-  html: string;
-  cacheStatus: RequestTimeDocumentCacheStatus;
-}> {
-  const documentPath = await resolveFrontendDocumentPath(workspaceRoot, pathname);
-  const documentStats = await stat(documentPath);
-  const cached = documentTemplateCache.get(documentPath);
-
-  if (
-    cached &&
-    cached.ctimeMs === documentStats.ctimeMs &&
-    cached.mtimeMs === documentStats.mtimeMs &&
-    cached.size === documentStats.size
-  ) {
-    return {
-      path: documentPath,
-      html: cached.html,
-      cacheStatus: 'hit',
-    };
-  }
-
-  const html = await readTextFile(documentPath);
-  documentTemplateCache.set(documentPath, {
-    html,
-    ctimeMs: documentStats.ctimeMs,
-    mtimeMs: documentStats.mtimeMs,
-    size: documentStats.size,
-  });
-
-  return {
-    path: documentPath,
-    html,
-    cacheStatus: cached ? 'stale' : 'miss',
-  };
-}
-
-async function resolveFrontendDocumentPath(
-  workspaceRoot: string,
-  pathname: string,
-): Promise<string> {
-  const candidates = getFrontendDocumentCandidates(workspaceRoot, pathname);
-
-  for (const candidate of candidates) {
-    if (await fileExists(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error(
-    `Frontend document for ${normalizePath(pathname)} was not found. Checked ${candidates.join(', ')}.`,
-  );
-}
-
-function getFrontendDocumentCandidates(workspaceRoot: string, pathname: string): string[] {
-  const pageName = firstPathSegment(pathname) ?? 'home';
-  const relativeCandidates =
-    pageName === 'home'
-      ? [
-          path.join('pages', 'home', 'index.html'),
-          path.join('home', 'index.html'),
-          'home.html',
-          'index.html',
-        ]
-      : [
-          path.join('pages', pageName, 'index.html'),
-          path.join(pageName, 'index.html'),
-          `${pageName}.html`,
-        ];
-
-  const candidates = [
-    ...relativeCandidates.map((relativePath) =>
-      path.join(workspaceRoot, 'build', 'frontend', relativePath),
-    ),
-    ...relativeCandidates.map((relativePath) =>
-      path.join(workspaceRoot, 'dist', 'frontend', relativePath),
-    ),
-  ];
-
-  return Array.from(new Set(candidates));
-}
-
-async function fileExists(targetPath: string): Promise<boolean> {
-  try {
-    await access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function injectViewState(

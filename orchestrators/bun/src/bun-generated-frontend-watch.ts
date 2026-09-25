@@ -1,9 +1,14 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
+import { checkSpaTemplates } from './render-validation.ts';
 import { watch, type FSWatcher } from 'node:fs';
 
-import { readWorkspacePageRoutes, type PageRoute } from '@webstir-io/webstir-backend';
+import {
+  hasRenderedViewRoutes,
+  readWorkspacePageRoutes,
+  type PageRoute,
+} from '@webstir-io/webstir-backend';
 
 import {
   prepareBunSpaGeneratedEntries,
@@ -31,6 +36,7 @@ export interface BunGeneratedFrontendWatchOptions {
   readonly host?: string;
   readonly port?: number;
   readonly apiProxyOrigin?: string;
+  readonly afterBuild?: () => Promise<void>;
 }
 
 export interface BunGeneratedFrontendWatchSession {
@@ -45,13 +51,20 @@ export async function startBunGeneratedFrontendWatch(
   const packageJson = JSON.parse(
     await readFile(path.join(options.workspaceRoot, 'package.json'), 'utf8'),
   );
+  const isSpa = packageJson.webstir?.mode === 'spa';
+  if (isSpa) {
+    await checkSpaTemplates(options.workspaceRoot);
+  }
   const paths = resolveBunSpaEntryPaths(options.workspaceRoot);
   const pages = await resolveBunSpaPages(paths.workspaceRoot);
   const pageRoutes = await readWorkspacePageRoutes(paths.workspaceRoot);
   assertPageRoutesCompatible(pageRoutes, pages);
-  if (packageJson.webstir?.enable?.clientNav === true) {
-    // Client navigation needs independently importable page entries. Bun's HTML
-    // bundler combines them; use the existing document builder/watch pipeline.
+  if (
+    packageJson.webstir?.enable?.clientNav === true ||
+    (options.apiProxyOrigin !== undefined && (await hasRenderedViewRoutes(paths.workspaceRoot)))
+  ) {
+    // Client navigation needs independently importable page entries, and rendered views need
+    // compiled page programs. Bun's HTML bundler provides neither; use the document builder.
     return startBunSsgFrontendWatch(options);
   }
   const host = options.host ?? '127.0.0.1';
@@ -69,6 +82,11 @@ export async function startBunGeneratedFrontendWatch(
     startFrontendServer(host, port, servedEntries, fetchOptions),
   );
   const watchers = await watchRegenerationTargets(paths, pages, pageRoutes, async (nextEntries) => {
+    if (isSpa) {
+      await checkSpaTemplates(options.workspaceRoot).catch((error: unknown) => {
+        console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
+      });
+    }
     const reloadOptions: Parameters<ReloadableServeServer['reload']>[0] = {
       fetch: createBunFrontendFetchHandler(fetchOptions),
       routes: createBunSpaRoutes(nextEntries),

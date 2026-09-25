@@ -76,6 +76,9 @@ export async function servePublishedStaticFile(
   }
 
   const requestUrl = new URL(request.url);
+  if (requestUrl.pathname.endsWith('.program.json')) {
+    return await notFoundResponse(request, frontendRoot);
+  }
   const candidates = getStaticCandidatePaths(requestUrl.pathname);
   const resolved =
     (await resolveStaticFile(frontendRoot, candidates)) ??

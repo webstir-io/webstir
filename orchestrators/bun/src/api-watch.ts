@@ -36,6 +36,7 @@ export async function startApiWatchSession(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
   io: WatchIo,
+  hooks: { readonly afterRestart?: () => Promise<void> } = {},
 ): Promise<ApiWatchSession> {
   const runtimeEnv = {
     ...createWorkspaceRuntimeEnv(workspace.root, 'build', options.env),
@@ -74,6 +75,9 @@ export async function startApiWatchSession(
       }
 
       io.stdout.write(`[webstir] backend restarted at ${runtime.getOrigin()}\n`);
+      await hooks.afterRestart?.().catch((error: unknown) => {
+        io.stderr.write(`[webstir] ${error instanceof Error ? error.message : String(error)}\n`);
+      });
     },
   });
 

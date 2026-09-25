@@ -11,3 +11,15 @@ export {
   resolveInlineScriptDependencies,
 } from './html/inlineScripts.js';
 export type { InlineScriptOptions, InlineScriptResult } from './html/inlineScripts.js';
+export { renderSsgViews } from './modes/ssg/index.js';
+export type { SsgRenderedPage } from './modes/ssg/index.js';
+export {
+  RenderTemplateError,
+  assertNoSpaBindings,
+  compileRenderProgram,
+  formatRenderIssues,
+  prepareTemplateSource,
+  validateRenderProgram,
+  validateRenderPrograms,
+} from './render/index.js';
+export type { RenderIssue, TemplateSourceOptions } from './render/index.js';

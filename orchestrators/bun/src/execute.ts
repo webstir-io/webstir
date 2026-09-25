@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createBuildPlan } from './build-plan.ts';
 import { loadProvider } from './providers.ts';
 import { assertNoProviderErrorDiagnostics } from './provider-diagnostics.ts';
+import { validateRenderTemplates } from './render-validation.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import type {
   BuildProvider,
@@ -27,6 +28,11 @@ export async function runCommand(
   await assertNoActiveWorkspaceWatch(workspace.root, mode);
   const providerLoader = options.loadProvider ?? loadProvider;
   const targets = [];
+  if (workspace.mode === 'ssg') {
+    // A static site's views load at build time, so their module compiles without a server.
+    const { buildWorkspaceModuleDefinition } = await import('@webstir-io/webstir-backend');
+    await buildWorkspaceModuleDefinition(workspace.root, mode);
+  }
 
   for (const kind of createBuildPlan(workspace.mode)) {
     const provider = await providerLoader(kind);
@@ -47,6 +53,10 @@ export async function runCommand(
       outputRoot: resolveOutputRoot(workspace.root, kind, mode, resolvedWorkspace.buildRoot),
       result,
     });
+  }
+
+  if (workspace.mode === 'full' || workspace.mode === 'ssg') {
+    await validateRenderTemplates(workspace.root);
   }
 
   return {

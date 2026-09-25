@@ -1,0 +1,53 @@
+<head>
+  <title>Clients · Sqware Logics</title>
+</head>
+<main>
+  <div class="portal-shell">
+    <aside class="portal-sidebar" data-include="sidebar"></aside>
+
+    <section class="portal-content">
+      <header class="portal-page-header">
+        <h1 class="slds-page-title">Clients</h1>
+      </header>
+
+      <section aria-label="Clients">
+        <div class="client-list" data-if="clients">
+          <a class="client-row" data-each="clients as client" data-attr-href="client.href">
+            <span class="client-row-name" data-text="client.name">Acme Logistics</span>
+            <span class="client-row-affordance" aria-hidden="true">
+              <svg class="slds-icon slds-icon--sm" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+            </span>
+          </a>
+        </div>
+
+        <section class="slds-empty" data-if="!clients" aria-labelledby="clients-empty-title">
+          <h2 class="slds-record-title" id="clients-empty-title">No clients yet</h2>
+          <p>Add a client to manage their members.</p>
+        </section>
+      </section>
+
+      <details class="management-panel" id="new-client" data-attr-open="create.open">
+        <summary class="management-text-action">New client</summary>
+        <form class="slds-form" method="post" action="/clients/">
+          <p class="slds-error" role="alert" data-if="create.issues.form" data-text="create.issues.form">Something went wrong.</p>
+          <label class="slds-field">
+            <span class="slds-label">Client name</span>
+            <input class="slds-input" name="name" type="text" minlength="2" maxlength="120" autocomplete="organization" required
+                   data-attr-value="create.values.name" />
+            <span class="slds-error" data-if="create.issues.name" data-text="create.issues.name">Enter a name.</span>
+          </label>
+          <label class="slds-field">
+            <span class="slds-label">URL name</span>
+            <input class="portal-mono-input slds-input" name="slug" type="text" maxlength="64" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" autocomplete="off" required
+                   data-attr-value="create.values.slug" />
+            <span class="slds-help">Lowercase letters, numbers and dashes. Used in links to this client.</span>
+            <span class="slds-error" data-if="create.issues.slug" data-text="create.issues.slug">Use lowercase letters, numbers and dashes.</span>
+          </label>
+          <footer class="slds-form-footer">
+            <button class="slds-button" type="submit">Create client</button>
+          </footer>
+        </form>
+      </details>
+    </section>
+  </div>
+</main>
