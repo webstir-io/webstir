@@ -77,25 +77,25 @@ test('prepare-release-set synchronizes production manifests and internal ranges'
     const result = prepareReleaseSet({
       repoRoot: tempRoot,
       groupName: 'webstir',
-      versionSpec: '0.2.0',
+      versionSpec: '0.3.0',
     });
 
-    assert.equal(result.targetVersion, '0.2.0');
-    assert.equal(result.releaseTag, 'release-set/webstir/v0.2.0');
+    assert.equal(result.targetVersion, '0.3.0');
+    assert.equal(result.releaseTag, 'release-set/webstir/v0.3.0');
     assert.equal(result.changedFiles.length, 4);
 
     const backend = readJson(tempRoot, 'packages/tooling/webstir-backend/package.json');
     const frontend = readJson(tempRoot, 'packages/tooling/webstir-frontend/package.json');
     const webstir = readJson(tempRoot, 'orchestrators/bun/package.json');
 
-    assert.equal(backend.version, '0.2.0');
-    assert.equal(frontend.version, '0.2.0');
-    assert.equal(webstir.version, '0.2.0');
-    assert.equal(backend.dependencies['@webstir-io/module-contract'], '^0.2.0');
-    assert.equal(frontend.dependencies['@webstir-io/module-contract'], '^0.2.0');
-    assert.equal(webstir.dependencies['@webstir-io/module-contract'], '^0.2.0');
-    assert.equal(webstir.dependencies['@webstir-io/webstir-backend'], '^0.2.0');
-    assert.equal(webstir.dependencies['@webstir-io/webstir-frontend'], '^0.2.0');
+    assert.equal(backend.version, '0.3.0');
+    assert.equal(frontend.version, '0.3.0');
+    assert.equal(webstir.version, '0.3.0');
+    assert.equal(backend.dependencies['@webstir-io/module-contract'], '^0.3.0');
+    assert.equal(frontend.dependencies['@webstir-io/module-contract'], '^0.3.0');
+    assert.equal(webstir.dependencies['@webstir-io/module-contract'], '^0.3.0');
+    assert.equal(webstir.dependencies['@webstir-io/webstir-backend'], '^0.3.0');
+    assert.equal(webstir.dependencies['@webstir-io/webstir-frontend'], '^0.3.0');
   });
 });
 
@@ -198,12 +198,12 @@ test('publishable package manifests use concrete internal dependency ranges', ()
     {
       packageJsonPath: 'packages/tooling/webstir-backend/package.json',
       dependencyName: '@webstir-io/module-contract',
-      expectedRange: '^0.1.69',
+      expectedRange: '^0.2.0',
     },
     {
       packageJsonPath: 'packages/tooling/webstir-frontend/package.json',
       dependencyName: '@webstir-io/module-contract',
-      expectedRange: '^0.1.69',
+      expectedRange: '^0.2.0',
     },
     {
       packageJsonPath: 'packages/tooling/webstir-testing/package.json',
@@ -213,7 +213,7 @@ test('publishable package manifests use concrete internal dependency ranges', ()
     {
       packageJsonPath: 'orchestrators/bun/package.json',
       dependencyName: '@webstir-io/module-contract',
-      expectedRange: '^0.1.69',
+      expectedRange: '^0.2.0',
     },
   ];
 
@@ -231,12 +231,12 @@ test('packed publishable tooling packages do not ship workspace protocol depende
       {
         packageDir: 'packages/tooling/webstir-backend',
         dependencyName: '@webstir-io/module-contract',
-        expectedRange: '^0.1.69',
+        expectedRange: '^0.2.0',
       },
       {
         packageDir: 'packages/tooling/webstir-frontend',
         dependencyName: '@webstir-io/module-contract',
-        expectedRange: '^0.1.69',
+        expectedRange: '^0.2.0',
       },
       {
         packageDir: 'packages/tooling/webstir-testing',

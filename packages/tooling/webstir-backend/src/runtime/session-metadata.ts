@@ -11,6 +11,7 @@ export interface SessionMetadataInput {
 }
 
 const SESSION_METADATA_KEY = Symbol.for('webstir.webstir-backend.session-metadata');
+const SESSION_RENEW_KEY = Symbol.for('webstir.webstir-backend.session-renew');
 const SESSION_METADATA_FIELDS = ['id', 'createdAt', 'expiresAt'] as const;
 
 export function attachSessionMetadata<TSession extends Record<string, unknown>>(
@@ -39,6 +40,26 @@ export function attachSessionMetadata<TSession extends Record<string, unknown>>(
   }
 
   return session;
+}
+
+/**
+ * Marks a session to be stored under a new id with a fresh lifetime when the request ends. Use it
+ * when the session changes hands, such as at sign-in, so an id issued earlier cannot follow along.
+ */
+export function renewSession<TSession extends Record<string, unknown>>(
+  session: TSession,
+): TSession {
+  Object.defineProperty(session, SESSION_RENEW_KEY, {
+    configurable: true,
+    enumerable: false,
+    value: true,
+    writable: true,
+  });
+  return session;
+}
+
+export function isSessionRenewed(session: Record<string, unknown> | null | undefined): boolean {
+  return Boolean(session && (session as Record<PropertyKey, unknown>)[SESSION_RENEW_KEY] === true);
 }
 
 export function readSessionMetadata(

@@ -22,6 +22,7 @@ export function startBackendProcess(options: {
   readonly backendEntry: string;
   readonly port: number;
   readonly env?: Record<string, string | undefined>;
+  readonly frontendRoot?: string;
   readonly io: DeploymentIo;
 }): RuntimeProcessRecord {
   const child = spawn(resolveRuntimeCommand(), [options.backendEntry], {
@@ -30,6 +31,7 @@ export function startBackendProcess(options: {
       ...process.env,
       ...options.env,
       PORT: String(options.port),
+      ...(options.frontendRoot ? { WEBSTIR_FRONTEND_ROOT: options.frontendRoot } : {}),
       NODE_ENV: options.env?.NODE_ENV ?? process.env.NODE_ENV ?? 'production',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

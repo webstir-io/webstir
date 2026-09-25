@@ -2,6 +2,7 @@ import { createServer } from 'node:net';
 
 import { startApiWatchSession } from './api-watch.ts';
 import { startBunGeneratedFrontendWatch } from './bun-generated-frontend-watch.ts';
+import { validateRenderTemplates } from './render-validation.ts';
 import { createStopSignal } from './stop-signal.ts';
 import type { WorkspaceDescriptor } from './types.ts';
 import type { WatchIo, WatchOptions } from './watch.ts';
@@ -12,7 +13,12 @@ export async function runFullWatch(
   io: WatchIo,
 ): Promise<void> {
   const backendPort = await allocateBackendPort();
-  const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io);
+  const validate = () => validateRenderTemplates(workspace.root);
+  // Frontend builds replace the build output, so the backend checks templates between them.
+  const exclusive = createLock();
+  const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io, {
+    beforeRestart: () => exclusive(validate),
+  });
   let frontendSession: Awaited<ReturnType<typeof startBunGeneratedFrontendWatch>> | undefined;
 
   try {
@@ -21,6 +27,8 @@ export async function runFullWatch(
       host: options.host,
       port: options.port,
       apiProxyOrigin: apiSession.origin,
+      afterBuild: validate,
+      exclusive,
     });
     io.stdout.write(
       `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`,
@@ -45,6 +53,15 @@ export async function runFullWatch(
     }
     await apiSession.stop();
   }
+}
+
+function createLock(): <T>(task: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>) => {
+    const run = tail.then(task, task);
+    tail = run.catch(() => undefined);
+    return run;
+  };
 }
 
 async function allocateBackendPort(): Promise<number> {

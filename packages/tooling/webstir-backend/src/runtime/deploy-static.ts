@@ -56,6 +56,22 @@ const STATIC_EXTENSIONS = new Set([
 const CONTENT_HASH_PATTERN =
   /\.[a-f0-9]{8,64}\.(css|js|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|mp3|m4a|wav|ogg|mp4|webm|mov)$/i;
 
+/** A request for a file the site serves as-is, judged by its extension, such as a script or image. */
+export function isStaticAssetPath(pathname: string): boolean {
+  const extension = path.posix.extname(pathname.replace(/\/+$/, '')).toLowerCase();
+  return extension === '.html' || STATIC_EXTENSIONS.has(extension);
+}
+
+/** Whether a request resolves to a file under the frontend root, as static serving would find it. */
+export async function staticFileExists(frontendRoot: string, pathname: string): Promise<boolean> {
+  return (await resolveStaticFile(frontendRoot, getStaticCandidatePaths(pathname))) !== null;
+}
+
+/** Compiled render programs are build artifacts, never served, however the path is spelled. */
+export function isRenderProgramPath(relativePath: string): boolean {
+  return relativePath.split(/[\\/]/).pop()?.toLowerCase().endsWith('.program.json') === true;
+}
+
 export interface ServePublishedStaticFileOptions {
   /** Views that route dynamic paths to built pages; consulted only when no file matches. */
   readonly pageRoutes?: readonly PageRoute[];
@@ -80,7 +96,7 @@ export async function servePublishedStaticFile(
   const resolved =
     (await resolveStaticFile(frontendRoot, candidates)) ??
     (await resolvePageRouteDocument(frontendRoot, requestUrl.pathname, options.pageRoutes));
-  if (!resolved) {
+  if (!resolved || isRenderProgramPath(resolved.relativePath)) {
     return await notFoundResponse(request, frontendRoot);
   }
 

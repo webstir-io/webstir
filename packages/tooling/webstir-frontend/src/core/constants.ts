@@ -10,6 +10,7 @@ export const FOLDERS = {
   types: 'types',
   app: 'app',
   pages: 'pages',
+  partials: 'partials',
   styles: 'styles',
   scripts: 'scripts',
   images: 'images',

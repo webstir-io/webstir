@@ -1,5 +1,6 @@
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { startBackendWatch } from '@webstir-io/webstir-backend';
+import { startBackendWatch, VIEW_ROUTES_FILE } from '@webstir-io/webstir-backend';
 
 import { BackendRuntimeSupervisor } from './backend-runtime.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
@@ -36,6 +37,10 @@ export async function startApiWatchSession(
   workspace: WorkspaceDescriptor,
   options: WatchOptions,
   io: WatchIo,
+  hooks: {
+    /** Runs after each rebuild; a throw keeps the running process instead of restarting. */
+    readonly beforeRestart?: () => Promise<void>;
+  } = {},
 ): Promise<ApiWatchSession> {
   const runtimeEnv = {
     ...createWorkspaceRuntimeEnv(workspace.root, 'build', options.env),
@@ -53,6 +58,8 @@ export async function startApiWatchSession(
   await runtime.prepare();
 
   let initialReadyLogged = false;
+  const viewsPath = path.join(workspace.root, 'build', 'backend', VIEW_ROUTES_FILE);
+  let acceptedViews: string | undefined;
   const watchHandle = await startBackendWatch({
     workspaceRoot: workspace.root,
     env: runtimeEnv,
@@ -66,7 +73,20 @@ export async function startApiWatchSession(
         return;
       }
 
+      if (initialReadyLogged && hooks.beforeRestart) {
+        try {
+          await hooks.beforeRestart();
+        } catch (error) {
+          // The retained process keeps its routing: views.json goes back to what it serves.
+          if (acceptedViews !== undefined) await writeFile(viewsPath, acceptedViews, 'utf8');
+          io.stderr.write(
+            `[webstir] ${error instanceof Error ? error.message : String(error)}\n[webstir] keeping the current runtime process.\n`,
+          );
+          return;
+        }
+      }
       await runtime.restart();
+      acceptedViews = await readFile(viewsPath, 'utf8').catch(() => undefined);
       if (!initialReadyLogged) {
         initialReadyLogged = true;
         io.stdout.write(`[webstir] backend ready at ${runtime.getOrigin()}\n`);

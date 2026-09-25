@@ -116,6 +116,29 @@ export interface RequestContext<
   readonly now: () => Date;
 }
 
+export type FormIssueCode = 'validation' | 'auth' | 'csrf';
+
+export interface FormIssue {
+  readonly code?: FormIssueCode;
+  readonly field?: string;
+  readonly message: string;
+}
+
+export type FormValues = Readonly<Record<string, string | string[]>>;
+
+/** A form's last failed submission, as a view loader reads it. Empty when there is none. */
+export interface FormState {
+  readonly submitted: boolean;
+  readonly values: FormValues;
+  readonly issues: readonly FormIssue[];
+  /** The first message per field, plus `form` for issues without a field. */
+  readonly errors: Readonly<Record<string, string>>;
+}
+
+export interface FormStateReader {
+  read(formId: string): FormState;
+}
+
 export interface SSRContext<
   TParams = Record<string, string>,
   TAuth = unknown,
@@ -133,6 +156,7 @@ export interface SSRContext<
   readonly logger: TLogger;
   readonly requestId?: string;
   readonly now: () => Date;
+  readonly forms: FormStateReader;
 }
 
 export interface AuthSession<TData = Record<string, unknown>> {
@@ -341,6 +365,7 @@ export const routeFlashMessageSchema = z
   .object({
     key: z.string().min(1),
     level: flashLevelSchema.optional(),
+    message: z.string().min(1).optional(),
     when: flashPublishConditionSchema.optional(),
   })
   .strict();
@@ -514,10 +539,33 @@ export interface RouteFragmentResponse<TResponse extends z.ZodTypeAny> {
   readonly headers?: Record<string, string>;
 }
 
+export interface RouteFlashMessage {
+  readonly key?: string;
+  readonly level?: FlashLevel;
+  readonly message: string;
+}
+
 export interface RouteRedirectResponse {
   readonly status?: RedirectStatus;
   readonly redirect: {
     readonly location: string;
+  };
+  /** Messages the next rendered page receives in its `flash`. */
+  readonly flash?: readonly RouteFlashMessage[];
+  readonly headers?: Record<string, string>;
+}
+
+/** Renders a view in place of the action's response, with the failed form in its loader. */
+export interface RouteRerenderResponse {
+  readonly status?: number;
+  readonly rerender: {
+    readonly view: string;
+    readonly params?: Record<string, string>;
+    readonly form: {
+      readonly id: string;
+      readonly values: FormValues;
+      readonly issues: readonly FormIssue[];
+    };
   };
   readonly headers?: Record<string, string>;
 }
@@ -537,12 +585,14 @@ export type RouteMutationResult<TResponse extends z.ZodTypeAny> =
   | RouteBodyResponse<TResponse>
   | RouteFragmentResponse<TResponse>
   | RouteRedirectResponse
+  | RouteRerenderResponse
   | RouteErrorResponse;
 
 export type RouteHandlerResult<TResponse extends z.ZodTypeAny> =
   | RouteBodyResponse<TResponse>
   | RouteFragmentResponse<TResponse>
   | RouteRedirectResponse
+  | RouteRerenderResponse
   | RouteErrorResponse;
 
 export type RouteHandler<
@@ -749,3 +799,31 @@ export type {
   FromTsRestRouterOptions,
   RouterRouteConfig,
 } from './adapters/ts-rest.js';
+
+export {
+  RENDER_PROGRAM_FILE,
+  RENDER_PROGRAM_VERSION,
+  renderFlashMessageSchema,
+  renderFlashSchema,
+  renderNodeSchema,
+  renderPathSchema,
+  renderProgramSchema,
+  renderSourceLocationSchema,
+} from './render-program.js';
+export type {
+  RenderFlashMessage,
+  RenderNode,
+  RenderPath,
+  RenderProgram,
+  RenderSourceLocation,
+} from './render-program.js';
+export {
+  executeRenderProgram,
+  programUsesCsrf,
+  readRenderProgram,
+  RENDER_CSRF_FIELD,
+  RenderProgramError,
+  prepareViewData,
+  schemaDeclaresField,
+} from './render-execute.js';
+export type { ExecuteRenderProgramOptions, PreparedViewData } from './render-execute.js';

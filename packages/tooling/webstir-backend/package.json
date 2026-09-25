@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/webstir-backend",
-  "version": "0.1.69",
+  "version": "0.2.0",
   "description": "Backend build and runtime tooling for Webstir workspaces.",
   "type": "module",
   "main": "dist/index.js",
@@ -99,7 +99,7 @@
     "url": "https://github.com/webstir-io/webstir/issues"
   },
   "dependencies": {
-    "@webstir-io/module-contract": "^0.1.69",
+    "@webstir-io/module-contract": "^0.2.0",
     "esbuild": "^0.28.2",
     "glob": "^10.4.1"
   },

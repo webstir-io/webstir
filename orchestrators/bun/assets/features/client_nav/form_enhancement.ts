@@ -155,6 +155,27 @@ export function readFragmentResponseMetadata(headers: Headers): FragmentResponse
     return resolution.kind === 'fragment' ? resolution.fragment : null;
 }
 
+/**
+ * The address a submitted form's document belongs at: the page a re-rendered form names in
+ * Content-Location, or else where the response came from.
+ */
+export function resolveDocumentResponseUrl(options: {
+    readonly contentLocation: string | null;
+    readonly responseUrl?: string | null;
+    readonly requestUrl: string;
+}): string {
+    const base = options.responseUrl || options.requestUrl;
+    if (!options.contentLocation) {
+        return base;
+    }
+    try {
+        const location = new URL(options.contentLocation, base);
+        return location.origin === new URL(base).origin ? location.href : base;
+    } catch {
+        return base;
+    }
+}
+
 export function resolveEnhancedFormResponse(options: {
     readonly metadata: FragmentResponseMetadataResolution;
     readonly hasFragmentTarget: boolean;

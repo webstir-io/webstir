@@ -11,11 +11,14 @@ import {
 } from './session-runtime.js';
 import {
   attachSessionMetadata,
+  isSessionRenewed,
   readSessionMetadata,
   stripSessionMetadataFields,
   type SessionMetadata,
   type SessionMetadataInput,
 } from './session-metadata.js';
+
+export { renewSession } from './session-metadata.js';
 
 export type FlashLevel = 'info' | 'success' | 'warning' | 'error';
 export type FlashPublishCondition = 'always' | 'success' | 'error';
@@ -32,7 +35,14 @@ export interface SessionCookieConfig {
 export interface SessionFlashMessage {
   key: string;
   level: FlashLevel;
+  message?: string;
   createdAt: string;
+}
+
+export interface ResultFlashMessageLike {
+  key?: string;
+  level?: FlashLevel;
+  message: string;
 }
 
 export interface RouteSessionDefinitionLike {
@@ -43,6 +53,7 @@ export interface RouteSessionDefinitionLike {
 export interface RouteFlashMessageDefinitionLike {
   key?: string;
   level?: FlashLevel;
+  message?: string;
   when?: FlashPublishCondition;
 }
 
@@ -76,6 +87,8 @@ export interface PreparedSessionState<TSession, TResult> {
     result?: TResult;
     /** Set to false when the request was rejected before its route ran (default true). */
     publishFlash?: boolean;
+    /** Keep every stored message for a later page, as when a request renders none (default false). */
+    retainFlash?: boolean;
   }): SessionCommitResult<TSession>;
 }
 
@@ -111,12 +124,18 @@ const LEGACY_FORM_RUNTIME_KEY = '__webstir_form_runtime';
 
 export function prepareSessionState<
   TSession extends Record<string, unknown>,
-  TResult extends { status?: number; errors?: unknown; fragment?: unknown },
+  TResult extends {
+    status?: number;
+    errors?: unknown;
+    fragment?: unknown;
+    flash?: readonly ResultFlashMessageLike[];
+  },
 >(options: {
   cookies?: Record<string, string> | string | string[];
   route?: SessionAwareRouteDefinitionLike;
   config: SessionCookieConfig;
   store?: SessionStore<TSession>;
+  consumeAllFlash?: boolean;
   now?: () => Date;
 }): PreparedSessionState<TSession, TResult> {
   const now = options.now ?? (() => new Date());
@@ -127,7 +146,9 @@ export function prepareSessionState<
   const invalidCookie = Boolean(sessionCookie) && !initialId;
   const initialRecord = initialId ? loadSessionRecord(store, initialId, now) : undefined;
   const staleCookie = Boolean(initialId) && !initialRecord;
-  const delivered = resolveConsumedFlash(readStoredFlash(initialRecord), options.route);
+  const delivered = options.consumeAllFlash
+    ? { flash: readStoredFlash(initialRecord), remaining: [] }
+    : resolveConsumedFlash(readStoredFlash(initialRecord), options.route);
   const initialState = initialRecord ? restoreStoredSessionState(initialRecord) : undefined;
   const initialSession = initialState?.session
     ? attachSessionRuntimeState(
@@ -140,11 +161,19 @@ export function prepareSessionState<
   return {
     session: initialSession,
     flash: delivered.flash,
-    commit({ session, route, result, publishFlash: shouldPublishFlash = true }) {
+    commit({
+      session,
+      route,
+      result,
+      publishFlash: shouldPublishFlash = true,
+      retainFlash = false,
+    }) {
       const publishFlash = shouldPublishFlash
         ? resolvePublishedFlash(route ?? options.route, result, now)
         : [];
       const normalized = normalizeSessionValue<TSession>(session);
+      const renewed = isSessionRenewed(session);
+      const kept = retainFlash ? readStoredFlash(initialRecord) : delivered.remaining;
 
       if (initialRecord) {
         store.delete(initialRecord.id);
@@ -153,8 +182,8 @@ export function prepareSessionState<
       const shouldPersist =
         normalized.session !== null ||
         publishFlash.length > 0 ||
-        (initialRecord !== undefined && delivered.remaining.length > 0) ||
-        hasPendingConsumption ||
+        (initialRecord !== undefined && kept.length > 0) ||
+        (hasPendingConsumption && !retainFlash) ||
         hasSessionRuntimeState(normalized.runtime);
 
       if (!shouldPersist) {
@@ -170,11 +199,12 @@ export function prepareSessionState<
       const record = createStoredSessionRecord({
         session: normalized.session,
         runtime: normalized.runtime,
-        metadata: normalized.metadata,
-        fallbackId:
-          normalized.metadata?.id ?? (publishFlash.length > 0 ? undefined : initialRecord?.id),
-        initialRecord,
-        flash: [...delivered.remaining, ...publishFlash],
+        metadata: renewed ? undefined : normalized.metadata,
+        fallbackId: renewed
+          ? undefined
+          : (normalized.metadata?.id ?? (publishFlash.length > 0 ? undefined : initialRecord?.id)),
+        initialRecord: renewed ? undefined : initialRecord,
+        flash: [...kept, ...publishFlash],
         config: options.config,
         now,
       });
@@ -355,15 +385,24 @@ function resolveConsumedFlash(
   return { flash: delivered, remaining };
 }
 
-function resolvePublishedFlash<
-  TResult extends { status?: number; errors?: unknown; fragment?: unknown },
+/** The messages a route publishes for a result: those it declares for that outcome, then the result's own. */
+export function resolvePublishedFlash<
+  TResult extends {
+    status?: number;
+    errors?: unknown;
+    fragment?: unknown;
+    flash?: readonly ResultFlashMessageLike[];
+  },
 >(
   route: SessionAwareRouteDefinitionLike | undefined,
   result: TResult | undefined,
   now: () => Date,
 ): SessionFlashMessage[] {
   const definitions = [...(route?.flash?.publish ?? []), ...(route?.form?.flash?.publish ?? [])];
-  if (definitions.length === 0) {
+  const fromResult = (result?.flash ?? []).filter(
+    (entry) => typeof entry?.message === 'string' && entry.message.length > 0,
+  );
+  if (definitions.length === 0 && fromResult.length === 0) {
     return [];
   }
 
@@ -384,8 +423,17 @@ function resolvePublishedFlash<
     .map((definition) => ({
       key: definition.key,
       level: definition.level ?? (condition === 'error' ? 'error' : 'info'),
+      ...(definition.message ? { message: definition.message } : {}),
       createdAt: now().toISOString(),
-    }));
+    }))
+    .concat(
+      fromResult.map((entry) => ({
+        key: entry.key ?? 'message',
+        level: normalizeFlashLevel(entry.level) ?? 'info',
+        message: entry.message,
+        createdAt: now().toISOString(),
+      })),
+    );
 }
 
 function resolveFlashCondition(
@@ -638,6 +686,7 @@ function cloneFlashMessages(
       {
         key: message.key,
         level,
+        ...(typeof message.message === 'string' ? { message: message.message } : {}),
         createdAt: message.createdAt,
       },
     ];

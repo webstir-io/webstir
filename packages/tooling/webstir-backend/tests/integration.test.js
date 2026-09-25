@@ -1805,6 +1805,326 @@ async function assertRequestTimeViewRuntimeBehavior() {
   }
 }
 
+function createRenderedViewModuleSource() {
+  return `import { processFormSubmission } from '@webstir-io/webstir-backend/runtime/forms';
+import { notFound, redirect } from '@webstir-io/webstir-backend/runtime/views';
+
+const createClientDefinition = {
+  name: 'createClient',
+  method: 'POST',
+  path: '/clients',
+  interaction: 'mutation',
+  form: {
+    contentType: 'application/x-www-form-urlencoded',
+    csrf: true,
+    session: { write: true },
+    flash: {
+      publish: [{ key: 'client-created', level: 'success', message: 'Client created.', when: 'success' }]
+    }
+  }
+};
+
+const createClientRoute = {
+  definition: createClientDefinition,
+  handler: async (ctx) => {
+    const submission = processFormSubmission({
+      session: ctx.session,
+      body: ctx.body,
+      formId: 'createClient',
+      route: createClientDefinition
+    });
+    ctx.session = submission.session;
+    if (!submission.ok) {
+      return submission.result;
+    }
+    return {
+      status: 303,
+      redirect: { location: '/clients' },
+      flash: [{ level: 'info', message: 'Invitation sent to <jordan@example.com>.' }]
+    };
+  }
+};
+
+// A failed form that consumes a message shows it on the re-rendered page, with its own.
+const checkClientDefinition = {
+  name: 'checkClient',
+  method: 'POST',
+  path: '/check',
+  interaction: 'mutation',
+  form: {
+    contentType: 'application/x-www-form-urlencoded',
+    session: { write: true },
+    flash: {
+      consume: ['client-created'],
+      publish: [{ key: 'check-failed', level: 'error', message: 'Fix the highlighted fields.', when: 'error' }]
+    }
+  }
+};
+
+const checkClientRoute = {
+  definition: checkClientDefinition,
+  handler: () => ({
+    status: 422,
+    rerender: { view: 'clientsPage', form: { id: 'createClient', values: {}, issues: [] } },
+    flash: [{ level: 'warning', message: 'Check the details.' }]
+  })
+};
+
+// Re-rendering a parameterized view without its parameters is a mistake in the action.
+const brokenDefinition = { name: 'broken', method: 'POST', path: '/broken', interaction: 'mutation' };
+const brokenRoute = {
+  definition: brokenDefinition,
+  handler: () => ({
+    status: 422,
+    rerender: { view: 'missingPage', form: { id: 'createClient', values: {}, issues: [] } }
+  })
+};
+
+const clientsView = {
+  definition: { name: 'clientsPage', path: '/clients', page: 'clients' },
+  load: async () => ({
+    title: 'Clients',
+    clients: [
+      { name: 'Acme <Logistics>', href: '/clients/acme' },
+      { name: 'Mallory', href: 'javascript:alert(1)' }
+    ]
+  })
+};
+
+const guardedView = {
+  definition: { name: 'guardedPage', path: '/guarded', page: 'clients' },
+  load: () => redirect('/sign-in/?returnTo=%2Fguarded')
+};
+
+const missingView = {
+  definition: { name: 'missingPage', path: '/clients/:slug', page: 'clients' },
+  load: () => notFound()
+};
+
+// A strict schema without \`flash\`: the framework adds it after checking the loader's data.
+const strictView = {
+  definition: { name: 'strictPage', path: '/strict', page: 'clients' },
+  data: {
+    shape: { title: {} },
+    safeParse: (value) => Object.keys(value).every((key) => key === 'title')
+      ? { success: true, data: value }
+      : { success: false, error: { issues: [{ path: [], message: 'Unrecognized key(s) in object' }] } }
+  },
+  load: () => ({ title: 'Strict' })
+};
+
+export const module = {
+  manifest: {
+    contractVersion: '1.0.0',
+    name: '@demo/rendered-views',
+    version: '0.1.0',
+    kind: 'backend',
+    capabilities: ['http', 'views'],
+    routes: [createClientDefinition, checkClientDefinition, brokenDefinition],
+    views: [clientsView.definition]
+  },
+  routes: [createClientRoute, checkClientRoute, brokenRoute],
+  views: [clientsView, guardedView, missingView, strictView]
+};
+`;
+}
+
+function createClientsRenderProgram() {
+  const loc = { file: 'src/frontend/pages/clients/index.html', line: 1 };
+  const path = (source, scope = -1) => ({
+    source,
+    scope,
+    keys: scope === -1 ? source.split('.') : source.split('.').slice(1),
+  });
+  return {
+    version: 1,
+    page: 'clients',
+    source: loc.file,
+    bindings: 7,
+    nodes: [
+      '<!DOCTYPE html><html><head><title>',
+      { op: 'text', path: path('title'), loc },
+      '</title></head><body><main>',
+      {
+        op: 'each',
+        as: 'note',
+        path: path('flash'),
+        loc,
+        body: [
+          '<p class="flash"',
+          { op: 'attr', name: 'data-tone', url: false, path: path('note.level', 0), loc },
+          '>',
+          { op: 'text', path: path('note.message', 0), loc },
+          '</p>',
+        ],
+      },
+      '<ul>',
+      {
+        op: 'each',
+        as: 'client',
+        path: path('clients'),
+        loc,
+        body: [
+          '<li><a',
+          { op: 'attr', name: 'href', url: true, path: path('client.href', 0), loc },
+          '>',
+          { op: 'text', path: path('client.name', 0), loc },
+          '</a></li>',
+        ],
+      },
+      '</ul><form method="post" action="/clients">',
+      { op: 'csrf' },
+      '<button type="submit">Create</button></form></main></body></html>',
+    ],
+  };
+}
+
+async function assertRenderedViewRuntimeBehavior() {
+  const workspace = await createTempWorkspace('webstir-backend-rendered-views-');
+  await buildRuntimeWorkspace(workspace, {
+    moduleSource: createRenderedViewModuleSource(),
+  });
+  const pageDir = path.join(workspace, 'build', 'frontend', 'pages', 'clients');
+  await fs.mkdir(pageDir, { recursive: true });
+  await fs.writeFile(path.join(pageDir, 'index.html'), '<main>template</main>', 'utf8');
+  await fs.writeFile(
+    path.join(pageDir, 'index.program.json'),
+    JSON.stringify(createClientsRenderProgram()),
+    'utf8',
+  );
+  await writeFrontendDocument(workspace, '404', '<main><h1>Page not found</h1></main>');
+
+  let port = await getOpenPort();
+  const server = await startBuiltServer(workspace, port);
+  port = server.port;
+  const base = `http://127.0.0.1:${port}`;
+
+  try {
+    const first = await fetch(`${base}/clients`);
+    assert.equal(first.status, 200);
+    assert.equal(first.headers.get('content-type'), 'text/html; charset=utf-8');
+    const firstHtml = await first.text();
+    assert.doesNotMatch(firstHtml, /webstir-view-state|data-webstir-view/);
+    assert.match(firstHtml, /<title>Clients<\/title>/);
+    assert.match(firstHtml, /<li><a href="\/clients\/acme">Acme &lt;Logistics&gt;<\/a><\/li>/);
+    assert.match(firstHtml, /<li><a href="about:invalid">Mallory<\/a><\/li>/);
+    assert.doesNotMatch(firstHtml, /class="flash"/);
+    const token = extractHiddenInputValue(firstHtml, '_csrf');
+    assert.match(
+      firstHtml,
+      /<form method="post" action="\/clients"><input type="hidden" name="_csrf"/,
+    );
+    const cookie = extractCookieHeader(first.headers.get('set-cookie'));
+    assert.match(cookie, /^webstir_session=/, 'rendering a POST form starts a session');
+
+    const again = await fetch(`${base}/clients`, { headers: { cookie } });
+    assert.equal(
+      extractHiddenInputValue(await again.text(), '_csrf'),
+      token,
+      'one token per session',
+    );
+
+    const forged = await fetch(`${base}/clients`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: '_csrf=forged',
+      redirect: 'manual',
+    });
+    assert.equal(forged.status, 403);
+
+    const created = await fetch(`${base}/clients`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: `_csrf=${encodeURIComponent(token)}`,
+      redirect: 'manual',
+    });
+    assert.equal(created.status, 303);
+    const createdCookie = extractCookieHeader(created.headers.get('set-cookie')) || cookie;
+
+    // A loader that redirects renders no page, so the flash waits for the next one.
+    const bounced = await fetch(`${base}/guarded`, {
+      headers: { cookie: createdCookie },
+      redirect: 'manual',
+    });
+    assert.equal(bounced.status, 303);
+    const nextCookie = extractCookieHeader(bounced.headers.get('set-cookie')) || createdCookie;
+
+    // A HEAD request has no body to show messages in, so it leaves them for the page.
+    const peek = await fetch(`${base}/clients`, {
+      method: 'HEAD',
+      headers: { cookie: nextCookie },
+    });
+    assert.equal(peek.status, 200);
+
+    const withFlash = await fetch(`${base}/clients`, { headers: { cookie: nextCookie } });
+    const withFlashHtml = await withFlash.text();
+    assert.match(
+      withFlashHtml,
+      /<p class="flash" data-tone="success">Client created\.<\/p><p class="flash" data-tone="info">Invitation sent to &lt;jordan@example\.com&gt;\.<\/p>/,
+    );
+    assert.equal(
+      extractHiddenInputValue(withFlashHtml, '_csrf'),
+      token,
+      'the session token survives a submission',
+    );
+    const afterCookie = extractCookieHeader(withFlash.headers.get('set-cookie')) || nextCookie;
+
+    const consumed = await fetch(`${base}/clients`, { headers: { cookie: afterCookie } });
+    assert.doesNotMatch(await consumed.text(), /class="flash"/, 'flash renders once');
+
+    const guarded = await fetch(`${base}/guarded`, { redirect: 'manual' });
+    assert.equal(guarded.status, 303);
+    assert.equal(guarded.headers.get('location'), '/sign-in/?returnTo=%2Fguarded');
+
+    const createdAgain = await fetch(`${base}/clients`, {
+      method: 'POST',
+      headers: { cookie: afterCookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: `_csrf=${encodeURIComponent(token)}`,
+      redirect: 'manual',
+    });
+    assert.equal(createdAgain.status, 303);
+    const againCookie = extractCookieHeader(createdAgain.headers.get('set-cookie')) || afterCookie;
+    const checked = await fetch(`${base}/check`, {
+      method: 'POST',
+      headers: { cookie: againCookie, 'content-type': 'application/x-www-form-urlencoded' },
+      body: '',
+      redirect: 'manual',
+    });
+    assert.equal(checked.status, 422);
+    const checkedHtml = await checked.text();
+    assert.match(checkedHtml, /<p class="flash" data-tone="success">Client created\.<\/p>/);
+    assert.match(checkedHtml, /<p class="flash" data-tone="warning">Check the details\.<\/p>/);
+    assert.match(
+      checkedHtml,
+      /<p class="flash" data-tone="error">Fix the highlighted fields\.<\/p>/,
+    );
+    const checkedCookie = extractCookieHeader(checked.headers.get('set-cookie')) || againCookie;
+    const afterCheck = await (
+      await fetch(`${base}/clients`, { headers: { cookie: checkedCookie } })
+    ).text();
+    assert.doesNotMatch(afterCheck, /Client created\./, 'the consumed message was shown once');
+    assert.doesNotMatch(
+      afterCheck,
+      /Fix the highlighted fields/,
+      'a message shown on the re-render is not queued',
+    );
+    assert.match(afterCheck, /Invitation sent to/, 'messages the action did not consume stay');
+
+    const broken = await fetch(`${base}/broken`, { method: 'POST', redirect: 'manual' });
+    assert.equal(broken.status, 500);
+
+    const strict = await fetch(`${base}/strict`);
+    assert.equal(strict.status, 200);
+    assert.match(await strict.text(), /<title>Strict<\/title>/);
+
+    const missing = await fetch(`${base}/clients/nobody`);
+    assert.equal(missing.status, 404);
+    assert.match(await missing.text(), /<h1>Page not found<\/h1>/);
+  } finally {
+    await server.stop();
+  }
+}
+
 async function assertRequestTimeViewWorkspaceRootBehavior({
   extraEnv = (workspace) => ({ WORKSPACE_ROOT: workspace }),
 } = {}) {
@@ -2843,6 +3163,13 @@ test.skipIf(!tcpListenAvailable)(
   'built backend server renders request-time views with live SSR context',
   async () => {
     await assertRequestTimeViewRuntimeBehavior();
+  },
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'built backend server renders a view page from its program with escaping, csrf, and flash',
+  async () => {
+    await assertRenderedViewRuntimeBehavior();
   },
 );
 

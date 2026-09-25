@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { pathToFileURL } from 'node:url';
 
 import { moduleManifestSchema, CONTRACT_VERSION } from '@webstir-io/module-contract';
 import type {
@@ -10,6 +9,8 @@ import type {
 } from '@webstir-io/module-contract';
 
 import { readTextFile } from '../utils/bun.js';
+import { importCurrent } from '../utils/import-current.js';
+import { writeViewRoutes } from '../runtime/view-routes.js';
 import { getRouteMetadataKey, reconcileRouteSessionMetadata } from '../runtime/route-metadata.js';
 
 interface WorkspacePackageJson {
@@ -83,6 +84,8 @@ export async function loadBackendModuleManifest(
   };
 
   const definition = await loadModuleDefinition(buildRoot, diagnostics);
+  // Only views the module defines can render; package.json views are page routes for the browser.
+  const renderedViews = definition?.views?.map((view) => view.definition) ?? [];
   if (definition) {
     const definitionManifest = definition.manifest ?? ({} as ModuleManifest);
     const routesFromDefinition = definition.routes?.map((route) => route.definition);
@@ -220,6 +223,7 @@ export async function loadBackendModuleManifest(
     // ignore
   }
 
+  await writeViewRoutes(buildRoot, renderedViews);
   return manifest;
 }
 
@@ -240,8 +244,7 @@ async function loadModuleDefinition(
     }
 
     try {
-      const moduleUrl = `${pathToFileURL(fullPath).href}?t=${Date.now()}`;
-      const imported = (await import(moduleUrl)) as Record<string, unknown>;
+      const imported = await importCurrent(fullPath);
       const definitionCandidate = extractModuleDefinition(imported);
       if (isModuleDefinition(definitionCandidate)) {
         return definitionCandidate;

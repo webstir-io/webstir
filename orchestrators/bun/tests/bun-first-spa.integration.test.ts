@@ -197,6 +197,49 @@ test('Bun-first SPA watch inlines data-webstir-inline scripts and regenerates wh
   }
 }, 120_000);
 
+test('Bun-first SPA watch keeps the last valid page when an edit adds a binding', async () => {
+  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa-bindings-');
+  const workspace = workspaceCopy.workspaceRoot;
+  const pagePath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
+  const original = await readFile(pagePath, 'utf8');
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
+
+  try {
+    await waitFor(async () => {
+      expect(await fetchText(port, '/')).not.toContain('binding-v2');
+    }, 30_000);
+
+    await writeFile(
+      pagePath,
+      original.replace(/<main([^>]*)>/, '<main$1><p data-text="greeting">binding-v2</p>'),
+      'utf8',
+    );
+    await waitFor(async () => {
+      expect(stderrBuffer.text).toContain(
+        "page 'home' has bindings, but an SPA has no server to render them",
+      );
+    }, 30_000);
+    expect(await fetchText(port, '/')).not.toContain('binding-v2');
+
+    await writeFile(pagePath, original.replace(/<main([^>]*)>/, '<main$1><p>plain-v3</p>'), 'utf8');
+    await waitFor(async () => {
+      expect(await fetchText(port, '/')).toContain('plain-v3');
+    }, 30_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
+
 test('Bun-first SPA watch hot-applies CSS edits without a full page reload', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();

@@ -3,17 +3,21 @@ import { runPipeline } from './pipeline.js';
 import { createPageScaffold, preflightPageScaffold } from './html/pageScaffold.js';
 import { prepareWorkspaceConfig } from './config/setup.js';
 import {
-  applySsgRouting,
   assertNoSsgRoutes,
   ensureSsgViewMetadataForPage,
-  generateSsgViewData,
+  publishSsgSite,
 } from './modes/ssg/index.js';
 import path from 'node:path';
+import { FILE_NAMES, FOLDERS } from './core/constants.js';
+import { assertNoSpaBindings } from './render/spa.js';
 import { emptyDir, readJson } from './utils/fs.js';
 
 export async function runBuild(options: FrontendCommandOptions): Promise<void> {
   const config = await prepareWorkspaceConfig(options.workspaceRoot);
   const enable = await readWorkspaceEnableFlags(options.workspaceRoot);
+  if ((await readWorkspaceModeName(options.workspaceRoot)) === 'spa') {
+    await checkSpaTemplates(options.workspaceRoot);
+  }
 
   console.info('[webstir-frontend] Running build pipeline...');
   if (!options.changedFile) {
@@ -32,6 +36,12 @@ export async function runPublish(options: FrontendCommandOptions): Promise<void>
   const enable = await readWorkspaceEnableFlags(options.workspaceRoot);
   const publishConfig = options.publishMode === 'ssg' ? applySsgPublishLayout(config) : config;
 
+  if (
+    options.publishMode !== 'ssg' &&
+    (await readWorkspaceModeName(options.workspaceRoot)) === 'spa'
+  ) {
+    await checkSpaTemplates(options.workspaceRoot);
+  }
   const modeLabel = options.publishMode === 'ssg' ? 'SSG publish' : 'publish';
   console.info(`[webstir-frontend] Running ${modeLabel} pipeline...`);
 
@@ -42,8 +52,7 @@ export async function runPublish(options: FrontendCommandOptions): Promise<void>
   await emptyOutputRoot(publishConfig, 'publish');
   await runPipeline(publishConfig, 'publish', { enable, env: process.env });
   if (options.publishMode === 'ssg') {
-    await generateSsgViewData(publishConfig);
-    await applySsgRouting(publishConfig);
+    await publishSsgSite(publishConfig);
   }
   console.info(`[webstir-frontend] ${modeLabel} pipeline completed.`);
 }
@@ -101,6 +110,23 @@ interface WorkspacePackageJsonMode {
   readonly webstir?: {
     readonly mode?: string;
   };
+}
+
+/** An SPA fails when a template has bindings, since nothing would fill them. */
+export async function checkSpaTemplates(workspaceRoot: string): Promise<void> {
+  const config = await prepareWorkspaceConfig(workspaceRoot);
+  await assertNoSpaBindings({
+    workspaceRoot: config.paths.workspace,
+    appTemplate: path.join(config.paths.src.app, FILE_NAMES.htmlAppTemplate),
+    pagesRoot: config.paths.src.pages,
+    partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+  });
+}
+
+async function readWorkspaceModeName(workspaceRoot: string): Promise<string | undefined> {
+  const pkg = await readJson<WorkspacePackageJsonMode>(path.join(workspaceRoot, 'package.json'));
+  const mode = pkg?.webstir?.mode;
+  return typeof mode === 'string' ? mode.toLowerCase() : undefined;
 }
 
 async function detectSsgWorkspace(workspaceRoot: string): Promise<boolean> {

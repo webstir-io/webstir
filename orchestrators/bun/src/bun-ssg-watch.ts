@@ -1,4 +1,5 @@
-import { readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
+import { createRenderedViewMatcher, readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { DevServer, type DevServerAddress } from './dev-server.ts';
@@ -12,6 +13,16 @@ export interface BunSsgFrontendWatchOptions {
   readonly port?: number;
   readonly verbose?: boolean;
   readonly apiProxyOrigin?: string;
+  /** Runs after every frontend build; a throw is reported as a failed rebuild. */
+  readonly afterBuild?: () => Promise<void>;
+  /**
+   * Runs each build and its afterBuild as one step that nothing else holding the same lock
+   * overlaps, such as the backend checking templates before a restart while the build output
+   * is being replaced.
+   */
+  readonly exclusive?: <T>(task: () => Promise<T>) => Promise<T>;
+  /** Serves pages rendered in memory ahead of the build output; see DevServerOptions. */
+  readonly renderedPage?: (pathname: string) => string | null | undefined;
 }
 
 export interface BunSsgFrontendWatchSession {
@@ -39,7 +50,13 @@ export async function startBunSsgFrontendWatch(
   const buildRoot = path.join(workspaceRoot, 'build', 'frontend');
   const operations = await loadFrontendOperations();
 
-  await operations.runBuild({ workspaceRoot });
+  const exclusive = options.exclusive ?? (<T>(task: () => Promise<T>) => task());
+  // A template or loader that fails at startup stops watch, as a failed build does, rather than
+  // serving pages that never rendered.
+  await exclusive(async () => {
+    await operations.runBuild({ workspaceRoot });
+    await options.afterBuild?.();
+  });
 
   let stopping = false;
   let stopPromise: Promise<void> | null = null;
@@ -64,6 +81,8 @@ export async function startBunSsgFrontendWatch(
           frontendSourceRoot,
           buildRoot,
           verbose: options.verbose === true,
+          afterBuild: options.afterBuild,
+          exclusive,
         });
       } catch (error) {
         await reportBuildFailure(server, error);
@@ -107,6 +126,10 @@ export async function startBunSsgFrontendWatch(
     buildRoot,
     apiProxyOrigin: options.apiProxyOrigin,
     pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
+    isRenderedView: options.apiProxyOrigin
+      ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
+      : undefined,
+    renderedPage: options.renderedPage,
     host: options.host,
     port: options.port,
   });
@@ -155,6 +178,8 @@ interface RunWatchEventOptions {
   readonly frontendSourceRoot: string;
   readonly buildRoot: string;
   readonly verbose: boolean;
+  readonly afterBuild?: () => Promise<void>;
+  readonly exclusive: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
 async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
@@ -168,14 +193,24 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
 
   let hotUpdate: HotUpdatePayload | null = null;
   const changedPath = getSingleWorkspaceWatchEventPath(event);
-  if (event.type === 'change') {
-    await operations.runRebuild({
-      workspaceRoot,
-      changedFile: event.path,
-    });
-  } else {
-    await operations.runBuild({ workspaceRoot });
-  }
+  await options.exclusive(async () => {
+    // A rebuild the checks reject leaves the last accepted programs for the backend to render.
+    const accepted = options.afterBuild ? await readPrograms(buildRoot) : undefined;
+    if (event.type === 'change') {
+      await operations.runRebuild({
+        workspaceRoot,
+        changedFile: event.path,
+      });
+    } else {
+      await operations.runBuild({ workspaceRoot });
+    }
+    try {
+      await options.afterBuild?.();
+    } catch (error) {
+      if (accepted) await restorePrograms(buildRoot, accepted);
+      throw error;
+    }
+  });
 
   if (changedPath) {
     hotUpdate = createHotUpdatePayload({
@@ -194,6 +229,30 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
 
   await server.publishStatus('hmr-fallback');
   await server.publishReload();
+}
+
+async function readPrograms(buildRoot: string): Promise<Map<string, string>> {
+  const programs = new Map<string, string>();
+  const files = await readdir(buildRoot, { recursive: true }).catch(() => [] as string[]);
+  for (const relative of files) {
+    if (relative.endsWith('.program.json')) {
+      programs.set(relative, await readFile(path.join(buildRoot, relative), 'utf8'));
+    }
+  }
+  return programs;
+}
+
+async function restorePrograms(
+  buildRoot: string,
+  accepted: ReadonlyMap<string, string>,
+): Promise<void> {
+  for (const relative of (await readPrograms(buildRoot)).keys()) {
+    if (!accepted.has(relative)) await rm(path.join(buildRoot, relative), { force: true });
+  }
+  for (const [relative, source] of accepted) {
+    await mkdir(path.dirname(path.join(buildRoot, relative)), { recursive: true });
+    await writeFile(path.join(buildRoot, relative), source, 'utf8');
+  }
 }
 
 export function mergeWorkspaceWatchEvents(
@@ -251,8 +310,11 @@ async function loadFrontendOperations(): Promise<FrontendOperationsModule> {
 
 async function reportBuildFailure(server: DevServer, error: unknown): Promise<void> {
   await server.publishStatus('error');
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(`[webstir] frontend rebuild failed: ${message}`);
+  console.error(`[webstir] frontend rebuild failed: ${formatError(error)}`);
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function getSingleWorkspaceWatchEventPath(event: WorkspaceWatchEvent): string | undefined {

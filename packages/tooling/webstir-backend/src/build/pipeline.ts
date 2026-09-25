@@ -259,7 +259,9 @@ function shouldEmitPublishSourcemaps(env: Record<string, string | undefined>): b
   return normalized === 'on' || normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
-async function discoverModuleDefinitionSource(sourceRoot: string): Promise<string | undefined> {
+export async function discoverModuleDefinitionSource(
+  sourceRoot: string,
+): Promise<string | undefined> {
   const patterns = ['module.{ts,tsx,js,mjs}', 'module/index.{ts,tsx,js,mjs}'];
 
   for (const pattern of patterns) {

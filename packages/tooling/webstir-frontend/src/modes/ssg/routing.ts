@@ -8,7 +8,15 @@ import { assertNoSsgRoutesInModuleConfig } from './validation.js';
 import type { WorkspaceModuleView, WorkspacePackageJson } from '../../config/workspaceManifest.js';
 import { runSsgSeo } from './seo.js';
 
-export async function applySsgRouting(config: FrontendConfig): Promise<void> {
+export interface SsgRoutingOptions {
+  /** Addresses a view rendered; aliases never overwrite them. */
+  readonly rendered?: ReadonlySet<string>;
+}
+
+export async function applySsgRouting(
+  config: FrontendConfig,
+  options: SsgRoutingOptions = {},
+): Promise<void> {
   const distRoot = config.paths.dist.frontend;
   const distPagesRoot = config.paths.dist.pages;
   const isRootLayout = path.resolve(distRoot) === path.resolve(distPagesRoot);
@@ -51,7 +59,7 @@ export async function applySsgRouting(config: FrontendConfig): Promise<void> {
     await applyContentAliases(config, distRoot, distPagesRoot);
   }
 
-  await applyStaticPathAliases(config, distRoot, distPagesRoot, pageIndexMap);
+  await applyStaticPathAliases(config, distRoot, distPagesRoot, pageIndexMap, options.rendered);
 
   const seoOptions = await resolveWorkspaceSeoOptions(config.paths.workspace);
   await runSsgSeo(distRoot, seoOptions);
@@ -140,6 +148,7 @@ async function applyStaticPathAliases(
   distRoot: string,
   distPagesRoot: string,
   pageIndexMap: Map<string, string>,
+  rendered: ReadonlySet<string> = new Set(),
 ): Promise<void> {
   if (pageIndexMap.size === 0) {
     return;
@@ -171,6 +180,9 @@ async function applyStaticPathAliases(
       }
 
       const normalized = normalizeStaticPath(raw);
+      if (rendered.has(normalized)) {
+        continue;
+      }
       let sourceIndex: string | undefined;
 
       if (normalized === '/') {

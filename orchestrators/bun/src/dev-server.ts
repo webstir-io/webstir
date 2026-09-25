@@ -2,6 +2,7 @@ import {
   type ClientErrorReport,
   formatClientErrorReport,
   isClientErrorsPath,
+  isRenderProgramPath,
   matchPageRoute,
   type PageRoute,
   readClientErrorReport,
@@ -17,6 +18,10 @@ export interface DevServerOptions {
   readonly port?: number;
   readonly apiProxyOrigin?: string;
   readonly pageRoutes?: readonly PageRoute[];
+  /** True when the backend renders this path; those requests are proxied instead of served. */
+  readonly isRenderedView?: (pathname: string) => Promise<boolean>;
+  /** Pages rendered in memory: HTML to serve, `null` for not found, `undefined` to fall through. */
+  readonly renderedPage?: (pathname: string) => string | null | undefined;
   /** Receives each browser error report posted to /client-errors. Defaults to the terminal. */
   readonly onClientError?: (report: ClientErrorReport) => void;
 }
@@ -92,6 +97,8 @@ export class DevServer {
   private readonly port: number;
   private readonly apiProxyOrigin?: string;
   private readonly pageRoutes: readonly PageRoute[];
+  private readonly isRenderedView: (pathname: string) => Promise<boolean>;
+  private readonly renderedPage: (pathname: string) => string | null | undefined;
   private readonly onClientError: (report: ClientErrorReport) => void;
   private readonly clients = new Set<SseClient>();
   private server?: ReturnType<typeof Bun.serve>;
@@ -102,6 +109,8 @@ export class DevServer {
     this.port = options.port ?? 8088;
     this.apiProxyOrigin = options.apiProxyOrigin;
     this.pageRoutes = options.pageRoutes ?? [];
+    this.isRenderedView = options.isRenderedView ?? (async () => false);
+    this.renderedPage = options.renderedPage ?? (() => undefined);
     this.onClientError =
       options.onClientError ??
       ((report) => {
@@ -186,8 +195,30 @@ export class DevServer {
       return await this.handleApiProxy(request, requestUrl, apiProxyPath);
     }
 
+    if (this.apiProxyOrigin) {
+      const normalizedPath = path.posix.normalize(pathname);
+      if ((method !== 'GET' && method !== 'HEAD') || (await this.isRenderedView(normalizedPath))) {
+        return await this.handleApiProxy(request, requestUrl, normalizedPath);
+      }
+    }
+
     if (method !== 'GET' && method !== 'HEAD') {
       return textResponse(405, 'Method not allowed.');
+    }
+
+    if (pathname.endsWith('.program.json')) {
+      return await this.notFoundResponse(request, method);
+    }
+
+    const rendered = this.renderedPage(path.posix.normalize(pathname));
+    if (rendered === null) {
+      return await this.notFoundResponse(request, method);
+    }
+    if (rendered !== undefined) {
+      return new Response(method === 'HEAD' ? null : rendered, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+      });
     }
 
     const candidates = getStaticCandidatePaths(pathname);
@@ -199,7 +230,7 @@ export class DevServer {
           `pages/${match.route.page}/index.html`,
         ]);
     }
-    if (!resolved) {
+    if (!resolved || isRenderProgramPath(resolved.relativePath)) {
       return await this.notFoundResponse(request, method);
     }
 
