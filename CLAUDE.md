@@ -84,7 +84,9 @@ CI runs a required repo gate plus a separate portal build when portal-specific i
 
 ## Releasing and Review
 
-Follow the `Releasing`, `Review Loop` and `Code Review Rules` sections of `AGENTS.md`. Codex reviews every PR on GitHub; treat its findings like any review: verify each against the code, fix the real ones, and say why the others are not. Never merge a PR until its review is resolved, CI is green, and Chris has said to merge it.
+Follow the `Releasing`, `Review Loop` and `Code Review Rules` sections of `AGENTS.md`. Codex reviews every PR on GitHub; treat its findings like any review: verify each against the code, fix the real ones, and say why the others are not.
+
+When Chris says `/ship` (or "ship it"), that is standing authorization to take the change all the way to merged: run the review loop below until it is clean, push, open the PR, enable auto-merge (squash), fix CI failures and review threads, clean up the branch after the merge, and for a release set push the tag once `main` CI passes and confirm npm. Outside `/ship`, merge only when Chris says to. Never merge past a failing check or an unresolved review thread, and never deploy or change repository settings without asking.
 
 Passing tests are necessary, not done. Before opening a PR:
 

@@ -34,7 +34,8 @@ Monorepo baseline for Webstir.
 
 ## Releasing
 - Prepare on a branch: `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (use `testing` for the testing pair), then open a PR. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full flow.
-- Merge only after Codex's GitHub review is done (see Review Loop), CI is green, and the maintainer has said to merge.
+- A PR merges once CI is green and every review thread is resolved, and only when the maintainer has asked for it: either directly, or by asking to ship it, which covers the whole flow (review loop, PR, auto-merge, cleanup, release tag).
+- Codex's GitHub review is a second opinion after the local loop. Findings it posts before the merge are resolved in the PR; findings that arrive after an auto-merge go into a follow-up PR.
 - After the merge commit passes `main` CI, push `release-set/<group>/v<version>`; the Release Package workflow publishes to npm. Confirm the new versions on the registry before calling the release done.
 
 ## Review Loop
