@@ -82,14 +82,6 @@ bun run webstir -- init ssg ./my-site
 
 CI runs a required repo gate plus a separate portal build when portal-specific inputs change. Extended browser/watch coverage runs in its own workflow. Release publishing is triggered by `release-set/<group>/v<version>` tags with npm provenance.
 
-## Releasing and Review
+## Delivery
 
-Follow the `Releasing`, `Review Loop` and `Code Review Rules` sections of `AGENTS.md`. Codex reviews every PR on GitHub; treat its findings like any review: verify each against the code, fix the real ones, and say why the others are not.
-
-When Chris says `/ship` (or "ship it"), that is standing authorization to take the change all the way to merged: run the review loop below until it is clean, push, open the PR, enable auto-merge (squash), fix CI failures and review threads, clean up the branch after the merge, and for a release set push the tag once `main` CI passes and confirm npm. Outside `/ship`, merge only when Chris says to. Never merge past a failing check or an unresolved review thread, and never deploy or change repository settings without asking.
-
-Passing tests are necessary, not done. Before opening a PR:
-
-1. Review the diff in a fresh context, hunting for failure cases in the `Code Review Rules` areas rather than confirming the happy path.
-2. Run `codex review --base main` and resolve what it finds, so the PR's own review comes back close to clean.
-3. Fix each finding as a class: look for the same pattern elsewhere and the same rule in other shapes, then cover them with one table-driven test.
+Delivery follows the `Delivery` and `Code Review Rules` sections of @AGENTS.md, through `/deliver`.

@@ -32,17 +32,16 @@ Monorepo baseline for Webstir.
 - The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
 - Prepare synchronized production releases from the repo root with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>`.
 
-## Releasing
-- Prepare on a branch: `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (use `testing` for the testing pair), then open a PR. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full flow.
-- A PR merges once CI is green and every review thread is resolved, and only when the maintainer has asked for it: either directly, or by asking to ship it, which covers the whole flow (review loop, PR, auto-merge, cleanup, release tag).
-- Codex's GitHub review is a second opinion after the local loop. Findings it posts before the merge are resolved in the PR; findings that arrive after an auto-merge go into a follow-up PR.
-- After the merge commit passes `main` CI, push `release-set/<group>/v<version>`; the Release Package workflow publishes to npm. Confirm the new versions on the registry before calling the release done.
-
-## Review Loop
-- Before opening a PR, review the diff for failure cases in the areas below and run `codex review --base main`; the PR's own review should come back close to clean.
-- Fix each finding as a class: find its siblings (the same pattern elsewhere, the same rule in other shapes) and cover them with one table-driven test.
-- A review is done when no P1 findings remain, every P2 is fixed or answered with a reason, and the last round found only edge cases.
-- Plan large work whole, but open a PR per layer so each review sees a few hundred lines.
+## Delivery
+- **Gate:** `bun run build && bun run test`; add `bun run --filter @webstir-io/webstir-backend smoke` for scaffold or template changes. CI's `Required Gate` runs the same.
+- **While iterating:** `bun run --filter <pkg> build && bun run --filter <pkg> test`, or a single `bun test <file>` after a build.
+- **Review focus:** the Code Review Rules below. Fix each finding as a class: find its siblings (the same pattern elsewhere, the same rule in other shapes) and cover them with one table-driven test.
+- **Sensitive areas** (always a full review): rendered HTML and templates, views and routing, sessions and forms, `module-contract` and other public APIs, generated client copies, release tooling.
+- **Merge:** squash PR into `main`; required checks: `Required Gate`; review threads must be resolved.
+- **Go live:** the docs site deploys itself on every push to `main` (`Deploy Docs`). A package release happens only when the plan named it: prepare it on the branch with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (`testing` for the testing pair); after the merge commit passes `main` CI, push `release-set/<group>/v<version>`, and the `Release Package` workflow publishes to npm. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full release flow.
+- **Verify live:** for a release, `npm view <pkg>@latest version` prints the new version for every package in the group; for docs, the `Deploy Docs` run for the merge commit succeeded and webstir.dev shows the change.
+- **Deploy policy:** automatic.
+- Plan large work whole, but deliver it in layers so each review sees a few hundred lines.
 
 ## Code Review Rules
 - Rendered HTML: every bound value must be escaped; URL attributes must block unsafe schemes; POST forms rendered with a session carry the CSRF field; `*.program.json` files must never be served, however the path is spelled.
