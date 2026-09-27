@@ -59,14 +59,25 @@ const cases: ReadonlyArray<{
     startOrder: ['w1', 'r1'],
   },
   {
-    title: 'a read that arrives while a build waits starts after that build',
+    // A read made while serving another read would otherwise deadlock behind the build.
+    title: 'a read that arrives while a build waits does not wait for it',
     steps: [
       { kind: 'read', name: 'r1' },
       { kind: 'write', name: 'w1' },
       { kind: 'read', name: 'r2' },
     ],
-    runningAtOnce: ['r1'],
-    startOrder: ['r1', 'w1', 'r2'],
+    runningAtOnce: ['r1', 'r2'],
+    startOrder: ['r1', 'r2', 'w1'],
+  },
+  {
+    title: 'reads that wait for a build start before the next build',
+    steps: [
+      { kind: 'write', name: 'w1' },
+      { kind: 'read', name: 'r1' },
+      { kind: 'write', name: 'w2' },
+    ],
+    runningAtOnce: ['w1'],
+    startOrder: ['w1', 'r1', 'w2'],
   },
   {
     title: 'builds run one at a time',

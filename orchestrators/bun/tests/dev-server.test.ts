@@ -455,3 +455,35 @@ test('DevServer holds requests that read the build output until a rebuild replac
     await rm(buildRoot, { recursive: true, force: true });
   }
 });
+
+for (const scenario of [
+  { title: 'a page', request: '/', status: 200, body: '<h1>v1</h1>' },
+  { title: 'the 404 page', request: '/missing', status: 404, body: '<h1>Not found v1</h1>' },
+]) {
+  test(`DevServer reads ${scenario.title} before a rebuild queued behind the request replaces it`, async () => {
+    const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-queued-rebuild-'));
+    const lock = createBuildOutputLock();
+    const server = new DevServer({ buildRoot, readBuildOutput: lock.read });
+    const handler = server as unknown as { handleRequest(request: Request): Promise<Response> };
+    try {
+      await mkdir(path.join(buildRoot, 'pages', 'home'), { recursive: true });
+      await mkdir(path.join(buildRoot, 'pages', '404'), { recursive: true });
+      await writeFile(path.join(buildRoot, 'pages', 'home', 'index.html'), '<h1>v1</h1>', 'utf8');
+      await writeFile(
+        path.join(buildRoot, 'pages', '404', 'index.html'),
+        '<h1>Not found v1</h1>',
+        'utf8',
+      );
+
+      const response = await handler.handleRequest(
+        new Request(`http://127.0.0.1${scenario.request}`, { headers: { accept: 'text/html' } }),
+      );
+      await lock.write(() => rm(path.join(buildRoot, 'pages'), { recursive: true, force: true }));
+
+      expect(response.status).toBe(scenario.status);
+      expect(await response.text()).toBe(scenario.body);
+    } finally {
+      await rm(buildRoot, { recursive: true, force: true });
+    }
+  });
+}

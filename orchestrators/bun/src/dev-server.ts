@@ -262,7 +262,7 @@ export class DevServer {
       });
     }
 
-    return new Response(Bun.file(resolved.absolutePath), {
+    return new Response(await readBuildFile(resolved.absolutePath), {
       status: 200,
       headers,
     });
@@ -280,7 +280,7 @@ export class DevServer {
 
     const headers = new Headers({ 'Content-Type': MIME_TYPES['.html'] });
     setNoCacheHeaders(headers);
-    return new Response(method === 'HEAD' ? null : Bun.file(notFoundPage.absolutePath), {
+    return new Response(method === 'HEAD' ? null : await readBuildFile(notFoundPage.absolutePath), {
       status: 404,
       headers,
     });
@@ -476,6 +476,12 @@ function rewriteProxyLocation(value: string, targetUrl: URL): string {
   } catch {
     return value;
   }
+}
+
+// Read while the request holds the build output, since a lazy file body is read after the
+// handler returns, when a rebuild may already be replacing the file.
+async function readBuildFile(absolutePath: string): Promise<ArrayBuffer> {
+  return await Bun.file(absolutePath).arrayBuffer();
 }
 
 async function resolveStaticFile(

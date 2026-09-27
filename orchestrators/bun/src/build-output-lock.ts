@@ -1,7 +1,8 @@
 /**
  * Orders reads of a build output against the builds that replace it. Any number of reads run
- * together; a build waits for the reads in flight and runs alone, and reads that arrive while a
- * build is running or waiting start after it, so a request never sees a half-written output.
+ * together, and a build waits for the reads in flight and runs alone, so a request never sees a
+ * half-written output. A read waits only while a build runs, never for one that is waiting, so a
+ * read made while serving another read cannot deadlock behind a queued build.
  */
 export interface BuildOutputLock {
   read<T>(task: () => Promise<T>): Promise<T>;
@@ -15,26 +16,31 @@ export function createBuildOutputLock(): BuildOutputLock {
   let waitingReads: Array<() => void> = [];
 
   const next = () => {
-    if (writing || activeReads > 0) {
+    if (writing) {
+      return;
+    }
+    if (waitingReads.length > 0) {
+      const reads = waitingReads;
+      waitingReads = [];
+      activeReads += reads.length;
+      for (const read of reads) {
+        read();
+      }
+      return;
+    }
+    if (activeReads > 0) {
       return;
     }
     const write = waitingWrites.shift();
     if (write) {
       writing = true;
       write();
-      return;
-    }
-    const reads = waitingReads;
-    waitingReads = [];
-    activeReads += reads.length;
-    for (const read of reads) {
-      read();
     }
   };
 
   return {
     async read(task) {
-      if (writing || waitingWrites.length > 0) {
+      if (writing) {
         await new Promise<void>((resolve) => waitingReads.push(resolve));
       } else {
         activeReads += 1;
