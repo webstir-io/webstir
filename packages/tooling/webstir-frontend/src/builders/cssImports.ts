@@ -165,57 +165,6 @@ export function isPackageCssImport(importPath: string): boolean {
   );
 }
 
-/**
- * Inlines stylesheets an app imports from an installed package, such as
- * `@import "@webstir-io/webstir-frontend/features/search.css" layer(features);`, so the rest of the
- * app pipeline (custom media, prefixes, layers) treats them as the app's own CSS. Only scoped
- * package paths count: in CSS, an unscoped bare path is relative to the importing file.
- */
-export async function inlinePackageCssImports(
-  css: string,
-  containingPath: string,
-): Promise<string> {
-  if (!css.includes('@import')) {
-    return css;
-  }
-  const root = postcss.parse(css, { from: containingPath });
-  const imports: postcss.AtRule[] = [];
-  root.walkAtRules('import', (rule) => {
-    imports.push(rule);
-  });
-  let changed = false;
-  for (const rule of imports) {
-    const parsed = parseCssImport(rule.params);
-    if (!parsed || !isPackageCssImport(parsed.path)) {
-      continue;
-    }
-    let resolved: string;
-    try {
-      resolved = createRequire(containingPath).resolve(parsed.path);
-    } catch {
-      throw new Error(
-        `Unable to resolve CSS @import "${parsed.path}" from ${containingPath}. Is the package installed and does it export that stylesheet?`,
-      );
-    }
-    const packageCss = await inlineSourceAppImports(
-      await readFile(resolved),
-      resolved,
-      path.dirname(resolved),
-    );
-    const importedRoot = postcss.parse(packageCss, { from: resolved });
-    importedRoot.walkAtRules('charset', (charset) => {
-      charset.remove();
-    });
-    rule.replaceWith(...applyCssImportQualifiers(importedRoot.nodes, parsed.qualifiers));
-    changed = true;
-  }
-  return changed ? root.toString() : css;
-}
-
-export function isPackageCssImport(importPath: string): boolean {
-  return /^@[a-z0-9][\w.-]*\/[a-z0-9][\w.-]*\/[^?#]+\.css$/i.test(importPath);
-}
-
 export async function inlineCssImports(
   css: string,
   containingPath: string,
