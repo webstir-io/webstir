@@ -38,7 +38,7 @@ Monorepo baseline for Webstir.
 - **Sensitive areas** (always a full review): rendered HTML and templates, views and routing, sessions and forms, `module-contract` and other public APIs, generated client copies, release tooling.
 - **Merge:** squash PR into `main`; required checks: `Required Gate`; review threads must be resolved.
 - **Go live:** the docs site deploys itself on every push to `main` (`Deploy Docs`). Packages: a pull request that changes a published package includes a changeset (`bun run changeset`: the packages and a patch, minor or major bump; the four `webstir` packages and the testing pair each version together). On `main`, the `Release Package` workflow keeps a "Version packages" pull request up to date; merging it publishes to npm with provenance and tags each package. Chris decides when to release by merging that pull request.
-- **Verify live:** for a release, `npm view <pkg>@latest version` prints the new version for every package in the group (the workflow checks this too); for docs, the `Deploy Docs` run for the merge commit succeeded and webstir.dev shows the change.
+- **Verify live:** for a release, `npm view <pkg>@latest version` prints the new version for every package in the group (the workflow checks each published version on npm too); for docs, the `Deploy Docs` run for the merge commit succeeded and webstir.dev shows the change.
 - **Deploy policy:** automatic.
 - Plan large work whole, but deliver it in layers so each review sees a few hundred lines. Start each layer's branch from `main` after the previous layer merges; stacking one branch on another conflicts once the first is squash-merged.
 
