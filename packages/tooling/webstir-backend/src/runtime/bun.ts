@@ -40,12 +40,7 @@ import { ensureSessionCsrfToken } from './forms.js';
 import { createSessionFormReader, renderFormRerender } from './rerender.js';
 import { readRequestBody } from './request-body.js';
 import { toClientNavLocation } from './client-nav.js';
-import {
-  claimSubmission,
-  forgetReissuedTo,
-  takeSubmissionId,
-  type SubmissionClaim,
-} from './form-submissions.js';
+import { claimSubmission, takeSubmissionId, type SubmissionClaim } from './form-submissions.js';
 import { isViewRedirect, readViewControl } from './view-control.js';
 import { loadNotFoundDocument } from './view-documents.js';
 import {
@@ -447,9 +442,6 @@ async function handleRequest<
         store: options.sessionStore,
         now,
       });
-      if (sessionState.session && sessionState.cookieSessionId) {
-        forgetReissuedTo(sessionState.cookieSessionId);
-      }
       const ctx: RouteContext<TLogger, TSession, TAuth> = {
         request,
         reply: new Response(null),
@@ -764,9 +756,6 @@ async function handleViewRequest<
     consumeAllFlash: rendersPage && method !== 'HEAD',
     now,
   });
-  if (sessionState.session && sessionState.cookieSessionId) {
-    forgetReissuedTo(sessionState.cookieSessionId);
-  }
   let session = sessionState.session;
   let rendered: Awaited<ReturnType<typeof renderRequestTimeView>>;
   try {

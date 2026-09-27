@@ -90,17 +90,16 @@ answer instead of running the action again. Only a `301`, `302` or `303` that
 reports no errors ends a submission: a failed check, a re-rendered form or a
 `307`/`308` is not remembered, so correcting and resubmitting runs again.
 
-A post that moves the browser to another session (signing in renews it; an
-action can also start or end one) records its answer on the new session, which a
-copy still carrying the old cookie cannot reach. So the backend also keeps that
-answer, with the session cookie the first response set, under the old session's
-id. A copy signed with that old cookie gets the same redirect and the same
-cookie, whether it waited on the first or came after it, so a double click or a
-lost response still ends signed in and the action runs once. The kept answer
-goes as soon as a request arrives with the new session, since every later copy
-then carries it too, and after one minute in any case. The id alone is never
-enough: another session, or a forged cookie, sending the same id runs as a new
-submission and gets none of the first one's session. A post sent
+A post that moves the browser to a new session (signing in renews it; an action
+can also start one) records its answer on the new session, which a copy still
+carrying the old cookie cannot reach. So the backend also keeps that answer, with
+the session cookie the first response set, under the old session's id for one
+minute. A copy signed with that old cookie gets the same redirect and the same
+cookie, whether it waited on the first or came after it, even once the browser
+has used the new session, so a double click or a lost response still ends signed
+in and the action runs once. The id alone is never enough: another session, or a
+forged cookie, sending the same id runs as a new submission and gets none of the
+first one's session. A post sent
 with no session cookie at all is not deduplicated, since nothing but its id ties
 a resend to the browser that sent it. The kept answer lives in the server
 process's memory, so behind several processes a copy that reaches another one

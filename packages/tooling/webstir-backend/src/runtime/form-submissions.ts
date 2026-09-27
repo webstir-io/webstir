@@ -12,7 +12,8 @@ const KEPT_SUBMISSIONS = 20;
 // post, id included, on to its destination, which must still run.
 const REPLAYABLE_REDIRECTS = new Set([301, 302, 303]);
 // Long enough for a double click or a resent post, short enough that an old cookie soon stops
-// leading anywhere; sooner still once the browser shows up with the new session.
+// leading anywhere. An entry stays for all of it: a copy sent with the old cookie can arrive after
+// the browser has already used the new one.
 const REISSUE_MS = 60_000;
 const KEPT_REISSUES = 1_000;
 
@@ -24,17 +25,14 @@ export interface SubmissionAnswer {
 }
 
 const running = new Map<string, Promise<SubmissionAnswer | undefined>>();
-// Answers that moved the browser to another session: signing in, a first session, signing out.
-// A copy still carries the old cookie, so it cannot reach the answer recorded on the new session.
-// Only a request signed with that old cookie finds one, and only for a short while.
+// Answers that moved the browser to a new session: signing in, or a first session. A copy still
+// carries the old cookie, so it cannot reach the answer recorded on the new session. Only a request
+// signed with that old cookie finds one, and only for a short while.
 const reissued = new Map<string, ReissuedAnswer>();
-// The new session each answer handed out, so the answer goes once that session is in use.
-const reissuedTo = new Map<string, string>();
 
 interface ReissuedAnswer {
   readonly answer: SubmissionAnswer;
   readonly expiresAt: number;
-  readonly sessionId?: string;
 }
 
 export interface SubmissionClaim {
@@ -47,7 +45,7 @@ export interface SubmissionClaim {
     location: string | undefined,
     now: Date,
   ): void;
-  /** Keeps the session cookie the recorded answer set, for copies that still carry the old one. */
+  /** Adds the session cookie the recorded answer set, kept for copies still carrying the old one. */
   recordCookie(
     commit: { session: Record<string, unknown> | null; setCookie?: string },
     now: Date,
@@ -93,7 +91,11 @@ export async function claimSubmission(
     recordCookie({ session: committed, setCookie }, now) {
       if (!recorded || !setCookie) return;
       recorded = { ...recorded, setCookie };
-      keepReissued(key, recorded, readSessionMetadata(committed)?.id, now);
+      // Only a new live session is worth keeping. A cookie that just expires the old one (signing
+      // out, a stale cookie) hands a later copy nothing it needs, and keeping those would let one
+      // stale cookie crowd out everyone else's answers.
+      const issued = readSessionMetadata(committed)?.id;
+      if (issued && issued !== sessionId) keepReissued(key, recorded, now);
     },
     release() {
       if (running.get(key) === done) running.delete(key);
@@ -134,42 +136,20 @@ function findReissued(key: string, now: Date): SubmissionAnswer | undefined {
   return entry && entry.expiresAt > now.getTime() ? entry.answer : undefined;
 }
 
-function keepReissued(
-  key: string,
-  answer: SubmissionAnswer,
-  sessionId: string | undefined,
-  now: Date,
-): void {
+function keepReissued(key: string, answer: SubmissionAnswer, now: Date): void {
   forgetExpired(now);
-  forgetReissued(key);
-  reissued.set(key, { answer, expiresAt: now.getTime() + REISSUE_MS, sessionId });
-  if (sessionId) reissuedTo.set(sessionId, key);
-  if (reissued.size > KEPT_REISSUES) {
-    forgetReissued(reissued.keys().next().value as string);
-  }
-}
-
-/**
- * A request carrying a session an answer handed out shows the browser has its cookie, so every
- * later copy it sends carries that session too, and the old cookie need not lead there any more.
- */
-export function forgetReissuedTo(sessionId: string): void {
-  const key = reissuedTo.get(sessionId);
-  if (key) forgetReissued(key);
-}
-
-function forgetReissued(key: string): void {
-  const entry = reissued.get(key);
-  if (!entry) return;
   reissued.delete(key);
-  if (entry.sessionId) reissuedTo.delete(entry.sessionId);
+  reissued.set(key, { answer, expiresAt: now.getTime() + REISSUE_MS });
+  if (reissued.size > KEPT_REISSUES) {
+    reissued.delete(reissued.keys().next().value as string);
+  }
 }
 
 /** Entries are kept in the order they were made, so the expired ones come first. */
 function forgetExpired(now: Date): void {
   for (const [key, entry] of reissued) {
     if (entry.expiresAt > now.getTime()) return;
-    forgetReissued(key);
+    reissued.delete(key);
   }
 }
 

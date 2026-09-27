@@ -2258,9 +2258,10 @@ async function assertRenderedViewRuntimeBehavior() {
     assert.deepEqual(signedOut, ['/clients?n=13#top', '/clients?n=13#top']);
 
     // A copy of a sign-in that still carries the old cookie gets the new session the first one
-    // started, since the first response may never have landed: until the browser shows up with
-    // that session, when every later copy carries it too. Only the browser holding the old cookie
-    // does: another session, no session or a forged cookie sending the same id gets nothing.
+    // started, since the first response may never have landed, even after the browser has used the
+    // new session: a copy already in flight still carries the old cookie. Only the browser holding
+    // the old cookie does: another session, no session or a forged cookie with the same id gets
+    // nothing. A stale cookie posting again and again keeps nothing, so it cannot crowd them out.
     const startSession = async () =>
       extractCookieHeader((await fetch(`${base}/clients`)).headers.get('set-cookie'));
     const signIn = async ({ cookie, id, field, as }) => {
@@ -2283,6 +2284,26 @@ async function assertRenderedViewRuntimeBehavior() {
     const whoami = async (cookie) =>
       (await (await fetch(`${base}/whoami`, { headers: { cookie } })).json()).user;
     const forge = (cookie) => cookie.replace(/\.[^.]*$/, '.forged');
+    const stale = await startSession();
+    await signIn({ cookie: stale, id: 'stale-0000' });
+    const burst = async () => {
+      for (let batch = 0; batch < 11; batch += 1) {
+        await Promise.all(
+          Array.from({ length: 100 }, async (_, index) => {
+            const response = await fetch(`${base}/count`, {
+              method: 'POST',
+              redirect: 'manual',
+              headers: {
+                cookie: stale,
+                'content-type': 'application/x-www-form-urlencoded',
+                'x-webstir-submission': `stale-${batch}-${index}`,
+              },
+            });
+            assert.equal(response.status, 303);
+          }),
+        );
+      }
+    };
     const signInCopies = [
       // [how and when the copy is sent, whose cookie it carries, what it gets]
       [{ when: 'waiting' }, 'old', 'first'],
@@ -2291,8 +2312,10 @@ async function assertRenderedViewRuntimeBehavior() {
       [{ when: 'waiting', as: 'thrown' }, 'old', 'first'],
       [{ when: 'after', as: 'thrown' }, 'old', 'first'],
       [{ when: 'after' }, 'new', 'answered'],
-      [{ when: 'used' }, 'old', 'refused'],
-      [{ when: 'used', as: 'thrown' }, 'old', 'refused'],
+      [{ when: 'used' }, 'old', 'first'],
+      [{ when: 'used', as: 'thrown' }, 'old', 'first'],
+      [{ when: 'followed' }, 'old', 'first'],
+      [{ when: 'burst' }, 'old', 'first'],
       [{ when: 'waiting' }, 'other', 'runs'],
       [{ when: 'after' }, 'other', 'runs'],
       [{ when: 'after' }, 'none', 'refused'],
@@ -2307,6 +2330,13 @@ async function assertRenderedViewRuntimeBehavior() {
       const copyPost = (when === 'waiting' ? Promise.resolve() : firstPost).then(
         async (earlier) => {
           if (when === 'used') await whoami(earlier.cookie);
+          if (when === 'followed') {
+            const page = await fetch(`${base}${earlier.location}`, {
+              headers: { cookie: earlier.cookie },
+            });
+            assert.equal(page.status, 200);
+          }
+          if (when === 'burst') await burst();
           const copyCookie = {
             old: cookie,
             new: earlier?.cookie,
