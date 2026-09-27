@@ -25,9 +25,9 @@ export interface SubmissionAnswer {
 }
 
 const running = new Map<string, Promise<SubmissionAnswer | undefined>>();
-// Answers that moved the browser to a new session: signing in, or a first session. A copy still
-// carries the old cookie, so it cannot reach the answer recorded on the new session. Only a request
-// signed with that old cookie finds one, and only for a short while.
+// Answers that moved the browser off a live session: signing in, or signing out. A copy still
+// carries the old cookie, so it cannot reach the answer recorded on the new session, if any. Only a
+// request signed with that old cookie finds one, and only for a short while.
 const reissued = new Map<string, ReissuedAnswer>();
 
 interface ReissuedAnswer {
@@ -81,6 +81,9 @@ export async function claimSubmission(
     settle = resolve;
   });
   running.set(key, done);
+  // Only a submission that arrived with its cookie's live session is kept: each one then ends a
+  // session to be kept, so one stale cookie posting again and again cannot crowd out the rest.
+  const live = readSessionMetadata(session)?.id === sessionId;
   return {
     record(committed, status, location, now) {
       if (!location || !REPLAYABLE_REDIRECTS.has(status)) return;
@@ -88,14 +91,10 @@ export async function claimSubmission(
       recorded = { location };
       if (committed) recordSubmission(committed, id, location, now);
     },
-    recordCookie({ session: committed, setCookie }, now) {
+    recordCookie({ setCookie }, now) {
       if (!recorded || !setCookie) return;
       recorded = { ...recorded, setCookie };
-      // Only a new live session is worth keeping. A cookie that just expires the old one (signing
-      // out, a stale cookie) hands a later copy nothing it needs, and keeping those would let one
-      // stale cookie crowd out everyone else's answers.
-      const issued = readSessionMetadata(committed)?.id;
-      if (issued && issued !== sessionId) keepReissued(key, recorded, now);
+      if (live) keepReissued(key, recorded, now);
     },
     release() {
       if (running.get(key) === done) running.delete(key);

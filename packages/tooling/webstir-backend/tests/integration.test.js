@@ -2250,12 +2250,16 @@ async function assertRenderedViewRuntimeBehavior() {
     ]);
     assert.deepEqual(concurrent, ['/clients?n=12#top', '/clients?n=12#top']);
     assert.equal(await count({ header: 'submission-0007', as: 'slow' }), '/clients?n=12#top');
-    // An action that ends the session still answers the copies waiting on it.
+    // An action that ends the session still answers the copies waiting on it, and a later copy
+    // still carrying the ended session's cookie.
+    const signedOutFrom = countCookie;
     const signedOut = await Promise.all([
       count({ header: 'submission-0009', as: 'signed-out' }),
       count({ header: 'submission-0009', as: 'signed-out' }),
     ]);
     assert.deepEqual(signedOut, ['/clients?n=13#top', '/clients?n=13#top']);
+    countCookie = signedOutFrom;
+    assert.equal(await count({ header: 'submission-0009', as: 'signed-out' }), '/clients?n=13#top');
 
     // A copy of a sign-in that still carries the old cookie gets the new session the first one
     // started, since the first response may never have landed, even after the browser has used the

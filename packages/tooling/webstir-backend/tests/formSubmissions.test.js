@@ -6,20 +6,18 @@ import { attachSessionMetadata } from '../dist/runtime/session-metadata.js';
 
 const start = Date.parse('2026-01-01T00:00:00.000Z');
 const at = (ms) => new Date(start + ms);
+const sessionWithId = (id, ms) =>
+  attachSessionMetadata(
+    {},
+    { id, createdAt: at(ms).toISOString(), expiresAt: at(ms + 3_600_000).toISOString() },
+  );
 
-// Runs a submission from the session `from` whose commit left the session `to` (null: none).
-async function submit(from, id, to, ms, setCookie = `webstir_session=${to}.signed`) {
-  const claim = await claimSubmission(from, null, id, at(ms));
+// Runs a submission from the session `from` (live or already ended) whose commit set `setCookie`.
+async function submit({ from, live = true, id, setCookie, ms }) {
+  const claim = await claimSubmission(from, live ? sessionWithId(from, ms) : null, id, at(ms));
   assert.equal(claim.answered, undefined);
-  const session =
-    to === null
-      ? null
-      : attachSessionMetadata(
-          {},
-          { id: to, createdAt: at(ms).toISOString(), expiresAt: at(ms + 3_600_000).toISOString() },
-        );
-  claim.record(session, 303, `/signed-in/${to}`, at(ms));
-  claim.recordCookie({ session, setCookie }, at(ms));
+  claim.record(null, 303, `/next/${id}`, at(ms));
+  claim.recordCookie({ session: null, setCookie }, at(ms));
   claim.release();
 }
 
@@ -29,45 +27,41 @@ async function answered(from, id, ms) {
   return claim.answered?.setCookie;
 }
 
-test('only an answer that started a new session is kept, and only briefly', async () => {
+test('only an answer that moved a live session on is kept, and only briefly', async () => {
   const cases = [
-    // [the session the commit left, the cookie it set, when the copy comes, what the copy gets]
-    ['new', undefined, 59_999, 'webstir_session=new.signed'],
-    ['new', undefined, 60_000, undefined],
-    [null, 'webstir_session=; Max-Age=0', 1, undefined],
-    ['same', undefined, 1, undefined],
+    // [the session the post came from, the cookie its commit set, when the copy comes, kept]
+    [{ live: true }, 'webstir_session=new.signed', 59_999, true],
+    [{ live: true }, 'webstir_session=new.signed', 60_000, false],
+    [{ live: true }, 'webstir_session=; Max-Age=0', 1, true],
+    [{ live: true }, undefined, 1, false],
+    [{ live: false }, 'webstir_session=new.signed', 1, false],
+    [{ live: false }, 'webstir_session=; Max-Age=0', 1, false],
   ];
-  for (const [index, [to, setCookie, ms, expected]] of cases.entries()) {
+  for (const [index, [{ live }, setCookie, ms, kept]] of cases.entries()) {
     const from = `old-${index}`;
-    const left = to === 'same' ? from : to === null ? null : `${to}-${index}`;
-    await submit(from, 'submission-0001', left, 0, setCookie ?? `webstir_session=${left}.signed`);
-    const got = await answered(from, 'submission-0001', ms);
-    assert.equal(got, expected && `webstir_session=${left}.signed`, String(index));
+    await submit({ from, live, id: 'submission-0001', setCookie, ms: 0 });
+    assert.equal(
+      await answered(from, 'submission-0001', ms),
+      kept ? setCookie : undefined,
+      String(index),
+    );
     assert.equal(await answered(`other-${index}`, 'submission-0001', 1), undefined, String(index));
   }
 });
 
-test('kept answers are bounded, oldest first, and only new sessions count', async () => {
+test('kept answers are bounded, oldest first, and an ended session keeps none', async () => {
   const ms = 10 * 60_000;
-  await submit('bounded-0', 'submission-0002', 'bounded-new-0', ms);
-  // One stale cookie posting again and again only expires itself: nothing is kept for it.
+  const cookie = (index) => `webstir_session=bounded-new-${index}.signed`;
+  await submit({ from: 'bounded-0', id: 'submission-0002', setCookie: cookie(0), ms });
+  // One stale cookie posting again and again keeps nothing, so it crowds nothing out.
   for (let index = 0; index < 1_000; index += 1) {
-    await submit('stale', `stale-${String(index).padStart(4, '0')}`, null, ms, 'webstir_session=');
+    await submit({ from: 'stale', live: false, id: `stale-${index}`, setCookie: cookie(0), ms });
   }
-  assert.equal(
-    await answered('bounded-0', 'submission-0002', ms),
-    'webstir_session=bounded-new-0.signed',
-  );
+  assert.equal(await answered('bounded-0', 'submission-0002', ms), cookie(0));
   for (let index = 1; index <= 1_000; index += 1) {
-    await submit(`bounded-${index}`, 'submission-0002', `bounded-new-${index}`, ms);
+    await submit({ from: `bounded-${index}`, id: 'submission-0002', setCookie: cookie(index), ms });
   }
   assert.equal(await answered('bounded-0', 'submission-0002', ms), undefined);
-  assert.equal(
-    await answered('bounded-1', 'submission-0002', ms),
-    'webstir_session=bounded-new-1.signed',
-  );
-  assert.equal(
-    await answered('bounded-1000', 'submission-0002', ms),
-    'webstir_session=bounded-new-1000.signed',
-  );
+  assert.equal(await answered('bounded-1', 'submission-0002', ms), cookie(1));
+  assert.equal(await answered('bounded-1000', 'submission-0002', ms), cookie(1_000));
 });
