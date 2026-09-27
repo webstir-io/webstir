@@ -196,6 +196,9 @@ async function wireLocalCopies(
 ): Promise<void> {
   const kept = new Set(present.map((filePath) => appRelative(workspaceRoot, filePath)));
   const copyOf = (specifier: string) => specifier.replace(/^\.\//, '').replace(/\.js$/, '.ts');
+  // Loaded by anything at all: any import form, qualifiers and all, or through another file.
+  const loaded = async (copy: string) =>
+    (await findCopyReferences(workspaceRoot, { ...feature, copies: [copy] }, new Map())).length > 0;
   const writes: Array<{ filePath: string; updated: string }> = [];
   const add = (filePath: string, updated: string, imported: boolean, statement: string) => {
     // Kept only when parsing the result shows the import.
@@ -208,10 +211,13 @@ async function wireLocalCopies(
     }
   };
   const entryPath = appEntryPaths(workspaceRoot).find((candidate) => existsSync(candidate));
-  if (entryPath && kept.has(copyOf(feature.script.legacy))) {
+  const scriptCopy = copyOf(feature.script.legacy);
+  if (entryPath && kept.has(scriptCopy)) {
     const source = await readFile(entryPath, 'utf8');
-    const imports = scanImports(source, entryPath);
-    if (!imports.includes(feature.script.legacy) && !imports.includes(feature.script.packaged)) {
+    if (
+      !scanImports(source, entryPath).includes(feature.script.packaged) &&
+      !(await loaded(scriptCopy))
+    ) {
       const statement = `import '${feature.script.legacy}';`;
       const newline = source.includes('\r\n') ? '\r\n' : '\n';
       const updated = appendStatement(source, statement, newline);
@@ -224,14 +230,13 @@ async function wireLocalCopies(
     }
   }
   const appCssPath = path.join(appRoot(workspaceRoot), 'app.css');
-  if (
-    feature.style &&
-    existsSync(appCssPath) &&
-    kept.has(feature.style.legacy.replace(/^\.\//, ''))
-  ) {
+  const styleCopy = feature.style?.legacy.replace(/^\.\//, '');
+  if (feature.style && styleCopy && existsSync(appCssPath) && kept.has(styleCopy)) {
     const source = await readFile(appCssPath, 'utf8');
-    const imports = findCssImportPaths(source);
-    if (!imports.includes(feature.style.legacy) && !imports.includes(feature.style.packaged)) {
+    if (
+      !findCssImportPaths(source).includes(feature.style.packaged) &&
+      !(await loaded(styleCopy))
+    ) {
       const statement = `@import "${feature.style.legacy}";`;
       const newline = source.includes('\r\n') ? '\r\n' : '\n';
       const updated = insertAfterLastCssImport(source, statement, newline);
@@ -330,8 +335,9 @@ function appendStatement(source: string, statement: string, newline: string): st
 /** CSS requires @import before other rules, so a new one goes after the stylesheet's prelude. */
 function insertAfterLastCssImport(css: string, statement: string, newline: string): string {
   const point = findCssImportInsertionPoint(css);
-  return point === 0
-    ? `${statement}${newline}${css}`
+  const start = css.charCodeAt(0) === 0xfeff ? 1 : 0;
+  return point === start
+    ? `${css.slice(0, point)}${statement}${newline}${css.slice(point)}`
     : `${css.slice(0, point)}${newline}${statement}${css.slice(point)}`;
 }
 

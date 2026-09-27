@@ -59,11 +59,13 @@ export function findCssImportPaths(css: string): string[] {
 /**
  * Where a new `@import` can go: after the last statement of the stylesheet's prelude (its
  * `@charset`, `@layer` order and `@import` statements), read as CSS so a statement spanning lines
- * or a commented-out import is never split. 0 when the stylesheet starts with a rule.
+ * or a commented-out import is never split. The start (after any byte order mark) when the
+ * stylesheet has no prelude.
  */
 export function findCssImportInsertionPoint(css: string): number {
-  let point = 0;
-  let index = 0;
+  // A byte order mark stays first.
+  let point = css.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let index = point;
 
   while (index < css.length) {
     if (css[index] === '/' && css[index + 1] === '*') {
