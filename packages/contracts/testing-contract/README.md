@@ -89,12 +89,12 @@ bun install
 bun run clean          # remove dist artifacts
 bun run build          # emits dist/index.js, dist/index.d.ts, refreshed schema/
 bun run test
-# From the repository root, prepare the synchronized testing release set
-bun run release:prepare -- testing patch
+# From the repository root, describe the change for the next release
+bun run changeset
 ```
 
 - Regenerate schema files whenever TypeScript interfaces change.
-- Publishing targets npm through one exact-commit, trusted-publishing release-set workflow.
+- Merging the "Version packages" pull request publishes the testing pair with trusted publishing.
 
 ## License
 

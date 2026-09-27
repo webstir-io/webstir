@@ -46,8 +46,8 @@
     "check:biome": "biome check . --linter-enabled=false --assist-enabled=false",
     "test:tools": "bun test tools/tests/*.test.mjs",
     "check:required": "bun tools/run-checks.mjs required",
-    "release:prepare": "bun tools/prepare-release-set.mjs",
-    "release:plan": "bun tools/release-set.mjs --plan",
+    "changeset": "changeset",
+    "version-packages": "changeset version && bun install",
     "clean": "bun run --workspaces --if-present clean",
     "build:contracts": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/testing-contract build",
     "test:contracts": "bun run --filter @webstir-io/module-contract test && bun run --filter @webstir-io/testing-contract test",
@@ -68,6 +68,7 @@
     "publish:dashboard": "bun run webstir -- publish --workspace \"$PWD/examples/demos/dashboard\""
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.11"
+    "@biomejs/biome": "^2.5.11",
+    "@changesets/cli": "^3.0.3"
   }
 }

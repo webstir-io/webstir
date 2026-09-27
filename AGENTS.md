@@ -29,7 +29,7 @@ Monorepo baseline for Webstir.
 - Start with `README.md` and the package exports before changing public surfaces.
 - Validate with `bun run build` and `bun run test`; use the repo required gate for cross-package changes.
 - The published tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json`; keep them publish-ready.
-- Prepare synchronized production releases from the repo root with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>`.
+- A change to a published package adds a changeset (`bun run changeset`); releases are versioned and published by Changesets.
 
 ## Delivery
 - **Gate:** `bun run build && bun run test`; add `bun run --filter @webstir-io/webstir-backend smoke` for scaffold or template changes. CI's `Required Gate` runs the same.
@@ -37,10 +37,10 @@ Monorepo baseline for Webstir.
 - **Review focus:** the Code Review Rules below. Fix each finding as a class: find its siblings (the same pattern elsewhere, the same rule in other shapes) and cover them with one table-driven test.
 - **Sensitive areas** (always a full review): rendered HTML and templates, views and routing, sessions and forms, `module-contract` and other public APIs, generated client copies, release tooling.
 - **Merge:** squash PR into `main`; required checks: `Required Gate`; review threads must be resolved.
-- **Go live:** the docs site deploys itself on every push to `main` (`Deploy Docs`). A package release happens only when the plan named it: prepare it on the branch with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (`testing` for the testing pair); after the merge commit passes `main` CI, and once every review comment on the pull requests since the previous release tag (Codex's included, even ones posted after a merge) is fixed or answered, push `release-set/<group>/v<version>`, and the `Release Package` workflow publishes to npm. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full release flow.
-- **Verify live:** for a release, `npm view <pkg>@latest version` prints the new version for every package in the group; for docs, the `Deploy Docs` run for the merge commit succeeded and webstir.dev shows the change.
+- **Go live:** the docs site deploys itself on every push to `main` (`Deploy Docs`). Packages: a pull request that changes a published package includes a changeset (`bun run changeset`: the packages and a patch, minor or major bump; the four `webstir` packages and the testing pair each version together). On `main`, the `Release Package` workflow keeps a "Version packages" pull request up to date; merging it publishes to npm with provenance and tags each package. Chris decides when to release by merging that pull request.
+- **Verify live:** for a release, `npm view <pkg>@latest version` prints the new version for every package in the group (the workflow checks this too); for docs, the `Deploy Docs` run for the merge commit succeeded and webstir.dev shows the change.
 - **Deploy policy:** automatic.
-- Plan large work whole, but deliver it in layers so each review sees a few hundred lines.
+- Plan large work whole, but deliver it in layers so each review sees a few hundred lines. Start each layer's branch from `main` after the previous layer merges; stacking one branch on another conflicts once the first is squash-merged.
 
 ## Code Review Rules
 - Rendered HTML: every bound value must be escaped; URL attributes must block unsafe schemes; POST forms rendered with a session carry the CSRF field; `*.program.json` files must never be served, however the path is spelled.

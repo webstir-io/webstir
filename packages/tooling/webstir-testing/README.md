@@ -77,12 +77,12 @@ bun run clean          # remove dist artifacts
 bun run build          # TypeScript → dist/
 bun run test
 bun run smoke
-# From the repository root, prepare the synchronized testing release set
-bun run release:prepare -- testing patch
+# From the repository root, describe the change for the next release
+bun run changeset
 ```
 
 - Add integration fixtures under `tests/` before enabling automated suites.
-- The release-set workflow consumes exact-commit CI proof and publishes with trusted provenance.
+- Merging the "Version packages" pull request publishes the testing pair with trusted publishing.
 
 ## Troubleshooting
 

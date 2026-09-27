@@ -263,8 +263,8 @@ bun install
 bun run clean
 bun run build
 bun run test
-# From the repository root
-bun run release:prepare -- webstir patch
+# From the repository root, describe the change for the next release
+bun run changeset
 ```
 
 Recommended package validation before release:

@@ -346,12 +346,12 @@ bun install
 bun run clean          # remove dist/schema artifacts
 bun run build          # compiles TypeScript, regenerates schema/*.schema.json
 bun run test           # type-checks the Accounts example module
-# From the repository root, prepare the synchronized production release set
-bun run release:prepare -- webstir patch
+# From the repository root, describe the change for the next release
+bun run changeset
 ```
 
 - The `schema/` folder contains `*-definition.schema.json` files derived from the exported Zod schemas. Commit them with contract changes.
-- The release-set workflow publishes the contract, backend, frontend, and CLI together after exact-commit CI succeeds.
+- Merging the "Version packages" pull request publishes the contract, backend, frontend, and CLI together.
 
 ## License
 
