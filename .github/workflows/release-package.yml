@@ -23,6 +23,8 @@ env:
 
 jobs:
   select-mode:
+    # Only main publishes: a manual run from another branch must not skip the release pull request.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       mode: ${{ steps.select-mode.outputs.mode }}

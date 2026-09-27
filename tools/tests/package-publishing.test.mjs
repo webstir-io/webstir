@@ -54,13 +54,24 @@ test('changeset groups cover exactly the published packages', () => {
   }
 });
 
-// A published package names the version of its sibling it was built against, never a workspace
-// range npm cannot resolve.
-test('published packages depend on their siblings at the current version', () => {
+// A published package names a sibling npm can resolve, never a workspace range: within its release
+// group, exactly the version it ships with; from another group, a range the current version meets
+// (a release of one group leaves the other's ranges alone).
+test('published packages depend on their siblings at versions that exist', () => {
+  const groupOf = new Map(
+    readJson('.changeset/config.json').fixed.flatMap((group, index) =>
+      group.map((name) => [name, index]),
+    ),
+  );
   for (const { dir, manifest } of published) {
     for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
       if (!versionOf.has(name)) continue;
-      assert.equal(range, `^${versionOf.get(name)}`, `${dir}: ${name}`);
+      if (groupOf.get(name) === groupOf.get(manifest.name)) {
+        assert.equal(range, `^${versionOf.get(name)}`, `${dir}: ${name}`);
+      } else {
+        assert.match(range, /^\^\d+\.\d+\.\d+$/, `${dir}: ${name}`);
+        assert.ok(Bun.semver.satisfies(versionOf.get(name), range), `${dir}: ${name} ${range}`);
+      }
     }
   }
 });
