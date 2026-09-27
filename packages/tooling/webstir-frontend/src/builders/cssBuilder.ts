@@ -18,7 +18,7 @@ import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import {
-  assertNoPackageCssImports,
+  assertCssImportsResolve,
   inlineCssImports,
   inlineSourceAppImports,
   inlinePackageCssImports,
@@ -80,7 +80,7 @@ async function processCss(context: BuilderContext, isProduction: boolean): Promi
 
     const css = await readFile(entryPath);
     const inlinedCss = await inlinePageImports(css, page.directory);
-    assertNoPackageCssImports(inlinedCss, entryPath);
+    assertCssImportsResolve(inlinedCss, entryPath, { appAlias: true });
     const prepared = applyCustomMediaPrelude(inlinedCss, customMediaPrelude);
     const processed = await processor.process(prepared, {
       from: entryPath,
@@ -192,6 +192,7 @@ async function processAppCss(
   }
 
   const appCss = await readFile(appCssPath);
+  assertCssImportsResolve(appCss, appCssPath, { packages: true });
 
   if (isProduction) {
     const source = applyCustomMediaPrelude(
@@ -343,7 +344,7 @@ async function syncAppStyles(
     }
 
     const css = await readFile(sourcePath);
-    assertNoPackageCssImports(css, sourcePath);
+    assertCssImportsResolve(css, sourcePath);
     const source = applyCustomMediaPrelude(css, customMediaPrelude);
     const processed = await processor.process(source, { from: sourcePath, map: { inline: true } });
     await writeFile(destinationPath, processed.css);
@@ -510,7 +511,7 @@ async function emitAppStylesProduction(
   for (const relative of files) {
     const sourcePath = path.join(sourceDir, relative);
     const bundled = await inlineSourceAppImports(await readFile(sourcePath), sourcePath, sourceDir);
-    assertNoPackageCssImports(bundled, sourcePath);
+    assertCssImportsResolve(bundled, sourcePath);
     const source = applyCustomMediaPrelude(bundled, customMediaPrelude);
     const processed = await processor.process(source, { from: sourcePath, map: false });
     const minified = csso.minify(processed.css).css;

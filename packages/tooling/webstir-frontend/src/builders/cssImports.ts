@@ -99,7 +99,7 @@ async function replacePackageCssImports(
       resolved,
       path.dirname(resolved),
     );
-    assertNoPackageCssImports(packageSource, resolved);
+    assertCssImportsResolve(packageSource, resolved);
     const inlined = postcss.parse(packageSource, { from: resolved });
     inlined.walkAtRules('charset', (charset) => {
       charset.remove();
@@ -116,18 +116,29 @@ async function replacePackageCssImports(
 }
 
 /**
- * Package stylesheets are resolved only where app.css imports them; anywhere else the import would
- * reach the browser as a path it cannot load, so the build stops instead.
+ * Imports only some stylesheets resolve: a package stylesheet only from app.css, and the `@app/`
+ * alias only from a page's stylesheet. Anywhere else the import would reach the browser as a path
+ * it cannot load, so the build stops instead.
  */
-export function assertNoPackageCssImports(css: string, filePath: string): void {
+export function assertCssImportsResolve(
+  css: string,
+  filePath: string,
+  resolves: { readonly packages?: boolean; readonly appAlias?: boolean } = {},
+): void {
   if (!css.includes('@import')) {
     return;
   }
   postcss.parse(css, { from: filePath }).walkAtRules('import', (rule) => {
     const parsed = parseCssImport(rule.params);
-    if (parsed && isPackageCssImport(parsed.path)) {
+    if (!parsed) return;
+    if (!resolves.packages && isPackageCssImport(parsed.path)) {
       throw new Error(
         `CSS @import "${parsed.path}" in ${filePath}: package stylesheets can only be imported from src/frontend/app/app.css.`,
+      );
+    }
+    if (!resolves.appAlias && parsed.path.startsWith('@app/')) {
+      throw new Error(
+        `CSS @import "${parsed.path}" in ${filePath}: @app/ can only be used in a page's stylesheet.`,
       );
     }
   });
