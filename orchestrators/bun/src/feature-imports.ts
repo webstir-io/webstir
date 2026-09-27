@@ -4,7 +4,11 @@ import { readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { findCssImportInsertionPoint, findCssImportPaths } from './css-import-graph.ts';
+import {
+  findCssImportInsertionPoint,
+  findCssImportPaths,
+  resolveLocalCssDependencyGraph,
+} from './css-import-graph.ts';
 import { SHIPPED_FEATURE_COPIES } from './feature-copies.ts';
 import { findCopyReferences } from './feature-references.ts';
 import { preflightWorkspaceWriteTargets } from './scaffold-path.ts';
@@ -196,9 +200,6 @@ async function wireLocalCopies(
 ): Promise<void> {
   const kept = new Set(present.map((filePath) => appRelative(workspaceRoot, filePath)));
   const copyOf = (specifier: string) => specifier.replace(/^\.\//, '').replace(/\.js$/, '.ts');
-  // Loaded by anything at all: any import form, qualifiers and all, or through another file.
-  const loaded = async (copy: string) =>
-    (await findCopyReferences(workspaceRoot, { ...feature, copies: [copy] }, new Map())).length > 0;
   const writes: Array<{ filePath: string; updated: string }> = [];
   const add = (filePath: string, updated: string, imported: boolean, statement: string) => {
     // Kept only when parsing the result shows the import.
@@ -214,10 +215,9 @@ async function wireLocalCopies(
   const scriptCopy = copyOf(feature.script.legacy);
   if (entryPath && kept.has(scriptCopy)) {
     const source = await readFile(entryPath, 'utf8');
-    if (
-      !scanImports(source, entryPath).includes(feature.script.packaged) &&
-      !(await loaded(scriptCopy))
-    ) {
+    // The entry's runtime imports; importing a module twice still runs it once.
+    const imports = scanImports(source, entryPath);
+    if (!imports.includes(feature.script.packaged) && !imports.includes(feature.script.legacy)) {
       const statement = `import '${feature.script.legacy}';`;
       const newline = source.includes('\r\n') ? '\r\n' : '\n';
       const updated = appendStatement(source, statement, newline);
@@ -233,9 +233,12 @@ async function wireLocalCopies(
   const styleCopy = feature.style?.legacy.replace(/^\.\//, '');
   if (feature.style && styleCopy && existsSync(appCssPath) && kept.has(styleCopy)) {
     const source = await readFile(appCssPath, 'utf8');
+    // What app.css loads, through any stylesheet it imports and whatever its conditions: a
+    // second, unconditional import would change where the copy applies.
+    const loaded = await resolveLocalCssDependencyGraph(appCssPath);
     if (
       !findCssImportPaths(source).includes(feature.style.packaged) &&
-      !(await loaded(styleCopy))
+      !loaded.has(path.resolve(appRoot(workspaceRoot), styleCopy))
     ) {
       const statement = `@import "${feature.style.legacy}";`;
       const newline = source.includes('\r\n') ? '\r\n' : '\n';

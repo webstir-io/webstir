@@ -157,6 +157,8 @@ const keptCopyWiringCases: Array<{
   style?: string;
   partial?: boolean;
   bom?: boolean;
+  typeOnly?: boolean;
+  unusedStylesheet?: boolean;
   appCssImports: number;
 }> = [
   { name: 'its script import is gone', script: false, style: SEARCH_CSS, appCssImports: 1 },
@@ -176,9 +178,25 @@ const keptCopyWiringCases: Array<{
     appCssImports: 0,
   },
   { name: 'app.css starts with a byte order mark', script: true, bom: true, appCssImports: 1 },
+  {
+    name: 'only an unused stylesheet and a type-only import mention the copies',
+    script: false,
+    typeOnly: true,
+    unusedStylesheet: true,
+    appCssImports: 1,
+  },
 ];
 
-for (const { name, script, style, partial, bom, appCssImports } of keptCopyWiringCases) {
+for (const {
+  name,
+  script,
+  style,
+  partial,
+  bom,
+  typeOnly,
+  unusedStylesheet,
+  appCssImports,
+} of keptCopyWiringCases) {
   test(`CLI enable search keeps edited copies loaded when ${name}`, async () => {
     const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-kept-copies-');
     const root = copiedWorkspace.workspaceRoot;
@@ -206,6 +224,15 @@ for (const { name, script, style, partial, bom, appCssImports } of keptCopyWirin
         `${await readFile(path.join(app, 'app.ts'), 'utf8')}import "./scripts/features/search.js";\n`,
       );
     }
+    if (typeOnly) {
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `import type {} from "./scripts/features/search.js";\n${await readFile(path.join(app, 'app.ts'), 'utf8')}`,
+      );
+    }
+    if (unusedStylesheet) {
+      await writeFile(path.join(app, 'styles', 'unused.css'), '@import "./features/search.css";\n');
+    }
     const originalCss = await readFile(path.join(app, 'app.css'), 'utf8');
     const withStyle = style
       ? originalCss.replace(
@@ -222,7 +249,11 @@ for (const { name, script, style, partial, bom, appCssImports } of keptCopyWirin
       expect(result.stderr).toMatch(/Kept the local search copies/);
       const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
       const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
-      expect(appTs.match(/\.\/scripts\/features\/search\.js/g)).toHaveLength(1);
+      expect(
+        appTs.match(
+          /^import "\.\/scripts\/features\/search\.js";|^import '\.\/scripts\/features\/search\.js';/gm,
+        ),
+      ).toHaveLength(1);
       expect(appCss.match(/\.\/styles\/features\/search\.css/g) ?? []).toHaveLength(appCssImports);
       if (style) expect(appCss).toContain(style);
       if (bom) expect(appCss.charCodeAt(0)).toBe(0xfeff);
