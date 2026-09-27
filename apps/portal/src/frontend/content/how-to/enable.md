@@ -32,11 +32,11 @@ Supported features:
   - `webstir.enable.spa=true`
 
 ### client-nav
-- Writes `src/frontend/app/scripts/features/client-nav.ts`.
-- Appends a side-effect import to `src/frontend/app/app.ts`:
-  - `import "./scripts/features/client-nav.js";`
+- Imports client-nav from the frontend package in `src/frontend/app/app.ts`; no files are copied:
+  - `import '@webstir-io/webstir-frontend/features/client-nav';`
 - Updates `package.json`:
   - `webstir.enable.clientNav=true`
+- An app that still has the client-nav copies older Webstir versions wrote (`src/frontend/app/scripts/features/{client-nav,document-navigation,form-enhancement}.ts`) has them removed and its import switched, unless a copy was edited; then the copies stay and the command says how to move over.
 
 ### search
 - Writes:

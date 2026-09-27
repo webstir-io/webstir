@@ -20,4 +20,9 @@ declare const Bun: {
     url: URL;
     stop(closeActiveConnections?: boolean): void;
   };
+  Transpiler: new (options: {
+    loader: 'ts' | 'tsx' | 'js' | 'jsx';
+  }) => {
+    scanImports(code: string): Array<{ path: string; kind: string }>;
+  };
 };

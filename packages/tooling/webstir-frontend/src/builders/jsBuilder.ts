@@ -409,7 +409,9 @@ async function assertFeatureModulesPresent(
   const missing: string[] = [];
 
   if (enable.clientNav === true) {
-    const hasClientNav = await hasFeatureModule(config, 'client-nav');
+    const hasClientNav =
+      (await appImportsPackagedFeature(config, 'client-nav')) ||
+      (await hasFeatureModule(config, 'client-nav'));
     if (!hasClientNav) {
       missing.push('client-nav');
     }
@@ -433,9 +435,66 @@ async function assertFeatureModulesPresent(
     return;
   }
 
-  const expected = missing.map((name) => `src/frontend/app/scripts/features/${name}.ts`).join(', ');
+  const expected = missing
+    .map((name) =>
+      PACKAGED_FEATURES.has(name)
+        ? `import '${PACKAGED_FEATURE_PREFIX}${name}' in src/frontend/app/app.ts`
+        : `src/frontend/app/scripts/features/${name}.ts`,
+    )
+    .join(', ');
   throw new Error(
     `Enabled feature module(s) missing: ${missing.join(', ')}. Run 'webstir enable <feature>' to scaffold them (expected: ${expected}).`,
+  );
+}
+
+const PACKAGED_FEATURE_PREFIX = '@webstir-io/webstir-frontend/features/';
+const PACKAGED_FEATURES = new Set(['client-nav']);
+
+/**
+ * A feature the package ships is enabled by importing it from the app entry the build bundles.
+ * esbuild parses the entry, so an import in a comment or a string never counts; an entry that does
+ * not parse is left for the real compile to report.
+ */
+async function appImportsPackagedFeature(
+  config: BuilderContext['config'],
+  name: string,
+): Promise<boolean> {
+  const entry = await resolveAppEntry(config.paths.src.app);
+  if (!entry) {
+    return false;
+  }
+  try {
+    return (await listEntryImports(entry)).includes(`${PACKAGED_FEATURE_PREFIX}${name}`);
+  } catch {
+    return true;
+  }
+}
+
+async function listEntryImports(entry: string): Promise<string[]> {
+  const result = await esbuild({
+    entryPoints: [entry],
+    bundle: true,
+    write: false,
+    metafile: true,
+    logLevel: 'silent',
+    platform: 'browser',
+    format: 'esm',
+    plugins: [
+      {
+        name: 'webstir-list-imports',
+        setup(build) {
+          build.onResolve({ filter: /.*/ }, (args) =>
+            args.kind === 'entry-point' ? undefined : { path: args.path, external: true },
+          );
+        },
+      },
+    ],
+  });
+  // Only static imports run with the page; a dynamic import() of a feature does not start it.
+  return Object.values(result.metafile.inputs).flatMap((input) =>
+    input.imports
+      .filter((imported) => imported.kind === 'import-statement')
+      .map((imported) => imported.original ?? imported.path),
   );
 }
 

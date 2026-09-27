@@ -292,6 +292,80 @@ test('enable.clientNav uses feature module (no legacy helper injection)', async 
   assert.ok(!distHtml.includes('index.js'), 'should not inject page index.js when none exists');
 });
 
+// The packaged client-nav is enabled by importing it from whichever entry the build bundles;
+// an import that is only in a comment does not count.
+const packagedImportCases = [
+  {
+    entry: 'app.ts',
+    source: "import '@webstir-io/webstir-frontend/features/client-nav';\n",
+    builds: true,
+  },
+  {
+    entry: 'app.tsx',
+    source: "import '@webstir-io/webstir-frontend/features/client-nav';\n",
+    builds: true,
+  },
+  {
+    entry: 'app.ts',
+    source: "/*\nimport '@webstir-io/webstir-frontend/features/client-nav';\n*/\nexport {};\n",
+    builds: false,
+  },
+  {
+    entry: 'app.ts',
+    source:
+      "const routePattern = '/api/*';\nimport '@webstir-io/webstir-frontend/features/client-nav';\n/* setup */\nexport { routePattern };\n",
+    builds: true,
+  },
+  {
+    entry: 'app.ts',
+    source:
+      "export const later = () => import('@webstir-io/webstir-frontend/features/client-nav');\n",
+    builds: false,
+  },
+  {
+    entry: 'app.ts',
+    source: "// import '@webstir-io/webstir-frontend/features/client-nav';\nexport {};\n",
+    builds: false,
+  },
+];
+
+for (const [index, { entry, source, builds }] of packagedImportCases.entries()) {
+  test(`enable.clientNav with the packaged import in ${entry} (case ${index + 1}) ${builds ? 'bundles client-nav' : 'fails fast'}`, async (t) => {
+    const frontendProvider = await loadProviderOrSkip(t);
+    if (!frontendProvider) return; // skip
+    const workspace = await createWorkspaceWithClientNav();
+    const appDir = path.join(workspace, 'src', 'frontend', 'app');
+    await fs.rm(path.join(appDir, 'scripts'), { recursive: true, force: true });
+    await fs.rm(path.join(appDir, 'app.ts'), { force: true });
+    await fs.writeFile(path.join(appDir, entry), source, 'utf8');
+    // The app resolves the package the way an installed app would.
+    const scope = path.join(workspace, 'node_modules', '@webstir-io');
+    await fs.mkdir(scope, { recursive: true });
+    await fs.symlink(
+      path.resolve(import.meta.dirname, '..'),
+      path.join(scope, 'webstir-frontend'),
+      'dir',
+    );
+
+    const build = () =>
+      frontendProvider.build({
+        workspaceRoot: workspace,
+        env: { WEBSTIR_MODULE_MODE: 'publish' },
+        incremental: false,
+      });
+    if (!builds) {
+      await assert.rejects(build, /Enabled feature module\(s\) missing: client-nav/);
+      return;
+    }
+    await build();
+    const appDist = path.join(workspace, 'dist', 'frontend', 'app');
+    const [appScript] = (await fs.readdir(appDist)).filter((name) => /^app-.*\.js$/.test(name));
+    assert.ok(appScript, 'expected a published app script');
+    const bundled = await fs.readFile(path.join(appDist, appScript), 'utf8');
+    assert.match(bundled, /webstir:client-nav/, 'expected client-nav bundled into the app script');
+  });
+}
+
 test('enable.clientNav without feature module fails fast', async (t) => {
   const frontendProvider = await loadProviderOrSkip(t);
   if (!frontendProvider) return; // skip
@@ -316,6 +390,6 @@ test('enable.clientNav without feature module fails fast', async (t) => {
         env: { WEBSTIR_MODULE_MODE: 'build' },
         incremental: false,
       }),
-    /Enabled feature module\(s\) missing: client-nav/,
+    /Enabled feature module\(s\) missing: client-nav\. .*import '@webstir-io\/webstir-frontend\/features\/client-nav' in src\/frontend\/app\/app\.ts/,
   );
 });

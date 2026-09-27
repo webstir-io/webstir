@@ -5,7 +5,6 @@ import { existsSync } from 'node:fs';
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import {
-  getClientNavAssets,
   getContentNavAssets,
   getSearchAssets,
   getSpaAssets,
@@ -14,6 +13,7 @@ import {
   renderS3CloudFrontFunction,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
+import { adoptPackagedClientNav, legacyClientNavPaths } from './client-nav-import.ts';
 import {
   preflightScaffoldAssets,
   preflightWorkspaceWriteTargets,
@@ -29,12 +29,6 @@ interface RepairAsset extends ScaffoldAssetDescriptor {
 }
 
 const SPA_MODE_OWNED_FEATURE_TARGETS = new Set([path.join('src', 'frontend', 'app', 'router.ts')]);
-const FULL_MODE_OWNED_CLIENT_NAV_TARGETS = new Set([
-  path.join('src', 'frontend', 'app', 'scripts', 'features', 'client-nav.ts'),
-  path.join('src', 'frontend', 'app', 'scripts', 'features', 'document-navigation.ts'),
-  path.join('src', 'frontend', 'app', 'scripts', 'features', 'form-enhancement.ts'),
-]);
-
 interface RepairEnableFlags {
   spa?: boolean;
   clientNav?: boolean;
@@ -82,9 +76,6 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   if (enable.spa) {
     appendFeatureAssets(assets, getSpaAssets(), SPA_MODE_OWNED_FEATURE_TARGETS);
   }
-  if (enable.clientNav) {
-    appendFeatureAssets(assets, getClientNavAssets(), FULL_MODE_OWNED_CLIENT_NAV_TARGETS);
-  }
   if (enable.search) {
     appendFeatureAssets(assets, getSearchAssets());
   }
@@ -124,7 +115,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   await ensureHotModulePair(workspace.root, assets, changes, notes, dryRun);
 
   if (enable.clientNav) {
-    await ensureAppImport(workspace.root, './scripts/features/client-nav.js', changes, dryRun);
+    await adoptPackagedClientNav(workspace.root, changes, notes, dryRun);
   }
   if (enable.search) {
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
@@ -191,6 +182,9 @@ function getFixedRepairWriteTargets(
 
   if (enable.clientNav || enable.search || enable.contentNav) {
     targets.push(path.join(appRoot, 'app.ts'));
+  }
+  if (enable.clientNav) {
+    targets.push(...legacyClientNavPaths(workspaceRoot));
   }
   if (enable.search || enable.contentNav) {
     targets.push(path.join(appRoot, 'app.css'));

@@ -43,6 +43,6 @@ export function registerHotModule(moduleId: string, handlers: HotModuleHandlers)
   (window.__webstirHotModules ??= []).push({ moduleId, handlers });
 }
 
-import "./scripts/features/client-nav.js";
+import '@webstir-io/webstir-frontend/features/client-nav';
 import "./scripts/features/search.js";
 import "./scripts/features/content-nav.js";

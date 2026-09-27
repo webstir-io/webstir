@@ -26,6 +26,11 @@
       "import": "./dist/runtime/index.js",
       "default": "./dist/runtime/index.js"
     },
+    "./features/client-nav": {
+      "types": "./dist/features/client-nav.d.ts",
+      "import": "./dist/features/client-nav.js",
+      "default": "./dist/features/client-nav.js"
+    },
     "./cli": {
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"

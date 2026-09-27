@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import {
-  getClientNavAssets,
   getContentNavAssets,
   getSpaAssets,
   getSearchAssets,
@@ -17,6 +16,7 @@ import {
   renderS3CloudFrontWorkflow,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
+import { adoptPackagedClientNav, legacyClientNavPaths } from './client-nav-import.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import {
   assertNoExistingSymlinkComponents,
@@ -74,11 +74,16 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       await copyStaticAssets(workspace.root, getSpaAssets(), changes);
       await updatePackageJson(workspace.root, { enableSpa: true }, changes);
       break;
-    case 'client-nav':
-      await copyStaticAssets(workspace.root, getClientNavAssets(), changes);
-      await ensureAppScriptImport(workspace.root, './scripts/features/client-nav.js', changes);
+    case 'client-nav': {
+      const notes: string[] = [];
+      const adoption = await adoptPackagedClientNav(workspace.root, changes, notes);
+      if (adoption === 'unavailable') {
+        throw new Error(notes.join(' '));
+      }
+      for (const note of notes) console.warn(note);
       await updatePackageJson(workspace.root, { enableClientNav: true }, changes);
       break;
+    }
     case 'search':
       await copyStaticAssets(workspace.root, getSearchAssets(), changes);
       await ensureAppCssImport(workspace.root, './styles/features/search.css', changes);
@@ -160,7 +165,11 @@ function getFixedEnableWriteTargets(
     case 'spa':
       return [packageJsonPath];
     case 'client-nav':
-      return [path.join(appRoot, 'app.ts'), packageJsonPath];
+      return [
+        path.join(appRoot, 'app.ts'),
+        packageJsonPath,
+        ...legacyClientNavPaths(workspaceRoot),
+      ];
     case 'search':
       return [
         path.join(appRoot, 'app.css'),

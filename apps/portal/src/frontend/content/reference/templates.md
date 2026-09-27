@@ -105,10 +105,8 @@ Typical backend scaffold:
 
 ## Customizing Templates
 - Edit templates under `orchestrators/bun/resources/templates/`.
-- Treat `orchestrators/bun/resources/features/client_nav/**` as the canonical source for the built-in `client-nav` files projected into the `full` template.
 - Regenerate the shipped package assets with `bun run --filter @webstir-io/webstir build` or `cd orchestrators/bun && bun scripts/sync-assets.mjs`.
 - Use `bun run --filter @webstir-io/webstir check:assets` to verify the generated tree is still in sync.
-- Use `bun run --filter @webstir-io/webstir check:feature-projections` to verify the exact `client-nav` template projections still match their shared feature sources.
 - Keep conventions intact (page structure, base HTML `<main>`, server entry path).
 - After changes, rebuild the CLI to embed updated templates.
 
@@ -121,7 +119,6 @@ Typical backend scaffold:
 - Workspace and paths — [workspace](../explanations/workspace.md)
 
 The full template includes `/lifecycle`, demonstrating the optional page `setup`
-export and cleanup scopes. After changing canonical client-nav feature sources,
-run `bun orchestrators/bun/scripts/sync-client-nav.mjs` to refresh the full template
-and first-party consumers, then `bun orchestrators/bun/scripts/sync-assets.mjs`
-to regenerate packaged assets.
+export and cleanup scopes. Client-nav itself ships in `@webstir-io/webstir-frontend`
+(`packages/tooling/webstir-frontend/src/features/`); apps import it, so there are no
+copies to refresh.

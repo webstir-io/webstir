@@ -77,7 +77,9 @@ webstir enable client-nav --workspace "$PWD"
 webstir build --workspace "$PWD"
 ```
 
-Review the refreshed feature files if your project customized them. Rebuild and
+From 0.3.0, `enable client-nav` imports the feature from `@webstir-io/webstir-frontend`
+instead of copying files; copies an older version wrote are removed unless you edited
+them, in which case the command says how to move your changes over. Rebuild and
 publish the application through its normal process so generated page script tags
 carry `data-webstir-page` and production asset URLs remain fingerprinted. Do not
 add cache-busting imports. Custom server HTML that bypasses Webstir's HTML builder
