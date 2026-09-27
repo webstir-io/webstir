@@ -93,6 +93,26 @@ const styleCases: Array<{ name: string; source: string; expected: string }> = [
     source: '@layer base, features;\n@import "./styles/base.css";\n\nbody {}\n',
     expected: `@layer base, features;\n@import "./styles/base.css";\n${PACKAGED_CSS};\n\nbody {}\n`,
   },
+  {
+    name: 'adds the import after a statement that spans lines',
+    source: '@import url(\n  "./styles/base.css"\n) layer(base);\nbody {}\n',
+    expected: `@import url(\n  "./styles/base.css"\n) layer(base);\n${PACKAGED_CSS};\nbody {}\n`,
+  },
+  {
+    name: 'adds the import after real imports, not a commented-out one after them',
+    source: '@import "./styles/base.css";\n/* @import "./styles/old.css"; */\nbody {}\n',
+    expected: `@import "./styles/base.css";\n${PACKAGED_CSS};\n/* @import "./styles/old.css"; */\nbody {}\n`,
+  },
+  {
+    name: 'adds the import after the layer order and before a layer block',
+    source: '@charset "utf-8";\n@layer base, features;\n@layer base { body {} }\n',
+    expected: `@charset "utf-8";\n@layer base, features;\n${PACKAGED_CSS};\n@layer base { body {} }\n`,
+  },
+  {
+    name: 'adds the import first when the stylesheet starts with a rule',
+    source: 'body {}\n',
+    expected: `${PACKAGED_CSS};\nbody {}\n`,
+  },
 ];
 
 for (const { name, source, expected } of styleCases) {

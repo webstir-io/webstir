@@ -511,10 +511,7 @@ async function emitAppStylesProduction(
   const files = await scanGlob('**/*.css', { cwd: sourceDir });
   for (const relative of files) {
     const sourcePath = path.join(sourceDir, relative);
-    // Every shared stylesheet passes through here, so each is checked as written.
-    const css = await readFile(sourcePath);
-    assertCssImportsResolve(css, sourcePath);
-    const bundled = await inlineSourceAppImports(css, sourcePath, sourceDir);
+    const bundled = await inlineSourceAppImports(await readFile(sourcePath), sourcePath, sourceDir);
     const source = applyCustomMediaPrelude(bundled, customMediaPrelude);
     const processed = await processor.process(source, { from: sourcePath, map: false });
     const minified = csso.minify(processed.css).css;

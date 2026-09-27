@@ -16,12 +16,20 @@ export async function inlineSourceAppImports(
   sourcePath: string,
   stylesRoot: string,
 ): Promise<string> {
-  return inlineCssImports(css, sourcePath, stylesRoot, (importPath, containingPath) => {
-    if (!isLocalCssImport(importPath)) {
-      return null;
-    }
-    return path.resolve(path.dirname(containingPath), stripUrlSuffix(importPath));
-  });
+  assertCssImportsResolve(css, sourcePath);
+  return inlineCssImports(
+    css,
+    sourcePath,
+    stylesRoot,
+    (importPath, containingPath) => {
+      if (!isLocalCssImport(importPath)) {
+        return null;
+      }
+      return path.resolve(path.dirname(containingPath), stripUrlSuffix(importPath));
+    },
+    // Whatever a stylesheet pulls in, whatever its extension, is checked as written.
+    (importedCss, importedPath) => assertCssImportsResolve(importedCss, importedPath),
+  );
 }
 
 /**
@@ -99,7 +107,6 @@ async function replacePackageCssImports(
       resolved,
       path.dirname(resolved),
     );
-    assertCssImportsResolve(packageSource, resolved);
     const inlined = postcss.parse(packageSource, { from: resolved });
     inlined.walkAtRules('charset', (charset) => {
       charset.remove();
@@ -163,6 +170,7 @@ export async function inlineCssImports(
   containingPath: string,
   permittedRoot: string,
   resolveImport: CssImportResolver,
+  checkImported?: (css: string, filePath: string) => void,
   importStack: string[] = [],
 ): Promise<string> {
   const canonicalRoot = await realpath(permittedRoot);
@@ -204,11 +212,14 @@ export async function inlineCssImports(
       );
     }
 
+    const source = await readFile(canonicalImport);
+    checkImported?.(source, canonicalImport);
     const importedCss = await inlineCssImports(
-      await readFile(canonicalImport),
+      source,
       canonicalImport,
       canonicalRoot,
       resolveImport,
+      checkImported,
       [...stack, canonicalImport],
     );
     const importedRoot = postcss.parse(importedCss, { from: canonicalImport });

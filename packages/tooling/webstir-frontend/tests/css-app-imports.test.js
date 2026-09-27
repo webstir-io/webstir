@@ -436,10 +436,19 @@ const unresolvedImportCases = [
     importPath: '@app/styles/base.css',
     error: ALIAS_ONLY_IN_PAGES,
   },
+  // A file a shared stylesheet pulls in is checked too, whatever its extension.
+  {
+    file: 'src/frontend/app/styles/base.css',
+    via: 'src/frontend/app/styles/partial.inc',
+    mode: 'publish',
+    importPath: PACKAGE_STYLESHEET,
+    error: PACKAGE_ONLY_IN_APP_CSS,
+  },
 ];
 
-for (const { file, mode, importPath, error } of unresolvedImportCases) {
-  test(`${importPath} imported from ${file} ${error ? 'fails' : 'builds'} in ${mode} mode`, async (t) => {
+for (const { file, via, mode, importPath, error } of unresolvedImportCases) {
+  const from = via ? `${via} (via ${file})` : file;
+  test(`${importPath} imported from ${from} ${error ? 'fails' : 'builds'} in ${mode} mode`, async (t) => {
     const frontendProvider = await loadProviderOrSkip(t);
     if (!frontendProvider) return;
     const workspace = await createWorkspace();
@@ -455,10 +464,9 @@ for (const { file, mode, importPath, error } of unresolvedImportCases) {
       const source = await fs.readFile(target, 'utf8');
       // After any @layer statement, so the import stays valid CSS.
       const layers = source.match(/^@layer [^;{]+;\n/)?.[0] ?? '';
-      await fs.writeFile(
-        target,
-        `${layers}@import "${importPath}";\n${source.slice(layers.length)}`,
-      );
+      const imported = via ? `./${path.basename(via)}` : importPath;
+      await fs.writeFile(target, `${layers}@import "${imported}";\n${source.slice(layers.length)}`);
+      if (via) await fs.writeFile(path.join(workspace, via), `@import "${importPath}";\n`);
       const build = frontendProvider.build({
         workspaceRoot: workspace,
         env: { WEBSTIR_MODULE_MODE: mode },
@@ -466,13 +474,10 @@ for (const { file, mode, importPath, error } of unresolvedImportCases) {
       });
       if (error) {
         // The error names the file and the line the import is on.
-        const line = layers ? 2 : 1;
+        const at = via ? `${via}:1` : `${file}:${layers ? 2 : 1}`;
         await assert.rejects(build, (thrown) => {
           assert.match(thrown.message, error);
-          assert.ok(
-            thrown.message.includes(`${file}:${line}:`),
-            `expected ${file}:${line} in ${thrown.message}`,
-          );
+          assert.ok(thrown.message.includes(`${at}:`), `expected ${at} in ${thrown.message}`);
           return true;
         });
       } else {
