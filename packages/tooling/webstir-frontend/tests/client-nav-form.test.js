@@ -10,8 +10,8 @@ import {
   readFragmentResponseMetadata,
   resolveDocumentResponseUrl,
   shouldReplaceFragmentTarget,
-} from '../resources/features/client_nav/form_enhancement.ts';
-import { resolveDocumentNavigationResponse } from '../resources/features/client_nav/document_navigation.ts';
+} from '../dist/features/form-enhancement.js';
+import { resolveDocumentNavigationResponse } from '../dist/features/document-navigation.js';
 
 test('buildEnhancedFormRequest serializes form-urlencoded POST bodies', () => {
   const formData = new FormData();
@@ -28,9 +28,7 @@ test('buildEnhancedFormRequest serializes form-urlencoded POST bodies', () => {
   assert(request);
   expect(request.url).toBe('https://example.com/actions/fragment');
   expect(request.init.method).toBe('POST');
-  expect((request.init.headers as Headers).get('content-type')).toBe(
-    'application/x-www-form-urlencoded',
-  );
+  expect(request.init.headers.get('content-type')).toBe('application/x-www-form-urlencoded');
   expect(String(request.init.body)).toBe('name=Webstir&mode=replace');
 });
 
@@ -47,7 +45,7 @@ test('buildEnhancedFormRequest preserves multipart form bodies', () => {
 
   assert(request);
   expect(request.init.body).toBe(formData);
-  expect((request.init.headers as Headers).get('content-type')).toBeNull();
+  expect(request.init.headers.get('content-type')).toBeNull();
 });
 
 test('buildEnhancedFormRequest rejects unsupported text/plain submissions', () => {

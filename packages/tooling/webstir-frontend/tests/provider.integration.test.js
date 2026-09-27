@@ -292,6 +292,39 @@ test('enable.clientNav uses feature module (no legacy helper injection)', async 
   assert.ok(!distHtml.includes('index.js'), 'should not inject page index.js when none exists');
 });
 
+test('enable.clientNav with the packaged import bundles client-nav into the app script', async (t) => {
+  const frontendProvider = await loadProviderOrSkip(t);
+  if (!frontendProvider) return; // skip
+  const workspace = await createWorkspaceWithClientNav();
+  const appDir = path.join(workspace, 'src', 'frontend', 'app');
+  await fs.rm(path.join(appDir, 'scripts'), { recursive: true, force: true });
+  await fs.writeFile(
+    path.join(appDir, 'app.ts'),
+    "import '@webstir-io/webstir-frontend/features/client-nav';\n",
+    'utf8',
+  );
+  // The app resolves the package the way an installed app would.
+  const scope = path.join(workspace, 'node_modules', '@webstir-io');
+  await fs.mkdir(scope, { recursive: true });
+  await fs.symlink(
+    path.resolve(import.meta.dirname, '..'),
+    path.join(scope, 'webstir-frontend'),
+    'dir',
+  );
+
+  await frontendProvider.build({
+    workspaceRoot: workspace,
+    env: { WEBSTIR_MODULE_MODE: 'publish' },
+    incremental: false,
+  });
+
+  const appDist = path.join(workspace, 'dist', 'frontend', 'app');
+  const [appScript] = (await fs.readdir(appDist)).filter((name) => /^app-.*\.js$/.test(name));
+  assert.ok(appScript, 'expected a published app script');
+  const bundled = await fs.readFile(path.join(appDist, appScript), 'utf8');
+  assert.match(bundled, /webstir:client-nav/, 'expected client-nav bundled into the app script');
+});
+
 test('enable.clientNav without feature module fails fast', async (t) => {
   const frontendProvider = await loadProviderOrSkip(t);
   if (!frontendProvider) return; // skip
@@ -316,6 +349,6 @@ test('enable.clientNav without feature module fails fast', async (t) => {
         env: { WEBSTIR_MODULE_MODE: 'build' },
         incremental: false,
       }),
-    /Enabled feature module\(s\) missing: client-nav/,
+    /Enabled feature module\(s\) missing: client-nav\. .*import '@webstir-io\/webstir-frontend\/features\/client-nav' in src\/frontend\/app\/app\.ts/,
   );
 });

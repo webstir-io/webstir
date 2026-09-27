@@ -87,6 +87,46 @@ test('CLI repair supports dry-run without restoring files', async () => {
   }
 });
 
+test('CLI repair swaps the client-nav copies Webstir shipped for the package import', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-client-nav-', {
+    workspaceName: 'full',
+  });
+  const root = copiedWorkspace.workspaceRoot;
+  try {
+    // The copies Webstir 0.2.0 wrote into apps, kept byte for byte.
+    const fixtures = path.join(packageRoot, 'test-support', 'fixtures', 'client-nav-0.2.0');
+    const features = path.join(root, 'src', 'frontend', 'app', 'scripts', 'features');
+    await Bun.write(path.join(features, '.keep'), '');
+    for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
+      await writeFile(
+        path.join(features, name),
+        await readFile(path.join(fixtures, `${name}.txt`), 'utf8'),
+      );
+    }
+    const appTsPath = path.join(root, 'src', 'frontend', 'app', 'app.ts');
+    const appTs = await readFile(appTsPath, 'utf8');
+    await writeFile(
+      appTsPath,
+      appTs.replace(
+        "import '@webstir-io/webstir-frontend/features/client-nav';",
+        "import './scripts/features/client-nav.js';",
+      ),
+    );
+
+    const result = await runCli(['repair', '--workspace', root]);
+
+    expect(result.exitCode).toBe(0);
+    for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
+      expect(existsSync(path.join(features, name))).toBe(false);
+    }
+    const repaired = await readFile(appTsPath, 'utf8');
+    expect(repaired).toContain("import '@webstir-io/webstir-frontend/features/client-nav';");
+    expect(repaired).not.toContain('./scripts/features/client-nav.js');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI repair restores enabled feature assets and wiring for the SSG site demo', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-ssg-site-', {
     workspaceName: 'site',

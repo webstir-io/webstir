@@ -142,62 +142,103 @@ test('CLI enables search on the SSG demo workspace end to end', async () => {
   expect(appHtml).toContain('<html data-webstir-search-styles="css" lang="en">');
 });
 
-test('CLI enables client-nav and copies the fragment helper asset', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
-  const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['client-nav']);
+const FEATURES_DIR = ['src', 'frontend', 'app', 'scripts', 'features'] as const;
+const PACKAGED_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';";
 
-  expect(result.exitCode).toBe(0);
-  expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('feature: client-nav');
+/** The copies Webstir 0.2.0 wrote into apps, kept byte for byte. */
+async function shippedClientNavCopies(): Promise<Record<string, string>> {
+  const fixtures = path.join(packageRoot, 'test-support', 'fixtures', 'client-nav-0.2.0');
+  const copies: Record<string, string> = {};
+  for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
+    copies[name] = await readFile(path.join(fixtures, `${name}.txt`), 'utf8');
+  }
+  return copies;
+}
 
-  const packageJson = await readJsonFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
-  const appTs = await readFile(
-    path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.ts'),
-    'utf8',
+async function writeLegacyClientNav(
+  workspaceRoot: string,
+  edit?: (source: string) => string,
+): Promise<void> {
+  const dir = path.join(workspaceRoot, ...FEATURES_DIR);
+  await mkdir(dir, { recursive: true });
+  for (const [name, source] of Object.entries(await shippedClientNavCopies())) {
+    await writeFile(path.join(dir, name), name === 'client-nav.ts' && edit ? edit(source) : source);
+  }
+  const appTs = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
+  await writeFile(
+    appTs,
+    `${await readFile(appTs, 'utf8')}import "./scripts/features/client-nav.js";\n`,
   );
+}
 
-  expect(packageJson.webstir.enable.clientNav).toBe(true);
-  expect(
-    existsSync(
-      path.join(
-        copiedWorkspace.workspaceRoot,
-        'src',
-        'frontend',
-        'app',
-        'scripts',
-        'features',
-        'client-nav.ts',
-      ),
-    ),
-  ).toBe(true);
-  expect(
-    existsSync(
-      path.join(
-        copiedWorkspace.workspaceRoot,
-        'src',
-        'frontend',
-        'app',
-        'scripts',
-        'features',
-        'form-enhancement.ts',
-      ),
-    ),
-  ).toBe(true);
-  expect(
-    existsSync(
-      path.join(
-        copiedWorkspace.workspaceRoot,
-        'src',
-        'frontend',
-        'app',
-        'scripts',
-        'features',
-        'document-navigation.ts',
-      ),
-    ),
-  ).toBe(true);
-  expect(appTs).toContain('import "./scripts/features/client-nav.js";');
-});
+// Enabling client-nav imports it from the frontend package. Copies Webstir wrote earlier are
+// swapped for the import; a copy someone changed is left alone, and a linked one is refused.
+const clientNavCases: Array<{
+  name: string;
+  setup(workspaceRoot: string): Promise<void>;
+  exitCode: number;
+  imports: 'packaged' | 'legacy';
+  copies: boolean;
+  stderr?: RegExp;
+}> = [
+  { name: 'a fresh app', setup: async () => {}, exitCode: 0, imports: 'packaged', copies: false },
+  {
+    name: 'an app with the copies Webstir shipped',
+    setup: (root) => writeLegacyClientNav(root),
+    exitCode: 0,
+    imports: 'packaged',
+    copies: false,
+  },
+  {
+    name: 'an app that edited its copy',
+    setup: (root) => writeLegacyClientNav(root, (source) => `${source}\n// local change\n`),
+    exitCode: 0,
+    imports: 'legacy',
+    copies: true,
+    stderr:
+      /Kept the local client-nav copies because src\/frontend\/app\/scripts\/features\/client-nav\.ts differ/,
+  },
+  {
+    name: 'an app whose copy is a link',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      const copy = path.join(root, ...FEATURES_DIR, 'form-enhancement.ts');
+      const outside = path.join(os.tmpdir(), `webstir-outside-${process.pid}-${Date.now()}.ts`);
+      await writeFile(outside, await readFile(copy, 'utf8'));
+      await rm(copy);
+      await symlink(outside, copy);
+    },
+    exitCode: 1,
+    imports: 'legacy',
+    copies: true,
+  },
+];
+
+for (const scenario of clientNavCases) {
+  test(`CLI enables client-nav from the package for ${scenario.name}`, async () => {
+    const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-client-nav-');
+    const root = copiedWorkspace.workspaceRoot;
+    await scenario.setup(root);
+    const result = await runEnableInWorkspace(root, ['client-nav']);
+
+    expect(result.exitCode).toBe(scenario.exitCode);
+    if (scenario.stderr) expect(result.stderr).toMatch(scenario.stderr);
+    const appTs = await readFile(path.join(root, 'src', 'frontend', 'app', 'app.ts'), 'utf8');
+    if (scenario.imports === 'packaged') {
+      expect(appTs).toContain(PACKAGED_IMPORT);
+      expect(appTs).not.toContain('./scripts/features/client-nav.js');
+      expect((await readJsonFile(path.join(root, 'package.json'))).webstir.enable.clientNav).toBe(
+        true,
+      );
+    } else {
+      expect(appTs).toContain('import "./scripts/features/client-nav.js";');
+      expect(appTs).not.toContain(PACKAGED_IMPORT);
+    }
+    for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
+      expect(existsSync(path.join(root, ...FEATURES_DIR, name))).toBe(scenario.copies);
+    }
+  });
+}
 
 test('CLI enables backend on the SPA demo workspace end to end', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-enable-spa-');

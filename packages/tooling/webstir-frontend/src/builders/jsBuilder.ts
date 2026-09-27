@@ -3,7 +3,7 @@ import { build as esbuild, type Metafile } from 'esbuild';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import type { Builder, BuilderContext } from './types.js';
 import { getPages } from '../core/pages.js';
-import { ensureDir, pathExists, copy, remove, stat } from '../utils/fs.js';
+import { ensureDir, pathExists, copy, readFile, remove, stat } from '../utils/fs.js';
 import { scanGlob } from '../utils/glob.js';
 import {
   updatePageManifest,
@@ -409,7 +409,9 @@ async function assertFeatureModulesPresent(
   const missing: string[] = [];
 
   if (enable.clientNav === true) {
-    const hasClientNav = await hasFeatureModule(config, 'client-nav');
+    const hasClientNav =
+      (await appImportsPackagedFeature(config, 'client-nav')) ||
+      (await hasFeatureModule(config, 'client-nav'));
     if (!hasClientNav) {
       missing.push('client-nav');
     }
@@ -433,10 +435,35 @@ async function assertFeatureModulesPresent(
     return;
   }
 
-  const expected = missing.map((name) => `src/frontend/app/scripts/features/${name}.ts`).join(', ');
+  const expected = missing
+    .map((name) =>
+      PACKAGED_FEATURES.has(name)
+        ? `import '${PACKAGED_FEATURE_PREFIX}${name}' in src/frontend/app/app.ts`
+        : `src/frontend/app/scripts/features/${name}.ts`,
+    )
+    .join(', ');
   throw new Error(
     `Enabled feature module(s) missing: ${missing.join(', ')}. Run 'webstir enable <feature>' to scaffold them (expected: ${expected}).`,
   );
+}
+
+const PACKAGED_FEATURE_PREFIX = '@webstir-io/webstir-frontend/features/';
+const PACKAGED_FEATURES = new Set(['client-nav']);
+
+/** A feature the package ships is enabled by importing it from the app entry. */
+async function appImportsPackagedFeature(
+  config: BuilderContext['config'],
+  name: string,
+): Promise<boolean> {
+  const specifier = `${PACKAGED_FEATURE_PREFIX}${name}`.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  const pattern = new RegExp(`^\\s*import\\s+(['"])${specifier}\\1`, 'm');
+  for (const extension of [EXTENSIONS.ts, EXTENSIONS.js]) {
+    const entry = path.join(config.paths.src.app, `app${extension}`);
+    if ((await pathExists(entry)) && pattern.test(await readFile(entry))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function hasFeatureModule(config: BuilderContext['config'], name: string): Promise<boolean> {

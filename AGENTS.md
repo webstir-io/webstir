@@ -49,5 +49,5 @@ Monorepo baseline for Webstir.
 - Sessions and forms: signing in must renew the session id; flash is delivered once, to a rendered page; a failed form re-renders at the page's own address.
 - Build-time checks fail loudly with file and line rather than shipping placeholders or silently dropping a binding.
 - Contract-first: `webstir-frontend` never imports `webstir-backend`; shared runtime code lives in `module-contract`.
-- Generated copies (`orchestrators/bun/assets/**`, demo and portal `client-nav.ts`/`form-enhancement.ts`) must match their `orchestrators/bun/resources/**` sources.
+- Generated copies (`orchestrators/bun/assets/**`) must match their `orchestrators/bun/resources/**` sources. Client-nav is not copied: it lives in `packages/tooling/webstir-frontend/src/features/` and apps import `@webstir-io/webstir-frontend/features/client-nav`.
 - New behavior needs a test; package tests run against `dist/`, so they must pass after a build.

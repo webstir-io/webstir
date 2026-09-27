@@ -11,7 +11,6 @@ describe('buildCheckPlan', () => {
       'repo biome lint',
       'repo tool contracts',
       'bun asset sources',
-      'bun feature projections',
       'bun full demo sync',
       'framework package graph build',
       'module contract tests',

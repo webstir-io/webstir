@@ -83,4 +83,4 @@ Contributor notes:
 - Edit Bun-owned scaffolds, reusable features, and deployment helper sources under `orchestrators/bun/resources/**`.
 - `orchestrators/bun/assets/**` is generated package content used for packing and local repo flows.
 - Run `bun run check:assets` here to verify `assets/**` still matches `resources/**`.
-- Run `bun run check:feature-projections` here to verify the built-in `client-nav` copies inside `resources/templates/full/**` still match `resources/features/client_nav/**`.
+- Client-nav is not a resource: it ships in `@webstir-io/webstir-frontend` (`src/features/`) and apps import it.
