@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import { usePackagedImport } from '../src/client-nav-import.ts';
+import {
+  PACKAGED_FEATURES,
+  usePackagedScriptImport,
+  usePackagedStyleImport,
+} from '../src/feature-imports.ts';
 
 const PACKAGED = "import '@webstir-io/webstir-frontend/features/client-nav';";
 
@@ -56,7 +60,43 @@ const cases: Array<{ name: string; source: string; expected: string }> = [
 ];
 
 for (const { name, source, expected } of cases) {
-  test(`usePackagedImport ${name}`, () => {
-    expect(usePackagedImport(source)).toBe(expected);
+  test(`usePackagedScriptImport ${name}`, () => {
+    expect(usePackagedScriptImport(source, PACKAGED_FEATURES['client-nav'])).toBe(expected);
+  });
+}
+
+const PACKAGED_CSS = '@import "@webstir-io/webstir-frontend/features/search.css"';
+const search = PACKAGED_FEATURES.search.style!;
+
+// Stylesheet imports follow the same rules, keep their layer or media qualifiers, and a new one
+// goes after the last existing @import, where CSS requires it.
+const styleCases: Array<{ name: string; source: string; expected: string }> = [
+  {
+    name: 'swaps the local import in place, keeping its qualifiers',
+    source:
+      '@layer base, features;\n@import "./styles/base.css";\n@import "./styles/features/search.css" layer(features);\n',
+    expected: `@layer base, features;\n@import "./styles/base.css";\n${PACKAGED_CSS} layer(features);\n`,
+  },
+  {
+    name: 'drops the local import when the packaged one is already there',
+    source: `${PACKAGED_CSS};\n@import './styles/features/search.css';\nbody {}\n`,
+    expected: `${PACKAGED_CSS};\nbody {}\n`,
+  },
+  {
+    name: 'leaves a commented-out local import alone',
+    source:
+      '/* @import "./styles/features/search.css"; */\n@import "./styles/base.css";\nbody {}\n',
+    expected: `/* @import "./styles/features/search.css"; */\n@import "./styles/base.css";\n${PACKAGED_CSS};\nbody {}\n`,
+  },
+  {
+    name: 'adds the import after the last one when there is none',
+    source: '@layer base, features;\n@import "./styles/base.css";\n\nbody {}\n',
+    expected: `@layer base, features;\n@import "./styles/base.css";\n${PACKAGED_CSS};\n\nbody {}\n`,
+  },
+];
+
+for (const { name, source, expected } of styleCases) {
+  test(`usePackagedStyleImport ${name}`, () => {
+    expect(usePackagedStyleImport(source, search)).toBe(expected);
   });
 }

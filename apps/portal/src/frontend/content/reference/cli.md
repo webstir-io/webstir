@@ -78,7 +78,7 @@ What it does:
 - Restores missing scaffold-managed files for the current workspace mode
 - Uses the current mode scaffold plus any explicitly enabled feature assets
 - Re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, `backend`, and `githubPages`
-- With `clientNav`, switches an app from the client-nav copies older versions wrote to the package import, leaving edited copies in place with a note
+- With `clientNav`, `search` or `contentNav`, switches an app from the copies older versions wrote to the package imports, leaving edited or still-imported copies in place with a note
 - For package-managed enabled backends, restores the backend package scaffold instead of reintroducing stale mode-template backend files
 - Accepts `--json` for machine-readable dry-run or repair output
 

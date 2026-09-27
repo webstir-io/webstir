@@ -38,7 +38,7 @@ Monorepo baseline for Webstir.
 - **Review focus:** the Code Review Rules below. Fix each finding as a class: find its siblings (the same pattern elsewhere, the same rule in other shapes) and cover them with one table-driven test.
 - **Sensitive areas** (always a full review): rendered HTML and templates, views and routing, sessions and forms, `module-contract` and other public APIs, generated client copies, release tooling.
 - **Merge:** squash PR into `main`; required checks: `Required Gate`; review threads must be resolved.
-- **Go live:** the docs site deploys itself on every push to `main` (`Deploy Docs`). A package release happens only when the plan named it: prepare it on the branch with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (`testing` for the testing pair); after the merge commit passes `main` CI, push `release-set/<group>/v<version>`, and the `Release Package` workflow publishes to npm. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full release flow.
+- **Go live:** the docs site deploys itself on every push to `main` (`Deploy Docs`). A package release happens only when the plan named it: prepare it on the branch with `bun run release:prepare -- webstir <patch|minor|major|x.y.z>` (`testing` for the testing pair); after the merge commit passes `main` CI, and once every review comment on the pull requests since the previous release tag (Codex's included, even ones posted after a merge) is fixed or answered, push `release-set/<group>/v<version>`, and the `Release Package` workflow publishes to npm. `apps/portal/src/frontend/content/how-to/framework-packages.md` has the full release flow.
 - **Verify live:** for a release, `npm view <pkg>@latest version` prints the new version for every package in the group; for docs, the `Deploy Docs` run for the merge commit succeeded and webstir.dev shows the change.
 - **Deploy policy:** automatic.
 - Plan large work whole, but deliver it in layers so each review sees a few hundred lines.
@@ -49,5 +49,5 @@ Monorepo baseline for Webstir.
 - Sessions and forms: signing in must renew the session id; flash is delivered once, to a rendered page; a failed form re-renders at the page's own address.
 - Build-time checks fail loudly with file and line rather than shipping placeholders or silently dropping a binding.
 - Contract-first: `webstir-frontend` never imports `webstir-backend`; shared runtime code lives in `module-contract`.
-- Generated copies (`orchestrators/bun/assets/**`) must match their `orchestrators/bun/resources/**` sources. Client-nav is not copied: it lives in `packages/tooling/webstir-frontend/src/features/` and apps import `@webstir-io/webstir-frontend/features/client-nav`.
+- Generated copies (`orchestrators/bun/assets/**`) must match their `orchestrators/bun/resources/**` sources. Client-nav, search and content-nav are not copied: they live in `packages/tooling/webstir-frontend/src/features/` and apps import `@webstir-io/webstir-frontend/features/<name>` (and its `.css` from app.css).
 - New behavior needs a test; package tests run against `dist/`, so they must pass after a build.

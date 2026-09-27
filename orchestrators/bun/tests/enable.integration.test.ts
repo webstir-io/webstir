@@ -84,63 +84,68 @@ async function readJsonFile(filePath: string): Promise<EnableWorkspacePackageJso
   return JSON.parse(await readFile(filePath, 'utf8')) as EnableWorkspacePackageJson;
 }
 
-test('CLI enables search on the SSG demo workspace end to end', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
-  const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['search']);
+// Search and content-nav are imported from the frontend package, script and stylesheet; nothing is
+// copied, and a search app that still has the copies 0.2.0 wrote is switched over.
+const styledFeatureCases = [
+  { feature: 'search', flag: 'search', copies: false },
+  { feature: 'content-nav', flag: 'contentNav', copies: false },
+  { feature: 'search', flag: 'search', copies: true },
+] as const;
 
-  expect(result.exitCode).toBe(0);
-  expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir] enable complete');
-  expect(result.stdout).toContain('feature: search');
+for (const { feature, flag, copies } of styledFeatureCases) {
+  test(`CLI enables ${feature} from the package${copies ? ' over the copies 0.2.0 wrote' : ''}`, async () => {
+    const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-ssg-base-');
+    const root = copiedWorkspace.workspaceRoot;
+    const app = path.join(root, 'src', 'frontend', 'app');
+    if (copies) {
+      const fixtures = path.join(packageRoot, 'test-support', 'fixtures', 'search-0.2.0');
+      await mkdir(path.join(app, 'scripts', 'features'), { recursive: true });
+      await mkdir(path.join(app, 'styles', 'features'), { recursive: true });
+      await writeFile(
+        path.join(app, 'scripts', 'features', 'search.ts'),
+        await readFile(path.join(fixtures, 'search.ts.txt'), 'utf8'),
+      );
+      await writeFile(
+        path.join(app, 'styles', 'features', 'search.css'),
+        await readFile(path.join(fixtures, 'search.css.txt'), 'utf8'),
+      );
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `${await readFile(path.join(app, 'app.ts'), 'utf8')}import "./scripts/features/search.js";\n`,
+      );
+      const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
+      await writeFile(
+        path.join(app, 'app.css'),
+        appCss.replace(
+          '@import "./styles/components/buttons.css";',
+          '@import "./styles/components/buttons.css";\n@import "./styles/features/search.css";',
+        ),
+      );
+    }
 
-  const packageJson = await readJsonFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
-  const appTs = await readFile(
-    path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.ts'),
-    'utf8',
-  );
-  const appCss = await readFile(
-    path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.css'),
-    'utf8',
-  );
-  const appHtml = await readFile(
-    path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.html'),
-    'utf8',
-  );
+    const result = await runEnableInWorkspace(root, [feature]);
 
-  expect(packageJson.webstir.enable.search).toBe(true);
-  expect(
-    existsSync(
-      path.join(
-        copiedWorkspace.workspaceRoot,
-        'src',
-        'frontend',
-        'app',
-        'scripts',
-        'features',
-        'search.ts',
-      ),
-    ),
-  ).toBe(true);
-  expect(
-    existsSync(
-      path.join(
-        copiedWorkspace.workspaceRoot,
-        'src',
-        'frontend',
-        'app',
-        'styles',
-        'features',
-        'search.css',
-      ),
-    ),
-  ).toBe(true);
-  expect(appTs).toContain('import "./scripts/features/search.js";');
-  expect(appCss).toContain(
-    '@layer reset, tokens, base, layout, components, features, utilities, overrides;',
-  );
-  expect(appCss).toContain('@import "./styles/features/search.css";');
-  expect(appHtml).toContain('<html data-webstir-search-styles="css" lang="en">');
-});
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe('');
+    const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
+    const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
+    expect((await readJsonFile(path.join(root, 'package.json'))).webstir.enable[flag]).toBe(true);
+    expect(appTs).toContain(`import '@webstir-io/webstir-frontend/features/${feature}';`);
+    expect(appTs).not.toContain(`./scripts/features/${feature}.js`);
+    expect(appCss).toContain(`@import "@webstir-io/webstir-frontend/features/${feature}.css";`);
+    expect(appCss).not.toContain(`./styles/features/${feature}.css`);
+    expect(appCss).toContain(
+      '@layer reset, tokens, base, layout, components, features, utilities, overrides;',
+    );
+    // The stylesheet import sits with the other imports, before the first rule.
+    const firstRule = appCss.indexOf('{');
+    if (firstRule !== -1) {
+      expect(appCss.indexOf(`features/${feature}.css`)).toBeLessThan(firstRule);
+    }
+    expect(existsSync(path.join(app, 'scripts', 'features', `${feature}.ts`))).toBe(false);
+    expect(existsSync(path.join(app, 'styles', 'features', `${feature}.css`))).toBe(false);
+  });
+}
 
 const FEATURES_DIR = ['src', 'frontend', 'app', 'scripts', 'features'] as const;
 const PACKAGED_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';";
@@ -178,8 +183,55 @@ const clientNavCases: Array<{
   imports: 'packaged' | 'legacy';
   copies: boolean;
   stderr?: RegExp;
+  /** The app entry the build bundles, when it is not app.ts. */
+  entry?: string;
 }> = [
   { name: 'a fresh app', setup: async () => {}, exitCode: 0, imports: 'packaged', copies: false },
+  {
+    name: 'an app whose entry is app.tsx',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      const app = path.join(root, 'src', 'frontend', 'app');
+      await writeFile(path.join(app, 'app.tsx'), await readFile(path.join(app, 'app.ts'), 'utf8'));
+      await rm(path.join(app, 'app.ts'));
+    },
+    exitCode: 0,
+    imports: 'packaged',
+    copies: false,
+    entry: 'app.tsx',
+  },
+  {
+    name: 'an app whose tests import a copy',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      await mkdir(path.join(root, 'tests'), { recursive: true });
+      await writeFile(
+        path.join(root, 'tests', 'forms.test.ts'),
+        "import { buildEnhancedFormRequest } from '../src/frontend/app/scripts/features/form-enhancement.js';\nexport { buildEnhancedFormRequest };\n",
+      );
+    },
+    exitCode: 0,
+    imports: 'legacy',
+    copies: true,
+    stderr: /Kept the local client-nav copies because tests\/forms\.test\.ts still use them/,
+  },
+  {
+    name: 'an app with no entry to import from',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      const app = path.join(root, 'src', 'frontend', 'app');
+      await writeFile(
+        path.join(app, 'app.backup'),
+        await readFile(path.join(app, 'app.ts'), 'utf8'),
+      );
+      await rm(path.join(app, 'app.ts'));
+    },
+    exitCode: 1,
+    imports: 'legacy',
+    copies: true,
+    stderr: /There is no src\/frontend\/app\/app\.\{ts,tsx,js,jsx\} to import/,
+    entry: 'app.backup',
+  },
   {
     name: 'an app with the copies Webstir shipped',
     setup: (root) => writeLegacyClientNav(root),
@@ -322,7 +374,10 @@ for (const scenario of clientNavCases) {
 
     expect(result.exitCode).toBe(scenario.exitCode);
     if (scenario.stderr) expect(result.stderr).toMatch(scenario.stderr);
-    const appTs = await readFile(path.join(root, 'src', 'frontend', 'app', 'app.ts'), 'utf8');
+    const appTs = await readFile(
+      path.join(root, 'src', 'frontend', 'app', scenario.entry ?? 'app.ts'),
+      'utf8',
+    );
     if (scenario.imports === 'packaged') {
       expect(appTs).toContain(PACKAGED_IMPORT);
       expect(appTs).not.toContain('./scripts/features/client-nav.js');

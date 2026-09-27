@@ -133,20 +133,18 @@ Docs pages use a dedicated layout in `src/frontend/pages/docs/index.html`:
 
 `docs-layout` widens the container and drives the sidebar + TOC grid.
 
-### Search UI styling
-The search feature module can style its UI in one of two ways:
-- Default: injects an inline `<style>` tag (works even if your template doesn’t ship search CSS).
-- Preferred for SSG templates: styles live in CSS (`app/styles/features/search.css`) and JS is behavior-only.
+### Feature styles
+Search and content-nav ship their stylesheets in `@webstir-io/webstir-frontend`, imported from
+`src/frontend/app/app.css`:
 
-When you run `webstir enable search`, Webstir opts you into CSS-based styling by:
-- Adding `src/frontend/app/styles/features/search.css` to your app
-- Adding `@import "./styles/features/search.css";` to `src/frontend/app/app.css`
-- Setting `data-webstir-search-styles="css"` on the `<html>` element in `src/frontend/app/app.html`
-
-To opt in manually, set:
-```html
-<html lang="en" data-webstir-search-styles="css">
+```css
+@import "@webstir-io/webstir-frontend/features/search.css";
 ```
+
+The build inlines a scoped package import like this before processing, so the feature's rules go
+through the same pipeline as your own CSS and sit in the `features` layer. They use your `--ws-*`
+tokens, so theming carries over. To adjust them, add rules in a later layer (`overrides`) or after
+the import rather than copying the file.
 
 ## How To Make Changes (fast rules)
 

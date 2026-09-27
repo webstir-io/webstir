@@ -31,6 +31,18 @@
       "import": "./dist/features/client-nav.js",
       "default": "./dist/features/client-nav.js"
     },
+    "./features/search": {
+      "types": "./dist/features/search.d.ts",
+      "import": "./dist/features/search.js",
+      "default": "./dist/features/search.js"
+    },
+    "./features/search.css": "./src/features/search.css",
+    "./features/content-nav": {
+      "types": "./dist/features/content-nav.d.ts",
+      "import": "./dist/features/content-nav.js",
+      "default": "./dist/features/content-nav.js"
+    },
+    "./features/content-nav.css": "./src/features/content-nav.css",
     "./cli": {
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"

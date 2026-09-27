@@ -5,9 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import {
-  getContentNavAssets,
   getSpaAssets,
-  getSearchAssets,
   pageScriptTemplate,
   renderGithubPagesDeployScript,
   renderGithubPagesWorkflow,
@@ -16,7 +14,11 @@ import {
   renderS3CloudFrontWorkflow,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
-import { adoptPackagedClientNav, legacyClientNavPaths } from './client-nav-import.ts';
+import {
+  adoptPackagedFeature,
+  legacyFeaturePaths,
+  type PackagedFeatureName,
+} from './feature-imports.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import {
   assertNoExistingSymlinkComponents,
@@ -74,28 +76,21 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       await copyStaticAssets(workspace.root, getSpaAssets(), changes);
       await updatePackageJson(workspace.root, { enableSpa: true }, changes);
       break;
-    case 'client-nav': {
-      const notes: string[] = [];
-      const adoption = await adoptPackagedClientNav(workspace.root, changes, notes);
-      if (adoption === 'unavailable') {
-        throw new Error(notes.join(' '));
-      }
-      for (const note of notes) console.warn(note);
-      await updatePackageJson(workspace.root, { enableClientNav: true }, changes);
+    case 'client-nav':
+      await enablePackagedFeature(workspace.root, 'client-nav', { enableClientNav: true }, changes);
       break;
-    }
     case 'search':
-      await copyStaticAssets(workspace.root, getSearchAssets(), changes);
-      await ensureAppCssImport(workspace.root, './styles/features/search.css', changes);
-      await ensureHtmlSearchMode(workspace.root, changes);
-      await ensureAppScriptImport(workspace.root, './scripts/features/search.js', changes);
-      await updatePackageJson(workspace.root, { enableSearch: true }, changes);
+      await ensureAppCssFeaturesLayer(workspace.root, changes);
+      await enablePackagedFeature(workspace.root, 'search', { enableSearch: true }, changes);
       break;
     case 'content-nav':
-      await copyStaticAssets(workspace.root, getContentNavAssets(), changes);
-      await ensureAppCssImport(workspace.root, './styles/features/content-nav.css', changes);
-      await ensureAppScriptImport(workspace.root, './scripts/features/content-nav.js', changes);
-      await updatePackageJson(workspace.root, { enableContentNav: true }, changes);
+      await ensureAppCssFeaturesLayer(workspace.root, changes);
+      await enablePackagedFeature(
+        workspace.root,
+        'content-nav',
+        { enableContentNav: true },
+        changes,
+      );
       break;
     case 'backend':
       await enableBackend(workspace.root, changes);
@@ -168,17 +163,16 @@ function getFixedEnableWriteTargets(
       return [
         path.join(appRoot, 'app.ts'),
         packageJsonPath,
-        ...legacyClientNavPaths(workspaceRoot),
+        ...legacyFeaturePaths(workspaceRoot, 'client-nav'),
       ];
     case 'search':
+    case 'content-nav':
       return [
         path.join(appRoot, 'app.css'),
-        path.join(appRoot, 'app.html'),
         path.join(appRoot, 'app.ts'),
         packageJsonPath,
+        ...legacyFeaturePaths(workspaceRoot, feature),
       ];
-    case 'content-nav':
-      return [path.join(appRoot, 'app.css'), path.join(appRoot, 'app.ts'), packageJsonPath];
     case 'backend':
       return [packageJsonPath, path.join(workspaceRoot, 'base.tsconfig.json')];
     case 'github-pages':
@@ -343,69 +337,38 @@ async function enableS3CloudFront(workspaceRoot: string, changes: string[]): Pro
   );
 }
 
-async function ensureAppScriptImport(
+/**
+ * Imports a feature from the frontend package, switching an app off copies older versions wrote.
+ * Fails without setting the flag when the installed package cannot provide the feature.
+ */
+async function enablePackagedFeature(
   workspaceRoot: string,
-  importPath: string,
+  name: PackagedFeatureName,
+  flags: Parameters<typeof updatePackageJson>[1],
   changes: string[],
 ): Promise<void> {
-  const appTsPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
-  if (!existsSync(appTsPath)) {
-    return;
+  const notes: string[] = [];
+  const adoption = await adoptPackagedFeature(workspaceRoot, name, changes, notes);
+  if (adoption === 'unavailable') {
+    throw new Error(notes.join(' '));
   }
-
-  const source = await readTextFile(appTsPath);
-  const updated = ensureSideEffectImport(source, importPath);
-  if (updated === source) {
-    return;
-  }
-
-  await Bun.write(appTsPath, updated);
-  changes.push(relativeWorkspacePath(workspaceRoot, appTsPath));
+  for (const note of notes) console.warn(note);
+  await updatePackageJson(workspaceRoot, flags, changes);
 }
 
-async function ensureAppCssImport(
-  workspaceRoot: string,
-  importPath: string,
-  changes: string[],
-): Promise<void> {
+/** Feature stylesheets sit in the `features` cascade layer, so app.css's layer order needs it. */
+async function ensureAppCssFeaturesLayer(workspaceRoot: string, changes: string[]): Promise<void> {
   const appCssPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.css');
   if (!existsSync(appCssPath)) {
     return;
   }
-
   const source = await readTextFile(appCssPath);
-  let updated = source;
-  updated = ensureLayerIncludes(updated, 'features');
-  updated = ensureImportIncludes(updated, importPath, './styles/components/buttons.css');
+  const updated = ensureLayerIncludes(source, 'features');
   if (updated === source) {
     return;
   }
-
   await Bun.write(appCssPath, updated);
   changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
-}
-
-async function ensureHtmlSearchMode(workspaceRoot: string, changes: string[]): Promise<void> {
-  const appHtmlPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.html');
-  if (!existsSync(appHtmlPath)) {
-    return;
-  }
-
-  const source = await readTextFile(appHtmlPath);
-  if (source.includes('data-webstir-search-styles=')) {
-    return;
-  }
-
-  const updated = source.replace(
-    /<html\b(?![^>]*\bdata-webstir-search-styles=)/i,
-    '<html data-webstir-search-styles="css"',
-  );
-  if (updated === source) {
-    return;
-  }
-
-  await Bun.write(appHtmlPath, updated);
-  changes.push(relativeWorkspacePath(workspaceRoot, appHtmlPath));
 }
 
 async function updatePackageJson(
@@ -586,17 +549,6 @@ function resolveGithubPagesBasePath(
     : withLeadingSlash;
 }
 
-function ensureSideEffectImport(source: string, importPath: string): string {
-  const escaped = escapeRegExp(importPath);
-  const pattern = new RegExp(`^\\s*import\\s+(['"])${escaped}\\1\\s*;?\\s*$`, 'm');
-  if (pattern.test(source)) {
-    return source;
-  }
-
-  const suffix = source.endsWith('\n') ? '' : '\n';
-  return `${source}${suffix}import "${importPath}";\n`;
-}
-
 function ensureLayerIncludes(css: string, layerName: string): string {
   const match = css.match(/@layer\s+([^;]+);/);
   if (!match || match.index === undefined) {
@@ -621,39 +573,6 @@ function ensureLayerIncludes(css: string, layerName: string): string {
   return `${css.slice(0, match.index)}${replacement}${css.slice(match.index + match[0].length)}`;
 }
 
-function ensureImportIncludes(
-  css: string,
-  importPath: string,
-  insertAfterImportPath: string,
-): string {
-  if (css.includes(`@import "${importPath}"`) || css.includes(`@import '${importPath}'`)) {
-    return css;
-  }
-
-  const doubleNeedle = `@import "${insertAfterImportPath}"`;
-  const singleNeedle = `@import '${insertAfterImportPath}'`;
-  let insertAfterIndex = css.indexOf(doubleNeedle);
-  if (insertAfterIndex < 0) {
-    insertAfterIndex = css.indexOf(singleNeedle);
-  }
-
-  if (insertAfterIndex >= 0) {
-    const lineEnd = css.indexOf('\n', insertAfterIndex);
-    const insertAt = lineEnd >= 0 ? lineEnd + 1 : css.length;
-    return `${css.slice(0, insertAt)}@import "${importPath}";\n${css.slice(insertAt)}`;
-  }
-
-  const matches = [...css.matchAll(/@import\s+['"][^'"]+['"];?/g)];
-  if (matches.length > 0) {
-    const last = matches[matches.length - 1];
-    const insertAt = (last.index ?? 0) + last[0].length;
-    const separator = css[insertAt] === '\n' ? '' : '\n';
-    return `${css.slice(0, insertAt)}${separator}@import "${importPath}";\n${css.slice(insertAt)}`;
-  }
-
-  return `${css}\n@import "${importPath}";\n`;
-}
-
 async function writeTextFile(filePath: string, contents: string, mode?: number): Promise<void> {
   await mkdir(path.dirname(filePath), { recursive: true });
   await Bun.write(filePath, contents);
@@ -674,8 +593,4 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function relativeWorkspacePath(workspaceRoot: string, absolutePath: string): string {
   return path.relative(workspaceRoot, absolutePath).replaceAll(path.sep, '/');
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

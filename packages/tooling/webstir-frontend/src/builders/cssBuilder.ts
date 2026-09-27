@@ -20,6 +20,7 @@ import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import {
   inlineCssImports,
   inlineSourceAppImports,
+  inlinePackageCssImports,
   isLocalCssImport,
   isWithinOrEqual,
   parseCssImport,
@@ -187,7 +188,10 @@ async function processAppCss(
     return {};
   }
 
-  const source = applyCustomMediaPrelude(await readFile(appCssPath), customMediaPrelude);
+  const source = applyCustomMediaPrelude(
+    await inlinePackageCssImports(await readFile(appCssPath), appCssPath),
+    customMediaPrelude,
+  );
 
   if (isProduction) {
     const stylesMap = await emitAppStylesProduction(config, processor, customMediaPrelude);

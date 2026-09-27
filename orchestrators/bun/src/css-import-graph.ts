@@ -21,7 +21,7 @@ export async function resolveLocalCssDependencyGraph(entryPath: string): Promise
   return dependencies;
 }
 
-function findCssImportPaths(css: string): string[] {
+export function findCssImportPaths(css: string): string[] {
   const imports: string[] = [];
   let index = 0;
 

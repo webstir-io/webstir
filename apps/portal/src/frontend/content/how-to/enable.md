@@ -39,26 +39,20 @@ Supported features:
 - An app that still has the client-nav copies older Webstir versions wrote (`src/frontend/app/scripts/features/{client-nav,document-navigation,form-enhancement}.ts`) has them removed and its import switched, unless a copy was edited; then the copies stay and the command says how to move over.
 
 ### search
-- Writes:
-  - `src/frontend/app/scripts/features/search.ts`
-  - `src/frontend/app/styles/features/search.css`
-- Appends imports:
-  - `src/frontend/app/app.ts`: `import "./scripts/features/search.js";`
-  - `src/frontend/app/app.css`: adds the `features` layer (if missing) and imports `./styles/features/search.css`
-- Enables CSS-style search mode by adding an attribute to `src/frontend/app/app.html`:
-  - `<html data-webstir-search-styles="css">`
+- Imports the feature from the frontend package; no files are copied:
+  - `src/frontend/app/app.ts`: `import '@webstir-io/webstir-frontend/features/search';`
+  - `src/frontend/app/app.css`: adds the `features` layer (if missing) and `@import "@webstir-io/webstir-frontend/features/search.css";`
 - Updates `package.json`:
   - `webstir.enable.search=true`
 
 ### content-nav
-- Writes:
-  - `src/frontend/app/scripts/features/content-nav.ts`
-  - `src/frontend/app/styles/features/content-nav.css`
-- Appends imports:
-  - `src/frontend/app/app.ts`: `import "./scripts/features/content-nav.js";`
-  - `src/frontend/app/app.css`: `@import "./styles/features/content-nav.css";`
+- Imports the feature from the frontend package; no files are copied:
+  - `src/frontend/app/app.ts`: `import '@webstir-io/webstir-frontend/features/content-nav';`
+  - `src/frontend/app/app.css`: adds the `features` layer (if missing) and `@import "@webstir-io/webstir-frontend/features/content-nav.css";`
 - Updates `package.json`:
   - `webstir.enable.contentNav=true`
+
+An app that still has the copies an older version wrote under `src/frontend/app/scripts/features/` and `src/frontend/app/styles/features/` is switched over: its imports are rewritten and the copies removed, unless a copy was edited or another file still imports one; then everything stays and the command says how to move over.
 Applies to SSG docs pages (content pipeline) only.
 
 ### backend

@@ -292,3 +292,70 @@ test('production app CSS rejects imports outside the app styles root', async (t)
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+// A stylesheet imported from an installed package (`@scope/pkg/path.css`) is inlined into the app
+// stylesheet before processing, in both modes, keeping the import's layer; a missing package fails
+// the build naming the import.
+const packageImportCases = [
+  { mode: 'build', installed: true },
+  { mode: 'publish', installed: true },
+  { mode: 'build', installed: false },
+];
+
+for (const { mode, installed } of packageImportCases) {
+  test(`app.css package import in ${mode} mode ${installed ? 'is inlined' : 'fails without the package'}`, async (t) => {
+    const frontendProvider = await loadProviderOrSkip(t);
+    if (!frontendProvider) return;
+    const workspace = await createWorkspace();
+    const appDir = path.join(workspace, 'src', 'frontend', 'app');
+    await fs.writeFile(
+      path.join(appDir, 'app.css'),
+      [
+        '@layer reset, base, features;',
+        '@import "./styles/base.css";',
+        '@import "@webstir-io/webstir-frontend/features/search.css" layer(features);',
+      ].join('\n'),
+      'utf8',
+    );
+    if (installed) {
+      const scope = path.join(workspace, 'node_modules', '@webstir-io');
+      await fs.mkdir(scope, { recursive: true });
+      await fs.symlink(
+        path.resolve(import.meta.dirname, '..'),
+        path.join(scope, 'webstir-frontend'),
+        'dir',
+      );
+    }
+
+    const build = () =>
+      frontendProvider.build({
+        workspaceRoot: workspace,
+        env: { WEBSTIR_MODULE_MODE: mode },
+        incremental: false,
+      });
+    if (!installed) {
+      await assert.rejects(
+        build,
+        /Unable to resolve CSS @import "@webstir-io\/webstir-frontend\/features\/search\.css"/,
+      );
+      return;
+    }
+    await build();
+
+    const outDir = path.join(workspace, mode === 'publish' ? 'dist' : 'build', 'frontend', 'app');
+    const cssFile = (await fs.readdir(outDir)).find((name) => /^app(-[^.]+)?\.css$/.test(name));
+    assert.ok(cssFile, `expected an app stylesheet in ${outDir}`);
+    const css = await fs.readFile(path.join(outDir, cssFile), 'utf8');
+    assert.match(css, /#webstir-search/, 'expected the package stylesheet inlined');
+    assert.doesNotMatch(
+      css,
+      /@import\s+["']@webstir-io/,
+      'expected no package @import left for the browser',
+    );
+    assert.match(
+      css,
+      /@layer features\s*\{[\s\S]*#webstir-search/,
+      'expected the rules inside the features layer',
+    );
+  });
+}

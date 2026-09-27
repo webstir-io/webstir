@@ -148,7 +148,7 @@
     padding-left: var(--ws-space-2);
   }
 
-  @media (--ws-sm) {
+  @media (max-width: 40rem) {
     .docs-layout[data-content-nav="true"] .docs-sidebar {
       display: none;
     }

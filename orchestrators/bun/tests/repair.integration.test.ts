@@ -148,66 +148,47 @@ test('CLI repair swaps the client-nav copies Webstir shipped for the package imp
   }
 });
 
-test('CLI repair restores enabled feature assets and wiring for the SSG site demo', async () => {
+test('CLI repair restores enabled feature imports and wiring for the SSG site demo', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-ssg-site-', {
     workspaceName: 'site',
   });
 
   try {
-    const searchScript = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'scripts',
-      'features',
-      'search.ts',
+    const root = copiedWorkspace.workspaceRoot;
+    // The demo's own link to the frontend package breaks once it is copied elsewhere.
+    const installed = path.join(root, 'node_modules', '@webstir-io');
+    await mkdir(installed, { recursive: true });
+    await rm(path.join(installed, 'webstir-frontend'), { force: true });
+    await symlink(
+      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend'),
+      path.join(installed, 'webstir-frontend'),
+      'dir',
     );
-    const deployScript = path.join(copiedWorkspace.workspaceRoot, 'utils', 'deploy-gh-pages.sh');
-    const appTsPath = path.join(copiedWorkspace.workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
-    const appCssPath = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'app.css',
-    );
-    const appHtmlPath = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'app.html',
-    );
+    const deployScript = path.join(root, 'utils', 'deploy-gh-pages.sh');
+    const appTsPath = path.join(root, 'src', 'frontend', 'app', 'app.ts');
+    const appCssPath = path.join(root, 'src', 'frontend', 'app', 'app.css');
+    const searchScript = "import '@webstir-io/webstir-frontend/features/search';\n";
+    const searchStyles = '@import "@webstir-io/webstir-frontend/features/search.css";\n';
 
-    await rm(searchScript, { force: true });
     await rm(deployScript, { force: true });
     await writeFile(
       appTsPath,
-      (await readFile(appTsPath, 'utf8')).replace('import "./scripts/features/search.js";\n', ''),
+      (await readFile(appTsPath, 'utf8')).replace(searchScript, ''),
       'utf8',
     );
     await writeFile(
       appCssPath,
-      (await readFile(appCssPath, 'utf8')).replace('@import "./styles/features/search.css";\n', ''),
-      'utf8',
-    );
-    await writeFile(
-      appHtmlPath,
-      (await readFile(appHtmlPath, 'utf8')).replace(' data-webstir-search-styles="css"', ''),
+      (await readFile(appCssPath, 'utf8')).replace(searchStyles, ''),
       'utf8',
     );
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    const result = await runCli(['repair', '--workspace', root]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('src/frontend/app/scripts/features/search.ts');
     expect(result.stdout).toContain('utils/deploy-gh-pages.sh');
-    expect(existsSync(searchScript)).toBe(true);
     expect(existsSync(deployScript)).toBe(true);
-    expect(await readFile(appTsPath, 'utf8')).toContain('import "./scripts/features/search.js";');
-    expect(await readFile(appCssPath, 'utf8')).toContain('@import "./styles/features/search.css";');
-    expect(await readFile(appHtmlPath, 'utf8')).toContain('data-webstir-search-styles="css"');
+    expect(await readFile(appTsPath, 'utf8')).toContain(searchScript.trim());
+    expect(await readFile(appCssPath, 'utf8')).toContain(searchStyles.trim());
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

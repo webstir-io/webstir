@@ -5,15 +5,13 @@ import { existsSync } from 'node:fs';
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import {
-  getContentNavAssets,
-  getSearchAssets,
   getSpaAssets,
   renderGithubPagesDeployScript,
   renderS3CloudFrontDeployScript,
   renderS3CloudFrontFunction,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
-import { adoptPackagedClientNav, legacyClientNavPaths } from './client-nav-import.ts';
+import { adoptPackagedFeature, legacyFeaturePaths } from './feature-imports.ts';
 import {
   preflightScaffoldAssets,
   preflightWorkspaceWriteTargets,
@@ -76,12 +74,6 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   if (enable.spa) {
     appendFeatureAssets(assets, getSpaAssets(), SPA_MODE_OWNED_FEATURE_TARGETS);
   }
-  if (enable.search) {
-    appendFeatureAssets(assets, getSearchAssets());
-  }
-  if (enable.contentNav) {
-    appendFeatureAssets(assets, getContentNavAssets());
-  }
   if (enable.backend) {
     assets.push(...(await getBackendScaffoldAssets()));
   }
@@ -114,31 +106,17 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
   await ensureHotModulePair(workspace.root, assets, changes, notes, dryRun);
 
-  if (enable.clientNav) {
-    await adoptPackagedClientNav(workspace.root, changes, notes, dryRun);
-  }
-  if (enable.search) {
+  if (enable.search || enable.contentNav) {
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
-    await ensureAppCssImport(
-      workspace.root,
-      './styles/features/search.css',
-      './styles/components/buttons.css',
-      changes,
-      dryRun,
-    );
-    await ensureAppImport(workspace.root, './scripts/features/search.js', changes, dryRun);
-    await ensureHtmlSearchMode(workspace.root, changes, dryRun);
   }
-  if (enable.contentNav) {
-    await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
-    await ensureAppCssImport(
-      workspace.root,
-      './styles/features/content-nav.css',
-      './styles/components/buttons.css',
-      changes,
-      dryRun,
-    );
-    await ensureAppImport(workspace.root, './scripts/features/content-nav.js', changes, dryRun);
+  for (const [flag, name] of [
+    [enable.clientNav, 'client-nav'],
+    [enable.search, 'search'],
+    [enable.contentNav, 'content-nav'],
+  ] as const) {
+    if (flag) {
+      await adoptPackagedFeature(workspace.root, name, changes, notes, dryRun);
+    }
   }
   if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
     await ensureBackendTsReference(workspace.root, changes, dryRun);
@@ -184,7 +162,13 @@ function getFixedRepairWriteTargets(
     targets.push(path.join(appRoot, 'app.ts'));
   }
   if (enable.clientNav) {
-    targets.push(...legacyClientNavPaths(workspaceRoot));
+    targets.push(...legacyFeaturePaths(workspaceRoot, 'client-nav'));
+  }
+  if (enable.search) {
+    targets.push(...legacyFeaturePaths(workspaceRoot, 'search'));
+  }
+  if (enable.contentNav) {
+    targets.push(...legacyFeaturePaths(workspaceRoot, 'content-nav'));
   }
   if (enable.search || enable.contentNav) {
     targets.push(path.join(appRoot, 'app.css'));
@@ -341,29 +325,6 @@ async function ensureHotModulePair(
   changes.push(appRelative);
 }
 
-async function ensureAppImport(
-  workspaceRoot: string,
-  importPath: string,
-  changes: string[],
-  dryRun: boolean,
-): Promise<void> {
-  const appTsPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
-  if (!existsSync(appTsPath)) {
-    return;
-  }
-
-  const source = await readTextFile(appTsPath);
-  const updated = ensureSideEffectImport(source, importPath);
-  if (updated === source) {
-    return;
-  }
-
-  if (!dryRun) {
-    await Bun.write(appTsPath, updated);
-  }
-  changes.push(relativeWorkspacePath(workspaceRoot, appTsPath));
-}
-
 async function ensureCssLayerIncludes(
   workspaceRoot: string,
   layerName: string,
@@ -385,59 +346,6 @@ async function ensureCssLayerIncludes(
     await Bun.write(appCssPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
-}
-
-async function ensureAppCssImport(
-  workspaceRoot: string,
-  importPath: string,
-  insertAfterImportPath: string,
-  changes: string[],
-  dryRun: boolean,
-): Promise<void> {
-  const appCssPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.css');
-  if (!existsSync(appCssPath)) {
-    return;
-  }
-
-  const source = await readTextFile(appCssPath);
-  const updated = ensureImportIncludes(source, importPath, insertAfterImportPath);
-  if (updated === source) {
-    return;
-  }
-
-  if (!dryRun) {
-    await Bun.write(appCssPath, updated);
-  }
-  changes.push(relativeWorkspacePath(workspaceRoot, appCssPath));
-}
-
-async function ensureHtmlSearchMode(
-  workspaceRoot: string,
-  changes: string[],
-  dryRun: boolean,
-): Promise<void> {
-  const appHtmlPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.html');
-  if (!existsSync(appHtmlPath)) {
-    return;
-  }
-
-  const source = await readTextFile(appHtmlPath);
-  if (source.includes('data-webstir-search-styles=')) {
-    return;
-  }
-
-  const updated = source.replace(
-    /<html\b(?![^>]*\bdata-webstir-search-styles=)/i,
-    '<html data-webstir-search-styles="css"',
-  );
-  if (updated === source) {
-    return;
-  }
-
-  if (!dryRun) {
-    await Bun.write(appHtmlPath, updated);
-  }
-  changes.push(relativeWorkspacePath(workspaceRoot, appHtmlPath));
 }
 
 async function ensureBackendTsReference(
@@ -565,17 +473,6 @@ async function readTextFile(filePath: string): Promise<string> {
   return await Bun.file(filePath).text();
 }
 
-function ensureSideEffectImport(source: string, importPath: string): string {
-  const escaped = escapeRegExp(importPath);
-  const pattern = new RegExp(`^\\s*import\\s+(['"])${escaped}\\1\\s*;?\\s*$`, 'm');
-  if (pattern.test(source)) {
-    return source;
-  }
-
-  const suffix = source.endsWith('\n') ? '' : '\n';
-  return `${source}${suffix}import "${importPath}";\n`;
-}
-
 function ensureLayerIncludes(css: string, layerName: string): string {
   const match = css.match(/@layer\s+([^;]+);/);
   if (!match || match.index === undefined) {
@@ -600,31 +497,6 @@ function ensureLayerIncludes(css: string, layerName: string): string {
   return `${css.slice(0, match.index)}${replacement}${css.slice(match.index + match[0].length)}`;
 }
 
-function ensureImportIncludes(
-  css: string,
-  importPath: string,
-  insertAfterImportPath: string,
-): string {
-  if (css.includes(`@import "${importPath}"`) || css.includes(`@import '${importPath}'`)) {
-    return css;
-  }
-
-  const doubleNeedle = `@import "${insertAfterImportPath}"`;
-  const singleNeedle = `@import '${insertAfterImportPath}'`;
-  let insertAfterIndex = css.indexOf(doubleNeedle);
-  if (insertAfterIndex < 0) {
-    insertAfterIndex = css.indexOf(singleNeedle);
-  }
-
-  if (insertAfterIndex >= 0) {
-    const lineEnd = css.indexOf('\n', insertAfterIndex);
-    const insertAt = lineEnd >= 0 ? lineEnd + 1 : css.length;
-    return `${css.slice(0, insertAt)}@import "${importPath}";\n${css.slice(insertAt)}`;
-  }
-
-  return `${css}\n@import "${importPath}";\n`;
-}
-
 function relativeWorkspacePath(workspaceRoot: string, absolutePath: string): string {
   return path.relative(workspaceRoot, absolutePath).replaceAll(path.sep, '/');
 }
@@ -637,10 +509,6 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
     : {};
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function uniqueSorted(values: readonly string[]): string[] {

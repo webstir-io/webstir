@@ -26,36 +26,6 @@ export function getSpaAssets(): readonly StaticFeatureAsset[] {
   ];
 }
 
-export function getSearchAssets(): readonly StaticFeatureAsset[] {
-  return [
-    {
-      sourcePath: path.join(featuresRoot, 'search', 'search.ts'),
-      targetPath: path.join('src', 'frontend', 'app', 'scripts', 'features', 'search.ts'),
-      overwrite: true,
-    },
-    {
-      sourcePath: path.join(featuresRoot, 'search', 'search.css'),
-      targetPath: path.join('src', 'frontend', 'app', 'styles', 'features', 'search.css'),
-      overwrite: true,
-    },
-  ];
-}
-
-export function getContentNavAssets(): readonly StaticFeatureAsset[] {
-  return [
-    {
-      sourcePath: path.join(featuresRoot, 'content_nav', 'content_nav.ts'),
-      targetPath: path.join('src', 'frontend', 'app', 'scripts', 'features', 'content-nav.ts'),
-      overwrite: true,
-    },
-    {
-      sourcePath: path.join(featuresRoot, 'content_nav', 'content_nav.css'),
-      targetPath: path.join('src', 'frontend', 'app', 'styles', 'features', 'content-nav.css'),
-      overwrite: true,
-    },
-  ];
-}
-
 export const pageScriptTemplate = `// Client-side script for this page.
 // Add your interactive behavior here. This runs after the static HTML renders.
 

@@ -407,27 +407,18 @@ async function assertFeatureModulesPresent(
   }
 
   const missing: string[] = [];
-
-  if (enable.clientNav === true) {
-    const hasClientNav =
-      (await appImportsPackagedFeature(config, 'client-nav')) ||
-      (await hasFeatureModule(config, 'client-nav'));
-    if (!hasClientNav) {
-      missing.push('client-nav');
-    }
-  }
-
-  if (enable.search === true) {
-    const hasSearch = await hasFeatureModule(config, 'search');
-    if (!hasSearch) {
-      missing.push('search');
-    }
-  }
-
-  if (enable.contentNav === true) {
-    const hasContentNav = await hasFeatureModule(config, 'content-nav');
-    if (!hasContentNav) {
-      missing.push('content-nav');
+  const enabled = [
+    [enable.clientNav, 'client-nav'],
+    [enable.search, 'search'],
+    [enable.contentNav, 'content-nav'],
+  ] as const;
+  for (const [on, name] of enabled) {
+    if (on !== true) continue;
+    // An app imports the feature from the package, or still has the copy an older version wrote.
+    const present =
+      (await appImportsPackagedFeature(config, name)) || (await hasFeatureModule(config, name));
+    if (!present) {
+      missing.push(name);
     }
   }
 
@@ -448,7 +439,7 @@ async function assertFeatureModulesPresent(
 }
 
 const PACKAGED_FEATURE_PREFIX = '@webstir-io/webstir-frontend/features/';
-const PACKAGED_FEATURES = new Set(['client-nav']);
+const PACKAGED_FEATURES = new Set(['client-nav', 'search', 'content-nav']);
 
 /**
  * A feature the package ships is enabled by importing it from the app entry the build bundles.
