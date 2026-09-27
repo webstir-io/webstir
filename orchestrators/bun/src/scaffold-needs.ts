@@ -1,6 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import ts from '@typescript/typescript6';
 
 import { findCssImportPaths } from './css-import-graph.ts';
 import type { ScaffoldAssetDescriptor } from './scaffold-path.ts';
@@ -12,37 +13,22 @@ import {
   workspaceFiles,
 } from './workspace-sources.ts';
 
-/** A tsconfig `paths` entry: `prefix*suffix`, or an exact specifier when `exact`. */
-interface PathAlias {
-  readonly prefix: string;
-  readonly suffix: string;
-  readonly exact: boolean;
-  readonly targets: readonly string[];
-}
-
-interface TsconfigAliases {
-  /** The config's own `paths`, or undefined when it declares none and inherits them. */
-  readonly aliases?: readonly PathAlias[];
-  readonly extends: readonly string[];
-}
-
 interface References {
   readonly root: string;
-  /** Paths something names and that nothing on disk answers, with and without an extension. */
+  /** Missing paths something names directly: stylesheets, HTML URLs, tsconfig entries. */
   readonly paths: Set<string>;
-  /** Specifiers that are neither relative nor URLs, by the file that imports them. */
-  readonly bare: Map<string, Set<string>>;
-  readonly tsconfigs: Map<string, TsconfigAliases>;
+  /** Script imports still to resolve, as `[importing file, specifier]`. */
+  readonly imports: Array<readonly [string, string]>;
 }
 
 /**
  * The missing scaffold files a workspace still needs: the ones in `required` (paths relative to
- * the workspace), and any file something still names and that nothing on disk already answers —
- * an import (relative, or through the importing file's tsconfig `paths` or the scaffold's own
- * `@shared/` and `@app/`), a CSS `@import`, a script or stylesheet in HTML, a triple-slash
- * reference, or a tsconfig `references`, `extends` or `files` entry. Files restored this way are
- * read too, so what they import comes back with them. A scaffold file nothing needs is one the
- * app chose not to have, and stays absent.
+ * the workspace), and any file something still names that nothing on disk already answers — a
+ * script import, resolved by TypeScript with the importing file's tsconfig (falling back to the
+ * scaffold's own `@shared/` and `@app/` aliases), a CSS `@import`, a script or stylesheet in HTML,
+ * a triple-slash reference, or a tsconfig `references`, `extends` or `files` entry. Files restored
+ * this way are read too, so what they import comes back with them. A scaffold file nothing needs
+ * is one the app chose not to have, and stays absent.
  */
 export async function selectNeededScaffoldAssets<T extends ScaffoldAssetDescriptor>(
   workspaceRoot: string,
@@ -61,27 +47,26 @@ export async function selectNeededScaffoldAssets<T extends ScaffoldAssetDescript
     return [];
   }
 
-  const references: References = {
-    root,
-    paths: new Set(),
-    bare: new Map(),
-    tsconfigs: new Map(),
-  };
+  const references: References = { root, paths: new Set(), imports: [] };
   for (const filePath of await workspaceFiles(root)) {
     if (isReferenceSource(filePath)) {
       collectReferences(filePath, await readFile(filePath, 'utf8'), references);
     }
   }
 
+  const resolver = createImportResolver(root, [...missing.keys()]);
   const requiredTargets = new Set(required.map((target) => path.resolve(root, target)));
   const selected = new Set<string>();
   let grew = true;
   while (grew) {
     grew = false;
-    resolveBareSpecifiers(references);
+    for (const [importer, specifier] of references.imports.splice(0)) {
+      const target = resolver(importer, specifier);
+      if (target) references.paths.add(target);
+    }
     for (const [target, asset] of missing) {
       if (selected.has(target)) continue;
-      if (!requiredTargets.has(target) && !isReferenced(target, references.paths)) continue;
+      if (!requiredTargets.has(target) && !references.paths.has(target)) continue;
       selected.add(target);
       grew = true;
       if (isReferenceSource(target)) {
@@ -91,13 +76,6 @@ export async function selectNeededScaffoldAssets<T extends ScaffoldAssetDescript
   }
 
   return assets.filter((asset) => selected.has(path.resolve(root, asset.targetPath)));
-}
-
-function isReferenced(target: string, paths: ReadonlySet<string>): boolean {
-  return (
-    paths.has(target) ||
-    (SCRIPT_EXTENSIONS.has(path.extname(target)) && paths.has(withoutExtension(target)))
-  );
 }
 
 function isReferenceSource(filePath: string): boolean {
@@ -118,60 +96,16 @@ function isTsconfig(filePath: string): boolean {
 const DOCUMENT_URL_ATTRIBUTE =
   /(?<![\w-])(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
 
-/**
- * Records a module reference unless a file on disk already answers it. `candidates` are tried in
- * order, as a tsconfig `paths` entry's targets are, so an existing fallback keeps a missing first
- * choice from being restored over it.
- */
-function addModule(paths: Set<string>, candidates: readonly string[]): void {
-  if (candidates.some(resolvesOnDisk)) return;
-  for (const resolved of candidates) {
-    paths.add(resolved);
-    const extension = path.extname(resolved);
-    if (extension === '' || SCRIPT_EXTENSIONS.has(extension)) {
-      paths.add(withoutExtension(resolved));
-      paths.add(path.join(resolved, 'index'));
-    }
-  }
-}
-
-function resolvesOnDisk(resolved: string): boolean {
-  const extension = path.extname(resolved);
-  const candidates = [resolved];
-  if (extension === '' || SCRIPT_EXTENSIONS.has(extension)) {
-    const stem = withoutExtension(resolved);
-    for (const scriptExtension of SCRIPT_EXTENSIONS) {
-      candidates.push(`${stem}${scriptExtension}`, path.join(resolved, `index${scriptExtension}`));
-    }
-  }
-  return candidates.some(isFile);
-}
-
-function isFile(filePath: string): boolean {
-  try {
-    return statSync(filePath).isFile();
-  } catch {
-    return false;
-  }
-}
+// The build compiles app scripts from these, so `/app/app.js` in HTML is app.ts or its siblings.
+const COMPILED_SCRIPT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx'];
 
 function collectReferences(location: string, text: string, references: References): void {
   const extension = path.extname(location);
   const directory = path.dirname(location);
-  const addSpecifier = (specifier: string) => {
-    const bare = specifier.replace(/[?#].*$/, '');
-    if (bare === '.' || bare === '..' || bare.startsWith('./') || bare.startsWith('../')) {
-      addModule(references.paths, [path.resolve(directory, bare)]);
-    } else if (bare && !/^[a-z][a-z0-9+.-]*:/i.test(bare)) {
-      const specifiers = references.bare.get(location) ?? new Set<string>();
-      specifiers.add(bare);
-      references.bare.set(location, specifiers);
-    }
-  };
 
   if (SCRIPT_EXTENSIONS.has(extension)) {
     for (const specifier of scriptSpecifiers(text, location)) {
-      addSpecifier(specifier);
+      references.imports.push([location, specifier]);
     }
     for (const fileName of scriptReferencedFiles(text)) {
       references.paths.add(path.resolve(directory, fileName));
@@ -180,35 +114,45 @@ function collectReferences(location: string, text: string, references: Reference
   }
   if (extension === '.css') {
     for (const specifier of findCssImportPaths(text)) {
-      addSpecifier(specifier);
+      const resolved = resolveStylesheetImport(references.root, directory, specifier);
+      if (resolved) references.paths.add(resolved);
     }
     return;
   }
   if (extension === '.html') {
     for (const match of text.matchAll(DOCUMENT_URL_ATTRIBUTE)) {
-      const url = match[1] ?? match[2] ?? match[3] ?? '';
-      const resolved = resolveDocumentUrl(references.root, location, url);
-      if (resolved) addModule(references.paths, [resolved]);
+      const resolved = resolveDocumentUrl(
+        references.root,
+        location,
+        match[1] ?? match[2] ?? match[3] ?? '',
+      );
+      if (!resolved) continue;
+      const stem = resolved.slice(0, resolved.length - path.extname(resolved).length);
+      const compiled =
+        path.extname(resolved) === '.js'
+          ? COMPILED_SCRIPT_EXTENSIONS.map((scriptExtension) => `${stem}${scriptExtension}`)
+          : [resolved];
+      if (!compiled.some(isFile)) {
+        for (const candidate of compiled) references.paths.add(candidate);
+      }
     }
     return;
   }
   if (isTsconfig(location)) {
-    collectTsconfigReferences(location, parseTsconfigText(text, location), references);
+    collectTsconfigReferences(directory, parseTsconfigText(text, location), references);
   }
 }
 
 function collectTsconfigReferences(
-  location: string,
+  directory: string,
   config: unknown,
   references: References,
 ): void {
   if (!config || typeof config !== 'object') return;
-  const directory = path.dirname(location);
   const {
     references: projectReferences,
     extends: extendsValue,
     files,
-    compilerOptions,
   } = config as Record<string, unknown>;
   for (const reference of Array.isArray(projectReferences) ? projectReferences : []) {
     const referencePath = (reference as { path?: unknown } | null)?.path;
@@ -217,119 +161,31 @@ function collectTsconfigReferences(
     references.paths.add(resolved);
     references.paths.add(path.join(resolved, 'tsconfig.json'));
   }
-  const bases: string[] = [];
   for (const base of Array.isArray(extendsValue) ? extendsValue : [extendsValue]) {
     if (typeof base !== 'string' || !base.startsWith('.')) continue;
     const resolved = path.resolve(directory, base);
-    const withJson = resolved.endsWith('.json') ? resolved : `${resolved}.json`;
-    bases.push(withJson);
     references.paths.add(resolved);
-    references.paths.add(withJson);
+    references.paths.add(`${resolved}.json`);
   }
   for (const file of Array.isArray(files) ? files : []) {
     if (typeof file === 'string') {
       references.paths.add(path.resolve(directory, file));
     }
   }
+}
 
-  const options = compilerOptions && typeof compilerOptions === 'object' ? compilerOptions : {};
-  const { baseUrl, paths } = options as { baseUrl?: unknown; paths?: unknown };
-  let aliases: PathAlias[] | undefined;
-  if (paths && typeof paths === 'object') {
-    const base = typeof baseUrl === 'string' ? path.resolve(directory, baseUrl) : directory;
-    aliases = [];
-    for (const [pattern, targets] of Object.entries(paths)) {
-      if (!Array.isArray(targets)) continue;
-      const star = pattern.indexOf('*');
-      aliases.push({
-        prefix: star < 0 ? pattern : pattern.slice(0, star),
-        suffix: star < 0 ? '' : pattern.slice(star + 1),
-        exact: star < 0,
-        targets: targets
-          .filter((target): target is string => typeof target === 'string')
-          .map((target) => path.resolve(base, target)),
-      });
-    }
+/** Relative stylesheet imports, and the build's `@app/` alias for the app folder. */
+function resolveStylesheetImport(
+  root: string,
+  directory: string,
+  specifier: string,
+): string | undefined {
+  const bare = specifier.replace(/[?#].*$/, '');
+  if (bare.startsWith('./') || bare.startsWith('../')) {
+    return path.resolve(directory, bare);
   }
-  references.tsconfigs.set(location, { aliases, extends: bases });
-}
-
-/** The scaffold's own aliases, used when the importing file's tsconfig declares none. */
-function scaffoldAliases(root: string): readonly PathAlias[] {
-  return [
-    {
-      prefix: '@shared/',
-      suffix: '',
-      exact: false,
-      targets: [path.join(root, 'src', 'shared', '*')],
-    },
-    {
-      prefix: '@app/',
-      suffix: '',
-      exact: false,
-      targets: [path.join(root, 'src', 'frontend', 'app', '*')],
-    },
-  ];
-}
-
-/** The `paths` that apply to a file: its nearest tsconfig.json's own, or those it extends. */
-function aliasesFor(filePath: string, references: References): readonly PathAlias[] | undefined {
-  let directory = path.dirname(filePath);
-  while (directory.startsWith(references.root)) {
-    const config = path.join(directory, 'tsconfig.json');
-    if (references.tsconfigs.has(config)) {
-      return inheritedAliases(config, references, new Set());
-    }
-    const parent = path.dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  return undefined;
-}
-
-function inheritedAliases(
-  config: string,
-  references: References,
-  seen: Set<string>,
-): readonly PathAlias[] | undefined {
-  const entry = references.tsconfigs.get(config);
-  if (!entry || seen.has(config)) return undefined;
-  seen.add(config);
-  if (entry.aliases) return entry.aliases;
-  for (const base of entry.extends) {
-    const inherited = inheritedAliases(base, references, seen);
-    if (inherited) return inherited;
-  }
-  return undefined;
-}
-
-function resolveBareSpecifiers(references: References): void {
-  const fallback = scaffoldAliases(references.root);
-  for (const [filePath, specifiers] of references.bare) {
-    const aliases = aliasesFor(filePath, references);
-    for (const specifier of specifiers) {
-      const candidates =
-        (aliases && matchAlias(specifier, aliases)) ?? matchAlias(specifier, fallback);
-      if (candidates) addModule(references.paths, candidates);
-    }
-  }
-}
-
-/** The first alias a specifier matches, as TypeScript picks it, mapped to its targets. */
-function matchAlias(specifier: string, aliases: readonly PathAlias[]): string[] | undefined {
-  for (const alias of aliases) {
-    if (alias.exact) {
-      if (specifier === alias.prefix) return [...alias.targets];
-      continue;
-    }
-    if (
-      specifier.length >= alias.prefix.length + alias.suffix.length &&
-      specifier.startsWith(alias.prefix) &&
-      specifier.endsWith(alias.suffix)
-    ) {
-      const matched = specifier.slice(alias.prefix.length, specifier.length - alias.suffix.length);
-      return alias.targets.map((target) => target.replace('*', matched));
-    }
+  if (bare.startsWith('@app/')) {
+    return path.join(root, 'src', 'frontend', 'app', bare.slice('@app/'.length));
   }
   return undefined;
 }
@@ -357,7 +213,126 @@ function resolveDocumentUrl(root: string, location: string, url: string): string
   return undefined;
 }
 
-function withoutExtension(filePath: string): string {
-  const extension = path.extname(filePath);
-  return SCRIPT_EXTENSIONS.has(extension) ? filePath.slice(0, -extension.length) : filePath;
+/**
+ * Resolves a script import the way TypeScript does under the importing file's nearest
+ * tsconfig.json (its `paths`, `baseUrl` and `extends`), with bundler resolution, since Webstir
+ * bundles every script. An import that resolves on disk needs nothing; one that resolves only once
+ * a missing scaffold file is back returns that file. The scaffold's `@shared/` and `@app/` aliases
+ * are tried when the tsconfig maps neither.
+ */
+function createImportResolver(
+  root: string,
+  missingTargets: readonly string[],
+): (importer: string, specifier: string) => string | undefined {
+  const missing = new Set(missingTargets);
+  const missingDirectories = new Set<string>();
+  for (const target of missingTargets) {
+    for (let directory = path.dirname(target); directory.startsWith(root); ) {
+      missingDirectories.add(directory);
+      const parent = path.dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
+  }
+  const diskHost: ts.ModuleResolutionHost = {
+    fileExists: (fileName) => isFile(fileName),
+    readFile: (fileName) => ts.sys.readFile(fileName),
+    directoryExists: (directoryName) => ts.sys.directoryExists(directoryName),
+    realpath: ts.sys.realpath,
+  };
+  const restoredHost: ts.ModuleResolutionHost = {
+    ...diskHost,
+    fileExists: (fileName) => missing.has(path.resolve(fileName)) || isFile(fileName),
+    directoryExists: (directoryName) =>
+      missingDirectories.has(path.resolve(directoryName)) || ts.sys.directoryExists(directoryName),
+  };
+  const optionsByConfig = new Map<string, ts.CompilerOptions>();
+  const optionsFor = (importer: string): ts.CompilerOptions => {
+    const config = nearestTsconfig(root, importer);
+    const cached = config ? optionsByConfig.get(config) : undefined;
+    if (cached) return cached;
+    const options: ts.CompilerOptions = {
+      ...(config ? readCompilerOptions(config) : {}),
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      allowImportingTsExtensions: true,
+    };
+    if (config) optionsByConfig.set(config, options);
+    return options;
+  };
+  const resolve = (
+    specifier: string,
+    importer: string,
+    options: ts.CompilerOptions,
+    host: ts.ModuleResolutionHost,
+  ) => {
+    const resolved = ts.resolveModuleName(specifier, importer, options, host).resolvedModule;
+    if (!resolved) return undefined;
+    // TypeScript answers `./error.ts` with error.js; a bundler loads only the file it names.
+    const named = path.extname(specifier);
+    if (TS_EXTENSIONS.has(named) && path.extname(resolved.resolvedFileName) !== named) {
+      return undefined;
+    }
+    return path.resolve(resolved.resolvedFileName);
+  };
+
+  return (importer, rawSpecifier) => {
+    const specifier = rawSpecifier.replace(/[?#].*$/, '');
+    if (!specifier || /^[a-z][a-z0-9+.-]*:/i.test(specifier)) return undefined;
+    const options = optionsFor(importer);
+    const attempts: Array<readonly [string, string]> = [[specifier, importer]];
+    for (const [prefix, folder] of [
+      ['@shared/', path.join(root, 'src', 'shared')],
+      ['@app/', path.join(root, 'src', 'frontend', 'app')],
+    ] as const) {
+      if (specifier.startsWith(prefix)) {
+        attempts.push([`./${specifier.slice(prefix.length)}`, path.join(folder, 'index.ts')]);
+      }
+    }
+    for (const [candidate, from] of attempts) {
+      if (resolve(candidate, from, options, diskHost)) return undefined;
+      const restored = resolve(candidate, from, options, restoredHost);
+      if (restored && missing.has(restored)) return restored;
+    }
+    return undefined;
+  };
+}
+
+const TS_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
+
+function nearestTsconfig(root: string, filePath: string): string | undefined {
+  for (let directory = path.dirname(filePath); directory.startsWith(root); ) {
+    const config = path.join(directory, 'tsconfig.json');
+    if (isFile(config)) return config;
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return undefined;
+}
+
+function readCompilerOptions(configPath: string): ts.CompilerOptions {
+  const { config } = ts.readConfigFile(configPath, (fileName) => ts.sys.readFile(fileName));
+  if (!config) return {};
+  const parsed = ts.parseJsonConfigFileContent(
+    config,
+    {
+      useCaseSensitiveFileNames: ts.sys.useCaseSensitiveFileNames,
+      readDirectory: () => [],
+      fileExists: (fileName) => ts.sys.fileExists(fileName),
+      readFile: (fileName) => ts.sys.readFile(fileName),
+    },
+    path.dirname(configPath),
+    undefined,
+    configPath,
+  );
+  return parsed.options;
+}
+
+function isFile(filePath: string): boolean {
+  try {
+    return statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
 }

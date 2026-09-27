@@ -54,6 +54,35 @@ const REMOVED_BY_MATURE_APP = [
 
 const CLIENT_NAV_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';\n";
 
+// app.ts imports `~/error`; src/frontend/custom/error.ts exists, the scaffold's app/error.ts does
+// not, and the frontend tsconfig decides which one the import means.
+async function useErrorAlias(
+  root: string,
+  paths: Record<string, string[]> | undefined,
+  extendsValue?: string[],
+): Promise<void> {
+  const frontendRoot = path.join(root, 'src', 'frontend');
+  const configPath = path.join(frontendRoot, 'tsconfig.json');
+  const config = JSON.parse(await readFile(configPath, 'utf8')) as {
+    extends?: unknown;
+    compilerOptions: Record<string, unknown>;
+  };
+  if (paths) config.compilerOptions.paths = paths;
+  if (extendsValue) config.extends = extendsValue;
+  await writeJson(configPath, config);
+  await mkdir(path.join(frontendRoot, 'custom'), { recursive: true });
+  await writeFile(
+    path.join(frontendRoot, 'custom', 'error.ts'),
+    'export function install() {}\n',
+    'utf8',
+  );
+  await writeFile(
+    path.join(frontendRoot, 'app', 'app.ts'),
+    `${CLIENT_NAV_IMPORT}import '~/error';\n`,
+    'utf8',
+  );
+}
+
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -287,6 +316,44 @@ test.each([
       await writeFile(path.join(backendRoot, 'uses-alias.ts'), "import '~/error';\n", 'utf8');
     },
     restored: [],
+  },
+  {
+    name: 'an import naming the .ts file a .js sibling cannot answer',
+    prepare: async (root: string) => {
+      const app = path.join(root, 'src', 'frontend', 'app');
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `${CLIENT_NAV_IMPORT}void import('./error.ts');\n`,
+        'utf8',
+      );
+      await writeFile(path.join(app, 'error.js'), 'export function install() {}\n', 'utf8');
+    },
+    restored: ['src/frontend/app/error.ts'],
+  },
+  {
+    name: 'an exact tsconfig alias that wins over an earlier wildcard',
+    prepare: async (root: string) => {
+      await useErrorAlias(root, { '~/*': ['./custom/*'], '~/error': ['./app/error.ts'] });
+    },
+    restored: ['src/frontend/app/error.ts'],
+  },
+  {
+    name: 'an alias from the last of several extended tsconfigs',
+    prepare: async (root: string) => {
+      const frontendRoot = path.join(root, 'src', 'frontend');
+      await writeJson(path.join(frontendRoot, 'first.tsconfig.json'), {
+        compilerOptions: { paths: { '~/*': ['./custom/*'] } },
+      });
+      await writeJson(path.join(frontendRoot, 'last.tsconfig.json'), {
+        compilerOptions: { paths: { '~/*': ['./app/*'] } },
+      });
+      await useErrorAlias(root, undefined, [
+        '../../base.tsconfig.json',
+        './first.tsconfig.json',
+        './last.tsconfig.json',
+      ]);
+    },
+    restored: ['src/frontend/app/error.ts'],
   },
   {
     name: 'the document of a page whose script is still there',
