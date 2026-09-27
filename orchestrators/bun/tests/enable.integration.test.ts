@@ -234,6 +234,10 @@ const clientNavCases: Array<{
       'a dynamic import',
       "export const load = () => import('./scripts/features/document-navigation.js');\n",
     ],
+    [
+      'an import after a regex that looks like a comment',
+      "const slashes = /\\/*/;\nexport { buildEnhancedFormRequest } from './scripts/features/form-enhancement.js';\nexport { slashes };\n",
+    ],
   ].map(([what, source]) => ({
     name: `an app where another file has ${what}`,
     setup: async (root: string) => {

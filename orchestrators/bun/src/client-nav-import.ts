@@ -167,10 +167,9 @@ const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts']
 const COPY_NAME = /(?:^|\/)(?:client-nav|document-navigation|form-enhancement)(?:\.[cm]?[jt]sx?)?$/;
 
 /**
- * Frontend source files that would still use a local copy once app.ts is rewritten. TypeScript
- * lists every import a file makes (static, dynamic, type-only and re-exports), never comments or
- * strings. A relative import is resolved against the copies' paths; any other import that ends in
- * a copy's name (a path alias) counts too, since it cannot be resolved here.
+ * Frontend source files that would still use a local copy once app.ts is rewritten. A relative
+ * import is resolved against the copies' paths; any other import that ends in a copy's name (a path
+ * alias) counts too, since it cannot be resolved here.
  */
 async function findLegacyReferences(
   workspaceRoot: string,
@@ -191,19 +190,56 @@ async function findLegacyReferences(
       filePath === appTsPath && rewrittenAppTs !== undefined
         ? rewrittenAppTs
         : await readFile(filePath, 'utf8');
-    const usesCopy = ts
-      .preProcessFile(text, true, true)
-      .importedFiles.map((imported) => imported.fileName)
-      .some((specifier) =>
-        specifier.startsWith('.')
-          ? legacyPaths.has(withoutExtension(path.resolve(path.dirname(filePath), specifier)))
-          : specifier !== CLIENT_NAV_PACKAGE_IMPORT && COPY_NAME.test(specifier),
-      );
+    const usesCopy = importSpecifiers(text, filePath).some((specifier) =>
+      specifier.startsWith('.')
+        ? legacyPaths.has(withoutExtension(path.resolve(path.dirname(filePath), specifier)))
+        : specifier !== CLIENT_NAV_PACKAGE_IMPORT && COPY_NAME.test(specifier),
+    );
     if (usesCopy) {
       found.push(relativeWorkspacePath(workspaceRoot, filePath));
     }
   }
   return found;
+}
+
+/**
+ * Every module a file names, from TypeScript's syntax tree, so regexes, comments and strings are
+ * read exactly: imports and re-exports (type-only included), import types, import() calls and
+ * require() calls.
+ */
+function importSpecifiers(text: string, filePath: string): string[] {
+  const kind = /\.[jt]sx$/.test(filePath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const source = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, false, kind);
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteralLike(node.moduleSpecifier)
+    ) {
+      specifiers.push(node.moduleSpecifier.text);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      const literal = node.argument.literal;
+      if (ts.isStringLiteralLike(literal)) specifiers.push(literal.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
+      node.arguments[0] &&
+      ts.isStringLiteralLike(node.arguments[0])
+    ) {
+      specifiers.push(node.arguments[0].text);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference) &&
+      ts.isStringLiteralLike(node.moduleReference.expression)
+    ) {
+      specifiers.push(node.moduleReference.expression.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return specifiers;
 }
 
 function withoutExtension(filePath: string): string {
