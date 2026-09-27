@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import fssync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import postcss from 'postcss';
 
 async function loadProviderOrSkip(t) {
   try {
@@ -266,7 +267,7 @@ test('production app CSS rejects circular local imports', async (t) => {
 
     await assert.rejects(
       publishWorkspace(workspace, frontendProvider),
-      /Circular CSS @import.*base\.css.*cycle\.css.*base\.css/i,
+      /Circular CSS @import.*base\.css.*cycle\.css.*base\.css.*\.css:1\)/i,
     );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
@@ -286,16 +287,16 @@ test('production app CSS rejects imports outside the app styles root', async (t)
 
     await assert.rejects(
       publishWorkspace(workspace, frontendProvider),
-      /CSS @import escapes the permitted stylesheet root.*outside\.css/i,
+      /CSS @import escapes the permitted stylesheet root.*outside\.css at .*base\.css:1$/i,
     );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
 
-// A stylesheet imported from an installed package (`@scope/pkg/path.css`) is inlined into the app
-// stylesheet before processing, in both modes, keeping the import's layer; a missing package fails
-// the build naming the import.
+// A stylesheet imported from an installed package (`@scope/pkg/path.css`) keeps its import's layer
+// and leaves the imports after it valid: publish inlines it with everything else, and build links
+// it as its own processed file. A missing package fails the build naming the import.
 const packageImportCases = [
   { mode: 'build', installed: true },
   { mode: 'publish', installed: true },
@@ -303,7 +304,7 @@ const packageImportCases = [
 ];
 
 for (const { mode, installed } of packageImportCases) {
-  test(`app.css package import in ${mode} mode ${installed ? 'is inlined' : 'fails without the package'}`, async (t) => {
+  test(`app.css package import in ${mode} mode ${installed ? 'is included' : 'fails without the package'}`, async (t) => {
     const frontendProvider = await loadProviderOrSkip(t);
     if (!frontendProvider) return;
     const workspace = await createWorkspace();
@@ -314,6 +315,7 @@ for (const { mode, installed } of packageImportCases) {
         '@layer reset, base, features;',
         '@import "./styles/base.css";',
         '@import "@webstir-io/webstir-frontend/features/search.css" layer(features);',
+        '@import "./styles/base.css" layer(base);',
       ].join('\n'),
       'utf8',
     );
@@ -336,7 +338,7 @@ for (const { mode, installed } of packageImportCases) {
     if (!installed) {
       await assert.rejects(
         build,
-        /Unable to resolve CSS @import "@webstir-io\/webstir-frontend\/features\/search\.css"/,
+        /Unable to resolve CSS @import "@webstir-io\/webstir-frontend\/features\/search\.css" at .*app\.css:3\./,
       );
       return;
     }
@@ -346,16 +348,143 @@ for (const { mode, installed } of packageImportCases) {
     const cssFile = (await fs.readdir(outDir)).find((name) => /^app(-[^.]+)?\.css$/.test(name));
     assert.ok(cssFile, `expected an app stylesheet in ${outDir}`);
     const css = await fs.readFile(path.join(outDir, cssFile), 'utf8');
-    assert.match(css, /#webstir-search/, 'expected the package stylesheet inlined');
     assert.doesNotMatch(
       css,
       /@import\s+["']@webstir-io/,
       'expected no package @import left for the browser',
     );
-    assert.match(
-      css,
-      /@layer features\s*\{[\s\S]*#webstir-search/,
-      'expected the rules inside the features layer',
+    if (mode === 'publish') {
+      assert.match(
+        css,
+        /@layer features\s*\{[\s\S]*#webstir-search/,
+        'expected the package rules inlined inside the features layer',
+      );
+      assert.doesNotMatch(css, /@import/, 'expected every import inlined');
+      return;
+    }
+    const statements = postcss.parse(css).nodes.filter((node) => node.type !== 'comment');
+    const firstRule = statements.findIndex(
+      (node) =>
+        !(
+          node.type === 'atrule' &&
+          (node.name === 'import' || (node.name === 'layer' && !node.nodes))
+        ),
     );
+    assert.ok(
+      statements
+        .slice(firstRule === -1 ? statements.length : firstRule)
+        .every((node) => node.name !== 'import'),
+      `expected every @import before any rule:\n${css}`,
+    );
+    const linked = css.match(
+      /@import\s+"(\.\/packages\/@webstir-io\/webstir-frontend\/features\/search\.css)\?v=[^"]+"\s+layer\(features\)/,
+    );
+    assert.ok(linked, `expected the package import linked with its layer:\n${css}`);
+    assert.match(css, /@import\s+"\.\/styles\/base\.css\?v=[^"]+"\s+layer\(base\)/);
+    assert.match(await fs.readFile(path.join(outDir, linked[1]), 'utf8'), /#webstir-search/);
+  });
+}
+
+// A package stylesheet resolves only from app.css and the `@app/` alias only from a page's
+// stylesheet; anywhere else the import would reach the browser unresolved, so the build names it
+// and stops.
+const PACKAGE_STYLESHEET = '@webstir-io/webstir-frontend/features/search.css';
+const PACKAGE_ONLY_IN_APP_CSS =
+  /package stylesheets can only be imported from src\/frontend\/app\/app\.css/;
+const ALIAS_ONLY_IN_PAGES = /@app\/ can only be used in a page's stylesheet/;
+const unresolvedImportCases = [
+  {
+    file: 'src/frontend/app/styles/base.css',
+    mode: 'build',
+    importPath: PACKAGE_STYLESHEET,
+    error: PACKAGE_ONLY_IN_APP_CSS,
+  },
+  {
+    file: 'src/frontend/app/styles/base.css',
+    mode: 'publish',
+    importPath: PACKAGE_STYLESHEET,
+    error: PACKAGE_ONLY_IN_APP_CSS,
+  },
+  {
+    file: 'src/frontend/pages/home/index.css',
+    mode: 'build',
+    importPath: PACKAGE_STYLESHEET,
+    error: PACKAGE_ONLY_IN_APP_CSS,
+  },
+  {
+    file: 'src/frontend/pages/home/index.css',
+    mode: 'publish',
+    importPath: PACKAGE_STYLESHEET,
+    error: PACKAGE_ONLY_IN_APP_CSS,
+  },
+  { file: 'src/frontend/pages/home/index.css', mode: 'build', importPath: '@app/styles/base.css' },
+  {
+    file: 'src/frontend/app/styles/base.css',
+    mode: 'build',
+    importPath: '@app/styles/theme.css',
+    error: ALIAS_ONLY_IN_PAGES,
+  },
+  {
+    file: 'src/frontend/app/styles/base.css',
+    mode: 'publish',
+    importPath: '@app/styles/theme.css',
+    error: ALIAS_ONLY_IN_PAGES,
+  },
+  {
+    file: 'src/frontend/app/app.css',
+    mode: 'build',
+    importPath: '@app/styles/base.css',
+    error: ALIAS_ONLY_IN_PAGES,
+  },
+  // A file a shared stylesheet pulls in is checked too, whatever its extension.
+  {
+    file: 'src/frontend/app/styles/base.css',
+    via: 'src/frontend/app/styles/partial.inc',
+    mode: 'publish',
+    importPath: PACKAGE_STYLESHEET,
+    error: PACKAGE_ONLY_IN_APP_CSS,
+  },
+];
+
+for (const { file, via, mode, importPath, error } of unresolvedImportCases) {
+  const from = via ? `${via} (via ${file})` : file;
+  test(`${importPath} imported from ${from} ${error ? 'fails' : 'builds'} in ${mode} mode`, async (t) => {
+    const frontendProvider = await loadProviderOrSkip(t);
+    if (!frontendProvider) return;
+    const workspace = await createWorkspace();
+    try {
+      const scope = path.join(workspace, 'node_modules', '@webstir-io');
+      await fs.mkdir(scope, { recursive: true });
+      await fs.symlink(
+        path.resolve(import.meta.dirname, '..'),
+        path.join(scope, 'webstir-frontend'),
+        'dir',
+      );
+      const target = path.join(workspace, file);
+      const source = await fs.readFile(target, 'utf8');
+      // After any @layer statement, so the import stays valid CSS.
+      const layers = source.match(/^@layer [^;{]+;\n/)?.[0] ?? '';
+      const imported = via ? `./${path.basename(via)}` : importPath;
+      await fs.writeFile(target, `${layers}@import "${imported}";\n${source.slice(layers.length)}`);
+      if (via) await fs.writeFile(path.join(workspace, via), `@import "${importPath}";\n`);
+      const build = frontendProvider.build({
+        workspaceRoot: workspace,
+        env: { WEBSTIR_MODULE_MODE: mode },
+        incremental: false,
+      });
+      if (error) {
+        // The error names the file and the line the import is on.
+        const at = via ? `${via}:1` : `${file}:${layers ? 2 : 1}`;
+        await assert.rejects(build, (thrown) => {
+          assert.match(thrown.message, error);
+          assert.ok(thrown.message.includes(`${at}:`), `expected ${at} in ${thrown.message}`);
+          return true;
+        });
+      } else {
+        await build;
+      }
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
   });
 }

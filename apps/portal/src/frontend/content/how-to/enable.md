@@ -51,9 +51,9 @@ Supported features:
   - `src/frontend/app/app.css`: adds the `features` layer (if missing) and `@import "@webstir-io/webstir-frontend/features/content-nav.css";`
 - Updates `package.json`:
   - `webstir.enable.contentNav=true`
+- Applies to SSG docs pages (content pipeline) only.
 
 An app that still has the copies an older version wrote under `src/frontend/app/scripts/features/` and `src/frontend/app/styles/features/` is switched over: its imports are rewritten and the copies removed, unless a copy was edited or another file still imports one; then everything stays and the command says how to move over.
-Applies to SSG docs pages (content pipeline) only.
 
 ### backend
 - Creates `src/backend/**` if missing (using the current backend package scaffold).

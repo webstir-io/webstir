@@ -5,14 +5,15 @@ import ts from '@typescript/typescript6';
 import { findCssImportPaths } from './css-import-graph.ts';
 import type { PackagedFeature } from './feature-imports.ts';
 
-const SCRIPT_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts']);
+const SCRIPT_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts', '.cjs', '.cts']);
 
 /**
  * Files anywhere in the workspace (app code, tests, tooling) that would still use one of a
  * feature's copies once the app entry and app.css are rewritten (`rewritten` holds those new
  * contents). A relative import is resolved against the copies' paths; any other import ending in a
- * copy's name (a path alias) counts too, since it cannot be resolved here. Dependencies, build
- * output and hidden folders are skipped.
+ * copy's name (a path alias) counts too, since it cannot be resolved here. An HTML file counts if
+ * it names a copy's path at all. Dependencies, the workspace's build output and hidden folders are
+ * skipped.
  */
 export async function findCopyReferences(
   workspaceRoot: string,
@@ -28,32 +29,44 @@ export async function findCopyReferences(
     const extension = path.extname(filePath);
     if (copies.has(withoutExtension(filePath))) continue;
     const isScript = SCRIPT_EXTENSIONS.has(extension);
-    if (!isScript && extension !== '.css') continue;
+    if (!isScript && extension !== '.css' && extension !== '.html') continue;
     const text = rewritten.get(filePath) ?? (await readFile(filePath, 'utf8'));
+    if (extension === '.html') {
+      if (feature.copies.some((copy) => text.includes(withoutExtension(copy)))) {
+        found.push(relativePath(workspaceRoot, filePath));
+      }
+      continue;
+    }
     const specifiers = isScript ? scriptSpecifiers(text, filePath) : findCssImportPaths(text);
     const packaged = new Set([feature.script.packaged, feature.style?.packaged]);
     const usesCopy = specifiers.some((specifier) => {
       if (packaged.has(specifier)) return false;
-      if (specifier.startsWith('.')) {
-        return copies.has(withoutExtension(path.resolve(path.dirname(filePath), specifier)));
+      const bare = specifier.replace(/[?#].*$/, '');
+      if (bare.startsWith('.')) {
+        return copies.has(withoutExtension(path.resolve(path.dirname(filePath), bare)));
       }
-      const name = path.basename(withoutExtension(specifier.replace(/[?#].*$/, '')));
+      const name = path.basename(withoutExtension(bare));
       return copyNames.includes(name) && !/^[a-z][a-z0-9+.-]*:/i.test(specifier);
     });
     if (usesCopy) {
-      found.push(path.relative(workspaceRoot, filePath).split(path.sep).join('/'));
+      found.push(relativePath(workspaceRoot, filePath));
     }
   }
   return found;
 }
 
-const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'build', 'coverage']);
+function relativePath(workspaceRoot: string, filePath: string): string {
+  return path.relative(workspaceRoot, filePath).split(path.sep).join('/');
+}
+
+const BUILD_OUTPUT = new Set(['dist', 'build', 'coverage']);
 
 async function workspaceFiles(root: string): Promise<string[]> {
   const files: string[] = [];
   const walk = async (directory: string): Promise<void> => {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (entry.name.startsWith('.') || SKIPPED_DIRECTORIES.has(entry.name)) continue;
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      if (directory === root && BUILD_OUTPUT.has(entry.name)) continue;
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) await walk(entryPath);
       else if (entry.isFile()) files.push(entryPath);

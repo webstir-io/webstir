@@ -4,9 +4,14 @@ import { readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { findCssImportPaths } from './css-import-graph.ts';
+import {
+  findCssImportInsertionPoint,
+  findCssImportPaths,
+  resolveLocalCssDependencyGraph,
+} from './css-import-graph.ts';
 import { SHIPPED_FEATURE_COPIES } from './feature-copies.ts';
 import { findCopyReferences } from './feature-references.ts';
+import { preflightWorkspaceWriteTargets } from './scaffold-path.ts';
 
 export type PackagedFeatureName = 'client-nav' | 'search' | 'content-nav';
 
@@ -50,6 +55,11 @@ export const PACKAGED_FEATURES: Readonly<Record<PackagedFeatureName, PackagedFea
 export type FeatureAdoption = 'packaged' | 'kept-local' | 'unavailable';
 
 /** Where an app kept its copies of a feature before it shipped in the frontend package. */
+/** The app entries the build looks for, in its order; adoption rewrites the first that exists. */
+export function appEntryPaths(workspaceRoot: string): readonly string[] {
+  return APP_ENTRIES.map((entry) => path.join(appRoot(workspaceRoot), entry));
+}
+
 export function legacyFeaturePaths(
   workspaceRoot: string,
   name: PackagedFeatureName,
@@ -91,6 +101,7 @@ export async function adoptPackagedFeature(
       `Kept the local ${name} copies because ${edited.join(', ')} differ from what Webstir shipped. ` +
         `To use the packaged version, move your changes elsewhere, delete ${copiesList}, and ${importInstructions(feature)}.`,
     );
+    await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
     return 'kept-local';
   }
 
@@ -105,9 +116,7 @@ export async function adoptPackagedFeature(
 
   const rewrites: Array<{ filePath: string; source: string; updated: string }> = [];
   // The entry the build bundles, in the order the build looks for it.
-  const entryPath = APP_ENTRIES.map((entry) => path.join(appRoot(workspaceRoot), entry)).find(
-    (candidate) => existsSync(candidate),
-  );
+  const entryPath = appEntryPaths(workspaceRoot).find((candidate) => existsSync(candidate));
   if (!entryPath) {
     notes.push(
       `There is no src/frontend/app/app.{ts,tsx,js,jsx} to import '${feature.script.packaged}' from.` +
@@ -124,6 +133,7 @@ export async function adoptPackagedFeature(
       `Kept the local ${name} copies because ${entryName} could not be switched automatically. ` +
         `Replace its import of '${feature.script.legacy}' with '${feature.script.packaged}', then run this command again.`,
     );
+    await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
     return 'kept-local';
   }
   rewrites.push({ filePath: entryPath, source: entrySource, updated: entryUpdated });
@@ -136,6 +146,7 @@ export async function adoptPackagedFeature(
         `Kept the local ${name} copies because src/frontend/app/app.css could not be switched automatically. ` +
           `Replace its @import of '${feature.style.legacy}' with '${feature.style.packaged}', then run this command again.`,
       );
+      await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
       return 'kept-local';
     }
     rewrites.push({ filePath: appCssPath, source, updated });
@@ -149,10 +160,16 @@ export async function adoptPackagedFeature(
         `Kept the local ${name} copies because ${stillUsing.join(', ')} still use them. ` +
           `Point those imports at the packaged feature or remove them, then run this command again.`,
       );
+      await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
       return 'kept-local';
     }
   }
 
+  await preflightWorkspaceWriteTargets(
+    workspaceRoot,
+    [...rewrites.map((rewrite) => rewrite.filePath), ...present],
+    `switch ${name} to the packaged feature`,
+  );
   for (const { filePath, source, updated } of rewrites) {
     if (updated === source) continue;
     if (!dryRun) {
@@ -167,6 +184,82 @@ export async function adoptPackagedFeature(
     changes.push(relativeWorkspacePath(workspaceRoot, filePath));
   }
   return 'packaged';
+}
+
+/**
+ * Copies that stay must still load: the app entry and app.css import each kept copy unless they
+ * already import it or the packaged feature.
+ */
+async function wireLocalCopies(
+  workspaceRoot: string,
+  feature: PackagedFeature,
+  present: readonly string[],
+  changes: string[],
+  notes: string[],
+  dryRun: boolean,
+): Promise<void> {
+  const kept = new Set(present.map((filePath) => appRelative(workspaceRoot, filePath)));
+  const copyOf = (specifier: string) => specifier.replace(/^\.\//, '').replace(/\.js$/, '.ts');
+  const writes: Array<{ filePath: string; updated: string }> = [];
+  const add = (filePath: string, updated: string, imported: boolean, statement: string) => {
+    // Kept only when parsing the result shows the import.
+    if (imported) {
+      writes.push({ filePath, updated });
+    } else {
+      notes.push(
+        `Add ${statement} to ${relativeWorkspacePath(workspaceRoot, filePath)} so the local ${feature.name} copies load.`,
+      );
+    }
+  };
+  const entryPath = appEntryPaths(workspaceRoot).find((candidate) => existsSync(candidate));
+  const scriptCopy = copyOf(feature.script.legacy);
+  if (entryPath && kept.has(scriptCopy)) {
+    const source = await readFile(entryPath, 'utf8');
+    // The entry's runtime imports; importing a module twice still runs it once.
+    const imports = scanImports(source, entryPath);
+    if (!imports.includes(feature.script.packaged) && !imports.includes(feature.script.legacy)) {
+      const statement = `import '${feature.script.legacy}';`;
+      const newline = source.includes('\r\n') ? '\r\n' : '\n';
+      const updated = appendStatement(source, statement, newline);
+      add(
+        entryPath,
+        updated,
+        scanImports(updated, entryPath).includes(feature.script.legacy),
+        statement,
+      );
+    }
+  }
+  const appCssPath = path.join(appRoot(workspaceRoot), 'app.css');
+  const styleCopy = feature.style?.legacy.replace(/^\.\//, '');
+  if (feature.style && styleCopy && existsSync(appCssPath) && kept.has(styleCopy)) {
+    const source = await readFile(appCssPath, 'utf8');
+    // What app.css loads, through any stylesheet it imports and whatever its conditions: a
+    // second, unconditional import would change where the copy applies.
+    const loaded = await resolveLocalCssDependencyGraph(appCssPath);
+    if (
+      !findCssImportPaths(source).includes(feature.style.packaged) &&
+      !loaded.has(path.resolve(appRoot(workspaceRoot), styleCopy))
+    ) {
+      const statement = `@import "${feature.style.legacy}";`;
+      const newline = source.includes('\r\n') ? '\r\n' : '\n';
+      const updated = insertAfterLastCssImport(source, statement, newline);
+      add(
+        appCssPath,
+        updated,
+        findCssImportPaths(updated).includes(feature.style.legacy),
+        statement,
+      );
+    }
+  }
+  await preflightWorkspaceWriteTargets(
+    workspaceRoot,
+    writes.map((write) => write.filePath),
+    `import the local ${feature.name} copies`,
+  );
+  for (const { filePath, updated } of writes) {
+    if (!dryRun) await Bun.write(filePath, updated);
+    changes.push(relativeWorkspacePath(workspaceRoot, filePath));
+  }
 }
 
 /**
@@ -242,19 +335,13 @@ function appendStatement(source: string, statement: string, newline: string): st
   return `${source}${suffix}${statement}${newline}`;
 }
 
-/** CSS requires @import before other rules, so a new one goes after the last existing one. */
+/** CSS requires @import before other rules, so a new one goes after the stylesheet's prelude. */
 function insertAfterLastCssImport(css: string, statement: string, newline: string): string {
-  const lines = css.split(/\r?\n/);
-  let last = -1;
-  lines.forEach((line, index) => {
-    if (/^\s*@import\b/.test(line)) last = index;
-  });
-  if (last === -1) {
-    const layerOrder = lines.findIndex((line) => /^\s*@layer\s+[^{]*;/.test(line));
-    last = layerOrder;
-  }
-  lines.splice(last + 1, 0, statement);
-  return lines.join(newline);
+  const point = findCssImportInsertionPoint(css);
+  const start = css.charCodeAt(0) === 0xfeff ? 1 : 0;
+  return point === start
+    ? `${css.slice(0, point)}${statement}${newline}${css.slice(point)}`
+    : `${css.slice(0, point)}${newline}${statement}${css.slice(point)}`;
 }
 
 function importsOnly(

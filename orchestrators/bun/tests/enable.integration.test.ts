@@ -147,6 +147,129 @@ for (const { feature, flag, copies } of styledFeatureCases) {
   });
 }
 
+// Copies someone edited stay, and stay loaded: an app whose imports of them went missing gets the
+// imports back instead of an enabled feature that never runs. A copy that something already loads,
+// in whatever form, is left as it is, and a byte order mark stays first.
+const SEARCH_CSS = '@import "./styles/features/search.css";';
+const keptCopyWiringCases: Array<{
+  name: string;
+  script: boolean;
+  style?: string;
+  partial?: boolean;
+  bom?: boolean;
+  typeOnly?: boolean;
+  unusedStylesheet?: boolean;
+  appCssImports: number;
+}> = [
+  { name: 'its script import is gone', script: false, style: SEARCH_CSS, appCssImports: 1 },
+  { name: 'its stylesheet import is gone', script: true, appCssImports: 1 },
+  { name: 'both imports are gone', script: false, appCssImports: 1 },
+  {
+    name: 'its stylesheet is imported with a query and a media condition',
+    script: true,
+    style: '@import "./styles/features/search.css?v=1" print;',
+    appCssImports: 1,
+  },
+  {
+    name: 'its stylesheet is imported through another stylesheet',
+    script: true,
+    style: '@import "./styles/feature-bundle.css";',
+    partial: true,
+    appCssImports: 0,
+  },
+  { name: 'app.css starts with a byte order mark', script: true, bom: true, appCssImports: 1 },
+  {
+    name: 'only an unused stylesheet and a type-only import mention the copies',
+    script: false,
+    typeOnly: true,
+    unusedStylesheet: true,
+    appCssImports: 1,
+  },
+];
+
+for (const {
+  name,
+  script,
+  style,
+  partial,
+  bom,
+  typeOnly,
+  unusedStylesheet,
+  appCssImports,
+} of keptCopyWiringCases) {
+  test(`CLI enable search keeps edited copies loaded when ${name}`, async () => {
+    const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-kept-copies-');
+    const root = copiedWorkspace.workspaceRoot;
+    const app = path.join(root, 'src', 'frontend', 'app');
+    const fixtures = path.join(packageRoot, 'test-support', 'fixtures', 'search-0.2.0');
+    await mkdir(path.join(app, 'scripts', 'features'), { recursive: true });
+    await mkdir(path.join(app, 'styles', 'features'), { recursive: true });
+    await writeFile(
+      path.join(app, 'scripts', 'features', 'search.ts'),
+      `${await readFile(path.join(fixtures, 'search.ts.txt'), 'utf8')}\n// local change\n`,
+    );
+    await writeFile(
+      path.join(app, 'styles', 'features', 'search.css'),
+      await readFile(path.join(fixtures, 'search.css.txt'), 'utf8'),
+    );
+    if (partial) {
+      await writeFile(
+        path.join(app, 'styles', 'feature-bundle.css'),
+        '@import "./features/search.css";\n',
+      );
+    }
+    if (script) {
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `${await readFile(path.join(app, 'app.ts'), 'utf8')}import "./scripts/features/search.js";\n`,
+      );
+    }
+    if (typeOnly) {
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `import type {} from "./scripts/features/search.js";\n${await readFile(path.join(app, 'app.ts'), 'utf8')}`,
+      );
+    }
+    if (unusedStylesheet) {
+      await writeFile(path.join(app, 'styles', 'unused.css'), '@import "./features/search.css";\n');
+    }
+    const originalCss = await readFile(path.join(app, 'app.css'), 'utf8');
+    const withStyle = style
+      ? originalCss.replace(
+          '@import "./styles/components/buttons.css";',
+          `@import "./styles/components/buttons.css";\n${style}`,
+        )
+      : originalCss;
+    await writeFile(path.join(app, 'app.css'), `${bom ? '\uFEFF' : ''}${withStyle}`);
+
+    try {
+      const result = await runEnableInWorkspace(root, ['search']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toMatch(/Kept the local search copies/);
+      const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
+      const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
+      expect(
+        appTs.match(
+          /^import "\.\/scripts\/features\/search\.js";|^import '\.\/scripts\/features\/search\.js';/gm,
+        ),
+      ).toHaveLength(1);
+      expect(appCss.match(/\.\/styles\/features\/search\.css/g) ?? []).toHaveLength(appCssImports);
+      if (style) expect(appCss).toContain(style);
+      if (bom) expect(appCss.charCodeAt(0)).toBe(0xfeff);
+      expect(appTs).not.toContain('@webstir-io/webstir-frontend/features/search');
+      const firstRule = appCss.indexOf('{');
+      if (firstRule !== -1 && appCssImports > 0) {
+        expect(appCss.indexOf('features/search.css')).toBeLessThan(firstRule);
+      }
+      expect(existsSync(path.join(app, 'scripts', 'features', 'search.ts'))).toBe(true);
+      expect(existsSync(path.join(app, 'styles', 'features', 'search.css'))).toBe(true);
+    } finally {
+      await removeDemoWorkspace(copiedWorkspace);
+    }
+  });
+}
+
 const FEATURES_DIR = ['src', 'frontend', 'app', 'scripts', 'features'] as const;
 const PACKAGED_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';";
 
@@ -200,6 +323,22 @@ const clientNavCases: Array<{
     copies: false,
     entry: 'app.tsx',
   },
+  ...(['symbolic', 'hard'] as const).map((kind) => ({
+    name: `an app whose app.tsx entry is a ${kind} link`,
+    setup: async (root: string) => {
+      await writeLegacyClientNav(root);
+      const app = path.join(root, 'src', 'frontend', 'app');
+      const outside = path.join(os.tmpdir(), `webstir-outside-${process.pid}-${Date.now()}.tsx`);
+      await writeFile(outside, await readFile(path.join(app, 'app.ts'), 'utf8'));
+      await rm(path.join(app, 'app.ts'));
+      await (kind === 'symbolic' ? symlink : link)(outside, path.join(app, 'app.tsx'));
+    },
+    exitCode: 1,
+    imports: 'legacy' as const,
+    copies: true,
+    stderr: kind === 'symbolic' ? /symbolic link/ : /multiple hard links/,
+    entry: 'app.tsx',
+  })),
   {
     name: 'an app whose tests import a copy',
     setup: async (root) => {
