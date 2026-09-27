@@ -1,10 +1,3 @@
-import {
-  applyReferrerPolicy,
-  DEFAULT_REFERRER_POLICY,
-  parseReferrerPolicyHeader,
-  parseReferrerPolicyMeta,
-} from './referrer-policy.js';
-
 /** A `<meta>` or `<link>` in `<head>`: its tag name and attributes. */
 export interface HeadElementDescriptor {
   readonly tag: string;
@@ -16,8 +9,6 @@ export interface HeadMetadataSync {
   readonly remove: readonly number[];
   /** Indices into `next` of the metadata the incoming page brings, in its order. */
   readonly add: readonly number[];
-  /** The referrer policy loading the incoming page would give its document. */
-  readonly referrerPolicy: string;
 }
 
 const PAGE_LINK_RELS = new Set(['canonical', 'alternate', 'prev', 'next']);
@@ -28,9 +19,10 @@ const PAGE_LINK_PROTOCOLS = new Set(['http:', 'https:']);
 
 /**
  * Metadata that belongs to the page rather than the document: every `<meta name>` except
- * `viewport`, every `<meta property>` (Open Graph), and `<link>`s whose rel is only
+ * `viewport` and `referrer`, every `<meta property>` (Open Graph), and `<link>`s whose rel is only
  * canonical, alternate, prev or next. `charset`, `http-equiv`, `viewport`, stylesheets, icons
- * and everything else stay as the first load left them.
+ * and everything else stay as the first load left them. A referrer meta never moves in place: a
+ * page whose policy differs loads in full (see referrer-policy-change.ts).
  */
 export function isPageMetadata(element: HeadElementDescriptor): boolean {
   const tag = element.tag.toLowerCase();
@@ -38,7 +30,7 @@ export function isPageMetadata(element: HeadElementDescriptor): boolean {
   if (tag === 'meta') {
     if ('charset' in attributes || 'http-equiv' in attributes) return false;
     const name = attributes.name?.trim().toLowerCase();
-    if (name) return name !== 'viewport';
+    if (name) return name !== 'viewport' && attributes.name?.toLowerCase() !== 'referrer';
     return Boolean(attributes.property?.trim());
   }
   if (tag === 'link') {
@@ -49,25 +41,14 @@ export function isPageMetadata(element: HeadElementDescriptor): boolean {
 }
 
 /**
- * How client-nav brings the incoming page's metadata along: the outgoing page's metadata goes, the
- * incoming page's comes in its order, and the referrer policy becomes what a full load of the
- * incoming page would give (its last valid `<meta name=referrer>`, else its `Referrer-Policy`
- * header, else the browser default). Removing a referrer meta does not undo its policy, so the
- * policy is always stated.
+ * How client-nav brings the incoming page's metadata along: the outgoing page's metadata goes, and
+ * the incoming page's comes in its order.
  */
 export function resolveHeadMetadataSync(options: {
   readonly current: readonly HeadElementDescriptor[];
   readonly next: readonly HeadElementDescriptor[];
-  readonly referrerPolicyHeader: string | null;
 }): HeadMetadataSync {
-  const remove = pageMetadataIndices(options.current);
-  const add = pageMetadataIndices(options.next);
-  let referrerPolicy = parseReferrerPolicyHeader(options.referrerPolicyHeader);
-  for (const { attributes } of options.next.filter(isPageMetadata)) {
-    if (attributes.name?.toLowerCase() !== 'referrer') continue;
-    referrerPolicy = parseReferrerPolicyMeta(attributes.content) ?? referrerPolicy;
-  }
-  return { remove, add, referrerPolicy: referrerPolicy ?? DEFAULT_REFERRER_POLICY };
+  return { remove: pageMetadataIndices(options.current), add: pageMetadataIndices(options.next) };
 }
 
 /**
@@ -96,22 +77,12 @@ export function resolveMetadataHref(options: {
   }
 }
 
-/**
- * Replace the current page's title and metadata with `doc`'s, fetched from `url`, and return the
- * referrer policy it set. Run it once the
- * address has changed and just before the page's `<main>` goes in, so its content requests from
- * its address under its policy, and a referrer meta inside that content applies after the head's,
- * as in a full load.
- */
-export function syncHeadMetadata(
-  doc: Document,
-  url: string,
-  referrerPolicyHeader: string | null,
-): string | null {
+/** Replace the current page's title and metadata with `doc`'s, fetched from `url`. */
+export function syncHeadMetadata(doc: Document, url: string): void {
   document.title = doc.title;
   const head = document.head;
   const newHead = doc.head;
-  if (!head || !newHead) return null;
+  if (!head || !newHead) return;
 
   const baseHref = doc.querySelector('base[href]')?.getAttribute('href') ?? null;
   const current = headMetadataCandidates(head);
@@ -119,7 +90,6 @@ export function syncHeadMetadata(
   const sync = resolveHeadMetadataSync({
     current: current.map(describe),
     next: next.map(describe),
-    referrerPolicyHeader,
   });
 
   const removed = new Set(sync.remove);
@@ -129,10 +99,6 @@ export function syncHeadMetadata(
     const copy = copyMetadata(element, url, baseHref);
     if (copy) head.appendChild(copy);
   }
-
-  // Removing a referrer meta does not undo its policy, so the page's is always set.
-  applyReferrerPolicy(sync.referrerPolicy);
-  return sync.referrerPolicy;
 }
 
 function pageMetadataIndices(elements: readonly HeadElementDescriptor[]): number[] {

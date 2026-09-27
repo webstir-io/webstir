@@ -5,17 +5,22 @@ import {
   resolveHeadMetadataSync,
   resolveMetadataHref,
 } from '../dist/features/head-metadata.js';
+import { needsFullLoadForReferrerPolicy } from '../dist/features/referrer-policy-change.js';
 
 const meta = (attributes) => ({ tag: 'meta', attributes });
 const link = (attributes) => ({ tag: 'link', attributes });
 
 test.each([
-  ['meta name=referrer', meta({ name: 'referrer', content: 'no-referrer' }), true],
   ['meta name=description', meta({ name: 'description', content: 'About' }), true],
   ['meta name=robots', meta({ name: 'robots', content: 'noindex' }), true],
   ['meta name=theme-color', meta({ name: 'theme-color', content: '#fff' }), true],
   ['meta name=color-scheme', meta({ name: 'color-scheme', content: 'dark' }), true],
-  ['meta name in any case', meta({ name: 'ReFeRrEr', content: 'origin' }), true],
+  ['meta name in any case', meta({ name: 'DESCRIPTION', content: 'About' }), true],
+  [
+    'meta name= referrer , which browsers do not trim',
+    meta({ name: ' referrer ', content: 'x' }),
+    true,
+  ],
   ['meta property=og:url', meta({ property: 'og:url', content: 'https://a.test/' }), true],
   ['link rel=canonical', link({ rel: 'canonical', href: '/about' }), true],
   ['link rel=CANONICAL', link({ rel: 'CANONICAL', href: '/about' }), true],
@@ -23,6 +28,8 @@ test.each([
   ['link rel=prev', link({ rel: 'prev', href: '/1' }), true],
   ['link rel=next', link({ rel: 'next', href: '/3' }), true],
   ['meta charset', meta({ charset: 'utf-8' }), false],
+  ['meta name=referrer', meta({ name: 'referrer', content: 'no-referrer' }), false],
+  ['meta name=ReFeRrEr', meta({ name: 'ReFeRrEr', content: 'origin' }), false],
   ['meta name=viewport', meta({ name: 'viewport', content: 'width=device-width' }), false],
   ['meta name= Viewport ', meta({ name: ' Viewport ', content: 'width=device-width' }), false],
   [
@@ -65,22 +72,20 @@ test.each([
     current: shell,
     next: [
       ...shell,
-      meta({ name: 'referrer', content: 'no-referrer' }),
+      meta({ name: 'description', content: 'About' }),
       link({ rel: 'canonical', href: '/x' }),
     ],
-    header: null,
-    expected: { remove: [], add: [4, 5], referrerPolicy: 'no-referrer' },
+    expected: { remove: [], add: [4, 5] },
   },
   {
     label: 'metadata the incoming page lacks is removed',
     current: [
       ...shell,
-      meta({ name: 'referrer', content: 'no-referrer' }),
+      meta({ property: 'og:title', content: 'A' }),
       meta({ name: 'robots', content: 'noindex' }),
     ],
     next: shell,
-    header: null,
-    expected: { remove: [4, 5], add: [], referrerPolicy: 'strict-origin-when-cross-origin' },
+    expected: { remove: [4, 5], add: [] },
   },
   {
     label: 'changed metadata is replaced, in the incoming order',
@@ -94,96 +99,201 @@ test.each([
       ...shell,
       meta({ name: 'description', content: 'B' }),
     ],
-    header: null,
-    expected: { remove: [0, 5], add: [0, 5], referrerPolicy: 'strict-origin-when-cross-origin' },
+    expected: { remove: [0, 5], add: [0, 5] },
   },
   {
-    label: 'the Referrer-Policy header applies when the page has no referrer meta',
+    label: 'referrer metas stay where they are on both sides',
     current: [...shell, meta({ name: 'referrer', content: 'no-referrer' })],
-    next: shell,
-    header: 'origin',
-    expected: { remove: [4], add: [], referrerPolicy: 'origin' },
+    next: [...shell, meta({ name: 'Referrer', content: 'no-referrer' })],
+    expected: { remove: [], add: [] },
   },
-  {
-    label: 'a referrer meta overrides the header',
-    current: shell,
-    next: [...shell, meta({ name: 'referrer', content: 'same-origin' })],
-    header: 'unsafe-url',
-    expected: { remove: [], add: [4], referrerPolicy: 'same-origin' },
-  },
-  {
-    label: 'the last valid token of the header wins',
-    current: shell,
-    next: shell,
-    header: 'no-referrer, bogus, Strict-Origin ,',
-    expected: { remove: [], add: [], referrerPolicy: 'strict-origin' },
-  },
-  {
-    label: 'the last valid referrer meta wins and invalid ones are ignored',
-    current: shell,
-    next: [
-      meta({ name: 'referrer', content: 'origin' }),
-      meta({ name: 'Referrer', content: ' NEVER ' }),
-      meta({ name: 'referrer', content: 'bogus' }),
-      meta({ name: 'referrer', content: '' }),
-    ],
-    header: 'unsafe-url',
-    expected: { remove: [], add: [0, 1, 2, 3], referrerPolicy: 'no-referrer' },
-  },
-  {
-    label: 'legacy referrer keyword origin-when-crossorigin',
-    current: shell,
-    next: [meta({ name: 'referrer', content: 'origin-when-crossorigin' })],
-    header: null,
-    expected: { remove: [], add: [0], referrerPolicy: 'origin-when-cross-origin' },
-  },
-  {
-    label: 'legacy referrer keyword always',
-    current: shell,
-    next: [meta({ name: 'referrer', content: 'Always' })],
-    header: null,
-    expected: { remove: [], add: [0], referrerPolicy: 'unsafe-url' },
-  },
-  {
-    label: 'legacy referrer keyword default is the old default, as browsers read it',
-    current: shell,
-    next: [meta({ name: 'referrer', content: 'default' })],
-    header: 'no-referrer',
-    expected: { remove: [], add: [0], referrerPolicy: 'no-referrer-when-downgrade' },
-  },
-  {
-    label: 'legacy keywords are not read from the header',
-    current: shell,
-    next: shell,
-    header: 'origin, never',
-    expected: { remove: [], add: [], referrerPolicy: 'origin' },
-  },
-  {
-    label: 'a meta whose name is referrer only after trimming is not a referrer meta',
-    current: shell,
-    next: [meta({ name: ' referrer ', content: 'no-referrer' })],
-    header: null,
-    expected: { remove: [], add: [0], referrerPolicy: 'strict-origin-when-cross-origin' },
-  },
-  {
-    label: 'an invalid header and meta leave the browser default',
-    current: shell,
-    next: [meta({ name: 'referrer', content: 'none' })],
-    header: 'nope',
-    expected: { remove: [], add: [0], referrerPolicy: 'strict-origin-when-cross-origin' },
-  },
-  {
-    label: 'a referrer meta outside page metadata is not read',
-    current: shell,
-    next: [meta({ name: 'referrer', 'http-equiv': 'x', content: 'no-referrer' })],
-    header: null,
-    expected: { remove: [], add: [], referrerPolicy: 'strict-origin-when-cross-origin' },
-  },
-])('resolveHeadMetadataSync: $label', ({ current, next, header, expected }) => {
-  expect(resolveHeadMetadataSync({ current, next, referrerPolicyHeader: header })).toEqual(
-    expected,
-  );
+])('resolveHeadMetadataSync: $label', ({ current, next, expected }) => {
+  expect(resolveHeadMetadataSync({ current, next })).toEqual(expected);
 });
+
+const page = (head = '', main = '') =>
+  `<!doctype html><html><head><title>t</title>${head}</head><body><main>${main}</main></body></html>`;
+const referrerMeta = (content) => `<meta name="referrer" content="${content}">`;
+
+test.each([
+  // Neither side sets a policy, or both set the same one: stay client-side.
+  ['no policy on either side', null, page(), null, [], false],
+  [
+    'the same meta on both sides',
+    null,
+    page(referrerMeta('no-referrer')),
+    null,
+    ['no-referrer'],
+    false,
+  ],
+  ['the same header on both sides', 'origin', page(), 'origin', [], false],
+  [
+    'a header on one side and the same meta on the other',
+    'no-referrer',
+    page(),
+    null,
+    ['no-referrer'],
+    false,
+  ],
+  [
+    'the same policy spelled differently',
+    null,
+    page(referrerMeta(' NEVER ')),
+    null,
+    ['no-referrer'],
+    false,
+  ],
+  ['an invalid incoming meta sets nothing', null, page(referrerMeta('bogus')), null, [], false],
+  ['an invalid incoming header sets nothing', 'nope', page(), null, [], false],
+  ['the last valid header token counts', 'no-referrer, origin, bogus', page(), 'origin', [], false],
+  ['a first load is taken to share the incoming header', 'origin', page(), undefined, [], false],
+  [
+    'a first load with no header matches an incoming page with none',
+    null,
+    page(),
+    undefined,
+    [],
+    false,
+  ],
+  [
+    'a meta overrides the header on the incoming side',
+    'unsafe-url',
+    page(referrerMeta('origin')),
+    'origin',
+    [],
+    false,
+  ],
+  [
+    'a meta overrides the header on the current side',
+    'origin',
+    page(),
+    'unsafe-url',
+    ['origin'],
+    false,
+  ],
+  [
+    'a name that is referrer only after trimming is not a referrer meta',
+    null,
+    page('<meta name=" referrer " content="no-referrer">'),
+    null,
+    [],
+    false,
+  ],
+  [
+    'a meta whose content mentions referrer is not one',
+    null,
+    page('<meta name="description" content="our referrer policy">'),
+    null,
+    [],
+    false,
+  ],
+  [
+    'a <metadata> element is not a meta',
+    null,
+    page('<metadata name="referrer" content="no-referrer"></metadata>'),
+    null,
+    [],
+    false,
+  ],
+  // The incoming page sets a different policy, or drops the current one: load in full.
+  [
+    'an incoming meta the current page lacks',
+    null,
+    page(referrerMeta('no-referrer')),
+    null,
+    [],
+    true,
+  ],
+  ['an incoming header the current page lacks', 'no-referrer', page(), null, [], true],
+  ['a current meta the incoming page lacks', null, page(), null, ['no-referrer'], true],
+  ['a current header the incoming page lacks', null, page(), 'origin', [], true],
+  ['a different meta', null, page(referrerMeta('unsafe-url')), null, ['no-referrer'], true],
+  ['a different header', 'unsafe-url', page(), 'origin', [], true],
+  ['a meta inside <main>', null, page('', referrerMeta('origin')), null, [], true],
+  [
+    'a meta in the body after <main>',
+    null,
+    `${page()}<meta name=referrer content=origin>`,
+    null,
+    [],
+    true,
+  ],
+  [
+    'an unquoted meta in any case',
+    null,
+    page('<META NAME=REFERRER CONTENT=no-referrer>'),
+    null,
+    [],
+    true,
+  ],
+  [
+    'a single-quoted meta, content first',
+    null,
+    page(`<meta content='origin' name='referrer'>`),
+    null,
+    [],
+    true,
+  ],
+  [
+    'a meta with a > inside a quoted value',
+    null,
+    page('<meta data-x="a>b" name="referrer" content="origin">'),
+    null,
+    [],
+    true,
+  ],
+  [
+    'a legacy keyword that differs',
+    null,
+    page(referrerMeta('default')),
+    null,
+    ['strict-origin-when-cross-origin'],
+    true,
+  ],
+  [
+    'the last valid meta counts',
+    null,
+    page(referrerMeta('origin') + referrerMeta('no-referrer')),
+    null,
+    ['origin'],
+    true,
+  ],
+  // A referrer meta that cannot be read for certain: load in full.
+  [
+    'a name written with a character reference',
+    null,
+    page('<meta name="&#114;eferrer" content="origin">'),
+    null,
+    [],
+    true,
+  ],
+  [
+    'a content written with a character reference',
+    null,
+    page('<meta name="referrer" content="&#111;rigin">'),
+    null,
+    ['origin'],
+    true,
+  ],
+  [
+    'a tag the reading cannot follow',
+    null,
+    page(`<meta a" name=referrer content=origin>`),
+    null,
+    [],
+    true,
+  ],
+])(
+  'needsFullLoadForReferrerPolicy: %s',
+  (_label, header, html, currentHeader, currentMetas, expected) => {
+    expect(
+      needsFullLoadForReferrerPolicy({
+        incoming: { header, html },
+        current: { header: currentHeader, metas: currentMetas },
+      }),
+    ).toBe(expected);
+  },
+);
 
 test.each([
   [

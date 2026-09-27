@@ -74,29 +74,42 @@ page's `<head>` that describe that page:
 - **Title:** the new page's `<title>`, empty if it has none.
 - **Styles:** the new page's stylesheets load before the swap and the old page's
   are removed after it; `app.css` stays. `<style data-critical>` is replaced.
-  They load while the address is still the old page's, so they are requested
-  with no `Referer` rather than that address.
 - **Scripts:** the old page's entry script goes, and the new page's head scripts
   load after the swap. The client-nav, `hmr.js` and `refresh.js` scripts stay.
-- **Page metadata:** every `<meta name>` except `viewport`, every
+- **Page metadata:** every `<meta name>` except `viewport` and `referrer`, every
   `<meta property>` (Open Graph), and `<link>`s whose rel is only `canonical`,
   `alternate`, `prev` or `next`. The old page's are removed and the new page's
   added in its order, with relative `href`s resolved against the new page's
   address and `<base>`, so a page that lacks a `description`, `robots`,
   `theme-color` or canonical does not inherit the previous page's. A link whose
   `href` is not `http:` or `https:` is left out.
-- **Referrer policy:** what a full load of the new page would give: its last
-  valid `<meta name="referrer">`, else its `Referrer-Policy` header, else the
-  browser default (`strict-origin-when-cross-origin`). A page that sets
-  `no-referrer` to keep a token in its address out of `Referer` does so only
-  while it is on screen. The address and policy change just before the new
-  `<main>` goes in, so its scripts and content request from the new address
-  under this policy, as in a full load.
+- **Address:** it changes just before the new `<main>` goes in, so the new
+  content's relative URLs, and the `Referer` its requests send, are the new
+  page's.
 
 Everything else stays as the first load left it: `charset`, `viewport`,
 `http-equiv` (a Content-Security-Policy included), `<base>`, icons, the manifest,
 preloads and inline head scripts. A page that needs a different one of those
 should opt its links out with `data-client-nav="off"` so it loads in full.
+
+## When client-nav loads a page in full
+
+The referrer policy never changes in place: a browser cannot undo a policy once a
+referrer meta has set it. So when the new page would get a different policy than
+the page on screen, client-nav loads its address in full and the browser applies
+the policy itself. A page's policy is its last valid `<meta name="referrer">`
+(anywhere, `<main>` included), else its `Referrer-Policy` header. Pages that set
+none, or the same one, stay client-side. This covers links, Back and Forward, and
+forms answered with a page (the form's result address is then loaded in full).
+
+A page that sets `no-referrer` to keep a token in its address out of `Referer`
+does so only while it is on screen: leaving it for a page without that policy is
+a full load. Client-nav reads the new page's policy from the response before
+parsing it, so a looser policy never reaches the page on screen first. A referrer
+meta it cannot read for certain (one written with character references, say)
+also means a full load. A script cannot read the first page's own
+`Referrer-Policy` header, so client-nav takes it to be the same as the next
+page's, as a site-wide header would be.
 
 ## Redirects keep their destination
 
@@ -209,11 +222,6 @@ export function setup({ root, data, scope }: PageContext<Awaited<ReturnType<type
 On link navigation, the current content, URL, and page lifetime remain intact while
 `load` is pending. History traversal changes the URL immediately, as usual, but
 keeps the outgoing content visible until data is ready. Webstir then synchronizes styles and commits the prepared page.
-Because the outgoing page is still the one on screen, the page module and the
-loader's requests carry its address under its referrer policy. When the incoming
-page has a referrer meta and that policy is not known (a first load with no
-referrer meta, whose header a script cannot read, or a page whose own code
-changed a referrer meta), they use `no-referrer` instead.
 Its setup runs before additional document scripts, so prepared content can render
 without an intervening loading frame. On initial load the existing HTML remains
 available while data loads. Pages without the attribute retain the original

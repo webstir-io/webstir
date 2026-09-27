@@ -31,11 +31,7 @@ import {
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 import { syncHeadMetadata } from './head-metadata.js';
-import {
-  commitReferrerPolicy,
-  restoreReferrerPolicy,
-  trackReferrerPolicy,
-} from './referrer-policy.js';
+import { needsFullLoadForReferrerPolicy, readReferrerMetas } from './referrer-policy-change.js';
 
 export {};
 
@@ -51,7 +47,6 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
-  trackReferrerPolicy();
   const initial = () => {
     const requestId = activeRequestId;
     void startPage(window.location.href)
@@ -145,6 +140,9 @@ export function enableClientNav(): void {
 
 let enabled = false;
 let documentUrl = new URL(window.location.href);
+// The Referrer-Policy header of the page on screen; undefined for the first load, which a script
+// cannot read.
+let documentReferrerPolicyHeader: string | null | undefined;
 const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
 let commitQueue = Promise.resolve();
@@ -431,8 +429,20 @@ async function renderDocumentResponse(
   }
   if (requestId !== activeRequestId) return;
 
+  // A page with another referrer policy loads in full, so the browser applies it; it is decided
+  // from the response text, since parsing a referrer meta can apply it to the page on screen.
+  const referrerPolicyHeader = response.headers.get('referrer-policy');
+  if (
+    needsFullLoadForReferrerPolicy({
+      incoming: { header: referrerPolicyHeader, html },
+      current: { header: documentReferrerPolicyHeader, metas: readReferrerMetas(document) },
+    })
+  ) {
+    leave(options.url);
+    return;
+  }
+
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  restoreReferrerPolicy(doc);
   const script = doc.querySelector<HTMLScriptElement>(
     'script[data-webstir-page][data-webstir-load][src]',
   );
@@ -449,10 +459,9 @@ async function renderDocumentResponse(
       return;
     }
   }
-  const referrerPolicy = response.headers.get('referrer-policy');
   const commit = commitQueue.then(async () => {
     if (requestId !== activeRequestId) return;
-    await renderDocumentHtml(doc, { ...options, referrerPolicy }, requestId, prepared);
+    await renderDocumentHtml(doc, { ...options, referrerPolicyHeader }, requestId, prepared);
   });
   commitQueue = commit.catch(() => {});
   try {
@@ -468,7 +477,7 @@ async function renderDocumentHtml(
   options: {
     readonly history: HistoryMode;
     readonly url: string;
-    readonly referrerPolicy: string | null;
+    readonly referrerPolicyHeader: string | null;
   },
   requestId: number,
   prepared?: PreparedPage,
@@ -479,25 +488,24 @@ async function renderDocumentHtml(
   }
   ++pageGeneration;
   await pageLifecycle.dispose();
-  await syncHead(doc, options.url, DOM_RUNTIME, documentUrl.href);
+  await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
 
-  // The address, then the page's referrer policy, change before its content goes in and in the
-  // same task, so its scripts and content request from its address under its policy, as in a full
-  // load, and nothing on screen runs under an address or policy that is not its own.
+  // The address changes just before the content goes in, in the same task, so the content's
+  // relative URLs resolve against it and its requests come from it, as in a full load.
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
   } else if (options.history === 'replace') {
     window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
-  const referrerPolicy = syncHeadMetadata(doc, options.url, options.referrerPolicy);
+  documentReferrerPolicyHeader = options.referrerPolicyHeader;
+  syncHeadMetadata(doc, options.url);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
   if (newMain && currentMain) {
     currentMain.replaceWith(newMain);
   }
-  if (referrerPolicy) commitReferrerPolicy(referrerPolicy, newMain);
   const anchor = fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { chromium, type Browser, type Page, type Route } from 'playwright';
+import { chromium, type Browser, type Page } from 'playwright';
 
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -430,288 +430,224 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
   await page.locator('#demo-name').waitFor({ state: 'visible' });
 }
 
-// The title, named meta and page links follow the page on screen, and so does the referrer policy:
-// leaving a page whose meta says no-referrer sends Referer again, as a full load of the next page
-// would. The new page's content requests from its own address under its own policy, and nothing
-// it requests carries the outgoing address. A relative canonical resolves against the page's
-// own <base>, not this document's, and a javascript: canonical is left out.
+// The title, named meta and page links follow the page on screen. A relative canonical resolves
+// against the page's own <base>, not this document's, and a javascript: canonical is left out.
+// The referrer policy never changes in place: a page that sets another one, by meta (in <head> or
+// <main>) or header, loads in full and the browser applies it; pages with the same policy, or
+// none, stay client-side.
 async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
+  // Fixture pages load the app's own scripts, so client-nav runs on those that load in full.
+  const appScripts = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('script[type="module"][src]'))
+      .filter((script) => !script.hasAttribute('data-webstir-page'))
+      .map((script) => `<script type="module" src="${script.getAttribute('src')}"></script>`)
+      .join(''),
+  );
   const html = (title: string, head: string, main: string) =>
-    `<!doctype html><html><head><title>${title}</title>${head}</head><body><main>${main}</main></body></html>`;
-  const fulfillPage = (body: string, headers: Record<string, string> = {}) => ({
-    status: 200,
-    headers: { 'content-type': 'text/html; charset=utf-8', ...headers },
-    body,
-  });
-  await page.route(`${origin}/client-nav-no-referrer`, (route) =>
-    route.fulfill(
-      fulfillPage(
-        html(
-          'No Referrer',
-          '<base href="/client-nav-base/"><meta name="referrer" content="no-referrer">' +
-            '<link rel="stylesheet" href="/client-nav-no-referrer.css">' +
-            '<meta name="description" content="Private">' +
-            '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-no-referrer">',
-          '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-prepared" href="/client-nav-prepared">on</a>',
-        ),
-      ),
-    ),
-  );
-  // A prepared page loads its module and data before it commits, so from the page on screen and
-  // under its policy, even though its own meta (which Chromium applies on parsing) says unsafe-url.
-  const preparedPage = (next: string) =>
-    fulfillPage(
-      html(
-        'Prepared',
-        '<meta name="referrer" content="unsafe-url">' +
-          '<script type="module" data-webstir-page data-webstir-load src="/client-nav-prepared.js"></script>',
-        '<h1 id="prepared-heading">Prepared</h1><p id="prepared-referer"></p>' +
-          `<a id="to-next" href="${next}">on</a>`,
-      ),
-    );
-  await page.route(`${origin}/client-nav-prepared`, (route) =>
-    route.fulfill(preparedPage('/client-nav-plain')),
-  );
-  await page.route(`${origin}/client-nav-prepared-again`, (route) =>
-    route.fulfill(preparedPage('/client-nav-prepared-last')),
-  );
-  await page.route(`${origin}/client-nav-prepared-last`, (route) =>
-    route.fulfill(preparedPage('/client-nav-prepared-final')),
-  );
-  await page.route(`${origin}/client-nav-prepared-final`, (route) =>
-    route.fulfill(preparedPage('/client-nav-prepared-more')),
-  );
-  await page.route(`${origin}/client-nav-prepared-more`, (route) =>
-    route.fulfill(preparedPage('/client-nav-plain')),
-  );
-  let preparedModuleReferer: string | undefined;
-  await page.route(`${origin}/client-nav-prepared.js`, async (route) => {
-    preparedModuleReferer = await readReferer(route);
-    await route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'text/javascript' },
-      body: [
-        'export async function load({ signal }) {',
-        "  return (await fetch('/client-nav-referer-probe', { signal })).text();",
-        '}',
-        'export function setup({ data }) {',
-        "  document.getElementById('prepared-referer').textContent = JSON.stringify(data);",
-        '}',
-      ].join('\n'),
-    });
-  });
-  // Its frame starts loading the moment the content goes in.
-  await page.route(`${origin}/client-nav-plain`, (route) =>
-    route.fulfill(
-      fulfillPage(
-        html(
-          '',
-          '<link rel="canonical" href="javascript:alert(1)">',
-          '<h1 id="plain-heading">Plain</h1><iframe src="/client-nav-referer-frame"></iframe>' +
-            '<a id="to-origin-policy" href="/client-nav-origin-policy">on</a>',
-        ),
-      ),
-    ),
-  );
-  await page.route(`${origin}/client-nav-origin-policy`, (route) =>
-    route.fulfill(
-      fulfillPage(
-        html(
-          'Origin Policy',
-          '<meta name="description" content="Public">' +
-            '<link rel="stylesheet" href="/client-nav-origin-policy.css">',
-          '<h1 id="origin-policy-heading">Origin Policy</h1><a id="to-main-referrer" href="/client-nav-main-referrer">on</a>',
-        ),
-        { 'referrer-policy': 'origin' },
-      ),
-    ),
-  );
-  await page.route(`${origin}/client-nav-main-referrer`, (route) =>
-    route.fulfill(
-      fulfillPage(
-        html(
-          'Main Referrer',
-          '',
-          '<meta name="referrer" content="origin"><h1 id="main-referrer-heading">Main Referrer</h1>' +
-            '<a id="to-prepared-again" href="/client-nav-prepared-again">on</a>',
-        ),
-      ),
-    ),
-  );
-  const readReferer = async (route: Route) => (await route.request().allHeaders()).referer ?? '';
-  let holdProbe = false;
-  let releaseProbe: (() => void) | undefined;
-  await page.route(`${origin}/client-nav-referer-probe`, async (route) => {
-    const referer = await readReferer(route);
-    if (holdProbe) {
-      holdProbe = false;
-      await new Promise<void>((resolve) => {
-        releaseProbe = resolve;
+    `<!doctype html><html><head><title>${title}</title>${head}${appScripts}</head><body><main>${main}</main></body></html>`;
+  const link = (id: string, href: string) => `<a id="${id}" href="${href}">on</a>`;
+  const referers = new Map<string, string[]>();
+  const fixture = async (
+    pathname: string,
+    body: string,
+    headers: Record<string, string> = {},
+  ): Promise<void> => {
+    await page.route(`${origin}${pathname}`, async (route) => {
+      const seen = referers.get(pathname) ?? [];
+      seen.push((await route.request().allHeaders()).referer ?? '');
+      referers.set(pathname, seen);
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8', ...headers },
+        body,
       });
-    }
-    await route
-      .fulfill({ status: 200, headers: { 'content-type': 'text/plain' }, body: referer })
-      .catch(() => {});
-  });
-  await page.route(`${origin}/client-nav-prepared-held`, (route) =>
-    route.fulfill(preparedPage('/client-nav-plain')),
+    });
+  };
+  await fixture(
+    '/client-nav-meta-a',
+    html(
+      'Meta A',
+      '<base href="/client-nav-base/"><meta name="description" content="A">' +
+        '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-meta-a">',
+      `<h1 id="meta-a-heading">Meta A</h1>${link('to-meta-b', '/client-nav-meta-b')}`,
+    ),
   );
-  await page.route(`${origin}/client-nav-prepared-next`, (route) =>
-    route.fulfill(preparedPage('/client-nav-main-referrer')),
+  // Its frame starts loading the moment the content goes in.
+  await fixture(
+    '/client-nav-meta-b',
+    html(
+      '',
+      '<link rel="canonical" href="javascript:alert(1)">',
+      '<h1 id="meta-b-heading">Meta B</h1><iframe src="/client-nav-frame"></iframe>' +
+        link('to-no-referrer', '/client-nav-no-referrer'),
+    ),
   );
-  const stylesheetReferers = new Map<string, string>();
-  await page.route(`${origin}/client-nav-*.css`, async (route) => {
-    stylesheetReferers.set(new URL(route.request().url()).pathname, await readReferer(route));
-    await route.fulfill({ status: 200, headers: { 'content-type': 'text/css' }, body: '' });
-  });
-  let frameReferer: string | undefined;
-  await page.route(`${origin}/client-nav-referer-frame`, async (route) => {
-    frameReferer = await readReferer(route);
-    await route.fulfill(fulfillPage('<!doctype html><p>frame</p>'));
-  });
+  await fixture('/client-nav-frame', '<!doctype html><p>frame</p>');
+  await fixture(
+    '/client-nav-no-referrer',
+    html(
+      'No Referrer',
+      '<meta name="referrer" content="no-referrer">',
+      `<h1 id="no-referrer-heading">No Referrer</h1>${link('to-no-referrer-header', '/client-nav-no-referrer-header')}`,
+    ),
+  );
+  await fixture(
+    '/client-nav-no-referrer-header',
+    html(
+      'No Referrer Header',
+      '',
+      `<h1 id="no-referrer-header-heading">No Referrer Header</h1>${link('to-unsafe', '/client-nav-unsafe')}`,
+    ),
+    { 'referrer-policy': 'no-referrer' },
+  );
+  await fixture(
+    '/client-nav-unsafe',
+    html(
+      'Unsafe',
+      '<meta name="referrer" content="unsafe-url">',
+      `<h1 id="unsafe-heading">Unsafe</h1>${link('to-main-origin', '/client-nav-main-origin')}`,
+    ),
+  );
+  await fixture(
+    '/client-nav-main-origin',
+    html(
+      'Main Origin',
+      '',
+      '<meta name="referrer" content="origin"><h1 id="main-origin-heading">Main Origin</h1>' +
+        link('to-header-origin', '/client-nav-header-origin'),
+    ),
+  );
+  await fixture(
+    '/client-nav-header-origin',
+    html(
+      'Header Origin',
+      '',
+      `<h1 id="header-origin-heading">Header Origin</h1>${link('to-plain', '/client-nav-plain')}`,
+    ),
+    { 'referrer-policy': 'origin' },
+  );
+  await fixture(
+    '/client-nav-plain',
+    html(
+      'Plain',
+      '',
+      '<h1 id="plain-heading">Plain</h1>' +
+        '<form id="policy-form" method="post" action="/client-nav-form-policy">' +
+        '<button id="policy-form-submit">Send</button></form>',
+    ),
+  );
+  // A form answered with a document that sets another policy loads that address in full.
+  await page.route(`${origin}/client-nav-form-policy`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body:
+        route.request().method() === 'POST'
+          ? html('Posted', '<meta name="referrer" content="no-referrer">', '<h1>Posted</h1>')
+          : html('Form Policy', '', '<h1 id="form-policy-heading">Form Policy</h1>'),
+    }),
+  );
+  await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+      body: (await route.request().allHeaders()).referer ?? '',
+    }),
+  );
   const probeReferer = () =>
     page.evaluate(() => fetch('/client-nav-referer-probe').then((response) => response.text()));
   const readMetadata = () =>
     page.evaluate(() => ({
-      referrer: document.querySelector('meta[name="referrer"]')?.getAttribute('content') ?? null,
       description:
         document.querySelector('meta[name="description"]')?.getAttribute('content') ?? null,
       robots: document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null,
       canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? null,
       viewport: document.querySelectorAll('meta[name="viewport"]').length,
     }));
+  // A marker on the window tells a client-side navigation (it survives) from a full load.
+  const markDocument = () =>
+    page.evaluate(() => {
+      (window as typeof window & { __clientNavDocument?: boolean }).__clientNavDocument = true;
+    });
+  const sameDocument = () =>
+    page.evaluate(
+      () =>
+        (window as typeof window & { __clientNavDocument?: boolean }).__clientNavDocument === true,
+    );
+  const go = async (linkId: string, headingId: string) => {
+    await page.locator(`#${linkId}`).click({ noWaitAfter: true });
+    await page.locator(`#${headingId}`).waitFor({ state: 'visible' });
+    await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  };
 
   const viewport = (await readMetadata()).viewport;
-  await installClientNavRecorder(page);
+  await markDocument();
   await page.evaluate(() => {
-    const link = document.createElement('a');
-    link.id = 'to-no-referrer';
-    link.href = '/client-nav-no-referrer';
-    link.textContent = 'no referrer';
-    document.body.append(link);
+    const anchor = document.createElement('a');
+    anchor.id = 'to-meta-a';
+    anchor.href = '/client-nav-meta-a';
+    anchor.textContent = 'meta a';
+    document.body.append(anchor);
   });
-  await page.locator('#to-no-referrer').click({ noWaitAfter: true });
-  await page.locator('#no-referrer-heading').waitFor({ state: 'visible' });
+  await go('to-meta-a', 'meta-a-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await page.title()).toBe('Meta A');
   expect(await readMetadata()).toEqual({
-    referrer: 'no-referrer',
-    description: 'Private',
+    description: 'A',
     robots: 'noindex',
-    canonical: `${origin}/client-nav-base/client-nav-no-referrer`,
+    canonical: `${origin}/client-nav-base/client-nav-meta-a`,
     viewport,
   });
-  expect(await probeReferer()).toBe('');
-  expect(stylesheetReferers.get('/client-nav-no-referrer.css')).toBe('');
 
-  await page.locator('#to-prepared').click({ noWaitAfter: true });
-  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
-  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(''));
-  expect(preparedModuleReferer).toBe('');
-  expect(await probeReferer()).toBe(`${origin}/client-nav-prepared`);
-
-  await page.locator('#to-next').click({ noWaitAfter: true });
-  await page.locator('#plain-heading').waitFor({ state: 'visible' });
+  await go('to-meta-b', 'meta-b-heading');
+  expect(await sameDocument()).toBe(true);
   expect(await page.title()).toBe('');
   expect(await readMetadata()).toEqual({
-    referrer: null,
     description: null,
     robots: null,
     canonical: null,
     viewport,
   });
+  expect(await probeReferer()).toBe(`${origin}/client-nav-meta-b`);
+  await waitFor(async () => expect(referers.get('/client-nav-frame')).toBeDefined(), 5_000);
+  expect(referers.get('/client-nav-frame')).toEqual([`${origin}/client-nav-meta-b`]);
+
+  // A referrer meta the page on screen lacks: a full load, and the browser applies it.
+  await go('to-no-referrer', 'no-referrer-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(await probeReferer()).toBe('');
+
+  // The same policy by header: client-side.
+  await markDocument();
+  await go('to-no-referrer-header', 'no-referrer-header-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await probeReferer()).toBe('');
+
+  // A looser meta is read from the response text, not parsed, so the page on screen keeps its
+  // policy until it leaves: the full load's own request sends no Referer either.
+  await go('to-unsafe', 'unsafe-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(referers.get('/client-nav-unsafe')).toEqual(['', '']);
+  expect(await probeReferer()).toBe(`${origin}/client-nav-unsafe`);
+
+  // A referrer meta inside <main> counts too.
+  await go('to-main-origin', 'main-origin-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(await probeReferer()).toBe(`${origin}/`);
+
+  // The same policy by header: client-side; then a page with none: a full load.
+  await markDocument();
+  await go('to-header-origin', 'header-origin-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await probeReferer()).toBe(`${origin}/`);
+  await go('to-plain', 'plain-heading');
+  expect(await sameDocument()).toBe(false);
   expect(await probeReferer()).toBe(`${origin}/client-nav-plain`);
-  await waitFor(async () => expect(frameReferer).toBeDefined(), 5_000);
-  expect(frameReferer).toBe(`${origin}/client-nav-plain`);
 
-  await page.locator('#to-origin-policy').click({ noWaitAfter: true });
-  await page.locator('#origin-policy-heading').waitFor({ state: 'visible' });
-  expect((await readMetadata()).description).toBe('Public');
-  expect(await probeReferer()).toBe(`${origin}/`);
-  // Styles load before the address changes, so they send none rather than the outgoing one.
-  expect(stylesheetReferers.get('/client-nav-origin-policy.css')).toBe('');
-
-  // A navigation that starts while another's loader is pending restores the same policy.
-  await page.evaluate(() => {
-    for (const name of ['held', 'next']) {
-      const link = document.createElement('a');
-      link.id = `to-prepared-${name}`;
-      link.href = `/client-nav-prepared-${name}`;
-      link.textContent = name;
-      document.body.append(link);
-    }
-  });
-  holdProbe = true;
-  const held = page.waitForRequest(`${origin}/client-nav-referer-probe`);
-  await page.locator('#to-prepared-held').click({ noWaitAfter: true });
-  await held;
-  await page.locator('#to-prepared-next').click({ noWaitAfter: true });
-  await page.waitForURL(`${origin}/client-nav-prepared-next`);
-  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
-  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
-  releaseProbe?.();
-
-  // A referrer meta in the page's content applies after its head's, as in a full load.
-  await page.locator('#to-next').click({ noWaitAfter: true });
-  await page.locator('#main-referrer-heading').waitFor({ state: 'visible' });
-  expect(await probeReferer()).toBe(`${origin}/`);
-
-  // The page on screen keeps that policy while the next prepared page loads its data.
-  await page.locator('#to-prepared-again').click({ noWaitAfter: true });
-  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
-  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
-
-  // A policy the page's own code set after it went in cannot be read back once its meta is gone
-  // or changed again, so the page keeps no-referrer until the next page commits.
-  const changes: Array<[string, () => void]> = [
-    [
-      '/client-nav-prepared-last',
-      () => {
-        const meta = document.createElement('meta');
-        meta.name = 'referrer';
-        meta.content = 'no-referrer';
-        document.head.append(meta);
-        meta.remove();
-        meta.content = 'unsafe-url';
-      },
-    ],
-    [
-      '/client-nav-prepared-final',
-      () => {
-        const meta = document.querySelector<HTMLMetaElement>('head meta[name="referrer"]');
-        if (!meta) throw new Error('Missing the page referrer meta');
-        meta.content = 'no-referrer';
-        meta.remove();
-        meta.content = 'unsafe-url';
-      },
-    ],
-    [
-      '/client-nav-prepared-more',
-      () => {
-        const holder = document.createElement('div');
-        holder.innerHTML = '<meta name="referrer" content="no-referrer">';
-        document.body.append(holder);
-        holder.replaceChildren();
-      },
-    ],
-  ];
-  for (const [next, change] of changes) {
-    await page.evaluate(change);
-    await page.locator('#to-next').click({ noWaitAfter: true });
-    await page.waitForURL(`${origin}${next}`);
-    await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
-    expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(''));
-  }
-  expect(await readClientNavEvents(page)).toEqual([
-    '/client-nav-no-referrer',
-    '/client-nav-prepared',
-    '/client-nav-plain',
-    '/client-nav-origin-policy',
-    '/client-nav-prepared-next',
-    '/client-nav-main-referrer',
-    '/client-nav-prepared-again',
-    '/client-nav-prepared-last',
-    '/client-nav-prepared-final',
-    '/client-nav-prepared-more',
-  ]);
+  await markDocument();
+  await page.locator('#policy-form-submit').click({ noWaitAfter: true });
+  await page.locator('#form-policy-heading').waitFor({ state: 'visible' });
+  expect(await sameDocument()).toBe(false);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });

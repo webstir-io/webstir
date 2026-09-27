@@ -66,12 +66,10 @@ export function resolveRedirectNavigation(options: {
   };
 }
 
-/** `outgoingUrl` is the address the current head's relative hrefs were written for. */
 export async function syncHead(
   doc: Document,
   url: string,
   runtime: NavigationDomRuntime,
-  outgoingUrl: string = window.location.href,
 ): Promise<void> {
   const head = document.head;
   const newHead = doc.head;
@@ -135,7 +133,7 @@ export async function syncHead(
   const existingStyles = new Map<string, HTMLLinkElement>();
   const staleStyles: HTMLLinkElement[] = [];
   for (const link of Array.from(head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))) {
-    const key = normalizeStylesheetKey(link.getAttribute('href'), outgoingUrl, runtime);
+    const key = normalizeStylesheetKey(link.getAttribute('href'), window.location.href, runtime);
     if (!key) {
       link.remove();
       continue;
@@ -156,9 +154,6 @@ export async function syncHead(
     }
     const next = document.createElement('link');
     next.rel = 'stylesheet';
-    // It loads while the outgoing page's address is still the document's, so it sends no Referer
-    // rather than that address.
-    next.referrerPolicy = 'no-referrer';
     next.href = href;
     head.appendChild(next);
     existingStyles.set(key, next);

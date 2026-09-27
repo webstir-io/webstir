@@ -2,4 +2,4 @@
 "@webstir-io/webstir-frontend": patch
 ---
 
-Client-nav now brings the new page's metadata along: named `<meta>`, Open Graph, canonical/alternate/prev/next links and the referrer policy follow the page instead of staying from the previous one.
+Client-nav now brings the new page's title and metadata along (named `<meta>`, Open Graph, and canonical/alternate/prev/next links) instead of keeping the previous page's, and loads a page in full when its referrer policy differs from the one on screen.
