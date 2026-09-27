@@ -56,13 +56,18 @@ export function trackReferrerPolicy(): void {
   });
 }
 
-/** Set the document's policy: a referrer meta sets it when inserted and keeps it after removal. */
+/**
+ * Set the document's policy: a referrer meta sets it when inserted and keeps it after removal. The
+ * page's own changes before it still count; this one is client-nav's, not the page's.
+ */
 export function applyReferrerPolicy(value: string): void {
+  if (observer) noteRecords(observer.takeRecords());
   const policy = document.createElement('meta');
   policy.name = 'referrer';
   policy.content = value;
   document.head.appendChild(policy);
   policy.remove();
+  observer?.takeRecords();
 }
 
 /**

@@ -539,12 +539,25 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     ),
   );
   const readReferer = async (route: Route) => (await route.request().allHeaders()).referer ?? '';
-  await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
-    route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'text/plain' },
-      body: await readReferer(route),
-    }),
+  let holdProbe = false;
+  let releaseProbe: (() => void) | undefined;
+  await page.route(`${origin}/client-nav-referer-probe`, async (route) => {
+    const referer = await readReferer(route);
+    if (holdProbe) {
+      holdProbe = false;
+      await new Promise<void>((resolve) => {
+        releaseProbe = resolve;
+      });
+    }
+    await route
+      .fulfill({ status: 200, headers: { 'content-type': 'text/plain' }, body: referer })
+      .catch(() => {});
+  });
+  await page.route(`${origin}/client-nav-prepared-held`, (route) =>
+    route.fulfill(preparedPage('/client-nav-plain')),
+  );
+  await page.route(`${origin}/client-nav-prepared-next`, (route) =>
+    route.fulfill(preparedPage('/client-nav-main-referrer')),
   );
   const stylesheetReferers = new Map<string, string>();
   await page.route(`${origin}/client-nav-*.css`, async (route) => {
@@ -616,8 +629,28 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   // Styles load before the address changes, so they send none rather than the outgoing one.
   expect(stylesheetReferers.get('/client-nav-origin-policy.css')).toBe('');
 
+  // A navigation that starts while another's loader is pending restores the same policy.
+  await page.evaluate(() => {
+    for (const name of ['held', 'next']) {
+      const link = document.createElement('a');
+      link.id = `to-prepared-${name}`;
+      link.href = `/client-nav-prepared-${name}`;
+      link.textContent = name;
+      document.body.append(link);
+    }
+  });
+  holdProbe = true;
+  const held = page.waitForRequest(`${origin}/client-nav-referer-probe`);
+  await page.locator('#to-prepared-held').click({ noWaitAfter: true });
+  await held;
+  await page.locator('#to-prepared-next').click({ noWaitAfter: true });
+  await page.waitForURL(`${origin}/client-nav-prepared-next`);
+  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
+  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
+  releaseProbe?.();
+
   // A referrer meta in the page's content applies after its head's, as in a full load.
-  await page.locator('#to-main-referrer').click({ noWaitAfter: true });
+  await page.locator('#to-next').click({ noWaitAfter: true });
   await page.locator('#main-referrer-heading').waitFor({ state: 'visible' });
   expect(await probeReferer()).toBe(`${origin}/`);
 
@@ -672,6 +705,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     '/client-nav-prepared',
     '/client-nav-plain',
     '/client-nav-origin-policy',
+    '/client-nav-prepared-next',
     '/client-nav-main-referrer',
     '/client-nav-prepared-again',
     '/client-nav-prepared-last',
