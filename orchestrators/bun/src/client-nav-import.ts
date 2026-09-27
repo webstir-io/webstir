@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { readdir, readFile, rm } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import ts from '@typescript/typescript6';
 import path from 'node:path';
 
 import { SHIPPED_CLIENT_NAV_COPIES } from './client-nav-copies.ts';
@@ -73,7 +74,7 @@ export async function adoptPackagedClientNav(
   const stillReferenced = await findLegacyReferences(workspaceRoot, appTsPath, updated);
   if (present.length > 0 && stillReferenced.length > 0) {
     notes.push(
-      `Kept the local client-nav copies because ${stillReferenced.join(', ')} still import them. ` +
+      `Kept the local client-nav copies because ${stillReferenced.join(', ')} still use them. ` +
         `Point those imports at '${CLIENT_NAV_PACKAGE_IMPORT}' or remove them, then run this command again.`,
     );
     return 'kept-local';
@@ -134,12 +135,18 @@ function importsPackagedOnly(source: string, filePath: string): boolean {
   }
 }
 
-/** The module specifiers a file really imports, parsed by Bun, so comments and strings never count. */
+/**
+ * The modules a file loads when it runs, parsed by Bun so comments and strings never count. Only
+ * static imports: a dynamic import() does not start client-nav with the page.
+ */
 export function scanImports(source: string, filePath: string): string[] {
   const extension = path.extname(filePath).slice(1);
   const loader =
     extension === 'tsx' || extension === 'jsx' || extension === 'js' ? extension : 'ts';
-  return new Bun.Transpiler({ loader }).scanImports(source).map((entry) => entry.path);
+  return new Bun.Transpiler({ loader })
+    .scanImports(source)
+    .filter((entry) => entry.kind === 'import-statement')
+    .map((entry) => entry.path);
 }
 
 /** Whether the frontend package this app resolves exports the client-nav feature. */
@@ -157,10 +164,13 @@ function installedFrontendShipsClientNav(workspaceRoot: string): boolean {
 }
 
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts']);
+const COPY_NAME = /(?:^|\/)(?:client-nav|document-navigation|form-enhancement)(?:\.[cm]?[jt]sx?)?$/;
 
 /**
- * Frontend source files that would still import a local copy once app.ts is rewritten. Imports are
- * parsed and resolved against the copies' paths; a file that cannot be parsed counts, to be safe.
+ * Frontend source files that would still use a local copy once app.ts is rewritten. TypeScript
+ * lists every import a file makes (static, dynamic, type-only and re-exports), never comments or
+ * strings. A relative import is resolved against the copies' paths; any other import that ends in
+ * a copy's name (a path alias) counts too, since it cannot be resolved here.
  */
 async function findLegacyReferences(
   workspaceRoot: string,
@@ -181,19 +191,15 @@ async function findLegacyReferences(
       filePath === appTsPath && rewrittenAppTs !== undefined
         ? rewrittenAppTs
         : await readFile(filePath, 'utf8');
-    let imports: string[];
-    try {
-      imports = scanImports(text, filePath);
-    } catch {
-      found.push(relativeWorkspacePath(workspaceRoot, filePath));
-      continue;
-    }
-    const referencesCopy = imports.some(
-      (specifier) =>
-        specifier.startsWith('.') &&
-        legacyPaths.has(withoutExtension(path.resolve(path.dirname(filePath), specifier))),
-    );
-    if (referencesCopy) {
+    const usesCopy = ts
+      .preProcessFile(text, true, true)
+      .importedFiles.map((imported) => imported.fileName)
+      .some((specifier) =>
+        specifier.startsWith('.')
+          ? legacyPaths.has(withoutExtension(path.resolve(path.dirname(filePath), specifier)))
+          : specifier !== CLIENT_NAV_PACKAGE_IMPORT && COPY_NAME.test(specifier),
+      );
+    if (usesCopy) {
       found.push(relativeWorkspacePath(workspaceRoot, filePath));
     }
   }

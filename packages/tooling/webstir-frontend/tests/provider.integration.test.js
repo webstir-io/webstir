@@ -318,6 +318,12 @@ const packagedImportCases = [
   },
   {
     entry: 'app.ts',
+    source:
+      "export const later = () => import('@webstir-io/webstir-frontend/features/client-nav');\n",
+    builds: false,
+  },
+  {
+    entry: 'app.ts',
     source: "// import '@webstir-io/webstir-frontend/features/client-nav';\nexport {};\n",
     builds: false,
   },

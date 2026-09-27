@@ -38,6 +38,12 @@ const cases: Array<{ name: string; source: string; expected: string }> = [
     expected: `const pattern = '/api/*';\n${PACKAGED}\n/* setup */\n`,
   },
   {
+    name: 'does not count a dynamic import as the one that starts client-nav',
+    source:
+      "import './scripts/features/client-nav.js';\nexport const later = () => import('@webstir-io/webstir-frontend/features/client-nav');\n",
+    expected: `${PACKAGED}\nexport const later = () => import('@webstir-io/webstir-frontend/features/client-nav');\n`,
+  },
+  {
     name: 'adds the import when there is none',
     source: "import './app.css';\n",
     expected: `import './app.css';\n${PACKAGED}\n`,

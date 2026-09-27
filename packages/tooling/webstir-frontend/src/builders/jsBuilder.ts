@@ -490,8 +490,11 @@ async function listEntryImports(entry: string): Promise<string[]> {
       },
     ],
   });
+  // Only static imports run with the page; a dynamic import() of a feature does not start it.
   return Object.values(result.metafile.inputs).flatMap((input) =>
-    input.imports.map((imported) => imported.original ?? imported.path),
+    input.imports
+      .filter((imported) => imported.kind === 'import-statement')
+      .map((imported) => imported.original ?? imported.path),
   );
 }
 

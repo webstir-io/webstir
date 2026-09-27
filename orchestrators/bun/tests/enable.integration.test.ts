@@ -223,13 +223,35 @@ const clientNavCases: Array<{
     imports: 'packaged',
     copies: false,
   },
+  // Type-only imports, re-exports through a path alias and dynamic imports all keep the copies.
+  ...[
+    [
+      'a type-only import',
+      "import type { EnhancedFormRequest } from './scripts/features/form-enhancement.js';\n",
+    ],
+    ['a path alias', "export { buildEnhancedFormRequest } from '@features/form-enhancement';\n"],
+    [
+      'a dynamic import',
+      "export const load = () => import('./scripts/features/document-navigation.js');\n",
+    ],
+  ].map(([what, source]) => ({
+    name: `an app where another file has ${what}`,
+    setup: async (root: string) => {
+      await writeLegacyClientNav(root);
+      await writeFile(path.join(root, 'src', 'frontend', 'app', 'other.ts'), source);
+    },
+    exitCode: 0,
+    imports: 'legacy' as const,
+    copies: true,
+    stderr: /Kept the local client-nav copies because src\/frontend\/app\/other\.ts still use them/,
+  })),
   {
-    name: 'an app with a string that only looks like a copy',
+    name: 'an app with strings that only look like a copy',
     setup: async (root) => {
       await writeLegacyClientNav(root);
       await writeFile(
-        path.join(root, 'src', 'frontend', 'app', 'help.ts'),
-        "export const helpLink = '/docs/client-nav';\n",
+        path.join(root, 'src', 'frontend', 'app', 'other.ts'),
+        "export const helpLink = '/docs/client-nav';\nexport const event = 'webstir:client-nav';\n",
       );
     },
     exitCode: 0,
@@ -260,8 +282,7 @@ const clientNavCases: Array<{
     exitCode: 0,
     imports: 'legacy',
     copies: true,
-    stderr:
-      /Kept the local client-nav copies because src\/frontend\/app\/forms\.ts still import them/,
+    stderr: /Kept the local client-nav copies because src\/frontend\/app\/forms\.ts still use them/,
   },
   {
     name: 'an app whose installed frontend predates the packaged feature',
