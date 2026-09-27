@@ -91,7 +91,7 @@ async function replacePackageCssImports(
       resolved = createRequire(containingPath).resolve(parsed.path);
     } catch {
       throw new Error(
-        `Unable to resolve CSS @import "${parsed.path}" from ${containingPath}. Is the package installed and does it export that stylesheet?`,
+        `Unable to resolve CSS @import "${parsed.path}" at ${sourceLocation(containingPath, rule)}. Is the package installed and does it export that stylesheet?`,
       );
     }
     const packageSource = await inlineSourceAppImports(
@@ -133,15 +133,21 @@ export function assertCssImportsResolve(
     if (!parsed) return;
     if (!resolves.packages && isPackageCssImport(parsed.path)) {
       throw new Error(
-        `CSS @import "${parsed.path}" in ${filePath}: package stylesheets can only be imported from src/frontend/app/app.css.`,
+        `CSS @import "${parsed.path}" at ${sourceLocation(filePath, rule)}: package stylesheets can only be imported from src/frontend/app/app.css.`,
       );
     }
     if (!resolves.appAlias && parsed.path.startsWith('@app/')) {
       throw new Error(
-        `CSS @import "${parsed.path}" in ${filePath}: @app/ can only be used in a page's stylesheet.`,
+        `CSS @import "${parsed.path}" at ${sourceLocation(filePath, rule)}: @app/ can only be used in a page's stylesheet.`,
       );
     }
   });
+}
+
+/** `file:line` of an at-rule, for build errors. */
+function sourceLocation(filePath: string, rule: postcss.AtRule): string {
+  const line = rule.source?.start?.line;
+  return line ? `${filePath}:${line}` : filePath;
 }
 
 export function isPackageCssImport(importPath: string): boolean {
@@ -180,18 +186,22 @@ export async function inlineCssImports(
       continue;
     }
     if (!(await pathExists(resolved))) {
-      throw new Error(`Unable to resolve local CSS @import: ${parsed.path} from ${containingPath}`);
+      throw new Error(
+        `Unable to resolve local CSS @import: ${parsed.path} at ${sourceLocation(containingPath, rule)}`,
+      );
     }
 
     const canonicalImport = await realpath(resolved);
     if (!isWithinOrEqual(canonicalImport, canonicalRoot)) {
       throw new Error(
-        `CSS @import escapes the permitted stylesheet root: ${parsed.path} from ${containingPath}`,
+        `CSS @import escapes the permitted stylesheet root: ${parsed.path} at ${sourceLocation(containingPath, rule)}`,
       );
     }
     if (stack.includes(canonicalImport)) {
       const cycle = [...stack, canonicalImport].map((file) => path.basename(file)).join(' -> ');
-      throw new Error(`Circular CSS @import detected: ${cycle}`);
+      throw new Error(
+        `Circular CSS @import detected: ${cycle} (at ${sourceLocation(containingPath, rule)})`,
+      );
     }
 
     const importedCss = await inlineCssImports(

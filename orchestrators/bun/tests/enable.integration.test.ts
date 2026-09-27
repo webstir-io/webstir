@@ -147,6 +147,69 @@ for (const { feature, flag, copies } of styledFeatureCases) {
   });
 }
 
+// Copies someone edited stay, and stay loaded: an app whose imports of them went missing gets the
+// imports back instead of an enabled feature that never runs.
+const keptCopyWiringCases = [
+  { missing: 'its script import is gone', script: false, style: true },
+  { missing: 'its stylesheet import is gone', script: true, style: false },
+  { missing: 'both imports are gone', script: false, style: false },
+] as const;
+
+for (const { missing, script, style } of keptCopyWiringCases) {
+  test(`CLI enable search keeps edited copies imported when ${missing}`, async () => {
+    const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-kept-copies-');
+    const root = copiedWorkspace.workspaceRoot;
+    const app = path.join(root, 'src', 'frontend', 'app');
+    const fixtures = path.join(packageRoot, 'test-support', 'fixtures', 'search-0.2.0');
+    await mkdir(path.join(app, 'scripts', 'features'), { recursive: true });
+    await mkdir(path.join(app, 'styles', 'features'), { recursive: true });
+    await writeFile(
+      path.join(app, 'scripts', 'features', 'search.ts'),
+      `${await readFile(path.join(fixtures, 'search.ts.txt'), 'utf8')}\n// local change\n`,
+    );
+    await writeFile(
+      path.join(app, 'styles', 'features', 'search.css'),
+      await readFile(path.join(fixtures, 'search.css.txt'), 'utf8'),
+    );
+    if (script) {
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `${await readFile(path.join(app, 'app.ts'), 'utf8')}import "./scripts/features/search.js";\n`,
+      );
+    }
+    if (style) {
+      const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
+      await writeFile(
+        path.join(app, 'app.css'),
+        appCss.replace(
+          '@import "./styles/components/buttons.css";',
+          '@import "./styles/components/buttons.css";\n@import "./styles/features/search.css";',
+        ),
+      );
+    }
+
+    try {
+      const result = await runEnableInWorkspace(root, ['search']);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toMatch(/Kept the local search copies/);
+      const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
+      const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
+      expect(appTs.match(/\.\/scripts\/features\/search\.js/g)).toHaveLength(1);
+      expect(appCss.match(/\.\/styles\/features\/search\.css/g)).toHaveLength(1);
+      expect(appTs).not.toContain('@webstir-io/webstir-frontend/features/search');
+      const firstRule = appCss.indexOf('{');
+      if (firstRule !== -1) {
+        expect(appCss.indexOf('features/search.css')).toBeLessThan(firstRule);
+      }
+      expect(existsSync(path.join(app, 'scripts', 'features', 'search.ts'))).toBe(true);
+      expect(existsSync(path.join(app, 'styles', 'features', 'search.css'))).toBe(true);
+    } finally {
+      await removeDemoWorkspace(copiedWorkspace);
+    }
+  });
+}
+
 const FEATURES_DIR = ['src', 'frontend', 'app', 'scripts', 'features'] as const;
 const PACKAGED_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';";
 

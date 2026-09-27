@@ -97,6 +97,7 @@ export async function adoptPackagedFeature(
       `Kept the local ${name} copies because ${edited.join(', ')} differ from what Webstir shipped. ` +
         `To use the packaged version, move your changes elsewhere, delete ${copiesList}, and ${importInstructions(feature)}.`,
     );
+    await wireLocalCopies(workspaceRoot, feature, present, changes, dryRun);
     return 'kept-local';
   }
 
@@ -128,6 +129,7 @@ export async function adoptPackagedFeature(
       `Kept the local ${name} copies because ${entryName} could not be switched automatically. ` +
         `Replace its import of '${feature.script.legacy}' with '${feature.script.packaged}', then run this command again.`,
     );
+    await wireLocalCopies(workspaceRoot, feature, present, changes, dryRun);
     return 'kept-local';
   }
   rewrites.push({ filePath: entryPath, source: entrySource, updated: entryUpdated });
@@ -140,6 +142,7 @@ export async function adoptPackagedFeature(
         `Kept the local ${name} copies because src/frontend/app/app.css could not be switched automatically. ` +
           `Replace its @import of '${feature.style.legacy}' with '${feature.style.packaged}', then run this command again.`,
       );
+      await wireLocalCopies(workspaceRoot, feature, present, changes, dryRun);
       return 'kept-local';
     }
     rewrites.push({ filePath: appCssPath, source, updated });
@@ -153,6 +156,7 @@ export async function adoptPackagedFeature(
         `Kept the local ${name} copies because ${stillUsing.join(', ')} still use them. ` +
           `Point those imports at the packaged feature or remove them, then run this command again.`,
       );
+      await wireLocalCopies(workspaceRoot, feature, present, changes, dryRun);
       return 'kept-local';
     }
   }
@@ -176,6 +180,59 @@ export async function adoptPackagedFeature(
     changes.push(relativeWorkspacePath(workspaceRoot, filePath));
   }
   return 'packaged';
+}
+
+/**
+ * Copies that stay must still load: the app entry and app.css import each kept copy unless they
+ * already import it or the packaged feature.
+ */
+async function wireLocalCopies(
+  workspaceRoot: string,
+  feature: PackagedFeature,
+  present: readonly string[],
+  changes: string[],
+  dryRun: boolean,
+): Promise<void> {
+  const kept = new Set(present.map((filePath) => appRelative(workspaceRoot, filePath)));
+  const copyOf = (specifier: string) => specifier.replace(/^\.\//, '').replace(/\.js$/, '.ts');
+  const writes: Array<{ filePath: string; updated: string }> = [];
+  const entryPath = appEntryPaths(workspaceRoot).find((candidate) => existsSync(candidate));
+  if (entryPath && kept.has(copyOf(feature.script.legacy))) {
+    const source = await readFile(entryPath, 'utf8');
+    const imports = scanImports(source, entryPath);
+    if (!imports.includes(feature.script.legacy) && !imports.includes(feature.script.packaged)) {
+      const newline = source.includes('\r\n') ? '\r\n' : '\n';
+      writes.push({
+        filePath: entryPath,
+        updated: appendStatement(source, `import '${feature.script.legacy}';`, newline),
+      });
+    }
+  }
+  const appCssPath = path.join(appRoot(workspaceRoot), 'app.css');
+  if (
+    feature.style &&
+    existsSync(appCssPath) &&
+    kept.has(feature.style.legacy.replace(/^\.\//, ''))
+  ) {
+    const source = await readFile(appCssPath, 'utf8');
+    const imports = findCssImportPaths(source);
+    if (!imports.includes(feature.style.legacy) && !imports.includes(feature.style.packaged)) {
+      const newline = source.includes('\r\n') ? '\r\n' : '\n';
+      writes.push({
+        filePath: appCssPath,
+        updated: insertAfterLastCssImport(source, `@import "${feature.style.legacy}";`, newline),
+      });
+    }
+  }
+  await preflightWorkspaceWriteTargets(
+    workspaceRoot,
+    writes.map((write) => write.filePath),
+    `import the local ${feature.name} copies`,
+  );
+  for (const { filePath, updated } of writes) {
+    if (!dryRun) await Bun.write(filePath, updated);
+    changes.push(relativeWorkspacePath(workspaceRoot, filePath));
+  }
 }
 
 /**

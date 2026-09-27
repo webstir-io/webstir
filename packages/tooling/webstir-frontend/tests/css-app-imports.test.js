@@ -267,7 +267,7 @@ test('production app CSS rejects circular local imports', async (t) => {
 
     await assert.rejects(
       publishWorkspace(workspace, frontendProvider),
-      /Circular CSS @import.*base\.css.*cycle\.css.*base\.css/i,
+      /Circular CSS @import.*base\.css.*cycle\.css.*base\.css.*\.css:1\)/i,
     );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
@@ -287,7 +287,7 @@ test('production app CSS rejects imports outside the app styles root', async (t)
 
     await assert.rejects(
       publishWorkspace(workspace, frontendProvider),
-      /CSS @import escapes the permitted stylesheet root.*outside\.css/i,
+      /CSS @import escapes the permitted stylesheet root.*outside\.css at .*base\.css:1$/i,
     );
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
@@ -338,7 +338,7 @@ for (const { mode, installed } of packageImportCases) {
     if (!installed) {
       await assert.rejects(
         build,
-        /Unable to resolve CSS @import "@webstir-io\/webstir-frontend\/features\/search\.css"/,
+        /Unable to resolve CSS @import "@webstir-io\/webstir-frontend\/features\/search\.css" at .*app\.css:3\./,
       );
       return;
     }
@@ -465,7 +465,16 @@ for (const { file, mode, importPath, error } of unresolvedImportCases) {
         incremental: false,
       });
       if (error) {
-        await assert.rejects(build, error);
+        // The error names the file and the line the import is on.
+        const line = layers ? 2 : 1;
+        await assert.rejects(build, (thrown) => {
+          assert.match(thrown.message, error);
+          assert.ok(
+            thrown.message.includes(`${file}:${line}:`),
+            `expected ${file}:${line} in ${thrown.message}`,
+          );
+          return true;
+        });
       } else {
         await build;
       }
