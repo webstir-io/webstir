@@ -267,7 +267,8 @@ function createImportResolver(
     host: ts.ModuleResolutionHost,
   ) => {
     const resolved = ts.resolveModuleName(specifier, importer, options, host).resolvedModule;
-    if (!resolved) return undefined;
+    // A declaration file types an import but cannot run it.
+    if (!resolved || resolved.extension === ts.Extension.Dts) return undefined;
     // TypeScript answers `./error.ts` with error.js; a bundler loads only the file it names.
     const named = path.extname(specifier);
     if (TS_EXTENSIONS.has(named) && path.extname(resolved.resolvedFileName) !== named) {
@@ -281,13 +282,27 @@ function createImportResolver(
     if (!specifier || /^[a-z][a-z0-9+.-]*:/i.test(specifier)) return undefined;
     const options = optionsFor(importer);
     const attempts: Array<readonly [string, string]> = [[specifier, importer]];
+    const mapped = Object.keys(options.paths ?? {}).some((pattern) =>
+      matchesPathPattern(specifier, pattern),
+    );
     for (const [prefix, folder] of [
       ['@shared/', path.join(root, 'src', 'shared')],
       ['@app/', path.join(root, 'src', 'frontend', 'app')],
     ] as const) {
-      if (specifier.startsWith(prefix)) {
+      if (!mapped && specifier.startsWith(prefix)) {
         attempts.push([`./${specifier.slice(prefix.length)}`, path.join(folder, 'index.ts')]);
       }
+    }
+    // A stylesheet, JSON or other asset import names its file exactly; TypeScript does not
+    // resolve those.
+    const extension = path.extname(specifier);
+    if (extension && !SCRIPT_EXTENSIONS.has(extension)) {
+      for (const [candidate, from] of attempts) {
+        if (!candidate.startsWith('./') && !candidate.startsWith('../')) continue;
+        const target = path.resolve(path.dirname(from), candidate);
+        if (missing.has(target)) return target;
+      }
+      return undefined;
     }
     for (const [candidate, from] of attempts) {
       if (resolve(candidate, from, options, diskHost)) return undefined;
@@ -299,6 +314,18 @@ function createImportResolver(
 }
 
 const TS_EXTENSIONS = new Set(['.ts', '.tsx', '.mts', '.cts']);
+
+function matchesPathPattern(specifier: string, pattern: string): boolean {
+  const star = pattern.indexOf('*');
+  if (star < 0) return specifier === pattern;
+  const prefix = pattern.slice(0, star);
+  const suffix = pattern.slice(star + 1);
+  return (
+    specifier.length >= prefix.length + suffix.length &&
+    specifier.startsWith(prefix) &&
+    specifier.endsWith(suffix)
+  );
+}
 
 function nearestTsconfig(root: string, filePath: string): string | undefined {
   for (let directory = path.dirname(filePath); directory.startsWith(root); ) {

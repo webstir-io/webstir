@@ -356,6 +356,51 @@ test.each([
     restored: ['src/frontend/app/error.ts'],
   },
   {
+    name: 'a stylesheet a script imports',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
+        `${CLIENT_NAV_IMPORT}import './styles/base.css';\n`,
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/styles/base.css'],
+  },
+  {
+    name: 'an import only a declaration file answers',
+    prepare: async (root: string) => {
+      const app = path.join(root, 'src', 'frontend', 'app');
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `${CLIENT_NAV_IMPORT}void import('./error');\n`,
+        'utf8',
+      );
+      await writeFile(
+        path.join(app, 'error.d.ts'),
+        'export declare function install(): void;\n',
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/error.ts'],
+  },
+  {
+    name: 'a scaffold alias the tsconfig maps elsewhere is left alone',
+    prepare: async (root: string) => {
+      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
+      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
+        compilerOptions: Record<string, unknown>;
+      };
+      frontend.compilerOptions.paths = { '@app/*': ['./custom/*'] };
+      await writeJson(frontendPath, frontend);
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
+        `${CLIENT_NAV_IMPORT}import '@app/error';\n`,
+        'utf8',
+      );
+    },
+    restored: [],
+  },
+  {
     name: 'the document of a page whose script is still there',
     prepare: async (root: string) => {
       await rm(path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html'));
