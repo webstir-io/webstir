@@ -31,7 +31,11 @@ import {
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 import { syncHeadMetadata } from './head-metadata.js';
-import { restoreReferrerPolicy, trackReferrerPolicy } from './referrer-policy.js';
+import {
+  commitReferrerPolicy,
+  restoreReferrerPolicy,
+  trackReferrerPolicy,
+} from './referrer-policy.js';
 
 export {};
 
@@ -487,12 +491,13 @@ async function renderDocumentHtml(
     window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
-  syncHeadMetadata(doc, options.url, options.referrerPolicy);
+  const referrerPolicy = syncHeadMetadata(doc, options.url, options.referrerPolicy);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
   if (newMain && currentMain) {
     currentMain.replaceWith(newMain);
   }
+  if (referrerPolicy) commitReferrerPolicy(referrerPolicy, newMain);
   const anchor = fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();

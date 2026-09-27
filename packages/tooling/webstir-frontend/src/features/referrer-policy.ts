@@ -36,18 +36,16 @@ export function parseReferrerPolicyMeta(value: string | undefined): string | nul
   return REFERRER_POLICIES.has(policy) ? policy : null;
 }
 
-// The document's policy as its referrer metas set it; null while none has.
-let trackedPolicy: string | null = null;
+// The policy of the page on screen as client-nav knows it: what the last navigation committed, or
+// the first load's referrer metas. Null when unknown: the first load had none, and its
+// Referrer-Policy header cannot be read, or the page's own code has since changed a referrer meta.
+let knownPolicy: string | null = null;
 let observer: MutationObserver | null = null;
 
-/**
- * Follow the document's referrer policy the way the browser sets it: each referrer meta that goes
- * into the document, or whose content changes there, sets it, and removing one does not undo it.
- * It starts from the first load's referrer metas; that load's Referrer-Policy header cannot be read.
- */
+/** Start following the page's referrer policy: from the first load's referrer metas, if any. */
 export function trackReferrerPolicy(): void {
   if (observer) return;
-  for (const meta of Array.from(document.getElementsByTagName('meta'))) note(meta, [], -1);
+  knownPolicy = lastReferrerPolicy(document);
   observer = new MutationObserver(noteRecords);
   observer.observe(document, {
     subtree: true,
@@ -68,65 +66,59 @@ export function applyReferrerPolicy(value: string): void {
 }
 
 /**
+ * Record the policy a client navigation just committed: `applied`, then any referrer meta in the
+ * `content` it put in. Call it right after the content goes in, in the same task.
+ */
+export function commitReferrerPolicy(applied: string, content: Element | null): void {
+  observer?.takeRecords();
+  knownPolicy = (content && lastReferrerPolicy(content)) ?? applied;
+}
+
+/**
  * Chromium applies a referrer meta in a document parsed off screen (DOMParser) to the page on
  * screen. Until the parsed page commits, requests still come from the page on screen, so put its
- * policy back: the one its referrer metas set, else no-referrer, the one choice that cannot loosen
- * a first-load header.
+ * policy back, or no-referrer when it is unknown: the one choice that cannot loosen it.
  */
 export function restoreReferrerPolicy(parsed: Document): void {
   if (!Array.from(parsed.getElementsByTagName('meta')).some(isReferrerMeta)) return;
   if (observer) noteRecords(observer.takeRecords());
-  applyReferrerPolicy(trackedPolicy ?? 'no-referrer');
+  applyReferrerPolicy(knownPolicy ?? 'no-referrer');
 }
 
-// Replays the records in order, each meta read as it was at that record and only while it was in
-// the document, since the records arrive after the fact.
+// Mutation records arrive after the fact and cannot say what a meta held when the browser read it,
+// so once the page's own code touches a referrer meta, its policy is no longer known.
 function noteRecords(records: MutationRecord[]): void {
-  const detached = new Set<Node>();
-  records.forEach((record, index) => {
-    if (isDetached(record.target, detached)) return;
-    if (record.type === 'attributes') {
-      if (record.target instanceof Element) note(record.target, records, index);
-      return;
-    }
-    for (const node of Array.from(record.removedNodes)) detached.add(node);
-    for (const node of Array.from(record.addedNodes)) {
-      detached.delete(node);
-      if (!(node instanceof Element)) continue;
-      const metas = node.localName === 'meta' ? [node] : node.getElementsByTagName('meta');
-      for (const meta of Array.from(metas)) note(meta, records, index);
-    }
-  });
+  if (records.some(touchesReferrerMeta)) knownPolicy = null;
 }
 
-function note(element: Element, records: readonly MutationRecord[], index: number): void {
-  if (element.localName !== 'meta') return;
-  if (attributeAfter(element, 'name', records, index)?.toLowerCase() !== 'referrer') return;
-  const content = attributeAfter(element, 'content', records, index) ?? undefined;
-  trackedPolicy = parseReferrerPolicyMeta(content) ?? trackedPolicy;
-}
-
-// An attribute's value just after records[index]: what the next change to it found, else its value
-// now.
-function attributeAfter(
-  element: Element,
-  attribute: string,
-  records: readonly MutationRecord[],
-  index: number,
-): string | null {
-  for (const record of records.slice(index + 1)) {
-    if (record.type === 'attributes' && record.target === element) {
-      if (record.attributeName === attribute) return record.oldValue;
-    }
+function touchesReferrerMeta(record: MutationRecord): boolean {
+  if (record.type === 'attributes') {
+    return (
+      isReferrerMeta(record.target) ||
+      (record.attributeName === 'name' && record.oldValue?.toLowerCase() === 'referrer')
+    );
   }
-  return element.getAttribute(attribute);
+  return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)].some(
+    (node) =>
+      isReferrerMeta(node) ||
+      (node instanceof Element &&
+        Array.from(node.getElementsByTagName('meta')).some(isReferrerMeta)),
+  );
 }
 
-function isDetached(node: Node, detached: ReadonlySet<Node>): boolean {
-  for (const root of detached) if (root.contains(node)) return true;
-  return false;
+function lastReferrerPolicy(root: Document | Element): string | null {
+  let policy: string | null = null;
+  for (const meta of Array.from(root.getElementsByTagName('meta'))) {
+    if (!isReferrerMeta(meta)) continue;
+    policy = parseReferrerPolicyMeta(meta.getAttribute('content') ?? undefined) ?? policy;
+  }
+  return policy;
 }
 
-function isReferrerMeta(element: Element): boolean {
-  return element.localName === 'meta' && element.getAttribute('name')?.toLowerCase() === 'referrer';
+function isReferrerMeta(node: Node): boolean {
+  return (
+    node instanceof Element &&
+    node.localName === 'meta' &&
+    node.getAttribute('name')?.toLowerCase() === 'referrer'
+  );
 }

@@ -97,7 +97,8 @@ export function resolveMetadataHref(options: {
 }
 
 /**
- * Replace the current page's title and metadata with `doc`'s, fetched from `url`. Run it once the
+ * Replace the current page's title and metadata with `doc`'s, fetched from `url`, and return the
+ * referrer policy it set. Run it once the
  * address has changed and just before the page's `<main>` goes in, so its content requests from
  * its address under its policy, and a referrer meta inside that content applies after the head's,
  * as in a full load.
@@ -106,11 +107,11 @@ export function syncHeadMetadata(
   doc: Document,
   url: string,
   referrerPolicyHeader: string | null,
-): void {
+): string | null {
   document.title = doc.title;
   const head = document.head;
   const newHead = doc.head;
-  if (!head || !newHead) return;
+  if (!head || !newHead) return null;
 
   const baseHref = doc.querySelector('base[href]')?.getAttribute('href') ?? null;
   const current = headMetadataCandidates(head);
@@ -131,6 +132,7 @@ export function syncHeadMetadata(
 
   // Removing a referrer meta does not undo its policy, so the page's is always set.
   applyReferrerPolicy(sync.referrerPolicy);
+  return sync.referrerPolicy;
 }
 
 function pageMetadataIndices(elements: readonly HeadElementDescriptor[]): number[] {

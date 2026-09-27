@@ -479,6 +479,9 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     route.fulfill(preparedPage('/client-nav-prepared-final')),
   );
   await page.route(`${origin}/client-nav-prepared-final`, (route) =>
+    route.fulfill(preparedPage('/client-nav-prepared-more')),
+  );
+  await page.route(`${origin}/client-nav-prepared-more`, (route) =>
     route.fulfill(preparedPage('/client-nav-plain')),
   );
   let preparedModuleReferer: string | undefined;
@@ -623,8 +626,8 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
   expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
 
-  // So does a policy the page's own code set after it went in, even once its meta is gone:
-  // added then removed, or changed then removed, with a change made after removal not counting.
+  // A policy the page's own code set after it went in cannot be read back once its meta is gone
+  // or changed again, so the page keeps no-referrer until the next page commits.
   const changes: Array<[string, () => void]> = [
     [
       '/client-nav-prepared-last',
@@ -647,6 +650,15 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
         meta.content = 'unsafe-url';
       },
     ],
+    [
+      '/client-nav-prepared-more',
+      () => {
+        const holder = document.createElement('div');
+        holder.innerHTML = '<meta name="referrer" content="no-referrer">';
+        document.body.append(holder);
+        holder.replaceChildren();
+      },
+    ],
   ];
   for (const [next, change] of changes) {
     await page.evaluate(change);
@@ -664,6 +676,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     '/client-nav-prepared-again',
     '/client-nav-prepared-last',
     '/client-nav-prepared-final',
+    '/client-nav-prepared-more',
   ]);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
