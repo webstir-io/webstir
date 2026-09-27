@@ -1807,6 +1807,7 @@ async function assertRequestTimeViewRuntimeBehavior() {
 
 function createRenderedViewModuleSource() {
   return `import { processFormSubmission } from '@webstir-io/webstir-backend/runtime/forms';
+import { renewSession } from '@webstir-io/webstir-backend/runtime/session';
 import { notFound, redirect } from '@webstir-io/webstir-backend/runtime/views';
 
 const createClientDefinition = {
@@ -1919,6 +1920,34 @@ const countRoute = {
   }
 };
 
+// Signing in moves the browser to a new session, which a copy still carrying the old cookie
+// needs too. It takes a moment, so a double click arrives while it runs.
+let signIns = 0;
+const signInDefinition = {
+  name: 'signIn',
+  method: 'POST',
+  path: '/sign-in',
+  interaction: 'mutation',
+  form: { contentType: 'application/x-www-form-urlencoded', session: { mode: 'required', write: true } }
+};
+const signInRoute = {
+  definition: signInDefinition,
+  handler: async (ctx) => {
+    signIns += 1;
+    const user = \`user-\${signIns}\`;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    ctx.session = renewSession({ ...ctx.session, user });
+    return ctx.query.as === 'thrown'
+      ? redirect(\`/clients?user=\${user}\`)
+      : { status: 303, redirect: { location: \`/clients?user=\${user}\` } };
+  }
+};
+const whoamiDefinition = { name: 'whoami', method: 'GET', path: '/whoami' };
+const whoamiRoute = {
+  definition: whoamiDefinition,
+  handler: (ctx) => ({ status: 200, body: { user: ctx.session?.user ?? null } })
+};
+
 // An action may end with redirect() or notFound(), as a view loader can.
 const actionRedirectDefinition = { name: 'actionRedirect', method: 'POST', path: '/action-redirect', interaction: 'mutation' };
 const actionRedirectRoute = { definition: actionRedirectDefinition, handler: () => redirect('/clients') };
@@ -1965,10 +1994,10 @@ export const module = {
     version: '0.1.0',
     kind: 'backend',
     capabilities: ['http', 'views'],
-    routes: [createClientDefinition, checkClientDefinition, brokenDefinition, actionRedirectDefinition, actionMissingDefinition, countDefinition],
+    routes: [createClientDefinition, checkClientDefinition, brokenDefinition, actionRedirectDefinition, actionMissingDefinition, countDefinition, signInDefinition, whoamiDefinition],
     views: [clientsView.definition]
   },
-  routes: [createClientRoute, checkClientRoute, brokenRoute, actionRedirectRoute, actionMissingRoute, countRoute],
+  routes: [createClientRoute, checkClientRoute, brokenRoute, actionRedirectRoute, actionMissingRoute, countRoute, signInRoute, whoamiRoute],
   views: [clientsView, guardedView, missingView, strictView]
 };
 `;
@@ -2227,6 +2256,87 @@ async function assertRenderedViewRuntimeBehavior() {
       count({ header: 'submission-0009', as: 'signed-out' }),
     ]);
     assert.deepEqual(signedOut, ['/clients?n=13#top', '/clients?n=13#top']);
+
+    // A copy of a sign-in that still carries the old cookie gets the new session the first one
+    // started, since the first response may never have landed: until the browser shows up with
+    // that session, when every later copy carries it too. Only the browser holding the old cookie
+    // does: another session, no session or a forged cookie sending the same id gets nothing.
+    const startSession = async () =>
+      extractCookieHeader((await fetch(`${base}/clients`)).headers.get('set-cookie'));
+    const signIn = async ({ cookie, id, field, as }) => {
+      const response = await fetch(`${base}/sign-in${as ? `?as=${as}` : ''}`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          ...(cookie ? { cookie } : {}),
+          'content-type': 'application/x-www-form-urlencoded',
+          ...(field ? {} : { 'x-webstir-submission': id }),
+        },
+        body: field ? `_webstir_submission=${id}` : '',
+      });
+      return {
+        status: response.status,
+        location: response.headers.get('location'),
+        cookie: extractCookieHeader(response.headers.get('set-cookie')),
+      };
+    };
+    const whoami = async (cookie) =>
+      (await (await fetch(`${base}/whoami`, { headers: { cookie } })).json()).user;
+    const forge = (cookie) => cookie.replace(/\.[^.]*$/, '.forged');
+    const signInCopies = [
+      // [how and when the copy is sent, whose cookie it carries, what it gets]
+      [{ when: 'waiting' }, 'old', 'first'],
+      [{ when: 'after' }, 'old', 'first'],
+      [{ when: 'after', field: true }, 'old', 'first'],
+      [{ when: 'waiting', as: 'thrown' }, 'old', 'first'],
+      [{ when: 'after', as: 'thrown' }, 'old', 'first'],
+      [{ when: 'after' }, 'new', 'answered'],
+      [{ when: 'used' }, 'old', 'refused'],
+      [{ when: 'waiting' }, 'other', 'runs'],
+      [{ when: 'after' }, 'other', 'runs'],
+      [{ when: 'after' }, 'none', 'refused'],
+      [{ when: 'after' }, 'forged', 'refused'],
+    ];
+    for (const [index, [{ when, field, as }, holder, outcome]] of signInCopies.entries()) {
+      const label = JSON.stringify({ when, field, as, holder });
+      const id = `sign-in-${String(index).padStart(4, '0')}`;
+      const cookie = await startSession();
+      const other = holder === 'other' ? await startSession() : undefined;
+      const firstPost = signIn({ cookie, id, as });
+      const copyPost = (when === 'waiting' ? Promise.resolve() : firstPost).then(
+        async (earlier) => {
+          if (when === 'used') await whoami(earlier.cookie);
+          const copyCookie = {
+            old: cookie,
+            new: earlier?.cookie,
+            other,
+            none: undefined,
+            forged: forge(cookie),
+          }[holder];
+          return signIn({ cookie: copyCookie, id, field, as });
+        },
+      );
+      const [first, copy] = await Promise.all([firstPost, copyPost]);
+      assert.equal(first.status, 303, label);
+      assert.notEqual(first.cookie, cookie, `${label}: signing in renews the session`);
+      const user = await whoami(first.cookie);
+      assert.match(user, /^user-\d+$/, label);
+      assert.equal(await whoami(cookie), null, `${label}: the old session has ended`);
+      if (outcome === 'first') {
+        assert.deepEqual(copy, first, `${label}: the copy gets the first answer and its cookie`);
+      } else if (outcome === 'answered') {
+        assert.deepEqual(copy, { ...first, cookie: '' }, `${label}: it already has the cookie`);
+      } else if (outcome === 'runs') {
+        assert.equal(copy.status, 303, label);
+        assert.notEqual(copy.location, first.location, `${label}: a new submission runs`);
+        assert.notEqual(copy.cookie, first.cookie, label);
+        assert.notEqual(await whoami(copy.cookie), user, label);
+      } else {
+        assert.equal(copy.status, 401, label);
+        assert.notEqual(copy.cookie, first.cookie, label);
+      }
+      assert.equal(await whoami(first.cookie), user, `${label}: the first stays signed in`);
+    }
 
     const actionMissing = await fetch(`${base}/action-missing`, {
       method: 'POST',

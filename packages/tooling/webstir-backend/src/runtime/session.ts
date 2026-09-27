@@ -80,6 +80,8 @@ export interface SessionCommitResult<TSession> {
 
 export interface PreparedSessionState<TSession, TResult> {
   session: TSession | null;
+  /** The id the request's signed session cookie names, even when that session has since ended. */
+  cookieSessionId?: string;
   flash: SessionFlashMessage[];
   commit(options: {
     session: TSession | null;
@@ -160,6 +162,7 @@ export function prepareSessionState<
 
   return {
     session: initialSession,
+    cookieSessionId: initialId,
     flash: delivered.flash,
     commit({
       session,
