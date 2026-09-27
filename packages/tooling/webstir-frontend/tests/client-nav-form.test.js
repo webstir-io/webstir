@@ -544,9 +544,21 @@ test('isSameFormSubmission tells changed submissions apart', () => {
   });
   const file = () => new File(['abc'], 'a.txt', { type: 'text/plain', lastModified: 1 });
   const picked = file();
+  // What a browser sends for a file input with nothing chosen: a new empty file each time.
+  const noFile = () => new File([], '', { type: 'application/octet-stream' });
   const same = [
     [[['name', 'Acme']], [['name', 'Acme']]],
     [[['doc', picked]], [['doc', picked]]],
+    [
+      [
+        ['name', 'Acme'],
+        ['doc', noFile()],
+      ],
+      [
+        ['name', 'Acme'],
+        ['doc', noFile()],
+      ],
+    ],
   ];
   const different = [
     [[['name', 'Acme']], [['name', 'Acme Co']]],
@@ -569,6 +581,7 @@ test('isSameFormSubmission tells changed submissions apart', () => {
       ],
     ],
     [[['doc', file()]], [['doc', file()]]],
+    [[['doc', noFile()]], [['doc', picked]]],
   ];
   for (const [a, b] of same) expect(isSameFormSubmission(snapshot(a), snapshot(b))).toBe(true);
   for (const [a, b] of different)

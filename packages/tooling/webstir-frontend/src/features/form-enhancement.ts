@@ -320,7 +320,7 @@ export function snapshotFormSubmission(
 /**
  * Whether two submissions send the same thing: the same fields and values in order, and the same
  * selected files. A file counts as the same only if it is the same file object, since two files can
- * share a name, size, type and date. When unsure, this says "different": a new submission at worst
+ * share a name, size, type and date; a file input with nothing chosen matches another. When unsure, this says "different": a new submission at worst
  * runs the action again, while mistaking a new file for a resend would drop it.
  */
 export function isSameFormSubmission(
@@ -333,9 +333,16 @@ export function isSameFormSubmission(
     a.entries.length === b.entries.length &&
     a.entries.every(([key, value], index) => {
       const [otherKey, otherValue] = b.entries[index]!;
-      return key === otherKey && value === otherValue;
+      return (
+        key === otherKey && (value === otherValue || (isNoFile(value) && isNoFile(otherValue)))
+      );
     })
   );
+}
+
+/** The empty file a browser sends for a file input with nothing chosen, new on every submit. */
+function isNoFile(value: FormDataEntryValue): boolean {
+  return typeof value !== 'string' && value.name === '' && value.size === 0;
 }
 
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
