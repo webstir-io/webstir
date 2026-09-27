@@ -2292,6 +2292,7 @@ async function assertRenderedViewRuntimeBehavior() {
       [{ when: 'after', as: 'thrown' }, 'old', 'first'],
       [{ when: 'after' }, 'new', 'answered'],
       [{ when: 'used' }, 'old', 'refused'],
+      [{ when: 'used', as: 'thrown' }, 'old', 'refused'],
       [{ when: 'waiting' }, 'other', 'runs'],
       [{ when: 'after' }, 'other', 'runs'],
       [{ when: 'after' }, 'none', 'refused'],
