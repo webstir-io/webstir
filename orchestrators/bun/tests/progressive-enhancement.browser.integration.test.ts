@@ -476,6 +476,9 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     route.fulfill(preparedPage('/client-nav-prepared-last')),
   );
   await page.route(`${origin}/client-nav-prepared-last`, (route) =>
+    route.fulfill(preparedPage('/client-nav-prepared-final')),
+  );
+  await page.route(`${origin}/client-nav-prepared-final`, (route) =>
     route.fulfill(preparedPage('/client-nav-plain')),
   );
   let preparedModuleReferer: string | undefined;
@@ -620,18 +623,38 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
   expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
 
-  // So does a policy the page's own code set after it went in, even once its meta is gone.
-  await page.evaluate(() => {
-    const meta = document.createElement('meta');
-    meta.name = 'referrer';
-    meta.content = 'no-referrer';
-    document.head.append(meta);
-    meta.remove();
-  });
-  await page.locator('#to-next').click({ noWaitAfter: true });
-  await page.waitForURL(`${origin}/client-nav-prepared-last`);
-  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
-  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(''));
+  // So does a policy the page's own code set after it went in, even once its meta is gone:
+  // added then removed, or changed then removed, with a change made after removal not counting.
+  const changes: Array<[string, () => void]> = [
+    [
+      '/client-nav-prepared-last',
+      () => {
+        const meta = document.createElement('meta');
+        meta.name = 'referrer';
+        meta.content = 'no-referrer';
+        document.head.append(meta);
+        meta.remove();
+        meta.content = 'unsafe-url';
+      },
+    ],
+    [
+      '/client-nav-prepared-final',
+      () => {
+        const meta = document.querySelector<HTMLMetaElement>('head meta[name="referrer"]');
+        if (!meta) throw new Error('Missing the page referrer meta');
+        meta.content = 'no-referrer';
+        meta.remove();
+        meta.content = 'unsafe-url';
+      },
+    ],
+  ];
+  for (const [next, change] of changes) {
+    await page.evaluate(change);
+    await page.locator('#to-next').click({ noWaitAfter: true });
+    await page.waitForURL(`${origin}${next}`);
+    await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
+    expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(''));
+  }
   expect(await readClientNavEvents(page)).toEqual([
     '/client-nav-no-referrer',
     '/client-nav-prepared',
@@ -640,6 +663,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     '/client-nav-main-referrer',
     '/client-nav-prepared-again',
     '/client-nav-prepared-last',
+    '/client-nav-prepared-final',
   ]);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });

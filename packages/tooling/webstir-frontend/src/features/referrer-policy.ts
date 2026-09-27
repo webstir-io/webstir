@@ -47,12 +47,13 @@ let observer: MutationObserver | null = null;
  */
 export function trackReferrerPolicy(): void {
   if (observer) return;
-  for (const meta of Array.from(document.getElementsByTagName('meta'))) note(meta);
+  for (const meta of Array.from(document.getElementsByTagName('meta'))) note(meta, [], -1);
   observer = new MutationObserver(noteRecords);
   observer.observe(document, {
     subtree: true,
     childList: true,
     attributes: true,
+    attributeOldValue: true,
     attributeFilter: ['name', 'content'],
   });
 }
@@ -78,24 +79,52 @@ export function restoreReferrerPolicy(parsed: Document): void {
   applyReferrerPolicy(trackedPolicy ?? 'no-referrer');
 }
 
+// Replays the records in order, each meta read as it was at that record and only while it was in
+// the document, since the records arrive after the fact.
 function noteRecords(records: MutationRecord[]): void {
-  for (const record of records) {
+  const detached = new Set<Node>();
+  records.forEach((record, index) => {
+    if (isDetached(record.target, detached)) return;
     if (record.type === 'attributes') {
-      if (record.target instanceof Element && record.target.isConnected) note(record.target);
-      continue;
+      if (record.target instanceof Element) note(record.target, records, index);
+      return;
     }
+    for (const node of Array.from(record.removedNodes)) detached.add(node);
     for (const node of Array.from(record.addedNodes)) {
+      detached.delete(node);
       if (!(node instanceof Element)) continue;
-      if (node.localName === 'meta') note(node);
-      else for (const meta of Array.from(node.getElementsByTagName('meta'))) note(meta);
+      const metas = node.localName === 'meta' ? [node] : node.getElementsByTagName('meta');
+      for (const meta of Array.from(metas)) note(meta, records, index);
     }
-  }
+  });
 }
 
-function note(element: Element): void {
-  if (!isReferrerMeta(element)) return;
-  trackedPolicy =
-    parseReferrerPolicyMeta(element.getAttribute('content') ?? undefined) ?? trackedPolicy;
+function note(element: Element, records: readonly MutationRecord[], index: number): void {
+  if (element.localName !== 'meta') return;
+  if (attributeAfter(element, 'name', records, index)?.toLowerCase() !== 'referrer') return;
+  const content = attributeAfter(element, 'content', records, index) ?? undefined;
+  trackedPolicy = parseReferrerPolicyMeta(content) ?? trackedPolicy;
+}
+
+// An attribute's value just after records[index]: what the next change to it found, else its value
+// now.
+function attributeAfter(
+  element: Element,
+  attribute: string,
+  records: readonly MutationRecord[],
+  index: number,
+): string | null {
+  for (const record of records.slice(index + 1)) {
+    if (record.type === 'attributes' && record.target === element) {
+      if (record.attributeName === attribute) return record.oldValue;
+    }
+  }
+  return element.getAttribute(attribute);
+}
+
+function isDetached(node: Node, detached: ReadonlySet<Node>): boolean {
+  for (const root of detached) if (root.contains(node)) return true;
+  return false;
 }
 
 function isReferrerMeta(element: Element): boolean {
