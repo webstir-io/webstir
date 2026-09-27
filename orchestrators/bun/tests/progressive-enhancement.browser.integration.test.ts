@@ -620,12 +620,13 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
   expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
 
-  // So does a policy the page's own code set after it went in.
+  // So does a policy the page's own code set after it went in, even once its meta is gone.
   await page.evaluate(() => {
     const meta = document.createElement('meta');
     meta.name = 'referrer';
     meta.content = 'no-referrer';
     document.head.append(meta);
+    meta.remove();
   });
   await page.locator('#to-next').click({ noWaitAfter: true });
   await page.waitForURL(`${origin}/client-nav-prepared-last`);

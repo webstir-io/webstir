@@ -1,3 +1,10 @@
+import {
+  applyReferrerPolicy,
+  DEFAULT_REFERRER_POLICY,
+  parseReferrerPolicyHeader,
+  parseReferrerPolicyMeta,
+} from './referrer-policy.js';
+
 /** A `<meta>` or `<link>` in `<head>`: its tag name and attributes. */
 export interface HeadElementDescriptor {
   readonly tag: string;
@@ -14,27 +21,6 @@ export interface HeadMetadataSync {
 }
 
 const PAGE_LINK_RELS = new Set(['canonical', 'alternate', 'prev', 'next']);
-
-const REFERRER_POLICIES = new Set([
-  'no-referrer',
-  'no-referrer-when-downgrade',
-  'same-origin',
-  'origin',
-  'strict-origin',
-  'origin-when-cross-origin',
-  'strict-origin-when-cross-origin',
-  'unsafe-url',
-]);
-
-// Legacy meta keywords, as browsers map them: `default` is the old default, not today's.
-const LEGACY_REFERRER_POLICIES: Readonly<Record<string, string>> = {
-  never: 'no-referrer',
-  default: 'no-referrer-when-downgrade',
-  always: 'unsafe-url',
-  'origin-when-crossorigin': 'origin-when-cross-origin',
-};
-
-const DEFAULT_REFERRER_POLICY = 'strict-origin-when-cross-origin';
 
 const IGNORED_BASE_PROTOCOLS = new Set(['data:', 'javascript:']);
 
@@ -110,23 +96,6 @@ export function resolveMetadataHref(options: {
   }
 }
 
-// The Referrer-Policy header, or the default, of the page the last client navigation committed;
-// null until then, because the first load's header cannot be read.
-let committedHeaderPolicy: string | null = null;
-
-/**
- * Chromium applies a referrer meta in a document parsed off screen (DOMParser) to the page on
- * screen. Until the parsed page commits, requests still come from the page on screen, so put its
- * policy back: its last valid referrer meta, those its own code added included, else its header
- * policy, else no-referrer, the one choice that cannot loosen a first-load header.
- */
-export function restoreReferrerPolicy(parsed: Document): void {
-  if (referrerMetaContents(parsed).length === 0) return;
-  applyReferrerPolicy(
-    lastReferrerPolicy(referrerMetaContents(document)) ?? committedHeaderPolicy ?? 'no-referrer',
-  );
-}
-
 /**
  * Replace the current page's title and metadata with `doc`'s, fetched from `url`. Run it once the
  * address has changed and just before the page's `<main>` goes in, so its content requests from
@@ -160,24 +129,8 @@ export function syncHeadMetadata(
     if (copy) head.appendChild(copy);
   }
 
+  // Removing a referrer meta does not undo its policy, so the page's is always set.
   applyReferrerPolicy(sync.referrerPolicy);
-  committedHeaderPolicy =
-    parseReferrerPolicyHeader(referrerPolicyHeader) ?? DEFAULT_REFERRER_POLICY;
-}
-
-// A referrer meta sets the policy when it is inserted and keeps it after it is removed.
-function applyReferrerPolicy(value: string): void {
-  const policy = document.createElement('meta');
-  policy.name = 'referrer';
-  policy.content = value;
-  document.head.appendChild(policy);
-  policy.remove();
-}
-
-function referrerMetaContents(root: ParentNode): (string | undefined)[] {
-  return Array.from(root.querySelectorAll('meta[name]'))
-    .filter((meta) => meta.getAttribute('name')?.toLowerCase() === 'referrer')
-    .map((meta) => meta.getAttribute('content') ?? undefined);
 }
 
 function pageMetadataIndices(elements: readonly HeadElementDescriptor[]): number[] {
@@ -186,27 +139,6 @@ function pageMetadataIndices(elements: readonly HeadElementDescriptor[]): number
     if (isPageMetadata(element)) indices.push(index);
   });
   return indices;
-}
-
-function parseReferrerPolicyHeader(value: string | null): string | null {
-  let policy: string | null = null;
-  for (const token of (value ?? '').split(',')) {
-    const normalized = token.trim().toLowerCase();
-    if (REFERRER_POLICIES.has(normalized)) policy = normalized;
-  }
-  return policy;
-}
-
-function lastReferrerPolicy(contents: readonly (string | undefined)[]): string | null {
-  let policy: string | null = null;
-  for (const content of contents) policy = parseReferrerPolicyMeta(content) ?? policy;
-  return policy;
-}
-
-function parseReferrerPolicyMeta(value: string | undefined): string | null {
-  const normalized = (value ?? '').trim().toLowerCase();
-  const policy = LEGACY_REFERRER_POLICIES[normalized] ?? normalized;
-  return REFERRER_POLICIES.has(policy) ? policy : null;
 }
 
 function headMetadataCandidates(head: HTMLHeadElement): Element[] {

@@ -30,7 +30,8 @@ import {
   type HistoryMode,
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
-import { restoreReferrerPolicy, syncHeadMetadata } from './head-metadata.js';
+import { syncHeadMetadata } from './head-metadata.js';
+import { restoreReferrerPolicy, trackReferrerPolicy } from './referrer-policy.js';
 
 export {};
 
@@ -46,6 +47,7 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
+  trackReferrerPolicy();
   const initial = () => {
     const requestId = activeRequestId;
     void startPage(window.location.href)
