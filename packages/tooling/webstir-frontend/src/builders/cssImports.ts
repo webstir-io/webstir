@@ -134,7 +134,11 @@ export function assertNoPackageCssImports(css: string, filePath: string): void {
 }
 
 export function isPackageCssImport(importPath: string): boolean {
-  return /^@[a-z0-9][\w.-]*\/[a-z0-9][\w.-]*\/[^?#]+\.css$/i.test(importPath);
+  // `@app/` is Webstir's alias for the app's own stylesheets, not a package scope.
+  return (
+    !importPath.startsWith('@app/') &&
+    /^@[a-z0-9][\w.-]*\/[a-z0-9][\w.-]*\/[^?#]+\.css$/i.test(importPath)
+  );
 }
 
 export async function inlineCssImports(

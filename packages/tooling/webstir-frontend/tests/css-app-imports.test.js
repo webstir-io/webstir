@@ -386,16 +386,19 @@ for (const { mode, installed } of packageImportCases) {
 }
 
 // Anywhere other than app.css, a package stylesheet import would reach the browser unresolved, so
-// the build names it and stops.
+// the build names it and stops; the app's own `@app/` alias is not a package and still builds.
+const PACKAGE_STYLESHEET = '@webstir-io/webstir-frontend/features/search.css';
 const misplacedPackageImportCases = [
-  { file: 'src/frontend/app/styles/base.css', mode: 'build' },
-  { file: 'src/frontend/app/styles/base.css', mode: 'publish' },
-  { file: 'src/frontend/pages/home/index.css', mode: 'build' },
-  { file: 'src/frontend/pages/home/index.css', mode: 'publish' },
+  { file: 'src/frontend/app/styles/base.css', mode: 'build', importPath: PACKAGE_STYLESHEET },
+  { file: 'src/frontend/app/styles/base.css', mode: 'publish', importPath: PACKAGE_STYLESHEET },
+  { file: 'src/frontend/pages/home/index.css', mode: 'build', importPath: PACKAGE_STYLESHEET },
+  { file: 'src/frontend/pages/home/index.css', mode: 'publish', importPath: PACKAGE_STYLESHEET },
+  { file: 'src/frontend/pages/home/index.css', mode: 'build', importPath: '@app/styles/base.css' },
 ];
 
-for (const { file, mode } of misplacedPackageImportCases) {
-  test(`a package stylesheet imported from ${file} fails in ${mode} mode`, async (t) => {
+for (const { file, mode, importPath } of misplacedPackageImportCases) {
+  const fails = importPath === PACKAGE_STYLESHEET;
+  test(`${importPath} imported from ${file} ${fails ? 'fails' : 'builds'} in ${mode} mode`, async (t) => {
     const frontendProvider = await loadProviderOrSkip(t);
     if (!frontendProvider) return;
     const workspace = await createWorkspace();
@@ -408,18 +411,20 @@ for (const { file, mode } of misplacedPackageImportCases) {
         'dir',
       );
       const target = path.join(workspace, file);
-      await fs.writeFile(
-        target,
-        `@import "@webstir-io/webstir-frontend/features/search.css";\n${await fs.readFile(target, 'utf8')}`,
-      );
-      await assert.rejects(
-        frontendProvider.build({
-          workspaceRoot: workspace,
-          env: { WEBSTIR_MODULE_MODE: mode },
-          incremental: false,
-        }),
-        /package stylesheets can only be imported from src\/frontend\/app\/app\.css/,
-      );
+      await fs.writeFile(target, `@import "${importPath}";\n${await fs.readFile(target, 'utf8')}`);
+      const build = frontendProvider.build({
+        workspaceRoot: workspace,
+        env: { WEBSTIR_MODULE_MODE: mode },
+        incremental: false,
+      });
+      if (fails) {
+        await assert.rejects(
+          build,
+          /package stylesheets can only be imported from src\/frontend\/app\/app\.css/,
+        );
+      } else {
+        await build;
+      }
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
     }
