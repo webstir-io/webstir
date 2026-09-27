@@ -210,7 +210,10 @@ On link navigation, the current content, URL, and page lifetime remain intact wh
 `load` is pending. History traversal changes the URL immediately, as usual, but
 keeps the outgoing content visible until data is ready. Webstir then synchronizes styles and commits the prepared page.
 Because the outgoing page is still the one on screen, the page module and the
-loader's requests carry its address under its referrer policy.
+loader's requests carry its address under its referrer policy. When the incoming
+page has a referrer meta and that policy is not known (a first load with no
+referrer meta, whose header a script cannot read, or a page whose own code
+changed a referrer meta), they use `no-referrer` instead.
 Its setup runs before additional document scripts, so prepared content can render
 without an intervening loading frame. On initial load the existing HTML remains
 available while data loads. Pages without the attribute retain the original
