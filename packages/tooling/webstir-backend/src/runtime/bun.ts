@@ -30,6 +30,7 @@ import {
   parseCookieHeader,
   prepareSessionState,
   resolvePublishedFlash,
+  type SessionCommitResult,
   type SessionCookieConfig,
   type SessionFlashMessage,
   createInMemorySessionStore,
@@ -505,6 +506,32 @@ async function handleRequest<
         return response;
       }
 
+      // The same form submission sent again (a lost response the browser resent, a double click)
+      // goes where the first one redirected instead of running the action twice. It is answered
+      // before the session guard: when the first signed in, the copy's old session has ended.
+      const submissionId = method === 'POST' ? takeSubmissionId(request, ctx.body) : undefined;
+      const cookieSessionId = sessionState.cookieSessionId;
+      submission =
+        submissionId && cookieSessionId
+          ? await claimSubmission(cookieSessionId, ctx.session, submissionId, now())
+          : undefined;
+      const answered = submission?.answered;
+      if (answered) {
+        // Nothing runs, so the session is left as the first submission committed it: this
+        // request's copy may predate that commit. If that commit moved the browser to another
+        // session, the copy gets the same cookie, since the first response may never have landed.
+        const headers = new Headers({
+          location: answered.location,
+          'cache-control': 'no-store',
+          'x-request-id': requestId,
+        });
+        if (answered.setCookie) {
+          headers.append('set-cookie', answered.setCookie);
+        }
+        responseStatus = 303;
+        return new Response(null, { status: 303, headers });
+      }
+
       if (requiresSession(routeMatch.route.definition) && ctx.session === null) {
         // The route never ran, so its flash declarations must not fire: publishing one would
         // persist a brand-new session and hand the caller the cookie needed to pass this guard.
@@ -518,22 +545,6 @@ async function handleRequest<
         });
         responseStatus = response.status;
         return response;
-      }
-
-      // The same form submission sent again (a lost response the browser resent, a double click)
-      // goes where the first one redirected instead of running the action twice.
-      const submissionId = method === 'POST' ? takeSubmissionId(request, ctx.body) : undefined;
-      submission =
-        submissionId && ctx.session ? await claimSubmission(ctx.session, submissionId) : undefined;
-      const answered = submission?.answered;
-      if (answered) {
-        // Nothing runs, so the session is left as the first submission committed it: this
-        // request's copy may predate that commit.
-        responseStatus = 303;
-        return new Response(null, {
-          status: 303,
-          headers: { location: answered, 'cache-control': 'no-store', 'x-request-id': requestId },
-        });
       }
 
       let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
@@ -557,11 +568,13 @@ async function handleRequest<
               isViewRedirect(control) ? control.location : undefined,
               now(),
             );
-            return sessionState.commit({
+            const committed = sessionState.commit({
               session: ctx.session,
               result: { status },
               retainFlash: true,
             });
+            submission?.recordCookie(committed, now());
+            return committed;
           },
         });
         responseStatus = response.status;
@@ -660,6 +673,7 @@ async function handleRequest<
         session: ctx.session,
         route: routeMatch.route.definition,
         requestId,
+        onCommit: (commit) => submission?.recordCookie(commit, now()),
       });
       responseStatus = response.status;
       return response;
@@ -845,6 +859,7 @@ function createCommittedResponse<
     route?: TRouteDefinition;
     requestId: string;
     publishFlash?: boolean;
+    onCommit?: (commit: SessionCommitResult<TSession>) => void;
   },
 ): Response {
   const normalizedResult = normalizeRouteHandlerResult(result);
@@ -854,6 +869,7 @@ function createCommittedResponse<
     result: normalizedResult as TResult,
     publishFlash: options.publishFlash,
   });
+  options.onCommit?.(commit);
 
   const status = resolveResponseStatus(normalizedResult);
   const headers = new Headers(resolveResponseHeaders(normalizedResult));
