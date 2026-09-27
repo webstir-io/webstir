@@ -52,6 +52,8 @@ const REMOVED_BY_MATURE_APP = [
   'src/shared/types/index.ts',
 ];
 
+const CLIENT_NAV_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';\n";
+
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -65,11 +67,7 @@ async function matureFullApp(root: string): Promise<void> {
     await rm(path.join(root, relative), { force: true });
   }
   const app = path.join(root, 'src', 'frontend', 'app');
-  await writeFile(
-    path.join(app, 'app.ts'),
-    "import '@webstir-io/webstir-frontend/features/client-nav';\n",
-    'utf8',
-  );
+  await writeFile(path.join(app, 'app.ts'), CLIENT_NAV_IMPORT, 'utf8');
   const shell = await readFile(path.join(app, 'app.html'), 'utf8');
   await writeFile(
     path.join(app, 'app.html'),
@@ -230,6 +228,65 @@ test.each([
       );
     },
     restored: ['src/frontend/app/router.ts', 'src/shared/router-types.ts'],
+  },
+  {
+    name: 'an import a file of another kind already answers is left alone',
+    prepare: async (root: string) => {
+      const app = path.join(root, 'src', 'frontend', 'app');
+      await writeFile(
+        path.join(app, 'app.ts'),
+        `${CLIENT_NAV_IMPORT}void import('./error');\n`,
+        'utf8',
+      );
+      await writeFile(path.join(app, 'error.js'), 'export function install() {}\n', 'utf8');
+    },
+    restored: [],
+  },
+  {
+    name: 'an alias whose later target exists is left alone',
+    prepare: async (root: string) => {
+      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
+      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
+        compilerOptions: Record<string, unknown>;
+      };
+      frontend.compilerOptions.paths = {
+        'error-handler': ['./app/error.ts', './custom/error.ts'],
+      };
+      await writeJson(frontendPath, frontend);
+      await mkdir(path.join(root, 'src', 'frontend', 'custom'), { recursive: true });
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'custom', 'error.ts'),
+        'export function install() {}\n',
+        'utf8',
+      );
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
+        `${CLIENT_NAV_IMPORT}import 'error-handler';\n`,
+        'utf8',
+      );
+    },
+    restored: [],
+  },
+  {
+    name: "an alias only another project's tsconfig maps to a removed file is left alone",
+    prepare: async (root: string) => {
+      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
+      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
+        compilerOptions: Record<string, unknown>;
+      };
+      frontend.compilerOptions.paths = { '~/*': ['./app/*'] };
+      await writeJson(frontendPath, frontend);
+      const backendPath = path.join(root, 'src', 'backend', 'tsconfig.json');
+      const backend = JSON.parse(await readFile(backendPath, 'utf8')) as {
+        compilerOptions: Record<string, unknown>;
+      };
+      backend.compilerOptions.paths = { '~/*': ['./*'] };
+      await writeJson(backendPath, backend);
+      const backendRoot = path.join(root, 'src', 'backend');
+      await writeFile(path.join(backendRoot, 'error.ts'), 'export const x = 1;\n', 'utf8');
+      await writeFile(path.join(backendRoot, 'uses-alias.ts'), "import '~/error';\n", 'utf8');
+    },
+    restored: [],
   },
   {
     name: 'the document of a page whose script is still there',

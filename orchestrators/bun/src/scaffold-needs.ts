@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -20,22 +20,29 @@ interface PathAlias {
   readonly targets: readonly string[];
 }
 
+interface TsconfigAliases {
+  /** The config's own `paths`, or undefined when it declares none and inherits them. */
+  readonly aliases?: readonly PathAlias[];
+  readonly extends: readonly string[];
+}
+
 interface References {
   readonly root: string;
-  /** Resolved paths something names, with and without a script extension. */
+  /** Paths something names and that nothing on disk answers, with and without an extension. */
   readonly paths: Set<string>;
-  /** Specifiers that are neither relative nor URLs; aliases may resolve them. */
-  readonly bare: Set<string>;
-  readonly aliases: PathAlias[];
+  /** Specifiers that are neither relative nor URLs, by the file that imports them. */
+  readonly bare: Map<string, Set<string>>;
+  readonly tsconfigs: Map<string, TsconfigAliases>;
 }
 
 /**
  * The missing scaffold files a workspace still needs: the ones in `required` (paths relative to
- * the workspace), and any file something still names — an import (relative, or through a tsconfig
- * `paths` alias or the scaffold's own `@shared/` and `@app/`), a CSS `@import`, a script or
- * stylesheet in HTML, a triple-slash reference, or a tsconfig `references`, `extends` or `files`
- * entry. Files restored this way are read too, so what they import comes back with them. A
- * scaffold file nothing needs is one the app chose not to have, and stays absent.
+ * the workspace), and any file something still names and that nothing on disk already answers —
+ * an import (relative, or through the importing file's tsconfig `paths` or the scaffold's own
+ * `@shared/` and `@app/`), a CSS `@import`, a script or stylesheet in HTML, a triple-slash
+ * reference, or a tsconfig `references`, `extends` or `files` entry. Files restored this way are
+ * read too, so what they import comes back with them. A scaffold file nothing needs is one the
+ * app chose not to have, and stays absent.
  */
 export async function selectNeededScaffoldAssets<T extends ScaffoldAssetDescriptor>(
   workspaceRoot: string,
@@ -57,11 +64,8 @@ export async function selectNeededScaffoldAssets<T extends ScaffoldAssetDescript
   const references: References = {
     root,
     paths: new Set(),
-    bare: new Set(),
-    aliases: [
-      scaffoldAlias('@shared/*', path.join(root, 'src', 'shared', '*')),
-      scaffoldAlias('@app/*', path.join(root, 'src', 'frontend', 'app', '*')),
-    ],
+    bare: new Map(),
+    tsconfigs: new Map(),
   };
   for (const filePath of await workspaceFiles(root)) {
     if (isReferenceSource(filePath)) {
@@ -74,7 +78,7 @@ export async function selectNeededScaffoldAssets<T extends ScaffoldAssetDescript
   let grew = true;
   while (grew) {
     grew = false;
-    resolveAliases(references);
+    resolveBareSpecifiers(references);
     for (const [target, asset] of missing) {
       if (selected.has(target)) continue;
       if (!requiredTargets.has(target) && !isReferenced(target, references.paths)) continue;
@@ -114,12 +118,40 @@ function isTsconfig(filePath: string): boolean {
 const DOCUMENT_URL_ATTRIBUTE =
   /(?<![\w-])(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
 
-function addModule(paths: Set<string>, resolved: string): void {
-  paths.add(resolved);
+/**
+ * Records a module reference unless a file on disk already answers it. `candidates` are tried in
+ * order, as a tsconfig `paths` entry's targets are, so an existing fallback keeps a missing first
+ * choice from being restored over it.
+ */
+function addModule(paths: Set<string>, candidates: readonly string[]): void {
+  if (candidates.some(resolvesOnDisk)) return;
+  for (const resolved of candidates) {
+    paths.add(resolved);
+    const extension = path.extname(resolved);
+    if (extension === '' || SCRIPT_EXTENSIONS.has(extension)) {
+      paths.add(withoutExtension(resolved));
+      paths.add(path.join(resolved, 'index'));
+    }
+  }
+}
+
+function resolvesOnDisk(resolved: string): boolean {
   const extension = path.extname(resolved);
+  const candidates = [resolved];
   if (extension === '' || SCRIPT_EXTENSIONS.has(extension)) {
-    paths.add(withoutExtension(resolved));
-    paths.add(path.join(resolved, 'index'));
+    const stem = withoutExtension(resolved);
+    for (const scriptExtension of SCRIPT_EXTENSIONS) {
+      candidates.push(`${stem}${scriptExtension}`, path.join(resolved, `index${scriptExtension}`));
+    }
+  }
+  return candidates.some(isFile);
+}
+
+function isFile(filePath: string): boolean {
+  try {
+    return statSync(filePath).isFile();
+  } catch {
+    return false;
   }
 }
 
@@ -129,9 +161,11 @@ function collectReferences(location: string, text: string, references: Reference
   const addSpecifier = (specifier: string) => {
     const bare = specifier.replace(/[?#].*$/, '');
     if (bare === '.' || bare === '..' || bare.startsWith('./') || bare.startsWith('../')) {
-      addModule(references.paths, path.resolve(directory, bare));
+      addModule(references.paths, [path.resolve(directory, bare)]);
     } else if (bare && !/^[a-z][a-z0-9+.-]*:/i.test(bare)) {
-      references.bare.add(bare);
+      const specifiers = references.bare.get(location) ?? new Set<string>();
+      specifiers.add(bare);
+      references.bare.set(location, specifiers);
     }
   };
 
@@ -154,21 +188,22 @@ function collectReferences(location: string, text: string, references: Reference
     for (const match of text.matchAll(DOCUMENT_URL_ATTRIBUTE)) {
       const url = match[1] ?? match[2] ?? match[3] ?? '';
       const resolved = resolveDocumentUrl(references.root, location, url);
-      if (resolved) addModule(references.paths, resolved);
+      if (resolved) addModule(references.paths, [resolved]);
     }
     return;
   }
   if (isTsconfig(location)) {
-    collectTsconfigReferences(directory, parseTsconfigText(text, location), references);
+    collectTsconfigReferences(location, parseTsconfigText(text, location), references);
   }
 }
 
 function collectTsconfigReferences(
-  directory: string,
+  location: string,
   config: unknown,
   references: References,
 ): void {
   if (!config || typeof config !== 'object') return;
+  const directory = path.dirname(location);
   const {
     references: projectReferences,
     extends: extendsValue,
@@ -182,11 +217,14 @@ function collectTsconfigReferences(
     references.paths.add(resolved);
     references.paths.add(path.join(resolved, 'tsconfig.json'));
   }
+  const bases: string[] = [];
   for (const base of Array.isArray(extendsValue) ? extendsValue : [extendsValue]) {
     if (typeof base !== 'string' || !base.startsWith('.')) continue;
     const resolved = path.resolve(directory, base);
+    const withJson = resolved.endsWith('.json') ? resolved : `${resolved}.json`;
+    bases.push(withJson);
     references.paths.add(resolved);
-    references.paths.add(`${resolved}.json`);
+    references.paths.add(withJson);
   }
   for (const file of Array.isArray(files) ? files : []) {
     if (typeof file === 'string') {
@@ -196,53 +234,104 @@ function collectTsconfigReferences(
 
   const options = compilerOptions && typeof compilerOptions === 'object' ? compilerOptions : {};
   const { baseUrl, paths } = options as { baseUrl?: unknown; paths?: unknown };
-  if (!paths || typeof paths !== 'object') return;
-  const base = typeof baseUrl === 'string' ? path.resolve(directory, baseUrl) : directory;
-  for (const [pattern, targets] of Object.entries(paths)) {
-    if (!Array.isArray(targets)) continue;
-    const star = pattern.indexOf('*');
-    references.aliases.push({
-      prefix: star < 0 ? pattern : pattern.slice(0, star),
-      suffix: star < 0 ? '' : pattern.slice(star + 1),
-      exact: star < 0,
-      targets: targets
-        .filter((target): target is string => typeof target === 'string')
-        .map((target) => path.resolve(base, target)),
-    });
-  }
-}
-
-function scaffoldAlias(pattern: string, target: string): PathAlias {
-  const star = pattern.indexOf('*');
-  return {
-    prefix: pattern.slice(0, star),
-    suffix: pattern.slice(star + 1),
-    exact: false,
-    targets: [target],
-  };
-}
-
-function resolveAliases(references: References): void {
-  for (const specifier of references.bare) {
-    for (const alias of references.aliases) {
-      if (alias.exact) {
-        if (specifier !== alias.prefix) continue;
-        for (const target of alias.targets) addModule(references.paths, target);
-        continue;
-      }
-      if (
-        specifier.length < alias.prefix.length + alias.suffix.length ||
-        !specifier.startsWith(alias.prefix) ||
-        !specifier.endsWith(alias.suffix)
-      ) {
-        continue;
-      }
-      const matched = specifier.slice(alias.prefix.length, specifier.length - alias.suffix.length);
-      for (const target of alias.targets) {
-        addModule(references.paths, target.replace('*', matched));
-      }
+  let aliases: PathAlias[] | undefined;
+  if (paths && typeof paths === 'object') {
+    const base = typeof baseUrl === 'string' ? path.resolve(directory, baseUrl) : directory;
+    aliases = [];
+    for (const [pattern, targets] of Object.entries(paths)) {
+      if (!Array.isArray(targets)) continue;
+      const star = pattern.indexOf('*');
+      aliases.push({
+        prefix: star < 0 ? pattern : pattern.slice(0, star),
+        suffix: star < 0 ? '' : pattern.slice(star + 1),
+        exact: star < 0,
+        targets: targets
+          .filter((target): target is string => typeof target === 'string')
+          .map((target) => path.resolve(base, target)),
+      });
     }
   }
+  references.tsconfigs.set(location, { aliases, extends: bases });
+}
+
+/** The scaffold's own aliases, used when the importing file's tsconfig declares none. */
+function scaffoldAliases(root: string): readonly PathAlias[] {
+  return [
+    {
+      prefix: '@shared/',
+      suffix: '',
+      exact: false,
+      targets: [path.join(root, 'src', 'shared', '*')],
+    },
+    {
+      prefix: '@app/',
+      suffix: '',
+      exact: false,
+      targets: [path.join(root, 'src', 'frontend', 'app', '*')],
+    },
+  ];
+}
+
+/** The `paths` that apply to a file: its nearest tsconfig.json's own, or those it extends. */
+function aliasesFor(filePath: string, references: References): readonly PathAlias[] | undefined {
+  let directory = path.dirname(filePath);
+  while (directory.startsWith(references.root)) {
+    const config = path.join(directory, 'tsconfig.json');
+    if (references.tsconfigs.has(config)) {
+      return inheritedAliases(config, references, new Set());
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return undefined;
+}
+
+function inheritedAliases(
+  config: string,
+  references: References,
+  seen: Set<string>,
+): readonly PathAlias[] | undefined {
+  const entry = references.tsconfigs.get(config);
+  if (!entry || seen.has(config)) return undefined;
+  seen.add(config);
+  if (entry.aliases) return entry.aliases;
+  for (const base of entry.extends) {
+    const inherited = inheritedAliases(base, references, seen);
+    if (inherited) return inherited;
+  }
+  return undefined;
+}
+
+function resolveBareSpecifiers(references: References): void {
+  const fallback = scaffoldAliases(references.root);
+  for (const [filePath, specifiers] of references.bare) {
+    const aliases = aliasesFor(filePath, references);
+    for (const specifier of specifiers) {
+      const candidates =
+        (aliases && matchAlias(specifier, aliases)) ?? matchAlias(specifier, fallback);
+      if (candidates) addModule(references.paths, candidates);
+    }
+  }
+}
+
+/** The first alias a specifier matches, as TypeScript picks it, mapped to its targets. */
+function matchAlias(specifier: string, aliases: readonly PathAlias[]): string[] | undefined {
+  for (const alias of aliases) {
+    if (alias.exact) {
+      if (specifier === alias.prefix) return [...alias.targets];
+      continue;
+    }
+    if (
+      specifier.length >= alias.prefix.length + alias.suffix.length &&
+      specifier.startsWith(alias.prefix) &&
+      specifier.endsWith(alias.suffix)
+    ) {
+      const matched = specifier.slice(alias.prefix.length, specifier.length - alias.suffix.length);
+      return alias.targets.map((target) => target.replace('*', matched));
+    }
+  }
+  return undefined;
 }
 
 /**
