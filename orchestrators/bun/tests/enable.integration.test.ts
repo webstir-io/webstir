@@ -200,6 +200,22 @@ const clientNavCases: Array<{
     copies: false,
     entry: 'app.tsx',
   },
+  ...(['symbolic', 'hard'] as const).map((kind) => ({
+    name: `an app whose app.tsx entry is a ${kind} link`,
+    setup: async (root: string) => {
+      await writeLegacyClientNav(root);
+      const app = path.join(root, 'src', 'frontend', 'app');
+      const outside = path.join(os.tmpdir(), `webstir-outside-${process.pid}-${Date.now()}.tsx`);
+      await writeFile(outside, await readFile(path.join(app, 'app.ts'), 'utf8'));
+      await rm(path.join(app, 'app.ts'));
+      await (kind === 'symbolic' ? symlink : link)(outside, path.join(app, 'app.tsx'));
+    },
+    exitCode: 1,
+    imports: 'legacy' as const,
+    copies: true,
+    stderr: kind === 'symbolic' ? /symbolic link/ : /multiple hard links/,
+    entry: 'app.tsx',
+  })),
   {
     name: 'an app whose tests import a copy',
     setup: async (root) => {

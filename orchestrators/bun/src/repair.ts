@@ -11,7 +11,7 @@ import {
   renderS3CloudFrontFunction,
   type StaticFeatureAsset,
 } from './enable-assets.ts';
-import { adoptPackagedFeature, legacyFeaturePaths } from './feature-imports.ts';
+import { adoptPackagedFeature, appEntryPaths, legacyFeaturePaths } from './feature-imports.ts';
 import {
   preflightScaffoldAssets,
   preflightWorkspaceWriteTargets,
@@ -159,7 +159,7 @@ function getFixedRepairWriteTargets(
   const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
 
   if (enable.clientNav || enable.search || enable.contentNav) {
-    targets.push(path.join(appRoot, 'app.ts'));
+    targets.push(...appEntryPaths(workspaceRoot));
   }
   if (enable.clientNav) {
     targets.push(...legacyFeaturePaths(workspaceRoot, 'client-nav'));

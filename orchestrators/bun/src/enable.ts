@@ -16,6 +16,7 @@ import {
 } from './enable-assets.ts';
 import {
   adoptPackagedFeature,
+  appEntryPaths,
   legacyFeaturePaths,
   type PackagedFeatureName,
 } from './feature-imports.ts';
@@ -161,7 +162,7 @@ function getFixedEnableWriteTargets(
       return [packageJsonPath];
     case 'client-nav':
       return [
-        path.join(appRoot, 'app.ts'),
+        ...appEntryPaths(workspaceRoot),
         packageJsonPath,
         ...legacyFeaturePaths(workspaceRoot, 'client-nav'),
       ];
@@ -169,7 +170,7 @@ function getFixedEnableWriteTargets(
     case 'content-nav':
       return [
         path.join(appRoot, 'app.css'),
-        path.join(appRoot, 'app.ts'),
+        ...appEntryPaths(workspaceRoot),
         packageJsonPath,
         ...legacyFeaturePaths(workspaceRoot, feature),
       ];

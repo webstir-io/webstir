@@ -7,6 +7,7 @@ import path from 'node:path';
 import { findCssImportPaths } from './css-import-graph.ts';
 import { SHIPPED_FEATURE_COPIES } from './feature-copies.ts';
 import { findCopyReferences } from './feature-references.ts';
+import { preflightWorkspaceWriteTargets } from './scaffold-path.ts';
 
 export type PackagedFeatureName = 'client-nav' | 'search' | 'content-nav';
 
@@ -50,6 +51,11 @@ export const PACKAGED_FEATURES: Readonly<Record<PackagedFeatureName, PackagedFea
 export type FeatureAdoption = 'packaged' | 'kept-local' | 'unavailable';
 
 /** Where an app kept its copies of a feature before it shipped in the frontend package. */
+/** The app entries the build looks for, in its order; adoption rewrites the first that exists. */
+export function appEntryPaths(workspaceRoot: string): readonly string[] {
+  return APP_ENTRIES.map((entry) => path.join(appRoot(workspaceRoot), entry));
+}
+
 export function legacyFeaturePaths(
   workspaceRoot: string,
   name: PackagedFeatureName,
@@ -105,9 +111,7 @@ export async function adoptPackagedFeature(
 
   const rewrites: Array<{ filePath: string; source: string; updated: string }> = [];
   // The entry the build bundles, in the order the build looks for it.
-  const entryPath = APP_ENTRIES.map((entry) => path.join(appRoot(workspaceRoot), entry)).find(
-    (candidate) => existsSync(candidate),
-  );
+  const entryPath = appEntryPaths(workspaceRoot).find((candidate) => existsSync(candidate));
   if (!entryPath) {
     notes.push(
       `There is no src/frontend/app/app.{ts,tsx,js,jsx} to import '${feature.script.packaged}' from.` +
@@ -153,6 +157,11 @@ export async function adoptPackagedFeature(
     }
   }
 
+  await preflightWorkspaceWriteTargets(
+    workspaceRoot,
+    [...rewrites.map((rewrite) => rewrite.filePath), ...present],
+    `switch ${name} to the packaged feature`,
+  );
   for (const { filePath, source, updated } of rewrites) {
     if (updated === source) continue;
     if (!dryRun) {

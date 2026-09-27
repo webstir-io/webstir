@@ -65,11 +65,11 @@ Enable site-wide search:
 
 - `webstir enable search`
 
-When enabled, Webstir generates search data and adds the search UI assets to your app:
+When enabled, Webstir generates search data and imports the search feature from the frontend package:
 
 - `/search.json` (used by the search feature module)
-- `src/frontend/app/scripts/features/search.ts` (search behavior, added to your source tree and imported by `src/frontend/app/app.ts`)
-- `src/frontend/app/styles/features/search.css` (search UI styling, added to your source tree)
+- `import '@webstir-io/webstir-frontend/features/search';` in `src/frontend/app/app.ts` (search behavior)
+- `@import "@webstir-io/webstir-frontend/features/search.css";` in `src/frontend/app/app.css` (search UI styling)
 
 ## Development vs publish
 

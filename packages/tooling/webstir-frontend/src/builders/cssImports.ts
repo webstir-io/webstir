@@ -28,11 +28,49 @@ export async function inlineSourceAppImports(
  * Inlines stylesheets an app imports from an installed package, such as
  * `@import "@webstir-io/webstir-frontend/features/search.css" layer(features);`, so the rest of the
  * app pipeline (custom media, prefixes, layers) treats them as the app's own CSS. Only scoped
- * package paths count: in CSS, an unscoped bare path is relative to the importing file.
+ * package paths count: in CSS, an unscoped bare path is relative to the importing file. Use this
+ * only when every other import is inlined too: rules left in place of an import make the imports
+ * after it invalid.
  */
 export async function inlinePackageCssImports(
   css: string,
   containingPath: string,
+): Promise<string> {
+  return replacePackageCssImports(css, containingPath, async (packageCss, qualifiers) =>
+    applyCssImportQualifiers(
+      postcss.parse(packageCss.css, { from: packageCss.resolved }).nodes,
+      qualifiers,
+    ),
+  );
+}
+
+/**
+ * Points each package stylesheet import at a file `emit` writes for it, keeping the import where
+ * it was so the imports after it stay valid.
+ */
+export async function linkPackageCssImports(
+  css: string,
+  containingPath: string,
+  emit: (packageCss: PackageCss) => Promise<string>,
+): Promise<string> {
+  return replacePackageCssImports(css, containingPath, async (packageCss, qualifiers) => [
+    postcss.atRule({
+      name: 'import',
+      params: serializeCssImport(await emit(packageCss), qualifiers),
+    }),
+  ]);
+}
+
+export interface PackageCss {
+  readonly importPath: string;
+  readonly resolved: string;
+  readonly css: string;
+}
+
+async function replacePackageCssImports(
+  css: string,
+  containingPath: string,
+  replace: (packageCss: PackageCss, qualifiers: string) => Promise<postcss.ChildNode[]>,
 ): Promise<string> {
   if (!css.includes('@import')) {
     return css;
@@ -56,19 +94,43 @@ export async function inlinePackageCssImports(
         `Unable to resolve CSS @import "${parsed.path}" from ${containingPath}. Is the package installed and does it export that stylesheet?`,
       );
     }
-    const packageCss = await inlineSourceAppImports(
+    const packageSource = await inlineSourceAppImports(
       await readFile(resolved),
       resolved,
       path.dirname(resolved),
     );
-    const importedRoot = postcss.parse(packageCss, { from: resolved });
-    importedRoot.walkAtRules('charset', (charset) => {
+    assertNoPackageCssImports(packageSource, resolved);
+    const inlined = postcss.parse(packageSource, { from: resolved });
+    inlined.walkAtRules('charset', (charset) => {
       charset.remove();
     });
-    rule.replaceWith(...applyCssImportQualifiers(importedRoot.nodes, parsed.qualifiers));
+    rule.replaceWith(
+      ...(await replace(
+        { importPath: parsed.path, resolved, css: inlined.toString() },
+        parsed.qualifiers,
+      )),
+    );
     changed = true;
   }
   return changed ? root.toString() : css;
+}
+
+/**
+ * Package stylesheets are resolved only where app.css imports them; anywhere else the import would
+ * reach the browser as a path it cannot load, so the build stops instead.
+ */
+export function assertNoPackageCssImports(css: string, filePath: string): void {
+  if (!css.includes('@import')) {
+    return;
+  }
+  postcss.parse(css, { from: filePath }).walkAtRules('import', (rule) => {
+    const parsed = parseCssImport(rule.params);
+    if (parsed && isPackageCssImport(parsed.path)) {
+      throw new Error(
+        `CSS @import "${parsed.path}" in ${filePath}: package stylesheets can only be imported from src/frontend/app/app.css.`,
+      );
+    }
+  });
 }
 
 export function isPackageCssImport(importPath: string): boolean {
