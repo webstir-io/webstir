@@ -320,7 +320,8 @@ export function snapshotFormSubmission(
 /**
  * Whether two submissions send the same thing: the same fields and values in order, and the same
  * selected files. A file counts as the same only if it is the same file object, since two files can
- * share a name, size, type and date.
+ * share a name, size, type and date. When unsure, this says "different": a new submission at worst
+ * runs the action again, while mistaking a new file for a resend would drop it.
  */
 export function isSameFormSubmission(
   a: FormSubmissionSnapshot,
