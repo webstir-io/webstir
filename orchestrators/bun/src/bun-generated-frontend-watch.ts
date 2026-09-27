@@ -75,13 +75,6 @@ export async function startBunGeneratedFrontendWatch(
     notFoundRoutePath: resolveNotFoundRoutePath(pages),
   };
 
-  await prepareBunSpaGeneratedEntries({ paths, pages });
-
-  const servedEntries = await loadServedEntries(paths, pages, pageRoutes);
-  const servedAddress = createServedAddress(
-    host,
-    startFrontendServer(host, port, servedEntries, fetchOptions),
-  );
   // An SPA edit that adds a binding is not regenerated, so watch keeps serving the last valid pages.
   const canRegenerate = isSpa
     ? async () => {
@@ -94,7 +87,10 @@ export async function startBunGeneratedFrontendWatch(
         }
       }
     : undefined;
-  const watchers = await watchRegenerationTargets(
+  let servedAddress: ServedAddress | undefined;
+  // The watchers are armed before the first page is generated or served, so an edit made as soon
+  // as a page is served, or while the server is starting, is regenerated rather than missed.
+  const regeneration = await watchRegenerationTargets(
     paths,
     pages,
     pageRoutes,
@@ -104,11 +100,24 @@ export async function startBunGeneratedFrontendWatch(
         fetch: createBunFrontendFetchHandler(fetchOptions),
         routes: createBunSpaRoutes(nextEntries),
       };
-      servedAddress.server.reload(reloadOptions);
+      servedAddress?.server.reload(reloadOptions);
     },
   );
 
-  return createSession(servedAddress, watchers);
+  try {
+    await prepareBunSpaGeneratedEntries({ paths, pages });
+    const servedEntries = await loadServedEntries(paths, pages, pageRoutes);
+    servedAddress = createServedAddress(
+      host,
+      startFrontendServer(host, port, servedEntries, fetchOptions),
+    );
+  } catch (error) {
+    closeWatchers(regeneration.watchers);
+    throw error;
+  }
+  regeneration.start();
+
+  return createSession(servedAddress, regeneration.watchers);
 }
 
 interface ServedAddress {
@@ -145,18 +154,34 @@ function createServedAddress(host: string, server: ReloadableServeServer): Serve
   };
 }
 
+interface RegenerationWatch {
+  readonly watchers: Set<FSWatcher>;
+  /** Regenerates the pages changed so far, and from then on each page as it changes. */
+  start(): void;
+}
+
 async function watchRegenerationTargets(
   paths: BunSpaEntryPaths,
   pages: readonly BunSpaPageDetails[],
   pageRoutes: readonly PageRoute[],
   canRegenerate: (() => Promise<boolean>) | undefined,
   onEntriesReload: (nextEntries: readonly BunSpaRouteEntry[]) => Promise<void>,
-): Promise<Set<FSWatcher>> {
+): Promise<RegenerationWatch> {
   const watchers = new Set<FSWatcher>();
   const watchersByTarget = new Map<string, FSWatcher>();
   let pagesByTarget = new Map<string, Set<string>>();
   const pendingPageNames = new Set<string>();
   let pendingRegeneration: Promise<void> | null = null;
+  let started = false;
+
+  const scheduleRegeneration = () => {
+    if (!started || pendingRegeneration || pendingPageNames.size === 0) {
+      return;
+    }
+    pendingRegeneration = drainPendingRegenerations().finally(() => {
+      pendingRegeneration = null;
+    });
+  };
 
   const refreshWatchedGraph = async () => {
     const nextPagesByTarget = await resolveRegenerationTargets(paths, pages);
@@ -175,12 +200,7 @@ async function watchRegenerationTargets(
           for (const pageName of pagesByTarget.get(target) ?? []) {
             pendingPageNames.add(pageName);
           }
-
-          if (!pendingRegeneration) {
-            pendingRegeneration = drainPendingRegenerations().finally(() => {
-              pendingRegeneration = null;
-            });
-          }
+          scheduleRegeneration();
         });
         watchers.add(watcher);
         watchersByTarget.set(target, watcher);
@@ -212,7 +232,13 @@ async function watchRegenerationTargets(
   };
 
   await refreshWatchedGraph();
-  return watchers;
+  return {
+    watchers,
+    start() {
+      started = true;
+      scheduleRegeneration();
+    },
+  };
 }
 
 async function resolveRegenerationTargets(
@@ -364,6 +390,13 @@ function resolveNotFoundRoutePath(pages: readonly BunSpaPageDetails[]): string |
   return pages.some((page) => page.name === '404') ? '/404' : undefined;
 }
 
+function closeWatchers(watchers: Set<FSWatcher>): void {
+  for (const watcher of watchers) {
+    watcher.close();
+  }
+  watchers.clear();
+}
+
 function createSession(
   servedAddress: ServedAddress,
   watchers: Set<FSWatcher>,
@@ -386,10 +419,7 @@ function createSession(
       }
 
       stopping = true;
-      for (const watcher of watchers) {
-        watcher.close();
-      }
-      watchers.clear();
+      closeWatchers(watchers);
       servedAddress.server.stop(true);
       exitResolver?.(0);
       exitResolver = undefined;

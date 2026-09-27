@@ -28,6 +28,7 @@ export class WorkspaceWatcher {
   private rootWatcher?: FSWatcher;
   private flushTimer?: NodeJS.Timeout;
   private reloadPending = false;
+  private reportingSyncChanges = false;
   private reloadPathUnknown = false;
   private readonly pendingReloadPaths = new Set<string>();
 
@@ -43,6 +44,7 @@ export class WorkspaceWatcher {
     for (const root of this.treeRoots) {
       await this.syncTree(root);
     }
+    this.reportingSyncChanges = true;
   }
 
   public async stop(): Promise<void> {
@@ -237,15 +239,30 @@ export class WorkspaceWatcher {
     }
   }
 
+  // A resync can see a write before that write's own notification arrives, which then finds the
+  // snapshot already current. So once the first sync has set the baseline, a resync reports what
+  // it finds changed, and whichever of the two sees the write first reports it.
   private syncFileSnapshots(root: string, nextSnapshots: ReadonlyMap<string, string>): void {
     for (const filePath of Array.from(this.fileSnapshots.keys())) {
       if (isWithinDirectory(filePath, root) && !nextSnapshots.has(filePath)) {
         this.fileSnapshots.delete(filePath);
+        if (this.reportingSyncChanges) {
+          this.queueReload(filePath);
+        }
       }
     }
 
     for (const [filePath, snapshot] of nextSnapshots) {
+      const previousSnapshot = this.fileSnapshots.get(filePath);
       this.fileSnapshots.set(filePath, snapshot);
+      if (!this.reportingSyncChanges || previousSnapshot === snapshot) {
+        continue;
+      }
+      if (previousSnapshot === undefined) {
+        this.queueReload(filePath);
+      } else {
+        this.queueChange(filePath);
+      }
     }
   }
 

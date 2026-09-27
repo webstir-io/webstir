@@ -2,6 +2,7 @@ import { createRenderedViewMatcher, readWorkspacePageRoutes } from '@webstir-io/
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { createBuildOutputLock } from './build-output-lock.ts';
 import { DevServer, type DevServerAddress } from './dev-server.ts';
 import { ensureLocalPackageArtifacts } from './providers.ts';
 import { WorkspaceWatcher, type WorkspaceWatchEvent } from './workspace-watcher.ts';
@@ -51,14 +52,12 @@ export async function startBunSsgFrontendWatch(
   const operations = await loadFrontendOperations();
 
   const exclusive = options.exclusive ?? (<T>(task: () => Promise<T>) => task());
-  // A template or loader that fails at startup stops watch, as a failed build does, rather than
-  // serving pages that never rendered.
-  await exclusive(async () => {
-    await operations.runBuild({ workspaceRoot });
-    await options.afterBuild?.();
-  });
+  const buildOutput = createBuildOutputLock();
 
   let stopping = false;
+  // Edits are queued from before the first build and built once the server is up.
+  let serving = false;
+  let server: DevServer;
   let stopPromise: Promise<void> | null = null;
   let exitResolver: ((code: number | null) => void) | undefined;
   const exitPromise = new Promise<number | null>((resolve) => {
@@ -82,7 +81,7 @@ export async function startBunSsgFrontendWatch(
           buildRoot,
           verbose: options.verbose === true,
           afterBuild: options.afterBuild,
-          exclusive,
+          exclusive: (task) => exclusive(() => buildOutput.write(task)),
         });
       } catch (error) {
         await reportBuildFailure(server, error);
@@ -90,6 +89,9 @@ export async function startBunSsgFrontendWatch(
     }
   };
   const ensureDrain = (): Promise<void> => {
+    if (!serving) {
+      return Promise.resolve();
+    }
     if (!drainPromise) {
       drainPromise = drainEvents().finally(() => {
         drainPromise = null;
@@ -115,14 +117,21 @@ export async function startBunSsgFrontendWatch(
 
   try {
     await watcher.start();
+    // A template or loader that fails at startup stops watch, as a failed build does, rather than
+    // serving pages that never rendered.
+    await exclusive(async () => {
+      await operations.runBuild({ workspaceRoot });
+      await options.afterBuild?.();
+    });
   } catch (error) {
     stopping = true;
+    await watcher.stop();
     exitResolver?.(1);
     exitResolver = undefined;
     throw error;
   }
 
-  const server = new DevServer({
+  server = new DevServer({
     buildRoot,
     apiProxyOrigin: options.apiProxyOrigin,
     pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
@@ -130,6 +139,7 @@ export async function startBunSsgFrontendWatch(
       ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
       : undefined,
     renderedPage: options.renderedPage,
+    readBuildOutput: buildOutput.read,
     host: options.host,
     port: options.port,
   });
@@ -143,6 +153,8 @@ export async function startBunSsgFrontendWatch(
     exitResolver = undefined;
     throw error;
   }
+  serving = true;
+  void ensureDrain();
 
   return {
     address,
