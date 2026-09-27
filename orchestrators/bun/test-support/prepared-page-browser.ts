@@ -42,8 +42,6 @@ export async function assertPreparedPage(browser: Browser, origin: string): Prom
     await blockedRequest;
     await page.locator('a[href="/"]').click();
     await page.waitForURL(`${origin}/`);
-    // The address changes before the page's stylesheets load, so wait for its content.
-    await page.waitForFunction(() => !document.querySelector('#prepared'));
     cancelRelease();
     expect(await page.locator('#prepared').count()).toBe(0);
   } finally {

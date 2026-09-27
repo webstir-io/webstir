@@ -42,7 +42,7 @@ There is no initial `webstir:client-nav` event, preserving its existing meaning.
 For a successful document visit:
 
 1. Abort the outgoing page signal and await its registered cleanup in reverse order.
-2. Update history, title and page metadata, synchronize styles, replace `<main>`, and restore focus/scroll.
+2. Synchronize styles, update history, title and page metadata, replace `<main>`, and restore focus/scroll.
 3. Load incoming head scripts, then activate scripts inside `<main>`.
 4. Import the page entry at its existing URL and call its setup export.
 5. Emit `webstir:client-nav` with the existing `detail.url`.
@@ -74,8 +74,8 @@ page's `<head>` that describe that page:
 - **Title:** the new page's `<title>`, empty if it has none.
 - **Styles:** the new page's stylesheets load before the swap and the old page's
   are removed after it; `app.css` stays. `<style data-critical>` is replaced.
-  The address, title and metadata change first, so while they load the address
-  bar already shows the new page.
+  They load while the address is still the old page's, so they are requested
+  with no `Referer` rather than that address.
 - **Scripts:** the old page's entry script goes, and the new page's head scripts
   load after the swap. The client-nav, `hmr.js` and `refresh.js` scripts stay.
 - **Page metadata:** every `<meta name>` except `viewport`, every
@@ -89,9 +89,9 @@ page's `<head>` that describe that page:
   valid `<meta name="referrer">`, else its `Referrer-Policy` header, else the
   browser default (`strict-origin-when-cross-origin`). A page that sets
   `no-referrer` to keep a token in its address out of `Referer` does so only
-  while it is on screen. Every request the new page makes (its stylesheets,
-  scripts and content) carries its own address under this policy, as in a full
-  load.
+  while it is on screen. The address and policy change just before the new
+  `<main>` goes in, so its scripts and content request from the new address
+  under this policy, as in a full load.
 
 Everything else stays as the first load left it: `charset`, `viewport`,
 `http-equiv` (a Content-Security-Policy included), `<base>`, icons, the manifest,

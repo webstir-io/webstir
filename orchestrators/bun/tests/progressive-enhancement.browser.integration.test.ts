@@ -271,7 +271,7 @@ async function assertDocumentNavigationResetsScroll(page: Page, _origin: string)
   // Navigate back to home via link click — verifies client-side or full navigation works.
   await page.locator('a[href="/"]').click({ noWaitAfter: true });
   await waitForPathname(page, '/');
-  await page.waitForFunction(() => document.querySelector('h1')?.textContent === 'Home');
+  await page.locator('h1').waitFor({ state: 'visible' });
 
   expect(await page.locator('h1').textContent()).toBe('Home');
   // After a document navigation the scroll position should be at the top.
@@ -432,8 +432,8 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
 
 // The title, named meta and page links follow the page on screen, and so does the referrer policy:
 // leaving a page whose meta says no-referrer sends Referer again, as a full load of the next page
-// would. Every request the new page makes, its stylesheets included, carries its own address under
-// its own policy, never the outgoing address. A relative canonical resolves against the page's
+// would. The new page's content requests from its own address under its own policy, and nothing
+// it requests carries the outgoing address. A relative canonical resolves against the page's
 // own <base>, not this document's, and a javascript: canonical is left out.
 async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
   const html = (title: string, head: string, main: string) =>
@@ -520,7 +520,8 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
         html(
           'Main Referrer',
           '',
-          '<meta name="referrer" content="origin"><h1 id="main-referrer-heading">Main Referrer</h1>',
+          '<meta name="referrer" content="origin"><h1 id="main-referrer-heading">Main Referrer</h1>' +
+            '<a id="to-prepared-again" href="/client-nav-prepared">on</a>',
         ),
       ),
     ),
@@ -600,18 +601,25 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.locator('#origin-policy-heading').waitFor({ state: 'visible' });
   expect((await readMetadata()).description).toBe('Public');
   expect(await probeReferer()).toBe(`${origin}/`);
-  expect(stylesheetReferers.get('/client-nav-origin-policy.css')).toBe(`${origin}/`);
+  // Styles load before the address changes, so they send none rather than the outgoing one.
+  expect(stylesheetReferers.get('/client-nav-origin-policy.css')).toBe('');
 
   // A referrer meta in the page's content applies after its head's, as in a full load.
   await page.locator('#to-main-referrer').click({ noWaitAfter: true });
   await page.locator('#main-referrer-heading').waitFor({ state: 'visible' });
   expect(await probeReferer()).toBe(`${origin}/`);
+
+  // The page on screen keeps that policy while the next prepared page loads its data.
+  await page.locator('#to-prepared-again').click({ noWaitAfter: true });
+  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
+  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
   expect(await readClientNavEvents(page)).toEqual([
     '/client-nav-no-referrer',
     '/client-nav-prepared',
     '/client-nav-plain',
     '/client-nav-origin-policy',
     '/client-nav-main-referrer',
+    '/client-nav-prepared',
   ]);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });

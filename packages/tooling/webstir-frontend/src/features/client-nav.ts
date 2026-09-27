@@ -473,12 +473,12 @@ async function renderDocumentHtml(
   }
   ++pageGeneration;
   await pageLifecycle.dispose();
+  await syncHead(doc, options.url, DOM_RUNTIME, documentUrl.href);
   if (requestId !== activeRequestId) return;
 
-  // The address, then the page's referrer policy, are in place before any of its stylesheets,
-  // scripts or content is requested, as in a full load of it. From here the page goes in even if
-  // a newer navigation starts, so the address and what is on screen agree.
-  const outgoingUrl = documentUrl.href;
+  // The address, then the page's referrer policy, change before its content goes in and in the
+  // same task, so its scripts and content request from its address under its policy, as in a full
+  // load, and nothing on screen runs under an address or policy that is not its own.
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
   } else if (options.history === 'replace') {
@@ -486,7 +486,6 @@ async function renderDocumentHtml(
   }
   documentUrl = new URL(options.url);
   syncHeadMetadata(doc, options.url, options.referrerPolicy);
-  await syncHead(doc, options.url, DOM_RUNTIME, outgoingUrl);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
   if (newMain && currentMain) {

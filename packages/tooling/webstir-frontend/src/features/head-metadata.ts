@@ -110,30 +110,29 @@ export function resolveMetadataHref(options: {
   }
 }
 
-// The policy the last client navigation set, before any referrer meta in the page's content; null
-// until then, because the first load's Referrer-Policy header cannot be read.
+// The policy of the page the last client navigation committed, a referrer meta in its content
+// included; null until then.
 let committedReferrerPolicy: string | null = null;
 
 /**
  * Chromium applies a referrer meta in a document parsed off screen (DOMParser) to the page on
  * screen. Until the parsed page commits, requests still come from the page on screen, so put its
- * policy back: its last valid referrer meta, else the policy the last client navigation set, else
- * no-referrer, the one choice that cannot loosen an unknown first-load header.
+ * policy back: the one the last client navigation committed, else the first load's last valid
+ * referrer meta, else no-referrer, the one choice that cannot loosen the first load's header,
+ * which cannot be read.
  */
 export function restoreReferrerPolicy(parsed: Document): void {
   if (referrerMetaContents(parsed).length === 0) return;
-  let policy = committedReferrerPolicy;
-  for (const content of referrerMetaContents(document)) {
-    policy = parseReferrerPolicyMeta(content) ?? policy;
-  }
-  applyReferrerPolicy(policy ?? 'no-referrer');
+  applyReferrerPolicy(
+    committedReferrerPolicy ?? lastReferrerPolicy(referrerMetaContents(document)) ?? 'no-referrer',
+  );
 }
 
 /**
  * Replace the current page's title and metadata with `doc`'s, fetched from `url`. Run it once the
- * address has changed and before any of the page's stylesheets or content goes in, so each of its
- * requests carries its own address under its own policy, and a referrer meta inside that content
- * applies after the head's, as in a full load.
+ * address has changed and just before the page's `<main>` goes in, so its content requests from
+ * its address under its policy, and a referrer meta inside that content applies after the head's,
+ * as in a full load.
  */
 export function syncHeadMetadata(
   doc: Document,
@@ -162,8 +161,10 @@ export function syncHeadMetadata(
     if (copy) head.appendChild(copy);
   }
 
-  committedReferrerPolicy = sync.referrerPolicy;
   applyReferrerPolicy(sync.referrerPolicy);
+  const main = doc.querySelector('main');
+  committedReferrerPolicy =
+    (main && lastReferrerPolicy(referrerMetaContents(main))) ?? sync.referrerPolicy;
 }
 
 // A referrer meta sets the policy when it is inserted and keeps it after it is removed.
@@ -175,8 +176,8 @@ function applyReferrerPolicy(value: string): void {
   policy.remove();
 }
 
-function referrerMetaContents(doc: Document): (string | undefined)[] {
-  return Array.from(doc.querySelectorAll('meta[name]'))
+function referrerMetaContents(root: ParentNode): (string | undefined)[] {
+  return Array.from(root.querySelectorAll('meta[name]'))
     .filter((meta) => meta.getAttribute('name')?.toLowerCase() === 'referrer')
     .map((meta) => meta.getAttribute('content') ?? undefined);
 }
@@ -195,6 +196,12 @@ function parseReferrerPolicyHeader(value: string | null): string | null {
     const normalized = token.trim().toLowerCase();
     if (REFERRER_POLICIES.has(normalized)) policy = normalized;
   }
+  return policy;
+}
+
+function lastReferrerPolicy(contents: readonly (string | undefined)[]): string | null {
+  let policy: string | null = null;
+  for (const content of contents) policy = parseReferrerPolicyMeta(content) ?? policy;
   return policy;
 }
 

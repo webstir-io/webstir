@@ -156,6 +156,9 @@ export async function syncHead(
     }
     const next = document.createElement('link');
     next.rel = 'stylesheet';
+    // It loads while the outgoing page's address is still the document's, so it sends no Referer
+    // rather than that address.
+    next.referrerPolicy = 'no-referrer';
     next.href = href;
     head.appendChild(next);
     existingStyles.set(key, next);
