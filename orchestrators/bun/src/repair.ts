@@ -162,7 +162,10 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     dryRun,
     restoreScaffold,
     changes: uniqueSorted(changes),
-    missingScaffold: restoreScaffold ? [] : missingScaffold,
+    // A migration may write a missing scaffold file itself (the hot-module move writes hmr.js).
+    missingScaffold: restoreScaffold
+      ? []
+      : missingScaffold.filter((file) => !changes.includes(file)),
     notes,
   };
 }
@@ -337,7 +340,8 @@ async function ensureHotModulePair(
     return;
   }
 
-  if (clientKind === 'legacy') {
+  // The registry moves into hmr.js, so the move writes its destination when it is missing too.
+  if (clientKind === 'legacy' || !existsSync(clientPath)) {
     await refreshClient();
   }
   if (!dryRun) {

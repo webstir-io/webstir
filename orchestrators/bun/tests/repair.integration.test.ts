@@ -75,6 +75,8 @@ async function matureFullApp(root: string): Promise<void> {
   });
 }
 
+const templateRoot = path.join(packageRoot, 'assets', 'templates', 'full');
+
 const sortPaths = (paths: readonly string[]) =>
   [...paths].sort((left, right) => left.localeCompare(right));
 
@@ -94,7 +96,7 @@ test.each([
     missing: [] as string[],
   },
   {
-    name: 'repair still moves the hot-module registry out of app.ts',
+    name: 'repair moves the hot-module registry out of app.ts and writes the missing hmr.js it moves into',
     args: [] as string[],
     prepare: async (root: string) => {
       await writeFile(
@@ -103,8 +105,30 @@ test.each([
         'utf8',
       );
     },
-    changes: ['src/frontend/app/app.ts'],
+    changes: ['src/frontend/app/app.ts', 'src/frontend/app/hmr.js'],
+    missing: REMOVED_BY_MATURE_APP.filter((file) => file !== 'src/frontend/app/hmr.js'),
+    verify: async (root: string) => {
+      const app = path.join(root, 'src', 'frontend', 'app');
+      expect(await readFile(path.join(app, 'hmr.js'), 'utf8')).toBe(
+        await readFile(path.join(templateRoot, 'src', 'frontend', 'app', 'hmr.js'), 'utf8'),
+      );
+      const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
+      expect(appTs).toContain('window.__webstirHotModules ??= []');
+      expect(appTs).not.toContain('__webstirDispose');
+    },
+  },
+  {
+    name: 'repair leaves a missing hmr.js alone when app.ts has no legacy registry',
+    args: [] as string[],
+    prepare: async (root: string) => {
+      const appTs = await readFile(path.join(root, 'src', 'frontend', 'app', 'app.ts'), 'utf8');
+      expect(appTs).not.toContain('__webstirDispose');
+    },
+    changes: [] as string[],
     missing: REMOVED_BY_MATURE_APP,
+    verify: async (root: string) => {
+      expect(existsSync(path.join(root, 'src', 'frontend', 'app', 'hmr.js'))).toBe(false);
+    },
   },
   {
     name: 'repair still adds the backend reference base.tsconfig.json lacks',
@@ -115,7 +139,7 @@ test.each([
     changes: ['base.tsconfig.json'],
     missing: REMOVED_BY_MATURE_APP,
   },
-])('CLI $name', async ({ args, prepare, changes, missing }) => {
+])('CLI $name', async ({ args, prepare, changes, missing, ...row }) => {
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-mature-', {
     workspaceName: 'full',
   });
@@ -145,6 +169,8 @@ test.each([
     expect(REMOVED_BY_MATURE_APP.filter(restored)).toEqual(
       REMOVED_BY_MATURE_APP.filter((file) => changes.includes(file)),
     );
+
+    if ('verify' in row && row.verify) await row.verify(root);
 
     const again = await runCli(['repair', '--dry-run', '--json', ...args, '--workspace', root]);
     expect((JSON.parse(again.stdout) as { changes: string[] }).changes).toEqual([]);
