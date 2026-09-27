@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import ts from '@typescript/typescript6';
 
-import { findCssImportPaths } from './css-import-graph.ts';
+import { findCssImportPaths, isLocalCssImport, stripUrlSuffix } from './css-import-graph.ts';
 import type { ScaffoldAssetDescriptor } from './scaffold-path.ts';
 import {
   SCRIPT_EXTENSIONS,
@@ -174,14 +174,14 @@ function collectTsconfigReferences(
   }
 }
 
-/** Relative stylesheet imports, and the build's `@app/` alias for the app folder. */
+/** Local stylesheet imports, as the CSS build reads them, and its `@app/` alias for the app folder. */
 function resolveStylesheetImport(
   root: string,
   directory: string,
   specifier: string,
 ): string | undefined {
-  const bare = specifier.replace(/[?#].*$/, '');
-  if (bare.startsWith('./') || bare.startsWith('../')) {
+  const bare = stripUrlSuffix(specifier);
+  if (isLocalCssImport(bare)) {
     return path.resolve(directory, bare);
   }
   if (bare.startsWith('@app/')) {

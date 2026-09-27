@@ -193,7 +193,7 @@ function isWhitespace(value: string | undefined): boolean {
   return value === ' ' || value === '\n' || value === '\r' || value === '\t' || value === '\f';
 }
 
-function isLocalCssImport(importPath: string): boolean {
+export function isLocalCssImport(importPath: string): boolean {
   return (
     importPath.length > 0 &&
     !importPath.startsWith('/') &&
@@ -204,7 +204,7 @@ function isLocalCssImport(importPath: string): boolean {
   );
 }
 
-function stripUrlSuffix(importPath: string): string {
+export function stripUrlSuffix(importPath: string): string {
   const suffixIndex = importPath.search(/[?#]/);
   return suffixIndex === -1 ? importPath : importPath.slice(0, suffixIndex);
 }

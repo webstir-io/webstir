@@ -356,6 +356,18 @@ test.each([
     restored: ['src/frontend/app/error.ts'],
   },
   {
+    name: 'a stylesheet app.css imports without a ./ prefix',
+    prepare: async (root: string) => {
+      const cssPath = path.join(root, 'src', 'frontend', 'app', 'app.css');
+      await writeFile(
+        cssPath,
+        `@import "styles/base.css";\n${await readFile(cssPath, 'utf8')}`,
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/styles/base.css'],
+  },
+  {
     name: 'a stylesheet a script imports',
     prepare: async (root: string) => {
       await writeFile(
