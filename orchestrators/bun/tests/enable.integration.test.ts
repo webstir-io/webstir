@@ -158,6 +158,7 @@ async function shippedClientNavCopies(): Promise<Record<string, string>> {
 async function writeLegacyClientNav(
   workspaceRoot: string,
   edit?: (source: string) => string,
+  importLine = 'import "./scripts/features/client-nav.js";',
 ): Promise<void> {
   const dir = path.join(workspaceRoot, ...FEATURES_DIR);
   await mkdir(dir, { recursive: true });
@@ -165,10 +166,7 @@ async function writeLegacyClientNav(
     await writeFile(path.join(dir, name), name === 'client-nav.ts' && edit ? edit(source) : source);
   }
   const appTs = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
-  await writeFile(
-    appTs,
-    `${await readFile(appTs, 'utf8')}import "./scripts/features/client-nav.js";\n`,
-  );
+  await writeFile(appTs, `${await readFile(appTs, 'utf8')}${importLine}\n`);
 }
 
 // Enabling client-nav imports it from the frontend package. Copies Webstir wrote earlier are
@@ -212,6 +210,69 @@ const clientNavCases: Array<{
     imports: 'legacy',
     copies: true,
   },
+  {
+    name: 'an app whose copies have Windows line endings',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
+        const copy = path.join(root, ...FEATURES_DIR, name);
+        await writeFile(copy, (await readFile(copy, 'utf8')).replaceAll('\n', '\r\n'));
+      }
+    },
+    exitCode: 0,
+    imports: 'packaged',
+    copies: false,
+  },
+  {
+    name: 'an app whose import carries a comment',
+    setup: (root) =>
+      writeLegacyClientNav(
+        root,
+        undefined,
+        "import './scripts/features/client-nav.js'; // navigation",
+      ),
+    exitCode: 0,
+    imports: 'packaged',
+    copies: false,
+  },
+  {
+    name: 'an app with another file importing a copy',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'forms.ts'),
+        "export { buildEnhancedFormRequest } from './scripts/features/form-enhancement.js';\n",
+      );
+    },
+    exitCode: 0,
+    imports: 'legacy',
+    copies: true,
+    stderr:
+      /Kept the local client-nav copies because src\/frontend\/app\/forms\.ts still import them/,
+  },
+  {
+    name: 'an app whose installed frontend predates the packaged feature',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      // Replace the demo's link to the repo package; writing through it would change the repo.
+      const installed = path.join(root, 'node_modules', '@webstir-io', 'webstir-frontend');
+      await rm(installed, { force: true, recursive: false }).catch(() => {});
+      await mkdir(installed, { recursive: true });
+      await writeFile(
+        path.join(installed, 'package.json'),
+        JSON.stringify({
+          name: '@webstir-io/webstir-frontend',
+          version: '0.2.0',
+          exports: { './runtime': './dist/runtime/index.js', './package.json': './package.json' },
+        }),
+      );
+    },
+    exitCode: 1,
+    imports: 'legacy',
+    copies: true,
+    stderr:
+      /does not ship '@webstir-io\/webstir-frontend\/features\/client-nav'\. Upgrade it to 0\.3\.0/,
+  },
 ];
 
 for (const scenario of clientNavCases) {
@@ -231,8 +292,13 @@ for (const scenario of clientNavCases) {
         true,
       );
     } else {
-      expect(appTs).toContain('import "./scripts/features/client-nav.js";');
+      expect(appTs).toContain('./scripts/features/client-nav.js');
       expect(appTs).not.toContain(PACKAGED_IMPORT);
+      if (scenario.exitCode !== 0) {
+        expect(
+          (await readJsonFile(path.join(root, 'package.json'))).webstir.enable?.clientNav,
+        ).toBeUndefined();
+      }
     }
     for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
       expect(existsSync(path.join(root, ...FEATURES_DIR, name))).toBe(scenario.copies);

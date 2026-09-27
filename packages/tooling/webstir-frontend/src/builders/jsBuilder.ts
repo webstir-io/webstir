@@ -450,20 +450,24 @@ async function assertFeatureModulesPresent(
 const PACKAGED_FEATURE_PREFIX = '@webstir-io/webstir-frontend/features/';
 const PACKAGED_FEATURES = new Set(['client-nav']);
 
-/** A feature the package ships is enabled by importing it from the app entry. */
+/**
+ * A feature the package ships is enabled by importing it from the app entry the build bundles.
+ * An import that is only in a comment does not count.
+ */
 async function appImportsPackagedFeature(
   config: BuilderContext['config'],
   name: string,
 ): Promise<boolean> {
+  const entry = await resolveAppEntry(config.paths.src.app);
+  if (!entry) {
+    return false;
+  }
   const specifier = `${PACKAGED_FEATURE_PREFIX}${name}`.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
   const pattern = new RegExp(`^\\s*import\\s+(['"])${specifier}\\1`, 'm');
-  for (const extension of [EXTENSIONS.ts, EXTENSIONS.js]) {
-    const entry = path.join(config.paths.src.app, `app${extension}`);
-    if ((await pathExists(entry)) && pattern.test(await readFile(entry))) {
-      return true;
-    }
-  }
-  return false;
+  const code = (await readFile(entry))
+    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
+    .replace(/^[ \t]*\/\/.*$/gm, '');
+  return pattern.test(code);
 }
 
 async function hasFeatureModule(config: BuilderContext['config'], name: string): Promise<boolean> {

@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -93,6 +93,16 @@ test('CLI repair swaps the client-nav copies Webstir shipped for the package imp
   });
   const root = copiedWorkspace.workspaceRoot;
   try {
+    // The app resolves the frontend package the way an installed app would; the demo's own
+    // relative link breaks once the demo is copied elsewhere.
+    const installed = path.join(root, 'node_modules', '@webstir-io');
+    await mkdir(installed, { recursive: true });
+    await rm(path.join(installed, 'webstir-frontend'), { force: true });
+    await symlink(
+      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend'),
+      path.join(installed, 'webstir-frontend'),
+      'dir',
+    );
     // The copies Webstir 0.2.0 wrote into apps, kept byte for byte.
     const fixtures = path.join(packageRoot, 'test-support', 'fixtures', 'client-nav-0.2.0');
     const features = path.join(root, 'src', 'frontend', 'app', 'scripts', 'features');
@@ -111,6 +121,17 @@ test('CLI repair swaps the client-nav copies Webstir shipped for the package imp
         "import '@webstir-io/webstir-frontend/features/client-nav';",
         "import './scripts/features/client-nav.js';",
       ),
+    );
+
+    // A dry run reports the switch without touching anything.
+    const dryRun = await runCli(['repair', '--dry-run', '--workspace', root]);
+    expect(dryRun.exitCode).toBe(0);
+    expect(dryRun.stdout).toContain('src/frontend/app/scripts/features/client-nav.ts');
+    for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
+      expect(existsSync(path.join(features, name))).toBe(true);
+    }
+    expect(await readFile(appTsPath, 'utf8')).toContain(
+      "import './scripts/features/client-nav.js';",
     );
 
     const result = await runCli(['repair', '--workspace', root]);

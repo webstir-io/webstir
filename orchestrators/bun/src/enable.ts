@@ -76,7 +76,10 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       break;
     case 'client-nav': {
       const notes: string[] = [];
-      await adoptPackagedClientNav(workspace.root, changes, notes);
+      const adoption = await adoptPackagedClientNav(workspace.root, changes, notes);
+      if (adoption === 'unavailable') {
+        throw new Error(notes.join(' '));
+      }
       for (const note of notes) console.warn(note);
       await updatePackageJson(workspace.root, { enableClientNav: true }, changes);
       break;

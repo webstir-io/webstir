@@ -1,4 +1,5 @@
-// sha256 of every client-nav file Webstir has shipped into apps, so repair only removes unmodified copies.
+// sha256 (line endings normalized to LF) of every client-nav file Webstir has shipped into apps,
+// from the feature sources, generated assets and template copies, so repair only removes unmodified copies.
 export const SHIPPED_CLIENT_NAV_COPIES: Readonly<Record<string, ReadonlySet<string>>> = {
   'client-nav.ts': new Set([
     '32b8aba3c098876b42b4a7505da5925d114678e397c2c29f47381c47f787fdef',
@@ -9,6 +10,7 @@ export const SHIPPED_CLIENT_NAV_COPIES: Readonly<Record<string, ReadonlySet<stri
     'c547b3d3a00043928ed9cd32c75c8b7bf6949bf8fb037cb8b5ee8aae98503216',
     'da7893583bab9df9dd6e29860f69d467c2affdc7a0f6af7206257d52f71acf86',
     'ed19d79dcc6c841b9ac089028f6138bdb26265d603840cb5a5d4617e6a17fd47',
+    'f507de15cacbba891a4d198dbb36f47bc99b0ed43b7eb35f553738d2189b2b0c',
   ]),
   'document-navigation.ts': new Set([
     '862a593ba3d82d4a463c0757622279bdbf9dd7946baef0c2357d5fd77e5f13d2',
