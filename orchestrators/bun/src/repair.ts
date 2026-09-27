@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, lstat, mkdir } from 'node:fs/promises';
+import { chmod, lstat, mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
@@ -97,7 +97,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   const neededAssets = await selectNeededScaffoldAssets(
     workspace.root,
     hasAppInstructions ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md') : assets,
-    getRequiredScaffoldTargets(workspace.root, workspace.mode, enable),
+    await getRequiredScaffoldTargets(workspace.root, workspace.mode, enable),
   );
   const preparedAssets = await preflightScaffoldAssets(
     workspace.root,
@@ -160,18 +160,32 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
 }
 
 const BACKEND_ENTRIES = ['index.ts', 'index.tsx', 'index.js', 'index.mjs'];
+const PAGE_PARTS = ['index.ts', 'index.tsx', 'index.js', 'index.jsx', 'index.css'];
 
 // What the workspace cannot work without, whether or not anything names it: the app shell every
-// frontend build reads, the app entry an enabled feature is imported from, and the backend entry.
-// Missing app instructions are restored too; they are guidance the app can then edit or delete.
-function getRequiredScaffoldTargets(
+// frontend build reads, the document of a page whose script or stylesheet is still there, the app
+// entry an enabled feature is imported from, and the backend entry. Missing app instructions are
+// restored too; they are guidance the app can then edit or delete.
+async function getRequiredScaffoldTargets(
   workspaceRoot: string,
   mode: string,
   enable: RepairEnableFlags,
-): readonly string[] {
+): Promise<readonly string[]> {
   const targets = ['AGENTS.md'];
   if (mode !== 'api') {
     targets.push(path.join('src', 'frontend', 'app', 'app.html'));
+    const pagesRoot = path.join(workspaceRoot, 'src', 'frontend', 'pages');
+    const pages = existsSync(pagesRoot) ? await readdir(pagesRoot, { withFileTypes: true }) : [];
+    for (const page of pages) {
+      const pageRoot = path.join(pagesRoot, page.name);
+      if (
+        page.isDirectory() &&
+        !existsSync(path.join(pageRoot, 'index.html')) &&
+        PAGE_PARTS.some((part) => existsSync(path.join(pageRoot, part)))
+      ) {
+        targets.push(path.join('src', 'frontend', 'pages', page.name, 'index.html'));
+      }
+    }
   }
   if (
     (enable.clientNav || enable.search || enable.contentNav) &&
@@ -196,6 +210,10 @@ function getFixedRepairWriteTargets(
   const targets: string[] = [];
   const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
 
+  // The hot-module migration may rewrite these even when neither is missing.
+  if (mode !== 'api') {
+    targets.push(path.join(appRoot, 'app.ts'), path.join(appRoot, 'hmr.js'));
+  }
   if (enable.clientNav || enable.search || enable.contentNav) {
     targets.push(...appEntryPaths(workspaceRoot));
   }

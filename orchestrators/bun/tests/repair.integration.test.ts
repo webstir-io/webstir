@@ -198,6 +198,46 @@ test.each([
     },
     restored: ['src/backend/index.ts'],
   },
+  {
+    name: 'a dev runtime script the app shell loads through an unquoted attribute',
+    prepare: async (root: string) => {
+      const shellPath = path.join(root, 'src', 'frontend', 'app', 'app.html');
+      await writeFile(
+        shellPath,
+        (await readFile(shellPath, 'utf8')).replace(
+          '</body>',
+          '<script type=module src=/hmr.js></script></body>',
+        ),
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/hmr.js'],
+  },
+  {
+    name: 'a module imported through a tsconfig paths alias',
+    prepare: async (root: string) => {
+      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
+      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
+        compilerOptions: Record<string, unknown>;
+      };
+      frontend.compilerOptions.paths = { '~/*': ['./app/*'] };
+      await writeJson(frontendPath, frontend);
+      const pagePath = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts');
+      await writeFile(
+        pagePath,
+        `import '~/router.js';\n${await readFile(pagePath, 'utf8')}`,
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/router.ts', 'src/shared/router-types.ts'],
+  },
+  {
+    name: 'the document of a page whose script is still there',
+    prepare: async (root: string) => {
+      await rm(path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html'));
+    },
+    restored: ['src/frontend/pages/home/index.html'],
+  },
 ])(
   'CLI repair restores only what a workspace still needs: $name',
   async ({ prepare, restored }) => {
@@ -523,6 +563,49 @@ test('CLI repair keeps a scaffold hmr.js under an app.ts that still installs the
     await removeDemoWorkspace(prepared.workspace);
   }
 });
+
+test.each([
+  { file: 'app.ts', fixture: 'legacy-hot-module-app.ts.txt' },
+  { file: 'hmr.js', fixture: 'legacy-hmr-client-ssg.js.txt' },
+])(
+  'CLI repair refuses to migrate a linked $file that restores would not touch',
+  async ({ file, fixture }) => {
+    const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-link-', {
+      app: await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8'),
+      client: await readFile(path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'), 'utf8'),
+    });
+    const outside = path.join(path.dirname(prepared.workspace.workspaceRoot), `outside-${file}`);
+    const legacy = await readFile(path.join(fixturesRoot, fixture), 'utf8');
+
+    try {
+      // No enabled feature, so nothing else lists app.ts as a write target.
+      const packageJsonPath = path.join(prepared.workspace.workspaceRoot, 'package.json');
+      const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+        webstir: Record<string, unknown>;
+      };
+      delete packageJson.webstir.enable;
+      await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+      await writeFile(outside, legacy, 'utf8');
+      const linked = file === 'app.ts' ? prepared.appTsPath : prepared.clientPath;
+      await rm(linked);
+      await symlink(outside, linked, 'file');
+
+      for (const extraArgs of [['--dry-run'], []] as const) {
+        const result = await runCli([
+          'repair',
+          ...extraArgs,
+          '--workspace',
+          prepared.workspace.workspaceRoot,
+        ]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain('symbolic link');
+        expect(await readFile(outside, 'utf8')).toBe(legacy);
+      }
+    } finally {
+      await removeDemoWorkspace(prepared.workspace);
+    }
+  },
+);
 
 test('CLI repair reports a customized hot-module registry instead of rewriting it', async () => {
   const legacy = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
