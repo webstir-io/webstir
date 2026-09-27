@@ -30,7 +30,7 @@ import {
   type HistoryMode,
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
-import { syncHeadMetadata } from './head-metadata.js';
+import { restoreReferrerPolicy, syncHeadMetadata } from './head-metadata.js';
 
 export {};
 
@@ -426,6 +426,7 @@ async function renderDocumentResponse(
   if (requestId !== activeRequestId) return;
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  restoreReferrerPolicy(doc);
   const script = doc.querySelector<HTMLScriptElement>(
     'script[data-webstir-page][data-webstir-load][src]',
   );
@@ -472,11 +473,12 @@ async function renderDocumentHtml(
   }
   ++pageGeneration;
   await pageLifecycle.dispose();
-  await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
 
-  // The address changes before the page's referrer policy and content arrive, so a request the
-  // content starts on insertion never carries the outgoing address under the incoming policy.
+  // The address, then the page's referrer policy, are in place before any of its stylesheets,
+  // scripts or content is requested, as in a full load of it. From here the page goes in even if
+  // a newer navigation starts, so the address and what is on screen agree.
+  const outgoingUrl = documentUrl.href;
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
   } else if (options.history === 'replace') {
@@ -484,6 +486,7 @@ async function renderDocumentHtml(
   }
   documentUrl = new URL(options.url);
   syncHeadMetadata(doc, options.url, options.referrerPolicy);
+  await syncHead(doc, options.url, DOM_RUNTIME, outgoingUrl);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
   if (newMain && currentMain) {

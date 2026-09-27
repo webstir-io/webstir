@@ -42,7 +42,7 @@ There is no initial `webstir:client-nav` event, preserving its existing meaning.
 For a successful document visit:
 
 1. Abort the outgoing page signal and await its registered cleanup in reverse order.
-2. Synchronize styles, update history, title and page metadata, replace `<main>`, and restore focus/scroll.
+2. Update history, title and page metadata, synchronize styles, replace `<main>`, and restore focus/scroll.
 3. Load incoming head scripts, then activate scripts inside `<main>`.
 4. Import the page entry at its existing URL and call its setup export.
 5. Emit `webstir:client-nav` with the existing `detail.url`.
@@ -74,6 +74,8 @@ page's `<head>` that describe that page:
 - **Title:** the new page's `<title>`, empty if it has none.
 - **Styles:** the new page's stylesheets load before the swap and the old page's
   are removed after it; `app.css` stays. `<style data-critical>` is replaced.
+  The address, title and metadata change first, so while they load the address
+  bar already shows the new page.
 - **Scripts:** the old page's entry script goes, and the new page's head scripts
   load after the swap. The client-nav, `hmr.js` and `refresh.js` scripts stay.
 - **Page metadata:** every `<meta name>` except `viewport`, every
@@ -81,12 +83,15 @@ page's `<head>` that describe that page:
   `alternate`, `prev` or `next`. The old page's are removed and the new page's
   added in its order, with relative `href`s resolved against the new page's
   address and `<base>`, so a page that lacks a `description`, `robots`,
-  `theme-color` or canonical does not inherit the previous page's.
+  `theme-color` or canonical does not inherit the previous page's. A link whose
+  `href` is not `http:` or `https:` is left out.
 - **Referrer policy:** what a full load of the new page would give: its last
   valid `<meta name="referrer">`, else its `Referrer-Policy` header, else the
   browser default (`strict-origin-when-cross-origin`). A page that sets
   `no-referrer` to keep a token in its address out of `Referer` does so only
-  while it is on screen.
+  while it is on screen. Every request the new page makes (its stylesheets,
+  scripts and content) carries its own address under this policy, as in a full
+  load.
 
 Everything else stays as the first load left it: `charset`, `viewport`,
 `http-equiv` (a Content-Security-Policy included), `<base>`, icons, the manifest,
@@ -204,6 +209,8 @@ export function setup({ root, data, scope }: PageContext<Awaited<ReturnType<type
 On link navigation, the current content, URL, and page lifetime remain intact while
 `load` is pending. History traversal changes the URL immediately, as usual, but
 keeps the outgoing content visible until data is ready. Webstir then synchronizes styles and commits the prepared page.
+Because the outgoing page is still the one on screen, the page module and the
+loader's requests carry its address under its referrer policy.
 Its setup runs before additional document scripts, so prepared content can render
 without an intervening loading frame. On initial load the existing HTML remains
 available while data loads. Pages without the attribute retain the original

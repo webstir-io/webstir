@@ -271,7 +271,7 @@ async function assertDocumentNavigationResetsScroll(page: Page, _origin: string)
   // Navigate back to home via link click — verifies client-side or full navigation works.
   await page.locator('a[href="/"]').click({ noWaitAfter: true });
   await waitForPathname(page, '/');
-  await page.locator('h1').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => document.querySelector('h1')?.textContent === 'Home');
 
   expect(await page.locator('h1').textContent()).toBe('Home');
   // After a document navigation the scroll position should be at the top.
@@ -432,8 +432,9 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
 
 // The title, named meta and page links follow the page on screen, and so does the referrer policy:
 // leaving a page whose meta says no-referrer sends Referer again, as a full load of the next page
-// would, and only ever with the new page's address. A relative canonical resolves against the
-// page's own <base>, not this document's.
+// would. Every request the new page makes, its stylesheets included, carries its own address under
+// its own policy, never the outgoing address. A relative canonical resolves against the page's
+// own <base>, not this document's, and a javascript: canonical is left out.
 async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
   const html = (title: string, head: string, main: string) =>
     `<!doctype html><html><head><title>${title}</title>${head}</head><body><main>${main}</main></body></html>`;
@@ -448,20 +449,52 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
         html(
           'No Referrer',
           '<base href="/client-nav-base/"><meta name="referrer" content="no-referrer">' +
+            '<link rel="stylesheet" href="/client-nav-no-referrer.css">' +
             '<meta name="description" content="Private">' +
             '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-no-referrer">',
-          '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-plain" href="/client-nav-plain">on</a>',
+          '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-prepared" href="/client-nav-prepared">on</a>',
         ),
       ),
     ),
   );
+  // A prepared page loads its module and data before it commits, so from the page on screen and
+  // under its policy, even though its own meta (which Chromium applies on parsing) says unsafe-url.
+  await page.route(`${origin}/client-nav-prepared`, (route) =>
+    route.fulfill(
+      fulfillPage(
+        html(
+          'Prepared',
+          '<meta name="referrer" content="unsafe-url">' +
+            '<script type="module" data-webstir-page data-webstir-load src="/client-nav-prepared.js"></script>',
+          '<h1 id="prepared-heading">Prepared</h1><p id="prepared-referer"></p>' +
+            '<a id="to-plain" href="/client-nav-plain">on</a>',
+        ),
+      ),
+    ),
+  );
+  let preparedModuleReferer: string | undefined;
+  await page.route(`${origin}/client-nav-prepared.js`, async (route) => {
+    preparedModuleReferer = await readReferer(route);
+    await route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/javascript' },
+      body: [
+        'export async function load({ signal }) {',
+        "  return (await fetch('/client-nav-referer-probe', { signal })).text();",
+        '}',
+        'export function setup({ data }) {',
+        "  document.getElementById('prepared-referer').textContent = JSON.stringify(data);",
+        '}',
+      ].join('\n'),
+    });
+  });
   // Its frame starts loading the moment the content goes in.
   await page.route(`${origin}/client-nav-plain`, (route) =>
     route.fulfill(
       fulfillPage(
         html(
           '',
-          '',
+          '<link rel="canonical" href="javascript:alert(1)">',
           '<h1 id="plain-heading">Plain</h1><iframe src="/client-nav-referer-frame"></iframe>' +
             '<a id="to-origin-policy" href="/client-nav-origin-policy">on</a>',
         ),
@@ -473,7 +506,8 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       fulfillPage(
         html(
           'Origin Policy',
-          '<meta name="description" content="Public">',
+          '<meta name="description" content="Public">' +
+            '<link rel="stylesheet" href="/client-nav-origin-policy.css">',
           '<h1 id="origin-policy-heading">Origin Policy</h1><a id="to-main-referrer" href="/client-nav-main-referrer">on</a>',
         ),
         { 'referrer-policy': 'origin' },
@@ -499,6 +533,11 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       body: await readReferer(route),
     }),
   );
+  const stylesheetReferers = new Map<string, string>();
+  await page.route(`${origin}/client-nav-*.css`, async (route) => {
+    stylesheetReferers.set(new URL(route.request().url()).pathname, await readReferer(route));
+    await route.fulfill({ status: 200, headers: { 'content-type': 'text/css' }, body: '' });
+  });
   let frameReferer: string | undefined;
   await page.route(`${origin}/client-nav-referer-frame`, async (route) => {
     frameReferer = await readReferer(route);
@@ -535,6 +574,13 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     viewport,
   });
   expect(await probeReferer()).toBe('');
+  expect(stylesheetReferers.get('/client-nav-no-referrer.css')).toBe('');
+
+  await page.locator('#to-prepared').click({ noWaitAfter: true });
+  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
+  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(''));
+  expect(preparedModuleReferer).toBe('');
+  expect(await probeReferer()).toBe(`${origin}/client-nav-prepared`);
 
   await page.locator('#to-plain').click({ noWaitAfter: true });
   await page.locator('#plain-heading').waitFor({ state: 'visible' });
@@ -554,6 +600,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.locator('#origin-policy-heading').waitFor({ state: 'visible' });
   expect((await readMetadata()).description).toBe('Public');
   expect(await probeReferer()).toBe(`${origin}/`);
+  expect(stylesheetReferers.get('/client-nav-origin-policy.css')).toBe(`${origin}/`);
 
   // A referrer meta in the page's content applies after its head's, as in a full load.
   await page.locator('#to-main-referrer').click({ noWaitAfter: true });
@@ -561,6 +608,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(await probeReferer()).toBe(`${origin}/`);
   expect(await readClientNavEvents(page)).toEqual([
     '/client-nav-no-referrer',
+    '/client-nav-prepared',
     '/client-nav-plain',
     '/client-nav-origin-policy',
     '/client-nav-main-referrer',

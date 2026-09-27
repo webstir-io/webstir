@@ -38,6 +38,8 @@ const DEFAULT_REFERRER_POLICY = 'strict-origin-when-cross-origin';
 
 const IGNORED_BASE_PROTOCOLS = new Set(['data:', 'javascript:']);
 
+const PAGE_LINK_PROTOCOLS = new Set(['http:', 'https:']);
+
 /**
  * Metadata that belongs to the page rather than the document: every `<meta name>` except
  * `viewport`, every `<meta property>` (Open Graph), and `<link>`s whose rel is only
@@ -85,7 +87,8 @@ export function resolveHeadMetadataSync(options: {
 /**
  * Where a metadata href from the incoming page points: resolved against that page's own base, its
  * first `<base href>` read against its address, as a full load of it would. Like a browser, a base
- * that does not parse or is a `data:` or `javascript:` URL is ignored.
+ * that does not parse or is a `data:` or `javascript:` URL is ignored. Only an http(s) result is
+ * kept: page links name pages, so any other scheme is refused and the link left out.
  */
 export function resolveMetadataHref(options: {
   readonly href: string;
@@ -100,16 +103,37 @@ export function resolveMetadataHref(options: {
     } catch {}
   }
   try {
-    return new URL(options.href, base).href;
+    const resolved = new URL(options.href, base);
+    return PAGE_LINK_PROTOCOLS.has(resolved.protocol) ? resolved.href : null;
   } catch {
     return null;
   }
 }
 
+// The policy the last client navigation set, before any referrer meta in the page's content; null
+// until then, because the first load's Referrer-Policy header cannot be read.
+let committedReferrerPolicy: string | null = null;
+
 /**
- * Replace the current page's title and metadata with `doc`'s, fetched from `url`. Run it just before
- * the new content goes in, so a referrer meta inside that content applies after the head's, as it
- * would in a full load.
+ * Chromium applies a referrer meta in a document parsed off screen (DOMParser) to the page on
+ * screen. Until the parsed page commits, requests still come from the page on screen, so put its
+ * policy back: its last valid referrer meta, else the policy the last client navigation set, else
+ * no-referrer, the one choice that cannot loosen an unknown first-load header.
+ */
+export function restoreReferrerPolicy(parsed: Document): void {
+  if (referrerMetaContents(parsed).length === 0) return;
+  let policy = committedReferrerPolicy;
+  for (const content of referrerMetaContents(document)) {
+    policy = parseReferrerPolicyMeta(content) ?? policy;
+  }
+  applyReferrerPolicy(policy ?? 'no-referrer');
+}
+
+/**
+ * Replace the current page's title and metadata with `doc`'s, fetched from `url`. Run it once the
+ * address has changed and before any of the page's stylesheets or content goes in, so each of its
+ * requests carries its own address under its own policy, and a referrer meta inside that content
+ * applies after the head's, as in a full load.
  */
 export function syncHeadMetadata(
   doc: Document,
@@ -134,15 +158,27 @@ export function syncHeadMetadata(
   const added = new Set(sync.add);
   for (const element of current.filter((_, index) => removed.has(index))) element.remove();
   for (const element of next.filter((_, index) => added.has(index))) {
-    head.appendChild(copyMetadata(element, url, baseHref));
+    const copy = copyMetadata(element, url, baseHref);
+    if (copy) head.appendChild(copy);
   }
 
-  // A referrer meta sets the policy when it is inserted and keeps it after it is removed.
+  committedReferrerPolicy = sync.referrerPolicy;
+  applyReferrerPolicy(sync.referrerPolicy);
+}
+
+// A referrer meta sets the policy when it is inserted and keeps it after it is removed.
+function applyReferrerPolicy(value: string): void {
   const policy = document.createElement('meta');
   policy.name = 'referrer';
-  policy.content = sync.referrerPolicy;
-  head.appendChild(policy);
+  policy.content = value;
+  document.head.appendChild(policy);
   policy.remove();
+}
+
+function referrerMetaContents(doc: Document): (string | undefined)[] {
+  return Array.from(doc.querySelectorAll('meta[name]'))
+    .filter((meta) => meta.getAttribute('name')?.toLowerCase() === 'referrer')
+    .map((meta) => meta.getAttribute('content') ?? undefined);
 }
 
 function pageMetadataIndices(elements: readonly HeadElementDescriptor[]): number[] {
@@ -182,7 +218,7 @@ function describe(element: Element): HeadElementDescriptor {
   return { tag: element.localName, attributes };
 }
 
-function copyMetadata(element: Element, url: string, baseHref: string | null): Element {
+function copyMetadata(element: Element, url: string, baseHref: string | null): Element | null {
   const copy = document.createElement(element.localName);
   for (const attribute of Array.from(element.attributes)) {
     copy.setAttribute(attribute.name, attribute.value);
@@ -191,8 +227,8 @@ function copyMetadata(element: Element, url: string, baseHref: string | null): E
   const href = element.getAttribute('href');
   if (href !== null) {
     const resolved = resolveMetadataHref({ href, url, baseHref });
-    if (resolved === null) copy.removeAttribute('href');
-    else copy.setAttribute('href', resolved);
+    if (resolved === null) return null;
+    copy.setAttribute('href', resolved);
   }
   return copy;
 }

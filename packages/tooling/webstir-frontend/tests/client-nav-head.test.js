@@ -252,6 +252,23 @@ test.each([
     'data:text/html,x',
     'https://a.test/pages/guide',
   ],
+  ['an http href is kept', 'http://b.test/x', 'https://a.test/pages/next', null, 'http://b.test/x'],
+  ['a javascript: href is refused', 'javascript:alert(1)', 'https://a.test/p', null, null],
+  ['a JavaScript: href is refused', 'JavaScript:alert(1)', 'https://a.test/p', null, null],
+  [
+    'a padded javascript: href is refused',
+    '  java\tscript:alert(1) ',
+    'https://a.test/p',
+    null,
+    null,
+  ],
+  ['a data: href is refused', 'data:text/html,<script>x</script>', 'https://a.test/p', null, null],
+  ['a DATA: href is refused', ' DATA:text/plain,x', 'https://a.test/p', null, null],
+  ['a vbscript: href is refused', 'vbscript:msgbox(1)', 'https://a.test/p', null, null],
+  ['a blob: href is refused', 'blob:https://a.test/uuid', 'https://a.test/p', null, null],
+  ['a mailto: href is refused', 'mailto:a@a.test', 'https://a.test/p', null, null],
+  ['a file: href is refused', 'file:///etc/passwd', 'https://a.test/p', null, null],
+  ['a relative href against a file: page is refused', 'guide', 'file:///p/', null, null],
 ])('resolveMetadataHref: %s', (_label, href, url, baseHref, expected) => {
   expect(resolveMetadataHref({ href, url, baseHref })).toBe(expected);
 });
