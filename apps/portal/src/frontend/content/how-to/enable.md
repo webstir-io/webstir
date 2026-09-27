@@ -62,7 +62,7 @@ An app that still has the copies an older version wrote under `src/frontend/app/
   - `webstir.mode=full`
   - `webstir.enable.backend=true`
 - Ensures `base.tsconfig.json` includes a `references` entry for `src/backend`.
-- Records the enabled backend shape so `webstir repair` restores package-managed backend assets instead of stale mode-template backend files.
+- Records the enabled backend shape so `webstir repair --restore-scaffold` restores package-managed backend assets instead of stale mode-template backend files.
 
 ### github-pages
 - Writes `utils/deploy-gh-pages.sh`.

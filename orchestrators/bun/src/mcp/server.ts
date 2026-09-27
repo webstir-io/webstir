@@ -29,6 +29,13 @@ const workspaceSchema = z
   })
   .strict();
 
+const repairSchema = z
+  .object({
+    workspace: z.string().min(1),
+    restoreScaffold: z.boolean().optional(),
+  })
+  .strict();
+
 const scaffoldPageSchema = z
   .object({
     workspace: z.string().min(1),
@@ -122,22 +129,42 @@ export function createMcpServer(): McpServer {
     'repair_workspace',
     {
       title: 'Repair Workspace',
-      description: 'Apply scaffold-managed repair actions and re-check workspace health.',
-      inputSchema: workspaceSchema,
+      description:
+        'Apply Webstir migrations and re-check workspace health. Missing scaffold files are left alone unless restoreScaffold is true.',
+      inputSchema: repairSchema,
     },
-    async ({ workspace }) =>
-      toToolResult(await runCliJson(['agent', 'repair', '--json', '--workspace', workspace])),
+    async ({ workspace, restoreScaffold }) =>
+      toToolResult(
+        await runCliJson([
+          'agent',
+          'repair',
+          '--json',
+          '--workspace',
+          workspace,
+          ...(restoreScaffold ? ['--restore-scaffold'] : []),
+        ]),
+      ),
   );
 
   server.registerTool(
     'repair_dry_run',
     {
       title: 'Repair Dry Run',
-      description: 'Report scaffold-managed repair actions without mutating the workspace.',
-      inputSchema: workspaceSchema,
+      description:
+        'Report the migrations repair would apply, and the missing scaffold files restoreScaffold would re-create, without mutating the workspace.',
+      inputSchema: repairSchema,
     },
-    async ({ workspace }) =>
-      toToolResult(await runCliJson(['repair', '--dry-run', '--json', '--workspace', workspace])),
+    async ({ workspace, restoreScaffold }) =>
+      toToolResult(
+        await runCliJson([
+          'repair',
+          '--dry-run',
+          '--json',
+          '--workspace',
+          workspace,
+          ...(restoreScaffold ? ['--restore-scaffold'] : []),
+        ]),
+      ),
   );
 
   server.registerTool(

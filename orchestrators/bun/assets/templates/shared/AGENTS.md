@@ -51,13 +51,16 @@ behavior without appropriate app tests and browser checks.
 
 ## Repair and instruction updates
 
-Use `repair --dry-run --json` to inspect proposed scaffold restoration before
-applying it. Repair restores missing scaffold files; application defects need
-application code changes. Starter tests belong to the app after generation;
-repair does not recreate deleted starter tests. Keep unrelated user changes intact.
+Use `repair --dry-run --json` to inspect proposed changes before applying them.
+Repair migrates scaffold-managed wiring to what the installed Webstir expects; it
+does not re-create missing scaffold files, which the app may have removed on
+purpose. `repair --restore-scaffold` re-creates them when they were deleted by
+mistake. Application defects need application code changes. Starter tests belong
+to the app after generation and are never re-created. Keep unrelated user changes
+intact.
 
-This file belongs to the app after generation. Repair restores it only when it
-is missing and leaves existing contents unchanged. Its absence does not make the
+This file belongs to the app after generation. Only `repair --restore-scaffold`
+restores it, when it is missing, and repair never changes existing contents. Its absence does not make the
 app unhealthy or block validation. Compare it with the installed
 starter instructions reported by `--help` and merge useful updates manually.
 `refresh` replaces the workspace with a scaffold; do not use it to update this

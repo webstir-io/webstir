@@ -2,7 +2,7 @@ import type { BackendInspectResult } from './backend-inspect.ts';
 import type { WorkspaceDescriptor } from './types.ts';
 
 import { runBackendInspect } from './backend-inspect.ts';
-import { runRepair } from './repair.ts';
+import { RESTORE_SCAFFOLD_FLAG, runRepair } from './repair.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 
 export interface RunDoctorOptions {
@@ -30,6 +30,11 @@ export interface DoctorRepairPlan {
   readonly command: 'repair';
   readonly args: readonly string[];
   readonly changes: readonly string[];
+  /** Missing scaffold files, which repair leaves alone unless given --restore-scaffold. */
+  readonly restoreScaffold: {
+    readonly args: readonly string[];
+    readonly changes: readonly string[];
+  };
 }
 
 export interface DoctorBackendSummary {
@@ -72,14 +77,23 @@ export async function runDoctor(options: RunDoctorOptions): Promise<DoctorResult
     rawArgs: ['--dry-run'],
   });
 
-  // App instructions are optional guidance, not required runtime scaffold state.
-  const requiredChanges = repairResult.changes.filter((change) => change !== 'AGENTS.md');
+  // Migrations repair would apply are drift. Missing scaffold files are not: an app may remove
+  // starter files, so doctor only points at --restore-scaffold for ones removed by mistake.
+  const requiredChanges = repairResult.changes;
+  const missingScaffold = repairResult.missingScaffold;
+  const missingDetail =
+    missingScaffold.length > 0
+      ? {
+          detail: `${missingScaffold.length} scaffold file(s) are missing (${missingScaffold.join(', ')}); if they were removed by mistake, repair --restore-scaffold re-creates them.`,
+        }
+      : {};
 
   if (requiredChanges.length > 0) {
     checks.push({
       id: 'scaffold',
       status: 'fail',
       summary: `${requiredChanges.length} scaffold-managed change(s) required.`,
+      ...missingDetail,
       changes: requiredChanges,
     });
     issues.push({
@@ -93,10 +107,8 @@ export async function runDoctor(options: RunDoctorOptions): Promise<DoctorResult
     checks.push({
       id: 'scaffold',
       status: 'pass',
-      summary: 'Required scaffold-managed files and wiring match the expected workspace shape.',
-      ...(repairResult.changes.includes('AGENTS.md')
-        ? { detail: 'Optional app instructions (AGENTS.md) can be restored with repair.' }
-        : {}),
+      summary: 'Scaffold-managed wiring matches what this Webstir version expects.',
+      ...missingDetail,
     });
   }
 
@@ -145,6 +157,10 @@ export async function runDoctor(options: RunDoctorOptions): Promise<DoctorResult
       command: 'repair',
       args: ['--workspace', workspace.root],
       changes: repairResult.changes,
+      restoreScaffold: {
+        args: ['--workspace', workspace.root, RESTORE_SCAFFOLD_FLAG],
+        changes: missingScaffold,
+      },
     },
     ...(backend ? { backend } : {}),
   };

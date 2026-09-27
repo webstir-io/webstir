@@ -21,6 +21,7 @@ import {
 import { classifyHmrClient, migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
+import ts from '@typescript/typescript6';
 
 interface RepairAsset extends ScaffoldAssetDescriptor {
   readonly executable?: boolean;
@@ -54,12 +55,18 @@ export interface RepairResult {
   readonly workspaceRoot: string;
   readonly mode: string;
   readonly dryRun: boolean;
+  readonly restoreScaffold: boolean;
   readonly changes: readonly string[];
+  /** Scaffold files the workspace does not have; `--restore-scaffold` re-creates them. */
+  readonly missingScaffold: readonly string[];
   readonly notes: readonly string[];
 }
 
+export const RESTORE_SCAFFOLD_FLAG = '--restore-scaffold';
+
 export async function runRepair(options: RunRepairOptions): Promise<RepairResult> {
   const dryRun = options.rawArgs.includes('--dry-run');
+  const restoreScaffold = options.rawArgs.includes(RESTORE_SCAFFOLD_FLAG);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   const packageJsonPath = path.join(workspace.root, 'package.json');
   const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as RepairPackageJson;
@@ -90,11 +97,19 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     }
   }
 
-  const preparedAssets = await preflightScaffoldAssets(
-    workspace.root,
-    hasAppInstructions ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md') : assets,
-    'restore scaffold assets',
+  // Repair migrates what Webstir moved or changed. Missing scaffold files may be ones the app
+  // removed on purpose, so they come back only when asked for with --restore-scaffold.
+  const restorableAssets = hasAppInstructions
+    ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md')
+    : assets;
+  const missingScaffold = uniqueSorted(
+    restorableAssets
+      .filter((asset) => !existsSync(path.join(workspace.root, asset.targetPath)))
+      .map((asset) => normalizeRelativePath(asset.targetPath)),
   );
+  const preparedAssets = restoreScaffold
+    ? await preflightScaffoldAssets(workspace.root, restorableAssets, 'restore scaffold assets')
+    : [];
   await preflightWorkspaceWriteTargets(
     workspace.root,
     getFixedRepairWriteTargets(workspace.root, workspace.mode, enable),
@@ -145,7 +160,12 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     workspaceRoot: workspace.root,
     mode: workspace.mode,
     dryRun,
+    restoreScaffold,
     changes: uniqueSorted(changes),
+    // A migration may write a missing scaffold file itself (the hot-module move writes hmr.js).
+    missingScaffold: restoreScaffold
+      ? []
+      : missingScaffold.filter((file) => !changes.includes(file)),
     notes,
   };
 }
@@ -158,6 +178,10 @@ function getFixedRepairWriteTargets(
   const targets: string[] = [];
   const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
 
+  // The hot-module migration may rewrite these even when neither is missing.
+  if (mode !== 'api') {
+    targets.push(path.join(appRoot, 'app.ts'), path.join(appRoot, 'hmr.js'));
+  }
   if (enable.clientNav || enable.search || enable.contentNav) {
     targets.push(...appEntryPaths(workspaceRoot));
   }
@@ -293,7 +317,7 @@ async function ensureHotModulePair(
 
   if (migration.kind === 'customized') {
     notes.push(
-      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (${manualSteps}), then remove ${clientRelative} and run repair again.`,
+      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (${manualSteps}), then run repair again.`,
     );
     return;
   }
@@ -311,12 +335,13 @@ async function ensureHotModulePair(
 
   if (clientKind === 'custom') {
     notes.push(
-      `${appRelative} still installs the old hot-update hooks, and ${clientRelative} is customized, so neither was changed; bring ${clientRelative} up to the scaffold's client (or remove it) and run repair again (${manualSteps}).`,
+      `${appRelative} still installs the old hot-update hooks, and ${clientRelative} is customized, so neither was changed; bring ${clientRelative} up to the scaffold's client and run repair again (${manualSteps}).`,
     );
     return;
   }
 
-  if (clientKind === 'legacy') {
+  // The registry moves into hmr.js, so the move writes its destination when it is missing too.
+  if (clientKind === 'legacy' || !existsSync(clientPath)) {
     await refreshClient();
   }
   if (!dryRun) {
@@ -354,7 +379,7 @@ async function ensureBackendTsReference(
   dryRun: boolean,
 ): Promise<void> {
   const tsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
-  if (!existsSync(tsconfigPath)) {
+  if (!existsSync(tsconfigPath) || (await solutionReferencesBackend(workspaceRoot))) {
     return;
   }
 
@@ -379,6 +404,31 @@ async function ensureBackendTsReference(
     await Bun.write(tsconfigPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, tsconfigPath));
+}
+
+// An app may keep its project references in tsconfig.json and use base.tsconfig.json only for
+// shared compiler options; a backend referenced there needs nothing added to the base.
+async function solutionReferencesBackend(workspaceRoot: string): Promise<boolean> {
+  const solutionPath = path.join(workspaceRoot, 'tsconfig.json');
+  if (!existsSync(solutionPath)) {
+    return false;
+  }
+  const parsed = ts.parseConfigFileTextToJson(solutionPath, await readTextFile(solutionPath));
+  const config = parsed.error ? undefined : parsed.config;
+  const references = (config as { references?: unknown } | undefined)?.references;
+  const backendPath = path.join(workspaceRoot, 'src', 'backend');
+  return (
+    Array.isArray(references) &&
+    references.some((entry) => {
+      const referencePath = (entry as { path?: unknown } | null)?.path;
+      return (
+        typeof referencePath === 'string' &&
+        [backendPath, path.join(backendPath, 'tsconfig.json')].includes(
+          path.resolve(workspaceRoot, referencePath),
+        )
+      );
+    })
+  );
 }
 
 async function ensureGithubPagesDeployScript(

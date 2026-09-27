@@ -63,6 +63,7 @@ export function formatRepairSummary(result: RepairResult): string {
     `mode: ${result.mode}`,
     `root: ${result.workspaceRoot}`,
     `dry-run: ${result.dryRun ? 'true' : 'false'}`,
+    `restore-scaffold: ${result.restoreScaffold ? 'true' : 'false'}`,
   ];
 
   if (result.changes.length === 0) {
@@ -71,6 +72,15 @@ export function formatRepairSummary(result: RepairResult): string {
     lines.push(`changes: ${result.changes.length}`);
     for (const change of result.changes) {
       lines.push(`  - ${change}`);
+    }
+  }
+
+  if (result.missingScaffold.length > 0) {
+    lines.push(
+      `missing scaffold files (left alone; --restore-scaffold re-creates them): ${result.missingScaffold.length}`,
+    );
+    for (const missing of result.missingScaffold) {
+      lines.push(`  - ${missing}`);
     }
   }
 
@@ -88,7 +98,9 @@ export function formatRepairJson(result: RepairResult): string {
       workspaceRoot: result.workspaceRoot,
       mode: result.mode,
       dryRun: result.dryRun,
+      restoreScaffold: result.restoreScaffold,
       changes: result.changes,
+      missingScaffold: result.missingScaffold,
       notes: result.notes,
     },
     null,
@@ -159,6 +171,12 @@ export function formatDoctorSummary(result: DoctorResult): string {
 
   if (result.repair.changes.length > 0) {
     lines.push(`repair: webstir ${result.repair.command} ${result.repair.args.join(' ')}`);
+  }
+  const restore = result.repair.restoreScaffold;
+  if (restore.changes.length > 0) {
+    lines.push(
+      `restore scaffold (${restore.changes.length} missing): webstir ${result.repair.command} ${restore.args.join(' ')}`,
+    );
   }
 
   return lines.join('\n');

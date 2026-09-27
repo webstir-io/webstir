@@ -225,7 +225,11 @@ test('CLI repair preflights late fixed config targets before dry-run or asset re
     await symlink(externalConfigPath, configPath, 'file');
 
     for (const extraArgs of [['--dry-run'], []] as const) {
-      const result = await runCli(copiedWorkspace.workspaceRoot, ['repair', ...extraArgs]);
+      const result = await runCli(copiedWorkspace.workspaceRoot, [
+        'repair',
+        '--restore-scaffold',
+        ...extraArgs,
+      ]);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('symbolic link');
@@ -259,7 +263,11 @@ test('CLI repair rejects invalid frontend config before dry-run or asset restora
       await writeFile(configPath, invalidConfig, 'utf8');
 
       for (const extraArgs of [['--dry-run'], []] as const) {
-        const result = await runCli(copiedWorkspace.workspaceRoot, ['repair', ...extraArgs]);
+        const result = await runCli(copiedWorkspace.workspaceRoot, [
+          'repair',
+          '--restore-scaffold',
+          ...extraArgs,
+        ]);
 
         expect(result.exitCode).toBe(1);
         expect(result.stderr).toMatch(/not valid JSON|must contain a JSON object/);
@@ -287,7 +295,11 @@ test('CLI repair preflights mode-owned tsconfig before dry-run or asset restorat
     await link(externalTsconfigPath, tsconfigPath);
 
     for (const extraArgs of [['--dry-run'], []] as const) {
-      const result = await runCli(copiedWorkspace.workspaceRoot, ['repair', ...extraArgs]);
+      const result = await runCli(copiedWorkspace.workspaceRoot, [
+        'repair',
+        '--restore-scaffold',
+        ...extraArgs,
+      ]);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('multiple hard links');

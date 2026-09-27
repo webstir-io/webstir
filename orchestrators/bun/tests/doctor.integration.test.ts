@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { useLegacyHmrClient } from '../test-support/scaffold-drift.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
@@ -50,8 +51,10 @@ test('CLI doctor reports scaffold drift and suggests repair', async () => {
   });
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
-    await rm(missingFile, { force: true });
+    await useLegacyHmrClient(copiedWorkspace.workspaceRoot);
+    // Missing scaffold files (this one and the demo's absent AGENTS.md) are not drift; doctor
+    // points at --restore-scaffold for them.
+    await rm(path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html'), { force: true });
 
     const result = await runCli(['doctor', '--workspace', copiedWorkspace.workspaceRoot]);
 
@@ -61,9 +64,13 @@ test('CLI doctor reports scaffold drift and suggests repair', async () => {
     expect(result.stdout).toContain('healthy: false');
     expect(result.stdout).toContain('scaffold: fail');
     expect(result.stdout).toContain('scaffold_drift');
-    expect(result.stdout).toContain('Errors.404.html');
+    expect(result.stdout).toContain('change: src/frontend/app/hmr.js');
+    expect(result.stdout).not.toContain('change: Errors.404.html');
     expect(result.stdout).toContain(
       `repair: webstir repair --workspace ${copiedWorkspace.workspaceRoot}`,
+    );
+    expect(result.stdout).toContain(
+      `restore scaffold (2 missing): webstir repair --workspace ${copiedWorkspace.workspaceRoot} --restore-scaffold`,
     );
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
