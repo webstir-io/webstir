@@ -72,8 +72,7 @@ export function resolveHeadMetadataSync(options: {
   const remove = pageMetadataIndices(options.current);
   const add = pageMetadataIndices(options.next);
   let referrerPolicy = parseReferrerPolicyHeader(options.referrerPolicyHeader);
-  for (const index of add) {
-    const { attributes } = options.next[index]!;
+  for (const { attributes } of options.next.filter(isPageMetadata)) {
     if (attributes.name?.trim().toLowerCase() !== 'referrer') continue;
     referrerPolicy = parseReferrerPolicyMeta(attributes.content) ?? referrerPolicy;
   }
@@ -98,8 +97,12 @@ export function syncHeadMetadata(
     referrerPolicyHeader,
   });
 
-  for (const index of sync.remove) current[index]!.remove();
-  for (const index of sync.add) head.appendChild(copyMetadata(next[index]!, url));
+  const removed = new Set(sync.remove);
+  const added = new Set(sync.add);
+  for (const element of current.filter((_, index) => removed.has(index))) element.remove();
+  for (const element of next.filter((_, index) => added.has(index))) {
+    head.appendChild(copyMetadata(element, url));
+  }
 
   // A referrer meta sets the policy when it is inserted and keeps it after it is removed.
   const policy = document.createElement('meta');
