@@ -544,9 +544,31 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       body:
         route.request().method() === 'POST'
           ? html('Posted', '<meta name="referrer" content="no-referrer">', '<h1>Posted</h1>')
-          : html('Form Policy', '', '<h1 id="form-policy-heading">Form Policy</h1>'),
+          : html(
+              'Form Policy',
+              '',
+              '<h1 id="form-policy-heading">Form Policy</h1>' +
+                '<form method="post" action="/client-nav-form-refused">' +
+                '<input name="email" value="not-an-email">' +
+                '<button id="refused-form-submit">Send</button></form>',
+            ),
     }),
   );
+  // A refused post (a re-rendered form) is posted again natively, so its own response, errors
+  // included, is what the browser shows under the policy it sets.
+  const refusedPosts: string[] = [];
+  await page.route(`${origin}/client-nav-form-refused`, async (route) => {
+    refusedPosts.push(route.request().postData() ?? '');
+    await route.fulfill({
+      status: 422,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: html(
+        'Refused',
+        '<meta name="referrer" content="no-referrer">',
+        `<h1 id="refused-heading">Refused ${refusedPosts.length}</h1>`,
+      ),
+    });
+  });
   await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
     route.fulfill({
       status: 200,
@@ -648,6 +670,15 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.locator('#policy-form-submit').click({ noWaitAfter: true });
   await page.locator('#form-policy-heading').waitFor({ state: 'visible' });
   expect(await sameDocument()).toBe(false);
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await markDocument();
+  await page.locator('#refused-form-submit').click({ noWaitAfter: true });
+  await page.locator('#refused-heading').waitFor({ state: 'visible' });
+  expect(await sameDocument()).toBe(false);
+  expect(await page.locator('#refused-heading').textContent()).toBe('Refused 2');
+  expect(refusedPosts.every((body) => body.includes('email=not-an-email'))).toBe(true);
+  expect(await probeReferer()).toBe('');
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });

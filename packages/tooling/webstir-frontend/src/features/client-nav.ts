@@ -383,13 +383,20 @@ async function submitFormRequest(
   }
 
   if (resolution.kind === 'document') {
+    const url = resolveDocumentResponseUrl({
+      contentLocation: response.headers.get('content-location'),
+      responseUrl: response.url,
+      requestUrl: submission.url,
+    });
     await renderDocumentResponse(response, requestId, {
       history: 'push',
-      url: resolveDocumentResponseUrl({
-        contentLocation: response.headers.get('content-location'),
-        responseUrl: response.url,
-        requestUrl: submission.url,
-      }),
+      url,
+      // A refused post (a re-rendered form) holds errors, values and messages only its own
+      // response carries, so it is posted again natively, which re-runs only the refused check;
+      // an accepted one is not run twice, so its address loads instead.
+      loadInFull: response.ok
+        ? () => leave(url)
+        : () => submitFormNatively(form, submitter, submission.submissionId),
     });
     return;
   }
@@ -418,7 +425,12 @@ function beginRequest(): { readonly controller: AbortController; readonly reques
 async function renderDocumentResponse(
   response: Response,
   requestId: number,
-  options: { readonly history: HistoryMode; readonly url: string },
+  options: {
+    readonly history: HistoryMode;
+    readonly url: string;
+    /** How to show the page in full when it cannot render in place; loads its address by default. */
+    readonly loadInFull?: () => void;
+  },
 ): Promise<void> {
   let html: string;
   try {
@@ -438,7 +450,7 @@ async function renderDocumentResponse(
       current: { header: documentReferrerPolicyHeader, metas: readReferrerMetas(document) },
     })
   ) {
-    leave(options.url);
+    (options.loadInFull ?? (() => leave(options.url)))();
     return;
   }
 
@@ -461,7 +473,12 @@ async function renderDocumentResponse(
   }
   const commit = commitQueue.then(async () => {
     if (requestId !== activeRequestId) return;
-    await renderDocumentHtml(doc, { ...options, referrerPolicyHeader }, requestId, prepared);
+    await renderDocumentHtml(
+      doc,
+      { history: options.history, url: options.url, referrerPolicyHeader },
+      requestId,
+      prepared,
+    );
   });
   commitQueue = commit.catch(() => {});
   try {

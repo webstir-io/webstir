@@ -17,6 +17,12 @@ const LEGACY_REFERRER_POLICIES: Readonly<Record<string, string>> = {
   'origin-when-crossorigin': 'origin-when-cross-origin',
 };
 
+// Markup a browser never reads as elements: comments (abruptly closed and unterminated ones
+// included) and raw-text elements, matched left to right as the tokenizer meets them. `<noscript>`
+// is kept, since a parser without scripting reads its contents as elements.
+const INERT_MARKUP =
+  /<!--(?:>|->|[\s\S]*?(?:--!?>|$))|<(script|style|textarea|title|xmp|iframe|noembed|noframes|plaintext)\b[^>]*>[\s\S]*?(?:<\/\1(?=[\s/>])|$)/gi;
+
 // A `<meta ...>` tag, quoted attribute values included, and the attributes inside it.
 const META_TAG = /<meta\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
 // Any meta whose name looks like referrer, read to the first `>`: a check on the tag reading above.
@@ -57,7 +63,8 @@ export function readReferrerMetas(doc: Document): (string | null)[] {
 }
 
 // The content of each referrer meta in `html`, or null when one might be there but cannot be read.
-function scanReferrerMetas(html: string): (string | null)[] | null {
+function scanReferrerMetas(source: string): (string | null)[] | null {
+  const html = source.replace(INERT_MARKUP, ' ');
   const contents: (string | null)[] = [];
   for (const [, inside = ''] of html.matchAll(META_TAG)) {
     const attributes = new Map<string, string>();
