@@ -110,21 +110,20 @@ export function resolveMetadataHref(options: {
   }
 }
 
-// The policy of the page the last client navigation committed, a referrer meta in its content
-// included; null until then.
-let committedReferrerPolicy: string | null = null;
+// The Referrer-Policy header, or the default, of the page the last client navigation committed;
+// null until then, because the first load's header cannot be read.
+let committedHeaderPolicy: string | null = null;
 
 /**
  * Chromium applies a referrer meta in a document parsed off screen (DOMParser) to the page on
  * screen. Until the parsed page commits, requests still come from the page on screen, so put its
- * policy back: the one the last client navigation committed, else the first load's last valid
- * referrer meta, else no-referrer, the one choice that cannot loosen the first load's header,
- * which cannot be read.
+ * policy back: its last valid referrer meta, those its own code added included, else its header
+ * policy, else no-referrer, the one choice that cannot loosen a first-load header.
  */
 export function restoreReferrerPolicy(parsed: Document): void {
   if (referrerMetaContents(parsed).length === 0) return;
   applyReferrerPolicy(
-    committedReferrerPolicy ?? lastReferrerPolicy(referrerMetaContents(document)) ?? 'no-referrer',
+    lastReferrerPolicy(referrerMetaContents(document)) ?? committedHeaderPolicy ?? 'no-referrer',
   );
 }
 
@@ -162,9 +161,8 @@ export function syncHeadMetadata(
   }
 
   applyReferrerPolicy(sync.referrerPolicy);
-  const main = doc.querySelector('main');
-  committedReferrerPolicy =
-    (main && lastReferrerPolicy(referrerMetaContents(main))) ?? sync.referrerPolicy;
+  committedHeaderPolicy =
+    parseReferrerPolicyHeader(referrerPolicyHeader) ?? DEFAULT_REFERRER_POLICY;
 }
 
 // A referrer meta sets the policy when it is inserted and keeps it after it is removed.

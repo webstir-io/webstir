@@ -459,18 +459,24 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   );
   // A prepared page loads its module and data before it commits, so from the page on screen and
   // under its policy, even though its own meta (which Chromium applies on parsing) says unsafe-url.
-  await page.route(`${origin}/client-nav-prepared`, (route) =>
-    route.fulfill(
-      fulfillPage(
-        html(
-          'Prepared',
-          '<meta name="referrer" content="unsafe-url">' +
-            '<script type="module" data-webstir-page data-webstir-load src="/client-nav-prepared.js"></script>',
-          '<h1 id="prepared-heading">Prepared</h1><p id="prepared-referer"></p>' +
-            '<a id="to-plain" href="/client-nav-plain">on</a>',
-        ),
+  const preparedPage = (next: string) =>
+    fulfillPage(
+      html(
+        'Prepared',
+        '<meta name="referrer" content="unsafe-url">' +
+          '<script type="module" data-webstir-page data-webstir-load src="/client-nav-prepared.js"></script>',
+        '<h1 id="prepared-heading">Prepared</h1><p id="prepared-referer"></p>' +
+          `<a id="to-next" href="${next}">on</a>`,
       ),
-    ),
+    );
+  await page.route(`${origin}/client-nav-prepared`, (route) =>
+    route.fulfill(preparedPage('/client-nav-plain')),
+  );
+  await page.route(`${origin}/client-nav-prepared-again`, (route) =>
+    route.fulfill(preparedPage('/client-nav-prepared-last')),
+  );
+  await page.route(`${origin}/client-nav-prepared-last`, (route) =>
+    route.fulfill(preparedPage('/client-nav-plain')),
   );
   let preparedModuleReferer: string | undefined;
   await page.route(`${origin}/client-nav-prepared.js`, async (route) => {
@@ -521,7 +527,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
           'Main Referrer',
           '',
           '<meta name="referrer" content="origin"><h1 id="main-referrer-heading">Main Referrer</h1>' +
-            '<a id="to-prepared-again" href="/client-nav-prepared">on</a>',
+            '<a id="to-prepared-again" href="/client-nav-prepared-again">on</a>',
         ),
       ),
     ),
@@ -583,7 +589,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(preparedModuleReferer).toBe('');
   expect(await probeReferer()).toBe(`${origin}/client-nav-prepared`);
 
-  await page.locator('#to-plain').click({ noWaitAfter: true });
+  await page.locator('#to-next').click({ noWaitAfter: true });
   await page.locator('#plain-heading').waitFor({ state: 'visible' });
   expect(await page.title()).toBe('');
   expect(await readMetadata()).toEqual({
@@ -613,13 +619,26 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.locator('#to-prepared-again').click({ noWaitAfter: true });
   await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
   expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(`${origin}/`));
+
+  // So does a policy the page's own code set after it went in.
+  await page.evaluate(() => {
+    const meta = document.createElement('meta');
+    meta.name = 'referrer';
+    meta.content = 'no-referrer';
+    document.head.append(meta);
+  });
+  await page.locator('#to-next').click({ noWaitAfter: true });
+  await page.waitForURL(`${origin}/client-nav-prepared-last`);
+  await page.waitForFunction(() => document.getElementById('prepared-referer')?.textContent);
+  expect(await page.locator('#prepared-referer').textContent()).toBe(JSON.stringify(''));
   expect(await readClientNavEvents(page)).toEqual([
     '/client-nav-no-referrer',
     '/client-nav-prepared',
     '/client-nav-plain',
     '/client-nav-origin-policy',
     '/client-nav-main-referrer',
-    '/client-nav-prepared',
+    '/client-nav-prepared-again',
+    '/client-nav-prepared-last',
   ]);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
