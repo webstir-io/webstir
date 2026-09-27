@@ -16,8 +16,13 @@ const running = new Map<string, Promise<string | undefined>>();
 export interface SubmissionClaim {
   /** Where an earlier copy of this submission went; answer with that instead of running again. */
   readonly answered?: string;
-  /** Records where this submission's action redirected, if that ends it. */
-  record(status: number, location: string | undefined, now: Date): void;
+  /** Records, on the session being committed, where the action redirected, if that ends it. */
+  record(
+    session: Record<string, unknown> | null,
+    status: number,
+    location: string | undefined,
+    now: Date,
+  ): void;
   /** Lets copies waiting on this one go on, with its answer if it recorded one. */
   release(): void;
 }
@@ -43,9 +48,9 @@ export async function claimSubmission(
   });
   running.set(key, done);
   return {
-    record(status, location, now) {
-      if (location && REPLAYABLE_REDIRECTS.has(status)) {
-        recordSubmission(session, id, location, now);
+    record(committed, status, location, now) {
+      if (committed && location && REPLAYABLE_REDIRECTS.has(status)) {
+        recordSubmission(committed, id, location, now);
         recorded = location;
       }
     },

@@ -527,22 +527,13 @@ async function handleRequest<
         submissionId && ctx.session ? await claimSubmission(ctx.session, submissionId) : undefined;
       const answered = submission?.answered;
       if (answered) {
-        const commit = sessionState.commit({
-          session: ctx.session,
-          result: { status: 303 },
-          retainFlash: true,
-          publishFlash: false,
-        });
-        const headers = new Headers({
-          location: answered,
-          'cache-control': 'no-store',
-          'x-request-id': requestId,
-        });
-        if (commit.setCookie) {
-          headers.append('set-cookie', commit.setCookie);
-        }
+        // Nothing runs, so the session is left as the first submission committed it: this
+        // request's copy may predate that commit.
         responseStatus = 303;
-        return new Response(null, { status: 303, headers });
+        return new Response(null, {
+          status: 303,
+          headers: { location: answered, 'cache-control': 'no-store', 'x-request-id': requestId },
+        });
       }
 
       let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
@@ -561,6 +552,7 @@ async function handleRequest<
           // Its session changes land; messages already queued wait for the page it leads to.
           commit: (status) => {
             submission?.record(
+              ctx.session,
               status,
               isViewRedirect(control) ? control.location : undefined,
               now(),
@@ -655,7 +647,12 @@ async function handleRequest<
       // A redirect that reports errors (a failed check sending the form back) does not end it.
       if (!finalResult.errors) {
         const normalized = normalizeRouteHandlerResult(finalResult);
-        submission?.record(resolveResponseStatus(normalized), normalized.redirect?.location, now());
+        submission?.record(
+          ctx.session,
+          resolveResponseStatus(normalized),
+          normalized.redirect?.location,
+          now(),
+        );
       }
       const response = createCommittedResponse(finalResult, {
         method,

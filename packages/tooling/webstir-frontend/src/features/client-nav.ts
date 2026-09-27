@@ -151,6 +151,8 @@ const pendingSubmissions = new WeakMap<
 
 async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   const generation = ++pageGeneration;
+  // A page without setup is ready as soon as it is on screen.
+  pageSettled = Promise.resolve();
   const script = document.querySelector<HTMLScriptElement>('script[data-webstir-page][src]');
   const root = document.querySelector('main');
   if (!root || (!prepared && !script)) return;

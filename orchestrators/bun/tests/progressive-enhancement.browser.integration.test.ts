@@ -168,6 +168,8 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
       await assertSessionFlow(sessionPage);
       setScenarioStep(progress, 'follow a redirect to a section of the page');
       await assertRedirectKeepsFragment(sessionPage);
+      setScenarioStep(progress, 'mark only the page on screen ready');
+      await assertReadyFollowsCurrentPage(sessionPage, origin);
     } finally {
       await sessionContext.close().catch(() => undefined);
     }
@@ -213,6 +215,54 @@ async function assertRedirectKeepsFragment(page: Page): Promise<void> {
     return { scrollY: window.scrollY, expected: Math.max(0, Math.min(top, furthest)) };
   });
   expect(Math.abs(scrollY - expected)).toBeLessThan(5);
+}
+
+// Ready belongs to the page on screen: a page whose setup is still running is not ready, and
+// leaving it for a page with no script of its own makes that page ready without waiting.
+async function assertReadyFollowsCurrentPage(page: Page, origin: string): Promise<void> {
+  const html = (title: string, head: string, main: string) =>
+    `<!doctype html><html><head><title>${title}</title>${head}</head><body><main>${main}</main></body></html>`;
+  await page.route(`${origin}/client-nav-pending-setup.js`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/javascript' },
+      body: 'export function setup() { return new Promise(() => {}); }',
+    }),
+  );
+  await page.route(`${origin}/client-nav-pending-setup`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: html(
+        'Pending Setup',
+        '<script type="module" data-webstir-page src="/client-nav-pending-setup.js"></script>',
+        '<h1 id="pending-setup-heading">Pending</h1><a id="to-scriptless" href="/client-nav-scriptless">on</a>',
+      ),
+    }),
+  );
+  await page.route(`${origin}/client-nav-scriptless`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: html('Scriptless', '', '<h1 id="scriptless-heading">Scriptless</h1>'),
+    }),
+  );
+
+  await page.evaluate(() => {
+    const link = document.createElement('a');
+    link.id = 'to-pending-setup';
+    link.href = '/client-nav-pending-setup';
+    link.textContent = 'pending setup';
+    document.body.append(link);
+  });
+  await page.locator('#to-pending-setup').click({ noWaitAfter: true });
+  await page.locator('#pending-setup-heading').waitFor({ state: 'visible' });
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
+  expect(await page.locator('html[data-webstir-ready]').count()).toBe(0);
+
+  await page.locator('#to-scriptless').click({ noWaitAfter: true });
+  await page.locator('#scriptless-heading').waitFor({ state: 'visible' });
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
 }
 
 async function assertDocumentNavigationResetsScroll(page: Page, _origin: string): Promise<void> {

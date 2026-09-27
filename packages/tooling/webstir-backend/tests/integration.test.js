@@ -1905,6 +1905,10 @@ const countRoute = {
       case 'slow':
         await new Promise((resolve) => setTimeout(resolve, 50));
         return { status: 303, redirect: { location } };
+      case 'replaced':
+        // An action may hand back a new session object; the submission is recorded on that one.
+        ctx.session = { ...ctx.session, lastCount: counted };
+        return { status: 303, redirect: { location } };
       default:
         return { status: 303, redirect: { location } };
     }
@@ -2199,16 +2203,20 @@ async function assertRenderedViewRuntimeBehavior() {
       [{ header: 'submission-0005' }, '/clients?n=9#top'],
       [{ header: 'submission-0006', as: 'thrown' }, '/clients?n=10#top'],
       [{ header: 'submission-0006', as: 'thrown' }, '/clients?n=10#top'],
+      [{ header: 'submission-0008', as: 'replaced' }, '/clients?n=11#top'],
+      [{ header: 'submission-0008', as: 'replaced' }, '/clients?n=11#top'],
     ];
     for (const [request, location] of replays) {
       assert.equal(await count(request), location, JSON.stringify(request));
     }
-    // A copy that arrives while the first is still running waits for its answer.
+    // A copy that arrives while the first is still running waits for its answer, and leaves the
+    // session as the first committed it, so a later copy is answered too.
     const concurrent = await Promise.all([
       count({ header: 'submission-0007', as: 'slow' }),
       count({ header: 'submission-0007', as: 'slow' }),
     ]);
-    assert.deepEqual(concurrent, ['/clients?n=11#top', '/clients?n=11#top']);
+    assert.deepEqual(concurrent, ['/clients?n=12#top', '/clients?n=12#top']);
+    assert.equal(await count({ header: 'submission-0007', as: 'slow' }), '/clients?n=12#top');
 
     const actionMissing = await fetch(`${base}/action-missing`, {
       method: 'POST',
