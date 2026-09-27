@@ -10,6 +10,27 @@ export const RENDER_CSRF_FIELD = '_csrf';
 
 const SAFE_URL_SCHEMES = new Set(['http', 'https', 'mailto', 'tel']);
 const BLOCKED_URL = 'about:invalid';
+// ARIA attributes whose values include the tokens "true" and "false" (WAI-ARIA 1.2). The rest take
+// text or ids, where false still leaves the attribute out.
+const ARIA_TRUE_FALSE = new Set([
+  'aria-atomic',
+  'aria-busy',
+  'aria-checked',
+  'aria-current',
+  'aria-disabled',
+  'aria-expanded',
+  'aria-grabbed',
+  'aria-haspopup',
+  'aria-hidden',
+  'aria-invalid',
+  'aria-modal',
+  'aria-multiline',
+  'aria-multiselectable',
+  'aria-pressed',
+  'aria-readonly',
+  'aria-required',
+  'aria-selected',
+]);
 
 export class RenderProgramError extends Error {
   readonly loc: RenderSourceLocation;
@@ -91,7 +112,7 @@ function run(
       case 'attr': {
         const value = read(node.path, data, scopes);
         // ARIA states are the words "true" and "false", not an attribute's presence.
-        if (typeof value === 'boolean' && node.name.startsWith('aria-')) {
+        if (typeof value === 'boolean' && ARIA_TRUE_FALSE.has(node.name.toLowerCase())) {
           out.push(` ${node.name}="${value}"`);
         } else if (value === true) {
           out.push(` ${node.name}`);

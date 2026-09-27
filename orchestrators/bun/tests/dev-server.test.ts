@@ -191,6 +191,55 @@ test('DevServer takes browser error reports at /client-errors and hands them to 
   }
 });
 
+// The proxy rewrites a destination on the backend's own origin to a path on the dev server, for a
+// redirect and for the same destination handed to client-nav, and reads a relative one against the
+// request as the browser would.
+const proxiedLocationCases = [
+  { header: 'location', to: 'upstream:/login#top', expected: '/login#top' },
+  { header: 'x-webstir-location', to: 'upstream:/login#top', expected: '/login#top' },
+  { header: 'location', to: 'clients?n=1#top', expected: '/api/forms/clients?n=1#top' },
+  { header: 'x-webstir-location', to: 'clients?n=1#top', expected: '/api/forms/clients?n=1#top' },
+  {
+    header: 'x-webstir-location',
+    to: 'https://example.com/x#top',
+    expected: 'https://example.com/x#top',
+  },
+];
+
+for (const { header, to, expected } of proxiedLocationCases) {
+  test(`DevServer proxies ${header} ${to} as ${expected}`, async () => {
+    const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-location-'));
+    const upstream = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const origin = new URL(request.url).origin;
+        return new Response(null, {
+          status: header === 'location' ? 303 : 204,
+          headers: { [header]: to.replace(/^upstream:/, origin) },
+        });
+      },
+    });
+    const server = new DevServer({
+      buildRoot,
+      host: '127.0.0.1',
+      port: 0,
+      apiProxyOrigin: upstream.url.origin,
+    });
+    try {
+      const address = await server.start();
+      const response = await fetch(`${address.origin}/api/forms/new`, {
+        method: 'POST',
+        redirect: 'manual',
+      });
+      expect(response.headers.get(header)).toBe(expected);
+    } finally {
+      await server.stop();
+      upstream.stop(true);
+      await rm(buildRoot, { recursive: true, force: true });
+    }
+  });
+}
+
 test('DevServer proxies API requests and rewrites same-origin redirects', async () => {
   const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-proxy-'));
   const upstream = Bun.serve({

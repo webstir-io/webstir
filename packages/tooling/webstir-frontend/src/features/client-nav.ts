@@ -16,15 +16,16 @@ import {
   resolveDocumentResponseUrl,
   resolveEnhancedFormResponse,
   resolveFragmentResponseMetadata,
-  resolveFragmentInsertionBehavior,
+  formDataSignature,
 } from './form-enhancement.js';
 import {
-  cssEscape,
   executeScripts,
   focusAutofocus,
   resolveDocumentNavigationResponse,
+  resolveRedirectNavigation,
   loadHeadScripts,
   syncHead,
+  type HistoryMode,
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 
@@ -42,16 +43,11 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
-  // The page is busy until its own script has run, on the first load and after every navigation:
-  // the one signal for anything (a test, say) that must wait for a page to be ready.
-  setBusy(true);
   const initial = () => {
     const requestId = activeRequestId;
     void startPage(window.location.href)
       .catch(console.error)
-      .finally(() => {
-        if (requestId === activeRequestId) setBusy(false);
-      });
+      .finally(() => finishRequest(requestId));
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initial, { once: true });
@@ -106,7 +102,7 @@ export function enableClientNav(): void {
     }
 
     event.preventDefault();
-    await renderUrl(link.href, { pushHistory: true });
+    await renderUrl(link.href, { history: 'push' });
   });
 
   document.addEventListener('submit', async (event) => {
@@ -134,7 +130,7 @@ export function enableClientNav(): void {
   window.addEventListener('popstate', async () => {
     const url = new URL(window.location.href);
     if (url.pathname + url.search === documentUrl.pathname + documentUrl.search) return;
-    await renderUrl(url.href, { pushHistory: false });
+    await renderUrl(url.href, { history: 'none' });
   });
 }
 
@@ -143,6 +139,15 @@ let documentUrl = new URL(window.location.href);
 const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
 let commitQueue = Promise.resolve();
+// Settles once the current page's setup has finished.
+let pageSettled: Promise<void> = Promise.resolve();
+// Set once this document is being replaced by a full load.
+let leaving = false;
+// Forms whose submission is still in flight, so a second click sends the same submission.
+const pendingSubmissions = new WeakMap<
+  HTMLFormElement,
+  { readonly id: string; readonly signature: string }
+>();
 
 async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   const generation = ++pageGeneration;
@@ -166,7 +171,7 @@ async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   const module = prepared?.module ?? ((await import(script!.src)) as { setup?: PageSetup });
   if (generation !== pageGeneration || !root.isConnected) return;
   if (typeof module.setup === 'function')
-    pageLifecycle.start(module.setup, root, url, prepared?.data);
+    pageSettled = pageLifecycle.start(module.setup, root, url, prepared?.data);
 }
 
 let activeRequestId = 0;
@@ -174,6 +179,7 @@ let activeController: AbortController | null = null;
 const DYNAMIC_ATTR = 'data-webstir-dynamic';
 const DYNAMIC_VALUE = 'client-nav';
 const BYPASS_ATTR = 'data-webstir-client-nav-bypass';
+const READY_ATTR = 'data-webstir-ready';
 const BASE_PATH = resolveBasePath();
 const DOM_RUNTIME = {
   dynamicAttr: DYNAMIC_ATTR,
@@ -235,19 +241,19 @@ function stripBasePath(value: string): string {
 
 async function renderUrl(
   url: string,
-  { pushHistory, hops = 0 }: { pushHistory: boolean; hops?: number },
+  { history, hops = 0 }: { history: HistoryMode; hops?: number },
 ): Promise<void> {
   const { controller, requestId } = beginRequest();
   try {
-    await renderUrlRequest(url, { pushHistory, hops }, controller, requestId);
+    await renderUrlRequest(url, { history, hops }, controller, requestId);
   } finally {
-    if (requestId === activeRequestId) setBusy(false);
+    await finishRequest(requestId);
   }
 }
 
 async function renderUrlRequest(
   url: string,
-  { pushHistory, hops }: { pushHistory: boolean; hops: number },
+  { history, hops }: { history: HistoryMode; hops: number },
   controller: AbortController,
   requestId: number,
 ): Promise<void> {
@@ -262,18 +268,18 @@ async function renderUrlRequest(
       return;
     }
 
-    window.location.href = url;
+    leave(url);
     return;
   }
 
   if (requestId !== activeRequestId) return;
   const next = response.headers.get(CLIENT_NAV_HEADERS.location);
   if (next) {
-    await followLocation(next, url, hops);
+    await followLocation(next, url, hops, history);
     return;
   }
   if (response.redirected) {
-    window.location.href = response.url;
+    leave(response.url);
     return;
   }
 
@@ -282,12 +288,12 @@ async function renderUrlRequest(
     contentType: response.headers.get('content-type'),
   });
   if (resolution.kind === 'navigate') {
-    window.location.href = url;
+    leave(url);
     return;
   }
 
   await renderDocumentResponse(response, requestId, {
-    pushHistory,
+    history,
     url,
   });
 }
@@ -298,10 +304,13 @@ async function submitForm(
   submission: EnhancedFormSubmission,
 ): Promise<void> {
   const { controller, requestId } = beginRequest();
+  const pending = { id: submission.submissionId ?? '', signature: submission.signature };
+  pendingSubmissions.set(form, pending);
   try {
     await submitFormRequest(form, submitter, submission, controller, requestId);
   } finally {
-    if (requestId === activeRequestId) setBusy(false);
+    if (pendingSubmissions.get(form) === pending) pendingSubmissions.delete(form);
+    await finishRequest(requestId);
   }
 }
 
@@ -323,8 +332,8 @@ async function submitFormRequest(
       return;
     }
 
-    // The post may have reached the server; the same submission id lets it answer the resend
-    // with the first result instead of running the action again.
+    // The post may have reached the server; if its action redirected, the same submission id
+    // lets the server send the resend there instead of running the action again.
     submitFormNatively(form, submitter, submission.submissionId);
     return;
   }
@@ -335,7 +344,7 @@ async function submitFormRequest(
 
   const next = response.headers.get(CLIENT_NAV_HEADERS.location);
   if (next) {
-    await followLocation(next, submission.url, 0);
+    await followLocation(next, submission.url, 0, 'push');
     return;
   }
 
@@ -366,7 +375,7 @@ async function submitFormRequest(
 
   if (resolution.kind === 'document') {
     await renderDocumentResponse(response, requestId, {
-      pushHistory: true,
+      history: 'push',
       url: resolveDocumentResponseUrl({
         contentLocation: response.headers.get('content-location'),
         responseUrl: response.url,
@@ -376,11 +385,14 @@ async function submitFormRequest(
     return;
   }
 
-  window.location.href = resolution.location;
+  leave(resolution.location);
 }
 
 function beginRequest(): { readonly controller: AbortController; readonly requestId: number } {
+  // A full load that turned out to be a download left this document in place.
+  leaving = false;
   setBusy(true);
+  setReady(false);
   activeRequestId += 1;
   const requestId = activeRequestId;
 
@@ -397,13 +409,13 @@ function beginRequest(): { readonly controller: AbortController; readonly reques
 async function renderDocumentResponse(
   response: Response,
   requestId: number,
-  options: { readonly pushHistory: boolean; readonly url: string },
+  options: { readonly history: HistoryMode; readonly url: string },
 ): Promise<void> {
   let html: string;
   try {
     html = await response.text();
   } catch {
-    if (requestId === activeRequestId) window.location.href = options.url;
+    if (requestId === activeRequestId) leave(options.url);
     return;
   }
   if (requestId !== activeRequestId) return;
@@ -421,7 +433,7 @@ async function renderDocumentResponse(
     } catch (error) {
       if (signal.aborted || requestId !== activeRequestId) return;
       console.error(error);
-      window.location.href = options.url;
+      leave(options.url);
       return;
     }
   }
@@ -434,18 +446,18 @@ async function renderDocumentResponse(
     await commit;
   } catch (error) {
     console.error(error);
-    if (requestId === activeRequestId) window.location.href = options.url;
+    if (requestId === activeRequestId) leave(options.url);
   }
 }
 
 async function renderDocumentHtml(
   doc: Document,
-  options: { readonly pushHistory: boolean; readonly url: string },
+  options: { readonly history: HistoryMode; readonly url: string },
   requestId: number,
   prepared?: PreparedPage,
 ): Promise<void> {
   if (!doc.querySelector('main') || !document.querySelector('main')) {
-    window.location.href = options.url;
+    leave(options.url);
     return;
   }
   ++pageGeneration;
@@ -464,8 +476,10 @@ async function renderDocumentHtml(
     document.title = newTitle.textContent;
   }
 
-  if (options.pushHistory) {
+  if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
+  } else if (options.history === 'replace') {
+    window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
   const anchor = fragmentTarget(documentUrl.hash);
@@ -484,6 +498,8 @@ async function renderDocumentHtml(
   if (requestId !== activeRequestId) return;
   if (!prepared) await startPage(options.url);
   if (requestId !== activeRequestId) return;
+  // The page's own script may have rendered the #fragment's target, or focused something else.
+  fragmentTarget(documentUrl.hash)?.scrollIntoView();
   window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url: options.url } }));
 }
 
@@ -499,6 +515,7 @@ type EnhancedFormSubmission = {
   readonly url: string;
   readonly init: RequestInit;
   readonly submissionId?: string;
+  readonly signature: string;
 };
 
 function createEnhancedFormSubmission(
@@ -525,14 +542,18 @@ function createEnhancedFormSubmission(
     return null;
   }
   const formData = createFormData(form, submitter);
-
-  return buildEnhancedFormRequest({
+  // A second click while the first is in flight sends the same submission, so the server answers
+  // it once; a changed form is a new one.
+  const signature = `${action}\n${enctype}\n${formDataSignature(formData)}`;
+  const pending = pendingSubmissions.get(form);
+  const request = buildEnhancedFormRequest({
     action,
     method,
     enctype,
     formData,
-    submissionId: newSubmissionId(),
+    submissionId: pending?.signature === signature ? pending.id : newSubmissionId(),
   });
+  return request ? { ...request, signature } : null;
 }
 
 function hasClientNavOptOut(element: Element | null): boolean {
@@ -601,6 +622,8 @@ function submitFormNatively(
   submitter: HTMLButtonElement | HTMLInputElement | null,
   submissionId?: string,
 ): void {
+  leaving = true;
+  setBusy(false);
   form.setAttribute(BYPASS_ATTR, 'true');
   if (submissionId) {
     const field = document.createElement('input');
@@ -620,14 +643,45 @@ function submitFormNatively(
   form.submit();
 }
 
-/** Goes where the server said a redirect leads, keeping its #fragment; another origin loads in full. */
-async function followLocation(location: string, base: string, hops: number): Promise<void> {
-  const target = new URL(location, base);
-  if (target.origin !== window.location.origin || hops >= 10) {
-    window.location.href = target.href;
-    return;
+/** Goes where the server said a redirect leads, keeping its #fragment. */
+async function followLocation(
+  location: string,
+  base: string,
+  hops: number,
+  history: HistoryMode,
+): Promise<void> {
+  const next = resolveRedirectNavigation({
+    location,
+    base,
+    origin: window.location.origin,
+    hops,
+    history,
+  });
+  if (next.kind === 'refuse') {
+    console.error(`client-nav: refused to follow a redirect to ${next.location}`);
+  } else if (next.kind === 'load') {
+    leave(next.url);
+  } else {
+    await renderUrl(next.url, { history: next.history, hops: hops + 1 });
   }
-  await renderUrl(target.href, { pushHistory: true, hops: hops + 1 });
+}
+
+/** Replaces this document with a full load. */
+function leave(url: string): void {
+  leaving = true;
+  setBusy(false);
+  window.location.href = url;
+}
+
+/**
+ * Ends a navigation that is still the current one: the page is no longer busy, and once its script
+ * has finished setting up it is marked ready. A document being replaced stays unready.
+ */
+async function finishRequest(requestId: number): Promise<void> {
+  if (requestId !== activeRequestId || leaving) return;
+  setBusy(false);
+  await pageSettled;
+  if (requestId === activeRequestId && !leaving) setReady(true);
 }
 
 function fragmentTarget(hash: string): Element | null {
@@ -645,6 +699,14 @@ function setBusy(busy: boolean): void {
   } else {
     document.documentElement.removeAttribute('aria-busy');
   }
+}
+
+/**
+ * `<html data-webstir-ready>` is there once the page's own script has run, on the first load and
+ * after every navigation: the one signal for anything (a test, say) that must wait for a page.
+ */
+function setReady(ready: boolean): void {
+  document.documentElement.toggleAttribute(READY_ATTR, ready);
 }
 
 function newSubmissionId(): string {

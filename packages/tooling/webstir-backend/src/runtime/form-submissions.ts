@@ -3,10 +3,58 @@ import {
   CLIENT_NAV_SUBMISSION_FIELD,
 } from '@webstir-io/module-contract/client-nav';
 
+import { readSessionMetadata } from './session-metadata.js';
 import { getFormSessionRuntimeState } from './session-runtime.js';
 
 const SUBMISSION_ID = /^[A-Za-z0-9-]{8,64}$/;
 const KEPT_SUBMISSIONS = 20;
+// Redirects a browser follows with GET: only these end a submission. A 307 or 308 sends the same
+// post, id included, on to its destination, which must still run.
+const REPLAYABLE_REDIRECTS = new Set([301, 302, 303]);
+const running = new Map<string, Promise<string | undefined>>();
+
+export interface SubmissionClaim {
+  /** Where an earlier copy of this submission went; answer with that instead of running again. */
+  readonly answered?: string;
+  /** Records where this submission's action redirected, if that ends it. */
+  record(status: number, location: string | undefined, now: Date): void;
+  /** Lets copies waiting on this one go on, with its answer if it recorded one. */
+  release(): void;
+}
+
+/**
+ * Starts a submission, or finds its answer: one already recorded in the session, or, for a copy
+ * that arrives while the first is still running, the answer the first records.
+ */
+export async function claimSubmission(
+  session: Record<string, unknown>,
+  id: string,
+): Promise<SubmissionClaim> {
+  const key = `${readSessionMetadata(session)?.id ?? ''}\0${id}`;
+  const first = running.get(key);
+  const answered = (first ? await first : undefined) ?? findSubmission(session, id);
+  if (answered) {
+    return { answered, record() {}, release() {} };
+  }
+  let recorded: string | undefined;
+  let settle: (location: string | undefined) => void = () => {};
+  const done = new Promise<string | undefined>((resolve) => {
+    settle = resolve;
+  });
+  running.set(key, done);
+  return {
+    record(status, location, now) {
+      if (location && REPLAYABLE_REDIRECTS.has(status)) {
+        recordSubmission(session, id, location, now);
+        recorded = location;
+      }
+    },
+    release() {
+      if (running.get(key) === done) running.delete(key);
+      settle(recorded);
+    },
+  };
+}
 
 /**
  * The id client-nav gave this form submission: a header on its own fetch, or a form field when it
@@ -26,12 +74,12 @@ export function takeSubmissionId(request: Request, body: unknown): string | unde
 }
 
 /** Where the first post of this submission went, if it already went somewhere. */
-export function findSubmission(session: Record<string, unknown>, id: string): string | undefined {
+function findSubmission(session: Record<string, unknown>, id: string): string | undefined {
   return getFormSessionRuntimeState(session).submissions?.[id]?.location;
 }
 
 /** Remembers where a submission's action redirected, keeping only the most recent few. */
-export function recordSubmission(
+function recordSubmission(
   session: Record<string, unknown>,
   id: string,
   location: string,

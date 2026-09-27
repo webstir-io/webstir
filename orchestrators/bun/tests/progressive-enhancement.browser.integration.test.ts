@@ -192,11 +192,19 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
 // A redirect that names a section keeps it: client-nav follows the destination itself, lands on
 // the section, and the page stops being busy once its script has run.
 async function assertRedirectKeepsFragment(page: Page): Promise<void> {
+  // The page is marked ready once its script has run, first load included.
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  const entries = await page.evaluate(() => window.history.length);
   await page.locator('#demo-jump').click();
   await page.waitForFunction(
-    () => window.location.hash === '#session-panel' && window.location.search === '?jumped=1',
+    () =>
+      window.location.hash === '#session-panel' &&
+      window.location.search === '?jumped=1' &&
+      document.documentElement.hasAttribute('data-webstir-ready') &&
+      !document.documentElement.hasAttribute('aria-busy'),
   );
-  await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
+  // The post and its redirect make one history entry, as a browser following it would.
+  expect(await page.evaluate(() => window.history.length)).toBe(entries + 1);
   // Scrolled to the panel, or as far as the page allows when it is too short to bring the panel up.
   const { scrollY, expected } = await page.evaluate(() => {
     const panel = document.getElementById('session-panel')!;

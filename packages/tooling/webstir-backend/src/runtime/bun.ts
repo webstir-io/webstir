@@ -39,7 +39,7 @@ import { ensureSessionCsrfToken } from './forms.js';
 import { createSessionFormReader, renderFormRerender } from './rerender.js';
 import { readRequestBody } from './request-body.js';
 import { toClientNavLocation } from './client-nav.js';
-import { findSubmission, recordSubmission, takeSubmissionId } from './form-submissions.js';
+import { claimSubmission, takeSubmissionId, type SubmissionClaim } from './form-submissions.js';
 import { isViewRedirect, readViewControl } from './view-control.js';
 import { loadNotFoundDocument } from './view-documents.js';
 import {
@@ -408,6 +408,7 @@ async function handleRequest<
     const now = () => new Date();
 
     let responseStatus = 200;
+    let submission: SubmissionClaim | undefined;
     try {
       if (matchedView) {
         const response = await handleViewRequest({
@@ -520,10 +521,11 @@ async function handleRequest<
       }
 
       // The same form submission sent again (a lost response the browser resent, a double click)
-      // gets the first answer instead of running the action twice.
+      // goes where the first one redirected instead of running the action twice.
       const submissionId = method === 'POST' ? takeSubmissionId(request, ctx.body) : undefined;
-      const answered =
-        submissionId && ctx.session ? findSubmission(ctx.session, submissionId) : undefined;
+      submission =
+        submissionId && ctx.session ? await claimSubmission(ctx.session, submissionId) : undefined;
+      const answered = submission?.answered;
       if (answered) {
         const commit = sessionState.commit({
           session: ctx.session,
@@ -557,8 +559,18 @@ async function handleRequest<
           requestId,
           workspaceRoot: options.resolveWorkspaceRoot(),
           // Its session changes land; messages already queued wait for the page it leads to.
-          commit: (status) =>
-            sessionState.commit({ session: ctx.session, result: { status }, retainFlash: true }),
+          commit: (status) => {
+            submission?.record(
+              status,
+              isViewRedirect(control) ? control.location : undefined,
+              now(),
+            );
+            return sessionState.commit({
+              session: ctx.session,
+              result: { status },
+              retainFlash: true,
+            });
+          },
         });
         responseStatus = response.status;
         return response;
@@ -640,9 +652,10 @@ async function handleRequest<
         return new Response(method === 'HEAD' ? null : rerendered.html, { status, headers });
       }
 
-      const redirectedTo = finalResult.redirect?.location;
-      if (submissionId && ctx.session && redirectedTo) {
-        recordSubmission(ctx.session, submissionId, redirectedTo, now());
+      // A redirect that reports errors (a failed check sending the form back) does not end it.
+      if (!finalResult.errors) {
+        const normalized = normalizeRouteHandlerResult(finalResult);
+        submission?.record(resolveResponseStatus(normalized), normalized.redirect?.location, now());
       }
       const response = createCommittedResponse(finalResult, {
         method,
@@ -673,6 +686,7 @@ async function handleRequest<
         requestId,
       );
     } finally {
+      submission?.release();
       const durationMs = performance.now() - startTime;
       metrics.record({
         method,

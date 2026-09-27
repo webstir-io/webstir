@@ -7,6 +7,7 @@ import {
   type PageRoute,
   readClientErrorReport,
 } from '@webstir-io/webstir-backend';
+import { CLIENT_NAV_HEADERS } from '@webstir-io/module-contract/client-nav';
 import path from 'node:path';
 import { access } from 'node:fs/promises';
 
@@ -406,9 +407,12 @@ export function getApiProxyPath(pathname: string): string | null {
 
 function rewriteProxyResponseHeaders(headers: Headers, targetUrl: URL): Headers {
   const nextHeaders = new Headers(headers);
-  const location = headers.get('location');
-  if (location) {
-    nextHeaders.set('location', rewriteProxyLocation(location, targetUrl));
+  // A redirect, and the same destination handed to client-nav.
+  for (const name of ['location', CLIENT_NAV_HEADERS.location]) {
+    const location = headers.get(name);
+    if (location) {
+      nextHeaders.set(name, rewriteProxyLocation(location, targetUrl));
+    }
   }
 
   return nextHeaders;
@@ -450,7 +454,8 @@ function rewriteProxyLocation(value: string, targetUrl: URL): string {
   }
 
   try {
-    const resolved = new URL(trimmed, targetUrl.origin);
+    // Relative to the request, as the browser would read it.
+    const resolved = new URL(trimmed, targetUrl);
     if (resolved.origin !== targetUrl.origin) {
       return value;
     }

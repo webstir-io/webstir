@@ -298,6 +298,22 @@ export function resolveFragmentInsertionBehavior(options: {
   return hasMatchingRoot ? 'prepend-matching-root-children' : 'prepend-payload';
 }
 
+/**
+ * What a form sends, as a string two submissions can be compared by: the same fields, values and
+ * files give the same signature.
+ */
+export function formDataSignature(formData: FormData): string {
+  const entries: unknown[] = [];
+  formData.forEach((value, key) => {
+    entries.push(
+      typeof value === 'string'
+        ? [key, value]
+        : [key, value.name, value.size, value.type, value.lastModified],
+    );
+  });
+  return JSON.stringify(entries);
+}
+
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
   const params = new URLSearchParams();
   let hasBinaryValue = false;

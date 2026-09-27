@@ -23,5 +23,7 @@ export function toClientNavLocation(request: Request, response: Response): Respo
   const headers = new Headers(response.headers);
   headers.delete('location');
   headers.set(CLIENT_NAV_HEADERS.location, location);
+  // Only client-nav's own request gets this answer, so no cache may hand it to a normal load.
+  headers.set('cache-control', 'no-store');
   return new Response(null, { status: 204, headers });
 }

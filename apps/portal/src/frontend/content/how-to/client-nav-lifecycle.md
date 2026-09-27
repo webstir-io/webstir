@@ -72,28 +72,41 @@ A fetch that follows a redirect cannot see where it went, so a destination's
 `#fragment` would be lost. Client-nav asks the backend to answer a redirect with
 `204` and the destination in `x-webstir-location` instead, then navigates there
 itself: a same-origin destination renders like any client visit and scrolls to
-its `#section`; another origin loads in full. This covers form actions and view
-loaders that `redirect()`, including auth redirects. A request without client-nav
-still gets a normal redirect.
+its `#section`; another origin loads in full. Only `http:` and `https:`
+destinations are followed. A redirect reached from Back or Forward replaces that
+history entry, as the browser would. This covers form actions and view loaders
+that `redirect()`, including auth redirects. A request without client-nav still
+gets a normal redirect.
 
 ## Submitting a form twice
 
-Each enhanced post carries a submission id. If the post fails before a response
-arrives, client-nav falls back to a normal post with the same id, and a double
-click or a resend reuses it too. The backend remembers where each submission's
-action redirected (per session, the last 20), so the same submission sent again
-gets that answer instead of running the action a second time. Posts that fail
-validation are not remembered, so correcting and resubmitting runs again.
+Each enhanced post carries a submission id. Clicking submit again while the
+first post is still in flight sends the same id, unless the form changed in
+between; if the post fails before a response arrives, client-nav falls back to a
+normal post with the same id. The backend remembers where each submission's
+action redirected (per session, the last 20), and a copy that arrives while the
+first is still running waits for its answer, so the same submission gets one
+answer instead of running the action again. Only a `301`, `302` or `303` that
+reports no errors ends a submission: a failed check, a re-rendered form or a
+`307`/`308` is not remembered, so correcting and resubmitting runs again.
+
+A response that starts a new session (a first visit, or signing in) is the one
+case this cannot cover: if that response is lost, the resend arrives without the
+new session, so it runs again.
 
 ## Waiting for a page to be ready
 
-`<html>` carries `aria-busy="true"` from the moment client-nav starts a
-navigation, and on first load, until the new page's script has run its setup.
-That is the one signal to wait on, in tests and in code:
+`<html data-webstir-ready>` appears once the page's own script has run its
+setup, async setup included, on first load and after every client navigation.
+Client-nav removes it when a navigation starts. That is the one signal to wait
+on, in tests and in code:
 
 ```ts
-await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
+await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
 ```
+
+While a navigation is in flight, `<html>` also carries `aria-busy="true"`, so
+assistive technology knows the page is changing.
 
 Prefer behavior that needs no waiting at all: attach handlers for controls the
 server renders once, at the document level, keyed on data attributes, instead of

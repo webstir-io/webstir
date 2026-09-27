@@ -54,30 +54,31 @@ test('attributes follow boolean, null and string rules', () => {
   assert.equal(html, '<input value="it&#39;s &quot;quoted&quot; &lt;x&gt;" required>');
 });
 
-// ARIA states are words: a boolean renders as "true" or "false", while null still omits the
-// attribute and other attributes keep presence semantics.
-test('aria attributes render booleans as words', () => {
-  const cases = [
-    [true, ' aria-expanded="true"'],
-    [false, ' aria-expanded="false"'],
-    [null, ''],
-    ['mixed', ' aria-expanded="mixed"'],
-  ];
-  for (const [value, rendered] of cases) {
+// ARIA states are words: a boolean on an attribute that takes "true"/"false" renders as that word,
+// in any letter case. An ARIA attribute that takes text or ids keeps presence semantics, so false
+// leaves it out, and null always does.
+const ariaCases = [
+  ['aria-expanded', true, ' aria-expanded="true"'],
+  ['aria-expanded', false, ' aria-expanded="false"'],
+  ['aria-expanded', null, ''],
+  ['aria-expanded', 'mixed', ' aria-expanded="mixed"'],
+  ['ARIA-Pressed', false, ' ARIA-Pressed="false"'],
+  ['aria-hidden', true, ' aria-hidden="true"'],
+  ['aria-label', false, ''],
+  ['aria-describedby', false, ''],
+  ['data-open', true, ' data-open'],
+  ['data-open', false, ''],
+];
+
+for (const [name, value, rendered] of ariaCases) {
+  test(`${name} renders ${JSON.stringify(value)} as ${JSON.stringify(rendered)}`, () => {
     const html = executeRenderProgram(
-      program([
-        '<button',
-        { op: 'attr', name: 'aria-expanded', url: false, path: root('open'), loc },
-        { op: 'attr', name: 'data-open', url: false, path: root('open'), loc },
-        '>',
-      ]),
-      { open: value },
+      program(['<button', { op: 'attr', name, url: false, path: root('value'), loc }, '>']),
+      { value },
     );
-    const presence =
-      value === true ? ' data-open' : typeof value === 'string' ? ` data-open="${value}"` : '';
-    assert.equal(html, `<button${rendered}${presence}>`, String(value));
-  }
-});
+    assert.equal(html, `<button${rendered}>`);
+  });
+}
 
 test('url attributes block unsafe schemes and keep safe ones', () => {
   const render = (href) =>

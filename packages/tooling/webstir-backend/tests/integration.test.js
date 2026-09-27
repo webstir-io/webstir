@@ -1891,9 +1891,23 @@ const countDefinition = {
 };
 const countRoute = {
   definition: countDefinition,
-  handler: () => {
+  handler: async (ctx) => {
     counted += 1;
-    return { status: 303, redirect: { location: \`/clients?n=\${counted}#top\` } };
+    const location = \`/clients?n=\${counted}#top\`;
+    switch (ctx.query.as) {
+      case 'moved':
+        // A 307 sends the same post on, so it does not end the submission.
+        return { status: 307, redirect: { location: '/count' } };
+      case 'failed':
+        return { status: 303, redirect: { location }, errors: [{ code: 'invalid', message: 'Check it' }] };
+      case 'thrown':
+        return redirect(location);
+      case 'slow':
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { status: 303, redirect: { location } };
+      default:
+        return { status: 303, redirect: { location } };
+    }
   }
 };
 
@@ -2155,8 +2169,8 @@ async function assertRenderedViewRuntimeBehavior() {
     // The same submission sent again (header from client-nav, or the field its fallback post adds)
     // gets the first answer without the action running again; a new submission runs.
     let countCookie = checkedCookie;
-    const count = async ({ header, field, follow }) => {
-      const response = await fetch(`${base}/count`, {
+    const count = async ({ header, field, follow, as }) => {
+      const response = await fetch(`${base}/count${as ? `?as=${as}` : ''}`, {
         method: 'POST',
         redirect: 'manual',
         headers: {
@@ -2179,10 +2193,22 @@ async function assertRenderedViewRuntimeBehavior() {
       [{ header: 'submission-0003', follow: true }, '/clients?n=3#top'],
       [{}, '/clients?n=4#top'],
       [{}, '/clients?n=5#top'],
+      [{ header: 'submission-0004', as: 'moved' }, '/count'],
+      [{ header: 'submission-0004' }, '/clients?n=7#top'],
+      [{ header: 'submission-0005', as: 'failed' }, '/clients?n=8#top'],
+      [{ header: 'submission-0005' }, '/clients?n=9#top'],
+      [{ header: 'submission-0006', as: 'thrown' }, '/clients?n=10#top'],
+      [{ header: 'submission-0006', as: 'thrown' }, '/clients?n=10#top'],
     ];
     for (const [request, location] of replays) {
       assert.equal(await count(request), location, JSON.stringify(request));
     }
+    // A copy that arrives while the first is still running waits for its answer.
+    const concurrent = await Promise.all([
+      count({ header: 'submission-0007', as: 'slow' }),
+      count({ header: 'submission-0007', as: 'slow' }),
+    ]);
+    assert.deepEqual(concurrent, ['/clients?n=11#top', '/clients?n=11#top']);
 
     const actionMissing = await fetch(`${base}/action-missing`, {
       method: 'POST',

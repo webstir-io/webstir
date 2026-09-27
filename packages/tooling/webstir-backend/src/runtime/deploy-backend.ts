@@ -2,6 +2,7 @@ import net from 'node:net';
 import path from 'node:path';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
+import { CLIENT_NAV_HEADERS } from '@webstir-io/module-contract/client-nav';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import type { DeploymentIo, PublishedWorkspaceMode } from './deploy-shared.js';
@@ -162,12 +163,13 @@ function rewriteProxyResponseHeaders(
   mode: PublishedWorkspaceMode,
 ): Headers {
   const nextHeaders = new Headers(headers);
-  const location = headers.get('location');
-  if (!location) {
-    return nextHeaders;
+  // A redirect, and the same destination handed to client-nav.
+  for (const name of ['location', CLIENT_NAV_HEADERS.location]) {
+    const location = headers.get(name);
+    if (location) {
+      nextHeaders.set(name, rewriteProxyLocation(location, targetUrl, mode));
+    }
   }
-
-  nextHeaders.set('location', rewriteProxyLocation(location, targetUrl, mode));
   return nextHeaders;
 }
 
@@ -182,7 +184,8 @@ function rewriteProxyLocation(value: string, targetUrl: URL, mode: PublishedWork
   }
 
   try {
-    const resolved = new URL(trimmed, targetUrl.origin);
+    // Relative to the request, as the browser would read it.
+    const resolved = new URL(trimmed, targetUrl);
     if (resolved.origin !== targetUrl.origin) {
       return value;
     }

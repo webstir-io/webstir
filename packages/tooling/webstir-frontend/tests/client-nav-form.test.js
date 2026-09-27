@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 
 import {
   buildEnhancedFormRequest,
+  formDataSignature,
   isHtmlDocumentContentType,
   resolveEnhancedFormResponse,
   resolveFragmentInsertionBehavior,
@@ -11,7 +12,10 @@ import {
   resolveDocumentResponseUrl,
   shouldReplaceFragmentTarget,
 } from '../dist/features/form-enhancement.js';
-import { resolveDocumentNavigationResponse } from '../dist/features/document-navigation.js';
+import {
+  resolveDocumentNavigationResponse,
+  resolveRedirectNavigation,
+} from '../dist/features/document-navigation.js';
 
 test('buildEnhancedFormRequest serializes form-urlencoded POST bodies', () => {
   const formData = new FormData();
@@ -466,4 +470,115 @@ test('shouldReplaceFragmentTarget keeps child replacement for non-matching or mu
       roots: [{ id: 'greeting-preview' }, { id: 'secondary' }],
     }),
   ).toBe(false);
+});
+
+// A redirect handed to client-nav renders in place on the same origin, keeping its #fragment, and a
+// Back/Forward navigation replaces the entry it landed on. Another origin or a long chain loads in
+// full, and only http(s) is followed at all.
+const redirectCases = [
+  [
+    { location: '/clients#top', history: 'push' },
+    { kind: 'render', url: 'https://app.test/clients#top', history: 'push' },
+  ],
+  [
+    { location: 'clients?n=1', history: 'push' },
+    { kind: 'render', url: 'https://app.test/forms/clients?n=1', history: 'push' },
+  ],
+  [
+    { location: '/clients', history: 'none' },
+    { kind: 'render', url: 'https://app.test/clients', history: 'replace' },
+  ],
+  [
+    { location: '/clients', history: 'replace' },
+    { kind: 'render', url: 'https://app.test/clients', history: 'replace' },
+  ],
+  [
+    { location: 'https://other.test/x#y', history: 'push' },
+    { kind: 'load', url: 'https://other.test/x#y' },
+  ],
+  [
+    { location: '/clients', history: 'push', hops: 10 },
+    { kind: 'load', url: 'https://app.test/clients' },
+  ],
+  [
+    { location: 'javascript:alert(1)', history: 'push' },
+    { kind: 'refuse', location: 'javascript:alert(1)' },
+  ],
+  [
+    { location: ' JaVaScRiPt:alert(1)', history: 'push' },
+    { kind: 'refuse', location: ' JaVaScRiPt:alert(1)' },
+  ],
+  [
+    { location: 'data:text/html,hi', history: 'push' },
+    { kind: 'refuse', location: 'data:text/html,hi' },
+  ],
+  [
+    { location: 'http://[bad', history: 'push' },
+    { kind: 'refuse', location: 'http://[bad' },
+  ],
+];
+
+for (const [input, expected] of redirectCases) {
+  test(`resolveRedirectNavigation ${JSON.stringify(input)}`, () => {
+    expect(
+      resolveRedirectNavigation({
+        base: 'https://app.test/forms/new',
+        origin: 'https://app.test',
+        hops: 0,
+        ...input,
+      }),
+    ).toEqual(expected);
+  });
+}
+
+// Two submissions of a form compare equal only when they send the same fields, values and files.
+test('formDataSignature tells changed submissions apart', () => {
+  const form = (entries) => {
+    const data = new FormData();
+    for (const [key, value] of entries) data.append(key, value);
+    return formDataSignature(data);
+  };
+  const file = (content) => new File([content], 'a.txt', { type: 'text/plain', lastModified: 1 });
+  const same = [
+    [[['name', 'Acme']], [['name', 'Acme']]],
+    [[['doc', file('abc')]], [['doc', file('abc')]]],
+  ];
+  const different = [
+    [[['name', 'Acme']], [['name', 'Acme Co']]],
+    [[['name', 'Acme']], [['title', 'Acme']]],
+    [
+      [
+        ['a', '1'],
+        ['b', '2'],
+      ],
+      [
+        ['b', '2'],
+        ['a', '1'],
+      ],
+    ],
+    [[['doc', file('abc')]], [['doc', file('abcd')]]],
+  ];
+  for (const [a, b] of same) expect(form(a)).toBe(form(b));
+  for (const [a, b] of different) expect(form(a)).not.toBe(form(b));
+});
+
+// Client-nav's post asks for redirects as a destination it can follow, and names its submission.
+test('buildEnhancedFormRequest sends the client-nav headers', () => {
+  const cases = [
+    [{ submissionId: 'submission-0001' }, 'submission-0001'],
+    [{}, null],
+  ];
+  for (const [extra, submission] of cases) {
+    const request = buildEnhancedFormRequest({
+      action: 'https://app.test/clients',
+      method: 'POST',
+      formData: new FormData(),
+      ...extra,
+    });
+    const headers = new Headers(request.init.headers);
+    expect(headers.get('x-webstir-client-nav')).toBe('1');
+    expect(headers.get('x-webstir-accept-location')).toBe('1');
+    expect(headers.get('x-webstir-submission')).toBe(submission);
+    expect(request.submissionId).toBe(submission ?? undefined);
+  }
 });
