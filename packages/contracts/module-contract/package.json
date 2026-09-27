@@ -1,6 +1,6 @@
 {
   "name": "@webstir-io/module-contract",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Public contract definitions for Webstir frontend and backend module providers.",
   "type": "module",
   "main": "dist/index.js",
@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./client-nav": {
+      "types": "./dist/client-nav.d.ts",
+      "import": "./dist/client-nav.js",
+      "default": "./dist/client-nav.js"
     },
     "./ts-rest": {
       "types": "./dist/adapters/ts-rest.d.ts",

@@ -17,7 +17,8 @@ export function createPageLifecycle(reportError: (error: unknown) => void = cons
   let current: { controller: AbortController; scope: CleanupScope } | undefined;
 
   return {
-    start(setup: PageSetup, root: HTMLElement, url: string, data?: unknown): void {
+    /** Starts the page; the promise settles once its setup has finished, async setup included. */
+    start(setup: PageSetup, root: HTMLElement, url: string, data?: unknown): Promise<void> {
       if (current) throw new Error('Dispose the previous page before starting another.');
       const controller = new AbortController();
       const scope = createCleanupScope();
@@ -26,9 +27,9 @@ export function createPageLifecycle(reportError: (error: unknown) => void = cons
         const result = setup({ data, root, url: new URL(url), signal: controller.signal, scope });
         if (typeof result === 'function') {
           scope.add(result);
-          return;
+          return Promise.resolve();
         }
-        void Promise.resolve(result)
+        return Promise.resolve(result)
           .then(async (cleanup) => {
             if (!cleanup) return;
             if (controller.signal.aborted) await cleanup();
@@ -37,6 +38,7 @@ export function createPageLifecycle(reportError: (error: unknown) => void = cons
           .catch(reportError);
       } catch (error) {
         reportError(error);
+        return Promise.resolve();
       }
     },
     async dispose(): Promise<void> {

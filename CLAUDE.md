@@ -73,7 +73,7 @@ bun run webstir -- init ssg ./my-site
 
 ## Conventions
 
-- Keep code files ~500 lines or fewer; split by responsibility when it improves clarity.
+- Keep each file to one responsibility; split when it takes on a second one, not by length.
 - Backend/frontend tooling: build before testing (tests run against `dist/`).
 - Release prep for tooling packages: `bun run build && bun run smoke && bun run test`.
 - Frontend tarball ships `src/`, `scripts/`, `tests/`, and `tsconfig.json` — keep them publish-ready.

@@ -1,3 +1,5 @@
+import { CLIENT_NAV_HEADERS } from '@webstir-io/module-contract/client-nav';
+
 export type FragmentUpdateMode = 'replace' | 'append' | 'prepend';
 
 export interface FragmentResponseMetadata {
@@ -30,6 +32,8 @@ export type FragmentInsertionBehavior =
 export interface EnhancedFormRequest {
   readonly url: string;
   readonly init: RequestInit;
+  /** Sent with the request, and with a normal post if client-nav falls back to one. */
+  readonly submissionId?: string;
 }
 
 export type EnhancedFormResponseResolution =
@@ -41,7 +45,7 @@ export type EnhancedFormResponseResolution =
       readonly reason: 'redirect' | 'missing-target' | 'invalid-fragment' | 'non-html';
     };
 
-const CLIENT_NAV_HEADER = 'X-Webstir-Client-Nav';
+const CLIENT_NAV_HEADER = CLIENT_NAV_HEADERS.request;
 const DEFAULT_FORM_ENCODING = 'application/x-www-form-urlencoded';
 
 export function normalizeFormMethod(value: string | null | undefined): string {
@@ -63,6 +67,7 @@ export function buildEnhancedFormRequest(options: {
   readonly method: string;
   readonly enctype?: string | null;
   readonly formData: FormData;
+  readonly submissionId?: string;
 }): EnhancedFormRequest | null {
   const method = normalizeFormMethod(options.method);
   if (method !== 'POST') {
@@ -70,7 +75,15 @@ export function buildEnhancedFormRequest(options: {
   }
 
   const enctype = normalizeFormEnctype(options.enctype);
-  const headers = new Headers({ [CLIENT_NAV_HEADER]: '1' });
+  // The backend answers a redirect with its destination, which client-nav follows keeping the
+  // #fragment, and recognizes this submission if the same post arrives again.
+  const headers = new Headers({
+    [CLIENT_NAV_HEADER]: '1',
+    [CLIENT_NAV_HEADERS.acceptLocation]: '1',
+  });
+  if (options.submissionId) {
+    headers.set(CLIENT_NAV_HEADERS.submission, options.submissionId);
+  }
 
   if (enctype === DEFAULT_FORM_ENCODING) {
     const body = toUrlEncodedBody(options.formData);
@@ -85,6 +98,7 @@ export function buildEnhancedFormRequest(options: {
         headers,
         body,
       },
+      submissionId: options.submissionId,
     };
   }
 
@@ -96,6 +110,7 @@ export function buildEnhancedFormRequest(options: {
         headers,
         body: options.formData,
       },
+      submissionId: options.submissionId,
     };
   }
 
@@ -281,6 +296,22 @@ export function resolveFragmentInsertionBehavior(options: {
   }
 
   return hasMatchingRoot ? 'prepend-matching-root-children' : 'prepend-payload';
+}
+
+/**
+ * What a form sends, as a string two submissions can be compared by: the same fields, values and
+ * files give the same signature.
+ */
+export function formDataSignature(formData: FormData): string {
+  const entries: unknown[] = [];
+  formData.forEach((value, key) => {
+    entries.push(
+      typeof value === 'string'
+        ? [key, value]
+        : [key, value.name, value.size, value.type, value.lastModified],
+    );
+  });
+  return JSON.stringify(entries);
 }
 
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {

@@ -67,3 +67,55 @@ test('a synchronous returned cleanup is awaited before disposal finishes', async
   events.push('disposed');
   expect(events).toEqual(['cleaned', 'disposed']);
 });
+
+// start settles once the page's setup has finished, whatever shape the setup takes, so client-nav
+// can mark the page ready only after its script has run; a failing setup is reported, not thrown.
+const later = () => new Promise((resolve) => setTimeout(resolve, 10));
+const setupShapes = [
+  [
+    'returns nothing',
+    (done) => {
+      done();
+    },
+  ],
+  [
+    'returns a cleanup',
+    (done) => {
+      done();
+      return () => {};
+    },
+  ],
+  [
+    'resolves later',
+    async (done) => {
+      await later();
+      done();
+    },
+  ],
+  [
+    'rejects later',
+    async (done) => {
+      await later();
+      done();
+      throw new Error('late');
+    },
+  ],
+  [
+    'throws',
+    (done) => {
+      done();
+      throw new Error('now');
+    },
+  ],
+];
+
+for (const [shape, setup] of setupShapes) {
+  test(`start settles after a setup that ${shape}`, async () => {
+    const events = [];
+    const lifecycle = createPageLifecycle(() => events.push('reported'));
+    await lifecycle.start(() => setup(() => events.push('done')), {}, 'https://example.test/');
+    events.push('settled');
+    expect(events.filter((event) => event !== 'reported')).toEqual(['done', 'settled']);
+    await lifecycle.dispose();
+  });
+}

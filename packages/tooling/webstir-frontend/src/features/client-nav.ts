@@ -6,22 +6,28 @@ import {
   type PageSetup,
 } from '../runtime/index.js';
 import {
+  CLIENT_NAV_HEADERS,
+  CLIENT_NAV_SUBMISSION_FIELD,
+} from '@webstir-io/module-contract/client-nav';
+import {
   buildEnhancedFormRequest,
   normalizeFormEnctype,
   normalizeFormMethod,
   resolveDocumentResponseUrl,
   resolveEnhancedFormResponse,
   resolveFragmentResponseMetadata,
-  resolveFragmentInsertionBehavior,
+  formDataSignature,
 } from './form-enhancement.js';
 import {
-  cssEscape,
   executeScripts,
   focusAutofocus,
   resolveDocumentNavigationResponse,
+  resolveRedirectNavigation,
   loadHeadScripts,
   syncHead,
+  type HistoryMode,
 } from './document-navigation.js';
+import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 
 export {};
 
@@ -38,7 +44,10 @@ export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
   const initial = () => {
-    void startPage(window.location.href).catch(console.error);
+    const requestId = activeRequestId;
+    void startPage(window.location.href)
+      .catch(console.error)
+      .finally(() => finishRequest(requestId));
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initial, { once: true });
@@ -93,7 +102,7 @@ export function enableClientNav(): void {
     }
 
     event.preventDefault();
-    await renderUrl(link.href, { pushHistory: true });
+    await renderUrl(link.href, { history: 'push' });
   });
 
   document.addEventListener('submit', async (event) => {
@@ -121,7 +130,7 @@ export function enableClientNav(): void {
   window.addEventListener('popstate', async () => {
     const url = new URL(window.location.href);
     if (url.pathname + url.search === documentUrl.pathname + documentUrl.search) return;
-    await renderUrl(url.href, { pushHistory: false });
+    await renderUrl(url.href, { history: 'none' });
   });
 }
 
@@ -130,9 +139,20 @@ let documentUrl = new URL(window.location.href);
 const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
 let commitQueue = Promise.resolve();
+// Settles once the current page's setup has finished.
+let pageSettled: Promise<void> = Promise.resolve();
+// Set once this document is being replaced by a full load.
+let leaving = false;
+// Forms whose submission is still in flight, so a second click sends the same submission.
+const pendingSubmissions = new WeakMap<
+  HTMLFormElement,
+  { readonly id: string; readonly signature: string }
+>();
 
 async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   const generation = ++pageGeneration;
+  // A page without setup is ready as soon as it is on screen.
+  pageSettled = Promise.resolve();
   const script = document.querySelector<HTMLScriptElement>('script[data-webstir-page][src]');
   const root = document.querySelector('main');
   if (!root || (!prepared && !script)) return;
@@ -153,7 +173,7 @@ async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   const module = prepared?.module ?? ((await import(script!.src)) as { setup?: PageSetup });
   if (generation !== pageGeneration || !root.isConnected) return;
   if (typeof module.setup === 'function')
-    pageLifecycle.start(module.setup, root, url, prepared?.data);
+    pageSettled = pageLifecycle.start(module.setup, root, url, prepared?.data);
 }
 
 let activeRequestId = 0;
@@ -161,6 +181,7 @@ let activeController: AbortController | null = null;
 const DYNAMIC_ATTR = 'data-webstir-dynamic';
 const DYNAMIC_VALUE = 'client-nav';
 const BYPASS_ATTR = 'data-webstir-client-nav-bypass';
+const READY_ATTR = 'data-webstir-ready';
 const BASE_PATH = resolveBasePath();
 const DOM_RUNTIME = {
   dynamicAttr: DYNAMIC_ATTR,
@@ -220,13 +241,28 @@ function stripBasePath(value: string): string {
   return value;
 }
 
-async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean }): Promise<void> {
+async function renderUrl(
+  url: string,
+  { history, hops = 0 }: { history: HistoryMode; hops?: number },
+): Promise<void> {
   const { controller, requestId } = beginRequest();
+  try {
+    await renderUrlRequest(url, { history, hops }, controller, requestId);
+  } finally {
+    await finishRequest(requestId);
+  }
+}
 
+async function renderUrlRequest(
+  url: string,
+  { history, hops }: { history: HistoryMode; hops: number },
+  controller: AbortController,
+  requestId: number,
+): Promise<void> {
   let response: Response;
   try {
     response = await fetch(url, {
-      headers: { 'X-Webstir-Client-Nav': '1' },
+      headers: { [CLIENT_NAV_HEADERS.request]: '1', [CLIENT_NAV_HEADERS.acceptLocation]: '1' },
       signal: controller.signal,
     });
   } catch {
@@ -234,13 +270,18 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
       return;
     }
 
-    window.location.href = url;
+    leave(url);
     return;
   }
 
   if (requestId !== activeRequestId) return;
+  const next = response.headers.get(CLIENT_NAV_HEADERS.location);
+  if (next) {
+    await followLocation(next, url, hops, history);
+    return;
+  }
   if (response.redirected) {
-    window.location.href = response.url;
+    leave(response.url);
     return;
   }
 
@@ -249,12 +290,12 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
     contentType: response.headers.get('content-type'),
   });
   if (resolution.kind === 'navigate') {
-    window.location.href = url;
+    leave(url);
     return;
   }
 
   await renderDocumentResponse(response, requestId, {
-    pushHistory,
+    history,
     url,
   });
 }
@@ -262,10 +303,26 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
 async function submitForm(
   form: HTMLFormElement,
   submitter: HTMLButtonElement | HTMLInputElement | null,
-  submission: { readonly url: string; readonly init: RequestInit },
+  submission: EnhancedFormSubmission,
 ): Promise<void> {
   const { controller, requestId } = beginRequest();
+  const pending = { id: submission.submissionId ?? '', signature: submission.signature };
+  pendingSubmissions.set(form, pending);
+  try {
+    await submitFormRequest(form, submitter, submission, controller, requestId);
+  } finally {
+    if (pendingSubmissions.get(form) === pending) pendingSubmissions.delete(form);
+    await finishRequest(requestId);
+  }
+}
 
+async function submitFormRequest(
+  form: HTMLFormElement,
+  submitter: HTMLButtonElement | HTMLInputElement | null,
+  submission: EnhancedFormSubmission,
+  controller: AbortController,
+  requestId: number,
+): Promise<void> {
   let response: Response;
   try {
     response = await fetch(submission.url, {
@@ -277,11 +334,19 @@ async function submitForm(
       return;
     }
 
-    submitFormNatively(form, submitter);
+    // The post may have reached the server; if its action redirected, the same submission id
+    // lets the server send the resend there instead of running the action again.
+    submitFormNatively(form, submitter, submission.submissionId);
     return;
   }
 
   if (requestId !== activeRequestId) {
+    return;
+  }
+
+  const next = response.headers.get(CLIENT_NAV_HEADERS.location);
+  if (next) {
+    await followLocation(next, submission.url, 0, 'push');
     return;
   }
 
@@ -300,13 +365,19 @@ async function submitForm(
   });
 
   if (resolution.kind === 'fragment') {
-    await handleFragmentResponse(response, requestId, resolution.fragment, fragmentTarget);
+    await handleFragmentResponse(
+      response,
+      resolution.fragment,
+      fragmentTarget,
+      () => requestId === activeRequestId,
+      DOM_RUNTIME,
+    );
     return;
   }
 
   if (resolution.kind === 'document') {
     await renderDocumentResponse(response, requestId, {
-      pushHistory: true,
+      history: 'push',
       url: resolveDocumentResponseUrl({
         contentLocation: response.headers.get('content-location'),
         responseUrl: response.url,
@@ -316,10 +387,14 @@ async function submitForm(
     return;
   }
 
-  window.location.href = resolution.location;
+  leave(resolution.location);
 }
 
 function beginRequest(): { readonly controller: AbortController; readonly requestId: number } {
+  // A full load that turned out to be a download left this document in place.
+  leaving = false;
+  setBusy(true);
+  setReady(false);
   activeRequestId += 1;
   const requestId = activeRequestId;
 
@@ -336,13 +411,13 @@ function beginRequest(): { readonly controller: AbortController; readonly reques
 async function renderDocumentResponse(
   response: Response,
   requestId: number,
-  options: { readonly pushHistory: boolean; readonly url: string },
+  options: { readonly history: HistoryMode; readonly url: string },
 ): Promise<void> {
   let html: string;
   try {
     html = await response.text();
   } catch {
-    if (requestId === activeRequestId) window.location.href = options.url;
+    if (requestId === activeRequestId) leave(options.url);
     return;
   }
   if (requestId !== activeRequestId) return;
@@ -360,7 +435,7 @@ async function renderDocumentResponse(
     } catch (error) {
       if (signal.aborted || requestId !== activeRequestId) return;
       console.error(error);
-      window.location.href = options.url;
+      leave(options.url);
       return;
     }
   }
@@ -373,18 +448,18 @@ async function renderDocumentResponse(
     await commit;
   } catch (error) {
     console.error(error);
-    if (requestId === activeRequestId) window.location.href = options.url;
+    if (requestId === activeRequestId) leave(options.url);
   }
 }
 
 async function renderDocumentHtml(
   doc: Document,
-  options: { readonly pushHistory: boolean; readonly url: string },
+  options: { readonly history: HistoryMode; readonly url: string },
   requestId: number,
   prepared?: PreparedPage,
 ): Promise<void> {
   if (!doc.querySelector('main') || !document.querySelector('main')) {
-    window.location.href = options.url;
+    leave(options.url);
     return;
   }
   ++pageGeneration;
@@ -403,11 +478,18 @@ async function renderDocumentHtml(
     document.title = newTitle.textContent;
   }
 
-  if (options.pushHistory) {
+  if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
+  } else if (options.history === 'replace') {
+    window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const anchor = fragmentTarget(documentUrl.hash);
+  if (anchor) {
+    anchor.scrollIntoView();
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   focusAutofocus(document);
 
   // Opted-in pages render prepared data before yielding to additional document scripts.
@@ -418,6 +500,8 @@ async function renderDocumentHtml(
   if (requestId !== activeRequestId) return;
   if (!prepared) await startPage(options.url);
   if (requestId !== activeRequestId) return;
+  // The page's own script may have rendered the #fragment's target, or focused something else.
+  fragmentTarget(documentUrl.hash)?.scrollIntoView();
   window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url: options.url } }));
 }
 
@@ -429,10 +513,17 @@ function getSubmitter(event: SubmitEvent): HTMLButtonElement | HTMLInputElement 
   return null;
 }
 
+type EnhancedFormSubmission = {
+  readonly url: string;
+  readonly init: RequestInit;
+  readonly submissionId?: string;
+  readonly signature: string;
+};
+
 function createEnhancedFormSubmission(
   form: HTMLFormElement,
   submitter: HTMLButtonElement | HTMLInputElement | null,
-): { readonly url: string; readonly init: RequestInit } | null {
+): EnhancedFormSubmission | null {
   if (hasClientNavOptOut(form) || hasClientNavOptOut(submitter)) {
     return null;
   }
@@ -453,13 +544,18 @@ function createEnhancedFormSubmission(
     return null;
   }
   const formData = createFormData(form, submitter);
-
-  return buildEnhancedFormRequest({
+  // A second click while the first is in flight sends the same submission, so the server answers
+  // it once; a changed form is a new one.
+  const signature = `${action}\n${enctype}\n${formDataSignature(formData)}`;
+  const pending = pendingSubmissions.get(form);
+  const request = buildEnhancedFormRequest({
     action,
     method,
     enctype,
     formData,
+    submissionId: pending?.signature === signature ? pending.id : newSubmissionId(),
   });
+  return request ? { ...request, signature } : null;
 }
 
 function hasClientNavOptOut(element: Element | null): boolean {
@@ -523,200 +619,22 @@ function createFormData(
   return formData;
 }
 
-async function handleFragmentResponse(
-  response: Response,
-  requestId: number,
-  fragment: {
-    readonly target: string;
-    readonly selector?: string;
-    readonly mode: 'replace' | 'append' | 'prepend';
-  },
-  target: Element | null,
-): Promise<void> {
-  if (!target) {
-    return;
-  }
-
-  const html = await response.text();
-  if (requestId !== activeRequestId) {
-    return;
-  }
-
-  const appliedFragment = applyFragmentHtml(target, html, fragment);
-  focusInsertedAutofocus(appliedFragment.focusRoots);
-  window.dispatchEvent(
-    new CustomEvent('webstir:fragment-update', {
-      detail: {
-        target: fragment.target,
-        selector: fragment.selector,
-        mode: fragment.mode,
-      },
-    }),
-  );
-}
-
-function resolveFragmentTarget(target: string, selector?: string): Element | null {
-  if (selector) {
-    return document.querySelector(selector);
-  }
-
-  const byId = document.getElementById(target);
-  if (byId) {
-    return byId;
-  }
-
-  return document.querySelector(`[data-webstir-fragment-target="${cssEscape(target)}"]`);
-}
-
-function applyFragmentHtml(
-  target: Element,
-  html: string,
-  fragment: {
-    readonly target: string;
-    readonly selector?: string;
-    readonly mode: 'replace' | 'append' | 'prepend';
-  },
-): { readonly focusRoots: readonly Element[] } {
-  const template = document.createElement('template');
-  template.innerHTML = html;
-  const insertedRoots = Array.from(template.content.children);
-  const insertionBehavior = resolveFragmentInsertionBehavior({
-    mode: fragment.mode,
-    target: fragment.target,
-    hasMeaningfulSiblingContent: hasMeaningfulSiblingContent(
-      template.content,
-      insertedRoots[0] ?? null,
-    ),
-    roots: insertedRoots.map((root) => ({
-      id: root.id,
-      fragmentTarget: root.getAttribute('data-webstir-fragment-target'),
-      matchesSelector: elementMatchesSelector(root, fragment.selector),
-    })),
-  });
-
-  if (insertionBehavior === 'replace-target') {
-    target.replaceWith(template.content);
-    executeInsertedScripts(insertedRoots);
-    return { focusRoots: insertedRoots };
-  }
-
-  if (
-    insertionBehavior === 'append-matching-root-children' ||
-    insertionBehavior === 'prepend-matching-root-children'
-  ) {
-    const { content, roots } = extractMatchingRootChildren(template.content);
-    if (insertionBehavior === 'append-matching-root-children') {
-      target.append(content);
-    } else {
-      target.prepend(content);
-    }
-    executeInsertedScripts(roots);
-    return { focusRoots: roots };
-  }
-
-  if (insertionBehavior === 'append-payload') {
-    target.append(template.content);
-  } else if (insertionBehavior === 'prepend-payload') {
-    target.prepend(template.content);
-  } else {
-    target.replaceChildren(template.content);
-  }
-
-  executeInsertedScripts(insertedRoots);
-  return { focusRoots: insertedRoots };
-}
-
-function elementMatchesSelector(element: Element, selector: string | undefined): boolean {
-  if (!selector) {
-    return false;
-  }
-
-  try {
-    return element.matches(selector);
-  } catch {
-    return false;
-  }
-}
-
-function hasMeaningfulSiblingContent(content: DocumentFragment, root: Element | null): boolean {
-  for (const node of Array.from(content.childNodes)) {
-    if (node === root || node instanceof Comment) {
-      continue;
-    }
-    if (node instanceof Text && !node.textContent?.trim()) {
-      continue;
-    }
-    return true;
-  }
-  return false;
-}
-
-function extractMatchingRootChildren(content: DocumentFragment): {
-  readonly content: DocumentFragment;
-  readonly roots: readonly Element[];
-} {
-  const fragment = document.createDocumentFragment();
-  const roots: Element[] = [];
-  const root = content.firstElementChild;
-  if (!root) {
-    return { content: fragment, roots };
-  }
-
-  while (root.firstChild) {
-    const node = root.firstChild;
-    fragment.append(node);
-    if (node instanceof Element) {
-      roots.push(node);
-    }
-  }
-
-  return { content: fragment, roots };
-}
-
-function executeInsertedScripts(roots: readonly Element[]): void {
-  for (const root of roots) {
-    if (root.tagName.toLowerCase() === 'script') {
-      executeTopLevelScriptRoot(root as HTMLScriptElement);
-      continue;
-    }
-    void executeScripts(root, DOM_RUNTIME).catch(console.error);
-  }
-}
-
-function executeTopLevelScriptRoot(script: HTMLScriptElement): void {
-  const wrapper = document.createElement('div');
-  wrapper.append(script.cloneNode(true));
-  void executeScripts(wrapper, DOM_RUNTIME).catch(console.error);
-
-  const replacement = wrapper.querySelector('script');
-  if (replacement) {
-    script.replaceWith(replacement);
-    return;
-  }
-
-  script.remove();
-}
-
-function focusInsertedAutofocus(roots: readonly Element[]): void {
-  for (const root of roots) {
-    if (root instanceof HTMLElement && root.hasAttribute('autofocus')) {
-      root.focus();
-      return;
-    }
-
-    const descendant = root.querySelector('[autofocus]');
-    if (descendant instanceof HTMLElement) {
-      descendant.focus();
-      return;
-    }
-  }
-}
-
 function submitFormNatively(
   form: HTMLFormElement,
   submitter: HTMLButtonElement | HTMLInputElement | null,
+  submissionId?: string,
 ): void {
+  leaving = true;
+  setBusy(false);
   form.setAttribute(BYPASS_ATTR, 'true');
+  if (submissionId) {
+    const field = document.createElement('input');
+    field.type = 'hidden';
+    field.name = CLIENT_NAV_SUBMISSION_FIELD;
+    field.value = submissionId;
+    form.append(field);
+    window.setTimeout(() => field.remove(), 0);
+  }
   if (submitter && typeof form.requestSubmit === 'function') {
     form.requestSubmit(submitter);
     return;
@@ -725,6 +643,78 @@ function submitFormNatively(
     form.removeAttribute(BYPASS_ATTR);
   }, 0);
   form.submit();
+}
+
+/** Goes where the server said a redirect leads, keeping its #fragment. */
+async function followLocation(
+  location: string,
+  base: string,
+  hops: number,
+  history: HistoryMode,
+): Promise<void> {
+  const next = resolveRedirectNavigation({
+    location,
+    base,
+    origin: window.location.origin,
+    hops,
+    history,
+  });
+  if (next.kind === 'refuse') {
+    console.error(`client-nav: refused to follow a redirect to ${next.location}`);
+  } else if (next.kind === 'load') {
+    leave(next.url);
+  } else {
+    await renderUrl(next.url, { history: next.history, hops: hops + 1 });
+  }
+}
+
+/** Replaces this document with a full load. */
+function leave(url: string): void {
+  leaving = true;
+  setBusy(false);
+  window.location.href = url;
+}
+
+/**
+ * Ends a navigation that is still the current one: the page is no longer busy, and once its script
+ * has finished setting up it is marked ready. A document being replaced stays unready.
+ */
+async function finishRequest(requestId: number): Promise<void> {
+  if (requestId !== activeRequestId || leaving) return;
+  setBusy(false);
+  await pageSettled;
+  if (requestId === activeRequestId && !leaving) setReady(true);
+}
+
+function fragmentTarget(hash: string): Element | null {
+  if (hash.length <= 1) return null;
+  try {
+    return document.getElementById(decodeURIComponent(hash.slice(1)));
+  } catch {
+    return null;
+  }
+}
+
+function setBusy(busy: boolean): void {
+  if (busy) {
+    document.documentElement.setAttribute('aria-busy', 'true');
+  } else {
+    document.documentElement.removeAttribute('aria-busy');
+  }
+}
+
+/**
+ * `<html data-webstir-ready>` is there once the page's own script has run, on the first load and
+ * after every navigation: the one signal for anything (a test, say) that must wait for a page.
+ */
+function setReady(ready: boolean): void {
+  document.documentElement.toggleAttribute(READY_ATTR, ready);
+}
+
+function newSubmissionId(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 enableClientNav();

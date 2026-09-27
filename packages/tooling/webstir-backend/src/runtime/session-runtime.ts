@@ -14,10 +14,17 @@ export interface SessionRuntimeStoredFormState {
   createdAt: string;
 }
 
+/** Where a form submission's action sent the browser, so the same submission gets that answer again. */
+export interface SessionRuntimeSubmission {
+  location: string;
+  createdAt: string;
+}
+
 export interface SessionRuntimeFormState {
   token?: string;
   csrf: Record<string, string>;
   states: Record<string, SessionRuntimeStoredFormState>;
+  submissions?: Record<string, SessionRuntimeSubmission>;
 }
 
 export interface SessionRuntimeState {
@@ -100,7 +107,8 @@ export function hasSessionRuntimeState(runtime: SessionRuntimeState | undefined)
   return (
     typeof runtime.form.token === 'string' ||
     Object.keys(runtime.form.csrf ?? {}).length > 0 ||
-    Object.keys(runtime.form.states ?? {}).length > 0
+    Object.keys(runtime.form.states ?? {}).length > 0 ||
+    Object.keys(runtime.form.submissions ?? {}).length > 0
   );
 }
 
@@ -133,6 +141,14 @@ export function mergeSessionRuntimeState(
               ...(leftClone.form?.states ?? {}),
               ...(rightClone.form?.states ?? {}),
             },
+            ...(leftClone.form?.submissions || rightClone.form?.submissions
+              ? {
+                  submissions: {
+                    ...(leftClone.form?.submissions ?? {}),
+                    ...(rightClone.form?.submissions ?? {}),
+                  },
+                }
+              : {}),
           }
         : undefined,
   };
@@ -148,7 +164,8 @@ export function pruneSessionRuntimeState(session: Record<string, unknown>): void
     runtime.form &&
     runtime.form.token === undefined &&
     Object.keys(runtime.form.csrf ?? {}).length === 0 &&
-    Object.keys(runtime.form.states ?? {}).length === 0
+    Object.keys(runtime.form.states ?? {}).length === 0 &&
+    Object.keys(runtime.form.submissions ?? {}).length === 0
   ) {
     delete runtime.form;
   }
@@ -183,7 +200,31 @@ function cloneSessionRuntimeFormState(value: unknown): SessionRuntimeFormState |
     ...(typeof value.token === 'string' && value.token.length > 0 ? { token: value.token } : {}),
     csrf: cloneSessionRuntimeCsrfState(value.csrf),
     states: cloneSessionRuntimeStoredStateMap(value.states),
+    ...(isRecord(value.submissions)
+      ? { submissions: cloneSessionRuntimeSubmissions(value.submissions) }
+      : {}),
   };
+}
+
+function cloneSessionRuntimeSubmissions(
+  value: Record<string | symbol, unknown>,
+): Record<string, SessionRuntimeSubmission> {
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, candidate]) =>
+      isRecord(candidate) && typeof candidate.location === 'string'
+        ? [
+            [
+              key,
+              {
+                location: candidate.location,
+                createdAt:
+                  typeof candidate.createdAt === 'string' ? candidate.createdAt : EPOCH_ISO,
+              },
+            ],
+          ]
+        : [],
+    ),
+  );
 }
 
 function cloneSessionRuntimeCsrfState(value: unknown): Record<string, string> {

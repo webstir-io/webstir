@@ -24,6 +24,48 @@ export function resolveDocumentNavigationResponse(options: {
   return { kind: 'document' };
 }
 
+/** How a navigation changes history: add an entry, replace the current one, or leave it. */
+export type HistoryMode = 'push' | 'replace' | 'none';
+
+export type RedirectNavigation =
+  | { readonly kind: 'render'; readonly url: string; readonly history: HistoryMode }
+  | { readonly kind: 'load'; readonly url: string }
+  | { readonly kind: 'refuse'; readonly location: string };
+
+const MAX_REDIRECT_HOPS = 10;
+
+/**
+ * Where a redirect the server handed to client-nav leads. The same origin renders in place, keeping
+ * its #fragment; another origin, or a chain past the hop limit, loads in full. Only http(s) is
+ * followed, so a `javascript:` destination is never run. A navigation that left history alone
+ * (Back or Forward) replaces the entry it landed on, as a browser following a redirect would.
+ */
+export function resolveRedirectNavigation(options: {
+  readonly location: string;
+  readonly base: string;
+  readonly origin: string;
+  readonly hops: number;
+  readonly history: HistoryMode;
+}): RedirectNavigation {
+  let target: URL;
+  try {
+    target = new URL(options.location, options.base);
+  } catch {
+    return { kind: 'refuse', location: options.location };
+  }
+  if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+    return { kind: 'refuse', location: options.location };
+  }
+  if (target.origin !== options.origin || options.hops >= MAX_REDIRECT_HOPS) {
+    return { kind: 'load', url: target.href };
+  }
+  return {
+    kind: 'render',
+    url: target.href,
+    history: options.history === 'push' ? 'push' : 'replace',
+  };
+}
+
 export async function syncHead(
   doc: Document,
   url: string,

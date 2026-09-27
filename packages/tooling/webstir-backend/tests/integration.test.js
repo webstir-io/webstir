@@ -1880,6 +1880,51 @@ const brokenRoute = {
   })
 };
 
+// Counts how often it really runs, so a replayed submission can be told apart from a new one.
+let counted = 0;
+const countDefinition = {
+  name: 'count',
+  method: 'POST',
+  path: '/count',
+  interaction: 'mutation',
+  form: { contentType: 'application/x-www-form-urlencoded', session: { write: true } }
+};
+const countRoute = {
+  definition: countDefinition,
+  handler: async (ctx) => {
+    counted += 1;
+    const location = \`/clients?n=\${counted}#top\`;
+    switch (ctx.query.as) {
+      case 'moved':
+        // A 307 sends the same post on, so it does not end the submission.
+        return { status: 307, redirect: { location: '/count' } };
+      case 'failed':
+        return { status: 303, redirect: { location }, errors: [{ code: 'invalid', message: 'Check it' }] };
+      case 'thrown':
+        return redirect(location);
+      case 'slow':
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return { status: 303, redirect: { location } };
+      case 'signed-out':
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        ctx.session = null;
+        return { status: 303, redirect: { location } };
+      case 'replaced':
+        // An action may hand back a new session object; the submission is recorded on that one.
+        ctx.session = { ...ctx.session, lastCount: counted };
+        return { status: 303, redirect: { location } };
+      default:
+        return { status: 303, redirect: { location } };
+    }
+  }
+};
+
+// An action may end with redirect() or notFound(), as a view loader can.
+const actionRedirectDefinition = { name: 'actionRedirect', method: 'POST', path: '/action-redirect', interaction: 'mutation' };
+const actionRedirectRoute = { definition: actionRedirectDefinition, handler: () => redirect('/clients') };
+const actionMissingDefinition = { name: 'actionMissing', method: 'POST', path: '/action-missing', interaction: 'mutation' };
+const actionMissingRoute = { definition: actionMissingDefinition, handler: () => notFound() };
+
 const clientsView = {
   definition: { name: 'clientsPage', path: '/clients', page: 'clients' },
   load: async () => ({
@@ -1920,10 +1965,10 @@ export const module = {
     version: '0.1.0',
     kind: 'backend',
     capabilities: ['http', 'views'],
-    routes: [createClientDefinition, checkClientDefinition, brokenDefinition],
+    routes: [createClientDefinition, checkClientDefinition, brokenDefinition, actionRedirectDefinition, actionMissingDefinition, countDefinition],
     views: [clientsView.definition]
   },
-  routes: [createClientRoute, checkClientRoute, brokenRoute],
+  routes: [createClientRoute, checkClientRoute, brokenRoute, actionRedirectRoute, actionMissingRoute, countRoute],
   views: [clientsView, guardedView, missingView, strictView]
 };
 `;
@@ -2112,6 +2157,83 @@ async function assertRenderedViewRuntimeBehavior() {
 
     const broken = await fetch(`${base}/broken`, { method: 'POST', redirect: 'manual' });
     assert.equal(broken.status, 500);
+
+    const actionRedirect = await fetch(`${base}/action-redirect`, {
+      method: 'POST',
+      redirect: 'manual',
+    });
+    assert.equal(actionRedirect.status, 303);
+    assert.equal(actionRedirect.headers.get('location'), '/clients');
+    // Client-nav following redirects itself gets the destination, #fragment and all, instead of a 3xx.
+    const followed = await fetch(`${base}/action-redirect`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'x-webstir-accept-location': '1' },
+    });
+    assert.equal(followed.status, 204);
+    assert.equal(followed.headers.get('x-webstir-location'), '/clients');
+    assert.equal(followed.headers.get('location'), null);
+
+    // The same submission sent again (header from client-nav, or the field its fallback post adds)
+    // gets the first answer without the action running again; a new submission runs.
+    let countCookie = checkedCookie;
+    const count = async ({ header, field, follow, as }) => {
+      const response = await fetch(`${base}/count${as ? `?as=${as}` : ''}`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          cookie: countCookie,
+          'content-type': 'application/x-www-form-urlencoded',
+          ...(header ? { 'x-webstir-submission': header } : {}),
+          ...(follow ? { 'x-webstir-accept-location': '1' } : {}),
+        },
+        body: field ? `_webstir_submission=${field}` : '',
+      });
+      countCookie = extractCookieHeader(response.headers.get('set-cookie')) || countCookie;
+      return response.headers.get('location') ?? response.headers.get('x-webstir-location');
+    };
+    const replays = [
+      [{ header: 'submission-0001' }, '/clients?n=1#top'],
+      [{ header: 'submission-0001' }, '/clients?n=1#top'],
+      [{ field: 'submission-0001' }, '/clients?n=1#top'],
+      [{ header: 'submission-0002' }, '/clients?n=2#top'],
+      [{ field: 'submission-0003' }, '/clients?n=3#top'],
+      [{ header: 'submission-0003', follow: true }, '/clients?n=3#top'],
+      [{}, '/clients?n=4#top'],
+      [{}, '/clients?n=5#top'],
+      [{ header: 'submission-0004', as: 'moved' }, '/count'],
+      [{ header: 'submission-0004' }, '/clients?n=7#top'],
+      [{ header: 'submission-0005', as: 'failed' }, '/clients?n=8#top'],
+      [{ header: 'submission-0005' }, '/clients?n=9#top'],
+      [{ header: 'submission-0006', as: 'thrown' }, '/clients?n=10#top'],
+      [{ header: 'submission-0006', as: 'thrown' }, '/clients?n=10#top'],
+      [{ header: 'submission-0008', as: 'replaced' }, '/clients?n=11#top'],
+      [{ header: 'submission-0008', as: 'replaced' }, '/clients?n=11#top'],
+    ];
+    for (const [request, location] of replays) {
+      assert.equal(await count(request), location, JSON.stringify(request));
+    }
+    // A copy that arrives while the first is still running waits for its answer, and leaves the
+    // session as the first committed it, so a later copy is answered too.
+    const concurrent = await Promise.all([
+      count({ header: 'submission-0007', as: 'slow' }),
+      count({ header: 'submission-0007', as: 'slow' }),
+    ]);
+    assert.deepEqual(concurrent, ['/clients?n=12#top', '/clients?n=12#top']);
+    assert.equal(await count({ header: 'submission-0007', as: 'slow' }), '/clients?n=12#top');
+    // An action that ends the session still answers the copies waiting on it.
+    const signedOut = await Promise.all([
+      count({ header: 'submission-0009', as: 'signed-out' }),
+      count({ header: 'submission-0009', as: 'signed-out' }),
+    ]);
+    assert.deepEqual(signedOut, ['/clients?n=13#top', '/clients?n=13#top']);
+
+    const actionMissing = await fetch(`${base}/action-missing`, {
+      method: 'POST',
+      redirect: 'manual',
+    });
+    assert.equal(actionMissing.status, 404);
+    assert.match(await actionMissing.text(), /<h1>Page not found<\/h1>/);
 
     const strict = await fetch(`${base}/strict`);
     assert.equal(strict.status, 200);

@@ -38,6 +38,8 @@ import {
 import { ensureSessionCsrfToken } from './forms.js';
 import { createSessionFormReader, renderFormRerender } from './rerender.js';
 import { readRequestBody } from './request-body.js';
+import { toClientNavLocation } from './client-nav.js';
+import { claimSubmission, takeSubmissionId, type SubmissionClaim } from './form-submissions.js';
 import { isViewRedirect, readViewControl } from './view-control.js';
 import { loadNotFoundDocument } from './view-documents.js';
 import {
@@ -213,16 +215,19 @@ export async function startBunBackend<
     port: env.PORT,
     hostname: '0.0.0.0',
     fetch: async (request) => {
-      return await handleRequest({
+      return toClientNavLocation(
         request,
-        runtime,
-        readiness,
-        manifestSummary,
-        env,
-        logger,
-        metrics,
-        options,
-      });
+        await handleRequest({
+          request,
+          runtime,
+          readiness,
+          manifestSummary,
+          env,
+          logger,
+          metrics,
+          options,
+        }),
+      );
     },
     error: (error) => {
       logger.error({ err: error }, '[webstir-backend] Bun server request failed');
@@ -403,6 +408,7 @@ async function handleRequest<
     const now = () => new Date();
 
     let responseStatus = 200;
+    let submission: SubmissionClaim | undefined;
     try {
       if (matchedView) {
         const response = await handleViewRequest({
@@ -514,7 +520,53 @@ async function handleRequest<
         return response;
       }
 
-      const handlerResult = await routeMatch.route.handler(ctx);
+      // The same form submission sent again (a lost response the browser resent, a double click)
+      // goes where the first one redirected instead of running the action twice.
+      const submissionId = method === 'POST' ? takeSubmissionId(request, ctx.body) : undefined;
+      submission =
+        submissionId && ctx.session ? await claimSubmission(ctx.session, submissionId) : undefined;
+      const answered = submission?.answered;
+      if (answered) {
+        // Nothing runs, so the session is left as the first submission committed it: this
+        // request's copy may predate that commit.
+        responseStatus = 303;
+        return new Response(null, {
+          status: 303,
+          headers: { location: answered, 'cache-control': 'no-store', 'x-request-id': requestId },
+        });
+      }
+
+      let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
+      try {
+        handlerResult = await routeMatch.route.handler(ctx);
+      } catch (error) {
+        // An action can end with redirect() or notFound() just as a view loader can.
+        const control = readViewControl(error);
+        if (!control) {
+          throw error;
+        }
+        const response = await createViewControlResponse(control, {
+          method,
+          requestId,
+          workspaceRoot: options.resolveWorkspaceRoot(),
+          // Its session changes land; messages already queued wait for the page it leads to.
+          commit: (status) => {
+            submission?.record(
+              ctx.session,
+              status,
+              isViewRedirect(control) ? control.location : undefined,
+              now(),
+            );
+            return sessionState.commit({
+              session: ctx.session,
+              result: { status },
+              retainFlash: true,
+            });
+          },
+        });
+        responseStatus = response.status;
+        return response;
+      }
       const afterHandler = await executeRequestHookPhase({
         hooks: routeMatch.route.requestHooks,
         phase: 'afterHandler',
@@ -592,6 +644,16 @@ async function handleRequest<
         return new Response(method === 'HEAD' ? null : rerendered.html, { status, headers });
       }
 
+      // A redirect that reports errors (a failed check sending the form back) does not end it.
+      if (!finalResult.errors) {
+        const normalized = normalizeRouteHandlerResult(finalResult);
+        submission?.record(
+          ctx.session,
+          resolveResponseStatus(normalized),
+          normalized.redirect?.location,
+          now(),
+        );
+      }
       const response = createCommittedResponse(finalResult, {
         method,
         sessionState,
@@ -621,6 +683,7 @@ async function handleRequest<
         requestId,
       );
     } finally {
+      submission?.release();
       const durationMs = performance.now() - startTime;
       metrics.record({
         method,

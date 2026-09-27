@@ -13,8 +13,7 @@ Monorepo baseline for Webstir.
 - When docs refer to repo paths, prefer the monorepo layout above rather than the legacy single-repo names.
 
 ## Code Size
-- Prefer keeping code files to about 500 lines or fewer when practical.
-- Split large files by responsibility when it improves clarity; do not force file splits that make the code harder to follow.
+- Keep each file to one responsibility. Split a file when it takes on a second one, not because of its length; a split that scatters one flow across files makes it harder to follow.
 
 ## Validation
 - JS/TS work: use `bun` from the repo root when possible.
