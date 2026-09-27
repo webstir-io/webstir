@@ -1,112 +1,166 @@
 name: Release Package
 
+# Changesets' trusted-publishing workflow
+# (https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands).
+# With changesets on main: keep the "Version packages" pull request up to date.
+# With none, after that pull request merges: publish what npm does not have yet, and tag it.
+# The file keeps its name because npm's trusted publisher for each package names it.
+
 on:
   push:
-    tags:
-      - release-set/**
+    branches:
+      - main
   workflow_dispatch:
-    inputs:
-      group:
-        description: Compatible package set to publish
-        required: true
-        type: choice
-        options:
-          - webstir
-          - testing
-      version:
-        description: Exact synchronized package version
-        required: true
-        type: string
+
+permissions: {}
 
 concurrency:
-  group: webstir-package-release
-  cancel-in-progress: false
-
-permissions:
-  actions: read
-  contents: read
-  id-token: write
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 env:
   BUN_VERSION: 1.4.1
   NODE_VERSION: 24.20.0
 
 jobs:
-  publish:
-    name: Publish release set
+  select-mode:
+    # Only main publishes: a manual run from another branch must not skip the release pull request.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+      publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
+    permissions:
+      contents: read
     steps:
-      - name: Checkout exact release commit
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: bun ci
+      - id: select-mode
+        uses: changesets/action/select-mode@v2
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+  version:
+    if: needs.select-mode.outputs.mode == 'version'
+    needs: select-mode
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # A pull request opened with the workflow's own token runs no workflows, so the required CI
+      # check would never report and the pull request could never merge.
+      - name: Require the release pull request token
+        env:
+          TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Add the RELEASE_PR_TOKEN repository secret (see framework-packages.md) so CI runs on the Version packages pull request."
+            exit 1
+          fi
+      - run: bun ci
+      - uses: changesets/action/version@v2
+        with:
+          script: bun run version-packages
+          commit-message: Version packages
+          pr-title: Version packages
+          github-token: ${{ secrets.RELEASE_PR_TOKEN }}
+
+  pack:
+    if: needs.select-mode.outputs.mode == 'publish'
+    needs: select-mode
+    runs-on: ubuntu-latest
+    outputs:
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      # Publish only a commit main's required gate passed, however the release pull request merged.
+      - name: Wait for the Required Gate on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in $(seq 1 120); do
+            result=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=Required%20Gate" \
+              --jq '[.check_runs[] | select(.status == "completed") | .conclusion] | first // "pending"')
+            case "$result" in
+              success) echo "Required Gate passed on ${GITHUB_SHA}"; exit 0 ;;
+              pending) sleep 30 ;;
+              *) echo "::error::Required Gate concluded ${result} on ${GITHUB_SHA}; not publishing."; exit 1 ;;
+            esac
+          done
+          echo "::error::Required Gate did not finish on ${GITHUB_SHA} within an hour; not publishing."
+          exit 1
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: bun ci
+      - run: bun run build
+      - id: pack
+        uses: changesets/action/pack@v2
+        with:
+          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+
+  publish:
+    needs: pack
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
-
-      - name: Resolve and validate release set
-        id: release
-        env:
-          RELEASE_GROUP: ${{ inputs.group }}
-          RELEASE_VERSION: ${{ inputs.version }}
-        run: |
-          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-            bun tools/release-set.mjs --plan --tag "${GITHUB_REF_NAME}" --github-output "${GITHUB_OUTPUT}"
-          else
-            bun tools/release-set.mjs --plan --group "${RELEASE_GROUP}" --version "${RELEASE_VERSION}" --github-output "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Verify release commit belongs to main
-        run: |
-          git fetch --no-tags origin main
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" origin/main; then
-            echo "Release commit ${GITHUB_SHA} is not on main." >&2
-            exit 1
-          fi
-
-      - name: Verify exact commit passed main CI
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const response = await github.rest.actions.listWorkflowRuns({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'ci.yml',
-              head_sha: context.sha,
-              event: 'push',
-              status: 'success',
-              per_page: 100,
-            });
-            const successfulMainRun = response.data.workflow_runs.find(
-              (run) => run.head_branch === 'main' && run.conclusion === 'success',
-            );
-            if (!successfulMainRun) {
-              core.setFailed(`Exact release commit ${context.sha} has no successful main CI run.`);
-              return;
-            }
-            core.info(`Using CI proof ${successfulMainRun.html_url}`);
-
-      - name: Set up trusted npm publishing
+      - name: Use an npm that supports trusted publishing
         run: npm install --global npm@11.5.1
-
-      - name: Install workspace dependencies
-        run: bun ci
-
-      - name: Publish and verify release set
+      - run: bun ci
+      - id: publish
+        uses: changesets/action/publish@v2
+        with:
+          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}
+          push-git-tags: true
+          create-github-releases: false
+      - name: Confirm npm serves every published version
+        if: steps.publish.outputs.published == 'true'
         env:
-          RELEASE_GROUP: ${{ steps.release.outputs.release_group }}
-          RELEASE_VERSION: ${{ steps.release.outputs.release_version }}
-        run: >-
-          bun tools/release-set.mjs
-          --publish
-          --group "${RELEASE_GROUP}"
-          --version "${RELEASE_VERSION}"
-          --commit "${GITHUB_SHA}"
+          PUBLISHED: ${{ steps.publish.outputs.published-packages }}
+        run: |
+          for entry in $(echo "$PUBLISHED" | jq -r '.[] | "\(.name)@\(.version)"'); do
+            for attempt in $(seq 1 60); do
+              if [ "$(npm view "$entry" version 2>/dev/null)" = "${entry##*@}" ]; then
+                echo "npm serves $entry"
+                continue 2
+              fi
+              sleep 10
+            done
+            echo "npm does not serve $entry" >&2
+            exit 1
+          done

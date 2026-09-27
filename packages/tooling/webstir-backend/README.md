@@ -378,13 +378,13 @@ bun run clean          # remove dist artifacts
 bun run build          # emits dist/
 bun run test           # runs unit/integration tests
 bun run smoke
-# From the repository root, prepare the synchronized production release set
-bun run release:prepare -- webstir patch
+# From the repository root, describe the change for the next release
+bun run changeset
 ```
 
 - Add tests under `tests/**/*.test.ts` and wire them into `bun run test` once the backend runtime is ready.
 - Publishing targets npm via `publishConfig.registry`.
-- The release-set workflow publishes the contract, backend, frontend, and CLI in dependency order after exact-commit CI succeeds.
+- Merging the "Version packages" pull request publishes the contract, backend, frontend, and CLI together.
 
 ## Troubleshooting
 

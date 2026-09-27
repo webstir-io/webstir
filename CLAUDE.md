@@ -80,7 +80,7 @@ bun run webstir -- init ssg ./my-site
 
 ## CI
 
-CI runs a required repo gate plus a separate portal build when portal-specific inputs change. Extended browser/watch coverage runs in its own workflow. Release publishing is triggered by `release-set/<group>/v<version>` tags with npm provenance.
+CI runs a required repo gate plus a separate portal build when portal-specific inputs change. Extended browser/watch coverage runs in its own workflow. Releases use Changesets: merging the "Version packages" pull request publishes to npm with provenance.
 
 ## Delivery
 
