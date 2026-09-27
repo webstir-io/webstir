@@ -12,6 +12,7 @@ import {
   removeTrackedChild,
   stopTrackedChildren,
   waitFor,
+  waitForWatchReady,
 } from '../test-support/watch.ts';
 
 const childProcesses: Array<ReturnType<typeof Bun.spawn>> = [];
@@ -168,6 +169,7 @@ test('Bun-first SPA watch inlines data-webstir-inline scripts and regenerates wh
   );
 
   try {
+    await waitForWatchReady(stdoutBuffer, 30_000);
     await waitFor(async () => {
       const html = await fetchText(port, '/');
       expect(html).toContain('data-webstir-inline="src/frontend/app/scripts/first-paint.ts"');

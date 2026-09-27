@@ -25,6 +25,8 @@ export interface DevServerOptions {
   readonly renderedPage?: (pathname: string) => string | null | undefined;
   /** Receives each browser error report posted to /client-errors. Defaults to the terminal. */
   readonly onClientError?: (report: ClientErrorReport) => void;
+  /** Serves each request that reads the build output, so a rebuild never replaces it mid-request. */
+  readonly readBuildOutput?: <T>(task: () => Promise<T>) => Promise<T>;
 }
 
 export interface DevServerAddress {
@@ -101,6 +103,7 @@ export class DevServer {
   private readonly isRenderedView: (pathname: string) => Promise<boolean>;
   private readonly renderedPage: (pathname: string) => string | null | undefined;
   private readonly onClientError: (report: ClientErrorReport) => void;
+  private readonly readBuildOutput: <T>(task: () => Promise<T>) => Promise<T>;
   private readonly clients = new Set<SseClient>();
   private server?: ReturnType<typeof Bun.serve>;
 
@@ -117,6 +120,7 @@ export class DevServer {
       ((report) => {
         console.error(`[webstir] client error: ${formatClientErrorReport(report)}`);
       });
+    this.readBuildOutput = options.readBuildOutput ?? ((task) => task());
   }
 
   public async start(): Promise<DevServerAddress> {
@@ -196,6 +200,15 @@ export class DevServer {
       return await this.handleApiProxy(request, requestUrl, apiProxyPath);
     }
 
+    return await this.readBuildOutput(() => this.handleOutputRequest(request, requestUrl, method));
+  }
+
+  private async handleOutputRequest(
+    request: Request,
+    requestUrl: URL,
+    method: string,
+  ): Promise<Response> {
+    const { pathname } = requestUrl;
     if (this.apiProxyOrigin) {
       const normalizedPath = path.posix.normalize(pathname);
       if ((method !== 'GET' && method !== 'HEAD') || (await this.isRenderedView(normalizedPath))) {

@@ -22,6 +22,7 @@ import {
   removeTrackedChild,
   stopTrackedChildren,
   waitFor,
+  waitForWatchReady,
 } from '../test-support/watch.ts';
 
 const copies: DemoWorkspaceCopy[] = [];
@@ -187,6 +188,7 @@ async function exerciseWatch(
   stderr: { text: string },
 ): Promise<void> {
   let html = '';
+  await waitForWatchReady(stdout, 45_000);
   await waitFor(async () => {
     const response = await fetch(`${origin}/clients/`);
     expect(response.status).toBe(200);

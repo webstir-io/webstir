@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 
+import { createBuildOutputLock } from '../src/build-output-lock.ts';
 import { DevServer, getApiProxyPath, getStaticCandidatePaths } from '../src/dev-server.ts';
 
 test('getStaticCandidatePaths rewrites root assets and page routes for SPA development', () => {
@@ -369,6 +370,88 @@ test('DevServer never serves a render program, however its path is spelled', asy
     }
   } finally {
     await server.stop();
+    await rm(buildRoot, { recursive: true, force: true });
+  }
+});
+
+test('DevServer holds requests that read the build output until a rebuild replaces it', async () => {
+  const buildRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-dev-server-rebuild-'));
+  const upstreamHits: string[] = [];
+  const upstream = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const { pathname } = new URL(request.url);
+      upstreamHits.push(`${request.method} ${pathname}`);
+      return new Response(`${request.method} ${pathname}`);
+    },
+  });
+  const lock = createBuildOutputLock();
+  let heldRequests = 0;
+  const server = new DevServer({
+    buildRoot,
+    host: '127.0.0.1',
+    port: 0,
+    apiProxyOrigin: upstream.url.origin,
+    isRenderedView: async (pathname) => pathname === '/clients/',
+    readBuildOutput: (task) => {
+      heldRequests += 1;
+      return lock.read(task);
+    },
+  });
+  const homePath = path.join(buildRoot, 'pages', 'home', 'index.html');
+  let releaseBuild = () => {};
+  const buildHeld = new Promise<void>((resolve) => {
+    releaseBuild = resolve;
+  });
+
+  try {
+    await mkdir(path.dirname(homePath), { recursive: true });
+    await writeFile(homePath, '<h1>v1</h1>', 'utf8');
+    const address = await server.start();
+    let buildStarted = () => {};
+    const started = new Promise<void>((resolve) => {
+      buildStarted = resolve;
+    });
+    const build = lock.write(async () => {
+      await rm(path.join(buildRoot, 'pages'), { recursive: true, force: true });
+      buildStarted();
+      await buildHeld;
+      await mkdir(path.dirname(homePath), { recursive: true });
+      await writeFile(homePath, '<h1>v2</h1>', 'utf8');
+    });
+    await started;
+
+    const held = [
+      { request: '/', expected: '<h1>v2</h1>' },
+      { request: '/clients/', expected: 'GET /clients/' },
+      { request: '/clients/', method: 'POST', expected: 'POST /clients/' },
+    ].map(async ({ request, method, expected }) => {
+      const response = await fetch(`${address.origin}${request}`, { method, body: method && '' });
+      expect(await response.text(), `${method ?? 'GET'} ${request}`).toBe(expected);
+    });
+
+    // The backend's API, browser error reports and the reload stream never read the build output.
+    const api = await fetch(`${address.origin}/api/health`);
+    expect(await api.text()).toBe('GET /api/health');
+    const clientErrors = await fetch(`${address.origin}/client-errors`);
+    expect(clientErrors.status).toBe(405);
+    const sse = await fetch(`${address.origin}/sse`);
+    expect(sse.status).toBe(200);
+    await sse.body?.cancel();
+
+    while (heldRequests < held.length) {
+      await Bun.sleep(10);
+    }
+    expect(upstreamHits).toEqual(['GET /api/health']);
+
+    releaseBuild();
+    await build;
+    await Promise.all(held);
+    expect(upstreamHits.sort()).toEqual(['GET /api/health', 'GET /clients/', 'POST /clients/']);
+  } finally {
+    releaseBuild();
+    await server.stop();
+    upstream.stop(true);
     await rm(buildRoot, { recursive: true, force: true });
   }
 });

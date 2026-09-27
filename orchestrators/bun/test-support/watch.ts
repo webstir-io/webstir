@@ -84,6 +84,18 @@ export async function waitFor(assertion: () => Promise<void>, timeoutMs: number)
   throw lastError instanceof Error ? lastError : new Error(`Timed out after ${timeoutMs}ms.`);
 }
 
+/** Watch prints its start line once its watchers are armed and it serves, so edits after it count. */
+export async function waitForWatchReady(
+  stdout: { text: string },
+  timeoutMs: number,
+): Promise<void> {
+  await waitFor(async () => {
+    if (!stdout.text.includes('[webstir] watch starting')) {
+      throw new Error('Watch did not report that it started.');
+    }
+  }, timeoutMs);
+}
+
 export async function collectOutput(
   stream: ReadableStream<Uint8Array>,
   target: { text: string },
