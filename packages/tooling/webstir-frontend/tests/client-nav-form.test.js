@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 
 import {
   buildEnhancedFormRequest,
-  formDataSignature,
+  isSameFormSubmission,
   isHtmlDocumentContentType,
   resolveEnhancedFormResponse,
   resolveFragmentInsertionBehavior,
@@ -531,17 +531,22 @@ for (const [input, expected] of redirectCases) {
   });
 }
 
-// Two submissions of a form compare equal only when they send the same fields, values and files.
-test('formDataSignature tells changed submissions apart', () => {
-  const form = (entries) => {
-    const data = new FormData();
-    for (const [key, value] of entries) data.append(key, value);
-    return formDataSignature(data);
-  };
-  const file = (content) => new File([content], 'a.txt', { type: 'text/plain', lastModified: 1 });
+// Two submissions of a form are the same only when they send the same fields and values in order,
+// to the same action, and the same selected files: a different file with the same name, size, type
+// and date is a new submission.
+test('isSameFormSubmission tells changed submissions apart', () => {
+  // Snapshots are built as a browser's FormData holds them: the selected File objects themselves.
+  // (Bun's FormData copies an appended file, so it cannot stand in for a form here.)
+  const snapshot = (entries, action = 'https://app.test/upload') => ({
+    action,
+    enctype: 'multipart/form-data',
+    entries,
+  });
+  const file = () => new File(['abc'], 'a.txt', { type: 'text/plain', lastModified: 1 });
+  const picked = file();
   const same = [
     [[['name', 'Acme']], [['name', 'Acme']]],
-    [[['doc', file('abc')]], [['doc', file('abc')]]],
+    [[['doc', picked]], [['doc', picked]]],
   ];
   const different = [
     [[['name', 'Acme']], [['name', 'Acme Co']]],
@@ -556,10 +561,24 @@ test('formDataSignature tells changed submissions apart', () => {
         ['a', '1'],
       ],
     ],
-    [[['doc', file('abc')]], [['doc', file('abcd')]]],
+    [
+      [['name', 'Acme']],
+      [
+        ['name', 'Acme'],
+        ['extra', ''],
+      ],
+    ],
+    [[['doc', file()]], [['doc', file()]]],
   ];
-  for (const [a, b] of same) expect(form(a)).toBe(form(b));
-  for (const [a, b] of different) expect(form(a)).not.toBe(form(b));
+  for (const [a, b] of same) expect(isSameFormSubmission(snapshot(a), snapshot(b))).toBe(true);
+  for (const [a, b] of different)
+    expect(isSameFormSubmission(snapshot(a), snapshot(b))).toBe(false);
+  expect(
+    isSameFormSubmission(
+      snapshot([['name', 'Acme']]),
+      snapshot([['name', 'Acme']], 'https://app.test/other'),
+    ),
+  ).toBe(false);
 });
 
 // Client-nav's post asks for redirects as a destination it can follow, and names its submission.

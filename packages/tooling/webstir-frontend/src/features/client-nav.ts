@@ -16,7 +16,9 @@ import {
   resolveDocumentResponseUrl,
   resolveEnhancedFormResponse,
   resolveFragmentResponseMetadata,
-  formDataSignature,
+  isSameFormSubmission,
+  snapshotFormSubmission,
+  type FormSubmissionSnapshot,
 } from './form-enhancement.js';
 import {
   executeScripts,
@@ -146,7 +148,7 @@ let leaving = false;
 // Forms whose submission is still in flight, so a second click sends the same submission.
 const pendingSubmissions = new WeakMap<
   HTMLFormElement,
-  { readonly id: string; readonly signature: string }
+  { readonly id: string; readonly snapshot: FormSubmissionSnapshot }
 >();
 
 async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
@@ -306,7 +308,7 @@ async function submitForm(
   submission: EnhancedFormSubmission,
 ): Promise<void> {
   const { controller, requestId } = beginRequest();
-  const pending = { id: submission.submissionId ?? '', signature: submission.signature };
+  const pending = { id: submission.submissionId ?? '', snapshot: submission.snapshot };
   pendingSubmissions.set(form, pending);
   try {
     await submitFormRequest(form, submitter, submission, controller, requestId);
@@ -517,7 +519,7 @@ type EnhancedFormSubmission = {
   readonly url: string;
   readonly init: RequestInit;
   readonly submissionId?: string;
-  readonly signature: string;
+  readonly snapshot: FormSubmissionSnapshot;
 };
 
 function createEnhancedFormSubmission(
@@ -546,16 +548,17 @@ function createEnhancedFormSubmission(
   const formData = createFormData(form, submitter);
   // A second click while the first is in flight sends the same submission, so the server answers
   // it once; a changed form is a new one.
-  const signature = `${action}\n${enctype}\n${formDataSignature(formData)}`;
+  const snapshot = snapshotFormSubmission(action, enctype, formData);
   const pending = pendingSubmissions.get(form);
   const request = buildEnhancedFormRequest({
     action,
     method,
     enctype,
     formData,
-    submissionId: pending?.signature === signature ? pending.id : newSubmissionId(),
+    submissionId:
+      pending && isSameFormSubmission(pending.snapshot, snapshot) ? pending.id : newSubmissionId(),
   });
-  return request ? { ...request, signature } : null;
+  return request ? { ...request, snapshot } : null;
 }
 
 function hasClientNavOptOut(element: Element | null): boolean {

@@ -298,20 +298,43 @@ export function resolveFragmentInsertionBehavior(options: {
   return hasMatchingRoot ? 'prepend-matching-root-children' : 'prepend-payload';
 }
 
-/**
- * What a form sends, as a string two submissions can be compared by: the same fields, values and
- * files give the same signature.
- */
-export function formDataSignature(formData: FormData): string {
-  const entries: unknown[] = [];
+/** What a form submission sends, kept so a second submit can be compared with the first. */
+export interface FormSubmissionSnapshot {
+  readonly action: string;
+  readonly enctype: string;
+  readonly entries: readonly (readonly [string, FormDataEntryValue])[];
+}
+
+export function snapshotFormSubmission(
+  action: string,
+  enctype: string,
+  formData: FormData,
+): FormSubmissionSnapshot {
+  const entries: Array<readonly [string, FormDataEntryValue]> = [];
   formData.forEach((value, key) => {
-    entries.push(
-      typeof value === 'string'
-        ? [key, value]
-        : [key, value.name, value.size, value.type, value.lastModified],
-    );
+    entries.push([key, value]);
   });
-  return JSON.stringify(entries);
+  return { action, enctype, entries };
+}
+
+/**
+ * Whether two submissions send the same thing: the same fields and values in order, and the same
+ * selected files. A file counts as the same only if it is the same file object, since two files can
+ * share a name, size, type and date.
+ */
+export function isSameFormSubmission(
+  a: FormSubmissionSnapshot,
+  b: FormSubmissionSnapshot,
+): boolean {
+  return (
+    a.action === b.action &&
+    a.enctype === b.enctype &&
+    a.entries.length === b.entries.length &&
+    a.entries.every(([key, value], index) => {
+      const [otherKey, otherValue] = b.entries[index]!;
+      return key === otherKey && value === otherValue;
+    })
+  );
 }
 
 function toUrlEncodedBody(formData: FormData): URLSearchParams | null {
