@@ -14,7 +14,7 @@ import {
 } from './add-backend.ts';
 import { runBackendInspect } from './backend-inspect.ts';
 import { runDoctor } from './doctor.ts';
-import { runRepair } from './repair.ts';
+import { RESTORE_SCAFFOLD_FLAG, runRepair } from './repair.ts';
 import { runTest } from './test.ts';
 
 export type AgentGoal =
@@ -179,10 +179,12 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
   }
 
   if (options.goal === 'repair') {
+    const restoreScaffold = options.rawArgs.includes(RESTORE_SCAFFOLD_FLAG);
     const initialDoctor = await runDoctor({
       workspaceRoot: options.workspaceRoot,
       env: options.env,
     });
+    const restorable = restoreScaffold ? initialDoctor.repair.restoreScaffold.changes.length : 0;
     steps.push({
       id: 'doctor',
       status: initialDoctor.healthy ? 'completed' : 'failed',
@@ -191,7 +193,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
         : `Workspace diagnosis found ${initialDoctor.issues.length} issue(s).`,
     });
 
-    if (initialDoctor.healthy) {
+    if (initialDoctor.healthy && restorable === 0) {
       steps.push({
         id: 'repair',
         status: 'skipped',
@@ -206,7 +208,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
       };
     }
 
-    if (initialDoctor.repair.changes.length === 0) {
+    if (initialDoctor.repair.changes.length === 0 && restorable === 0) {
       steps.push({
         id: 'repair',
         status: 'skipped',
@@ -223,7 +225,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
 
     const repair = await runRepair({
       workspaceRoot: options.workspaceRoot,
-      rawArgs: [],
+      rawArgs: restoreScaffold ? [RESTORE_SCAFFOLD_FLAG] : [],
     });
     steps.push({
       id: 'repair',

@@ -9,6 +9,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { dropBackendReference, useLegacyHmrClient } from '../test-support/scaffold-drift.ts';
 
 function buildEnv(overrides: Record<string, string | undefined> = {}): Record<string, string> {
   const env = Object.fromEntries(
@@ -93,9 +94,7 @@ test('MCP inspect_workspace preserves structured output when inspection is unhea
   });
 
   try {
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'src', 'shared', 'tsconfig.json'), {
-      force: true,
-    });
+    await dropBackendReference(copiedWorkspace.workspaceRoot);
 
     const result = await client.callTool({
       name: 'inspect_workspace',
@@ -116,6 +115,55 @@ test('MCP inspect_workspace preserves structured output when inspection is unhea
     expect(content.success).toBe(false);
     expect(content.doctor.healthy).toBe(false);
     expect(content.backend?.manifest.name).toBe('webstir-demo-api');
+  } finally {
+    await transport.close();
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('MCP repair tools restore missing scaffold files only when restoreScaffold is set', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-mcp-restore-scaffold-');
+  const { client, transport } = await connectClient();
+  const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+
+  try {
+    await rm(missingFile, { force: true });
+    await useLegacyHmrClient(copiedWorkspace.workspaceRoot);
+
+    const call = async (name: string, restoreScaffold?: boolean) => {
+      const result = await client.callTool({
+        name,
+        arguments: {
+          workspace: copiedWorkspace.workspaceRoot,
+          ...(restoreScaffold === undefined ? {} : { restoreScaffold }),
+        },
+      });
+      expect(result.isError).toBeFalsy();
+      return result.structuredContent as {
+        changes?: string[];
+        missingScaffold?: string[];
+        repair?: { changes: string[] };
+      };
+    };
+
+    const plan = await call('repair_dry_run');
+    expect(plan.changes).toEqual(['src/frontend/app/hmr.js']);
+    expect(plan.missingScaffold).toEqual(['AGENTS.md', 'Errors.404.html']);
+    const restorePlan = await call('repair_dry_run', true);
+    expect(restorePlan.changes).toEqual([
+      'AGENTS.md',
+      'Errors.404.html',
+      'src/frontend/app/hmr.js',
+    ]);
+    expect(existsSync(missingFile)).toBe(false);
+
+    const migrated = await call('repair_workspace', false);
+    expect(migrated.repair?.changes).toEqual(['src/frontend/app/hmr.js']);
+    expect(existsSync(missingFile)).toBe(false);
+
+    const restored = await call('repair_workspace', true);
+    expect(restored.repair?.changes).toEqual(['AGENTS.md', 'Errors.404.html']);
+    expect(existsSync(missingFile)).toBe(true);
   } finally {
     await transport.close();
     await removeDemoWorkspace(copiedWorkspace);
@@ -484,13 +532,7 @@ test('MCP repair tools reject unsafe fixed destinations without reporting a repa
     workspaceName: 'site',
   });
   const externalRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-mcp-repair-symlink-outside-'));
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'frontend',
-    'app',
-    'app.html',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -508,6 +550,7 @@ test('MCP repair tools reject unsafe fixed destinations without reporting a repa
         name,
         arguments: {
           workspace: copiedWorkspace.workspaceRoot,
+          restoreScaffold: true,
         },
       });
 
@@ -531,13 +574,7 @@ test('MCP repair tools reject malformed frontend config without reporting a repa
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-mcp-invalid-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'frontend',
-    'app',
-    'app.html',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,
@@ -558,6 +595,7 @@ test('MCP repair tools reject malformed frontend config without reporting a repa
         name,
         arguments: {
           workspace: copiedWorkspace.workspaceRoot,
+          restoreScaffold: true,
         },
       });
 

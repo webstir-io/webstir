@@ -53,7 +53,7 @@ Check successful submissions, invalid input, reloads, and persistence after rest
 
 `add-route` records route metadata; the application still needs a matching handler. `inspect` describes framework state, and `agent validate` runs diagnosis plus tests. Use the behavior you requested as the acceptance criteria.
 
-When diagnosing scaffold drift, start with `repair --dry-run --json --workspace "$PWD"`. In Webstir `0.1.67` and later, repair restores framework support files while leaving app-owned instructions and starter tests under your control. Starter files the app removed and nothing still references stay removed. Older versions may recreate deleted starter tests, so inspect the proposed paths before applying repair. Application bugs require application code changes. `refresh` replaces the workspace with a scaffold and is unsuitable for routine repair.
+When diagnosing scaffold drift, start with `repair --dry-run --json --workspace "$PWD"`. In Webstir `0.1.67` and later, repair restores framework support files while leaving app-owned instructions and starter tests under your control. In Webstir `0.3.1` and later, repair only migrates what Webstir moved or changed and never re-creates missing scaffold files unless you pass `--restore-scaffold`. Older versions may recreate deleted starter tests, so inspect the proposed paths before applying repair. Application bugs require application code changes. `refresh` replaces the workspace with a scaffold and is unsuitable for routine repair.
 
 ## Optional MCP connection
 

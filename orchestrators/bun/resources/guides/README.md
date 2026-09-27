@@ -40,7 +40,7 @@ Run focused application checks, then `"$WEBSTIR" agent validate --workspace "$PW
 
 ## Diagnose and preserve app work
 
-Use `"$WEBSTIR" doctor --workspace "$PWD" --json` to inspect scaffold/runtime health. Preview scaffold restoration with `"$WEBSTIR" repair --workspace "$PWD" --dry-run`; review its listed paths before applying. Repair restores missing scaffold-owned files the app still needs (the app shell, entries, and files something still imports or references) and leaves starter files the app removed alone. It does not diagnose or fix arbitrary application logic. Avoid `refresh` when preserving a customized app: it resets and re-scaffolds the workspace.
+Use `"$WEBSTIR" doctor --workspace "$PWD" --json` to inspect scaffold/runtime health. Preview repair with `"$WEBSTIR" repair --workspace "$PWD" --dry-run`; review its listed paths before applying. Repair migrates scaffold-managed wiring and never re-creates missing scaffold files; add `--restore-scaffold` only to bring back scaffold files deleted by mistake. It does not diagnose or fix arbitrary application logic. Avoid `refresh` when preserving a customized app: it resets and re-scaffolds the workspace.
 
 Keep user-authored instructions when upgrading. Follow the generated `AGENTS.md` preservation policy; compare the new installed guidance and deliberately merge useful changes. Do not overwrite local rules just to match a newer template.
 

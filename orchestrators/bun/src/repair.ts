@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { chmod, lstat, mkdir, readdir } from 'node:fs/promises';
+import { chmod, lstat, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
@@ -21,8 +21,7 @@ import {
 import { classifyHmrClient, migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
-import { selectNeededScaffoldAssets } from './scaffold-needs.ts';
-import { parseTsconfigText } from './workspace-sources.ts';
+import ts from '@typescript/typescript6';
 
 interface RepairAsset extends ScaffoldAssetDescriptor {
   readonly executable?: boolean;
@@ -56,12 +55,18 @@ export interface RepairResult {
   readonly workspaceRoot: string;
   readonly mode: string;
   readonly dryRun: boolean;
+  readonly restoreScaffold: boolean;
   readonly changes: readonly string[];
+  /** Scaffold files the workspace does not have; `--restore-scaffold` re-creates them. */
+  readonly missingScaffold: readonly string[];
   readonly notes: readonly string[];
 }
 
+export const RESTORE_SCAFFOLD_FLAG = '--restore-scaffold';
+
 export async function runRepair(options: RunRepairOptions): Promise<RepairResult> {
   const dryRun = options.rawArgs.includes('--dry-run');
+  const restoreScaffold = options.rawArgs.includes(RESTORE_SCAFFOLD_FLAG);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
   const packageJsonPath = path.join(workspace.root, 'package.json');
   const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as RepairPackageJson;
@@ -92,18 +97,19 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     }
   }
 
-  // A scaffold file comes back only when the workspace still needs it; the rest are the app's to
-  // keep or remove.
-  const neededAssets = await selectNeededScaffoldAssets(
-    workspace.root,
-    hasAppInstructions ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md') : assets,
-    await getRequiredScaffoldTargets(workspace.root, workspace.mode, enable),
+  // Repair migrates what Webstir moved or changed. Missing scaffold files may be ones the app
+  // removed on purpose, so they come back only when asked for with --restore-scaffold.
+  const restorableAssets = hasAppInstructions
+    ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md')
+    : assets;
+  const missingScaffold = uniqueSorted(
+    restorableAssets
+      .filter((asset) => !existsSync(path.join(workspace.root, asset.targetPath)))
+      .map((asset) => normalizeRelativePath(asset.targetPath)),
   );
-  const preparedAssets = await preflightScaffoldAssets(
-    workspace.root,
-    neededAssets,
-    'restore scaffold assets',
-  );
+  const preparedAssets = restoreScaffold
+    ? await preflightScaffoldAssets(workspace.root, restorableAssets, 'restore scaffold assets')
+    : [];
   await preflightWorkspaceWriteTargets(
     workspace.root,
     getFixedRepairWriteTargets(workspace.root, workspace.mode, enable),
@@ -154,52 +160,11 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     workspaceRoot: workspace.root,
     mode: workspace.mode,
     dryRun,
+    restoreScaffold,
     changes: uniqueSorted(changes),
+    missingScaffold: restoreScaffold ? [] : missingScaffold,
     notes,
   };
-}
-
-const BACKEND_ENTRIES = ['index.ts', 'index.tsx', 'index.js', 'index.mjs'];
-const PAGE_PARTS = ['index.ts', 'index.tsx', 'index.js', 'index.jsx', 'index.css'];
-
-// What the workspace cannot work without, whether or not anything names it: the app shell every
-// frontend build reads, the document of a page whose script or stylesheet is still there, the app
-// entry an enabled feature is imported from, and the backend entry. Missing app instructions are
-// restored too; they are guidance the app can then edit or delete.
-async function getRequiredScaffoldTargets(
-  workspaceRoot: string,
-  mode: string,
-  enable: RepairEnableFlags,
-): Promise<readonly string[]> {
-  const targets = ['AGENTS.md'];
-  if (mode !== 'api') {
-    targets.push(path.join('src', 'frontend', 'app', 'app.html'));
-    const pagesRoot = path.join(workspaceRoot, 'src', 'frontend', 'pages');
-    const pages = existsSync(pagesRoot) ? await readdir(pagesRoot, { withFileTypes: true }) : [];
-    for (const page of pages) {
-      const pageRoot = path.join(pagesRoot, page.name);
-      if (
-        page.isDirectory() &&
-        !existsSync(path.join(pageRoot, 'index.html')) &&
-        PAGE_PARTS.some((part) => existsSync(path.join(pageRoot, part)))
-      ) {
-        targets.push(path.join('src', 'frontend', 'pages', page.name, 'index.html'));
-      }
-    }
-  }
-  if (
-    (enable.clientNav || enable.search || enable.contentNav) &&
-    !appEntryPaths(workspaceRoot).some((entryPath) => existsSync(entryPath))
-  ) {
-    targets.push(path.join('src', 'frontend', 'app', 'app.ts'));
-  }
-  if (
-    (enable.backend || mode === 'api' || mode === 'full') &&
-    !BACKEND_ENTRIES.some((entry) => existsSync(path.join(workspaceRoot, 'src', 'backend', entry)))
-  ) {
-    targets.push(path.join('src', 'backend', 'index.ts'));
-  }
-  return targets;
 }
 
 function getFixedRepairWriteTargets(
@@ -349,7 +314,7 @@ async function ensureHotModulePair(
 
   if (migration.kind === 'customized') {
     notes.push(
-      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (${manualSteps}), then remove ${clientRelative} and run repair again.`,
+      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (${manualSteps}), then run repair again.`,
     );
     return;
   }
@@ -367,7 +332,7 @@ async function ensureHotModulePair(
 
   if (clientKind === 'custom') {
     notes.push(
-      `${appRelative} still installs the old hot-update hooks, and ${clientRelative} is customized, so neither was changed; bring ${clientRelative} up to the scaffold's client (or remove it) and run repair again (${manualSteps}).`,
+      `${appRelative} still installs the old hot-update hooks, and ${clientRelative} is customized, so neither was changed; bring ${clientRelative} up to the scaffold's client and run repair again (${manualSteps}).`,
     );
     return;
   }
@@ -444,7 +409,8 @@ async function solutionReferencesBackend(workspaceRoot: string): Promise<boolean
   if (!existsSync(solutionPath)) {
     return false;
   }
-  const config = parseTsconfigText(await readTextFile(solutionPath), solutionPath);
+  const parsed = ts.parseConfigFileTextToJson(solutionPath, await readTextFile(solutionPath));
+  const config = parsed.error ? undefined : parsed.config;
   const references = (config as { references?: unknown } | undefined)?.references;
   const backendPath = path.join(workspaceRoot, 'src', 'backend');
   return (

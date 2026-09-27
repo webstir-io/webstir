@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { dropBackendReference, useLegacyHmrClient } from '../test-support/scaffold-drift.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
@@ -76,18 +77,13 @@ test('CLI agent validate orchestrates doctor and test for a healthy workspace', 
   }
 });
 
-test('CLI agent repair restores scaffold drift and re-validates the workspace', async () => {
+test('CLI agent repair migrates scaffold drift and re-validates the workspace', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-agent-repair-spa-');
 
   try {
-    const missingFile = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'app.html',
-    );
+    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
     await rm(missingFile, { force: true });
+    await useLegacyHmrClient(copiedWorkspace.workspaceRoot);
 
     const result = await runCli([
       'agent',
@@ -99,7 +95,7 @@ test('CLI agent repair restores scaffold drift and re-validates the workspace', 
 
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe('');
-    expect(existsSync(missingFile)).toBe(true);
+    expect(existsSync(missingFile)).toBe(false);
 
     const parsed = JSON.parse(result.stdout) as {
       goal: string;
@@ -114,8 +110,57 @@ test('CLI agent repair restores scaffold drift and re-validates the workspace', 
     expect(parsed.steps).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'repair', status: 'completed' })]),
     );
-    expect(parsed.repair?.changes).toContain('src/frontend/app/app.html');
+    expect(parsed.repair?.changes).toEqual(['src/frontend/app/hmr.js']);
     expect(parsed.doctor?.healthy).toBe(true);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI agent repair --restore-scaffold restores missing scaffold files in a healthy workspace', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-agent-restore-spa-');
+
+  try {
+    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    await rm(missingFile, { force: true });
+
+    const plain = JSON.parse(
+      (await runCli(['agent', 'repair', '--json', '--workspace', copiedWorkspace.workspaceRoot]))
+        .stdout,
+    ) as { steps: Array<{ id: string; status: string }> };
+    expect(plain.steps).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'repair', status: 'skipped' })]),
+    );
+    expect(existsSync(missingFile)).toBe(false);
+
+    const result = await runCli([
+      'agent',
+      'repair',
+      '--restore-scaffold',
+      '--json',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.stdout) as {
+      success: boolean;
+      repair?: { changes: string[] };
+      doctor?: { healthy: boolean; repair: { restoreScaffold: { changes: string[] } } };
+    };
+    expect(parsed.success).toBe(true);
+    expect(parsed.repair?.changes).toEqual(['AGENTS.md', 'Errors.404.html']);
+    expect(existsSync(missingFile)).toBe(true);
+    expect(parsed.doctor?.repair.restoreScaffold.changes).toEqual([]);
+
+    const misplaced = await runCli([
+      'agent',
+      'validate',
+      '--restore-scaffold',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+    expect(misplaced.exitCode).toBe(1);
+    expect(misplaced.stderr).toContain('Only agent repair accepts --restore-scaffold.');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
@@ -125,9 +170,7 @@ test('CLI agent inspect still returns backend manifest when scaffold drift exist
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-agent-inspect-api-');
 
   try {
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'src', 'shared', 'tsconfig.json'), {
-      force: true,
-    });
+    await dropBackendReference(copiedWorkspace.workspaceRoot);
 
     const result = await runCli(
       ['agent', 'inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],
@@ -268,13 +311,7 @@ test('CLI agent repair rejects unsafe fixed destinations without partial repair'
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-agent-repair-symlink-outside-'),
   );
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'frontend',
-    'app',
-    'app.html',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -289,6 +326,7 @@ test('CLI agent repair rejects unsafe fixed destinations without partial repair'
     const result = await runCli([
       'agent',
       'repair',
+      '--restore-scaffold',
       '--json',
       '--workspace',
       copiedWorkspace.workspaceRoot,
@@ -310,13 +348,7 @@ test('CLI agent repair rejects malformed frontend config without partial repair'
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-agent-invalid-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'frontend',
-    'app',
-    'app.html',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,
@@ -334,6 +366,7 @@ test('CLI agent repair rejects malformed frontend config without partial repair'
     const result = await runCli([
       'agent',
       'repair',
+      '--restore-scaffold',
       '--json',
       '--workspace',
       copiedWorkspace.workspaceRoot,

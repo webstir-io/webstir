@@ -31,9 +31,12 @@ async function runCli(args: readonly string[]): Promise<{
   };
 }
 
-// Files a mature full-mode app removes when it moves to server-rendered views. Nothing it keeps
-// names them, so repair must leave them absent.
+const fixturesRoot = path.join(packageRoot, 'test-support', 'fixtures');
+
+// Files a mature full-mode app removes when it moves to server-rendered views, and its own
+// instructions file it chose not to keep.
 const REMOVED_BY_MATURE_APP = [
+  'AGENTS.md',
   'Errors.404.html',
   'Errors.500.html',
   'Errors.default.html',
@@ -41,7 +44,6 @@ const REMOVED_BY_MATURE_APP = [
   'types/global.d.ts',
   'src/frontend/app/error.ts',
   'src/frontend/app/hmr.js',
-  'src/frontend/app/refresh.js',
   'src/frontend/app/navigation.ts',
   'src/frontend/app/router.ts',
   'src/frontend/app/styles/base.css',
@@ -52,57 +54,16 @@ const REMOVED_BY_MATURE_APP = [
   'src/shared/types/index.ts',
 ];
 
-const CLIENT_NAV_IMPORT = "import '@webstir-io/webstir-frontend/features/client-nav';\n";
-
-// app.ts imports `~/error`; src/frontend/custom/error.ts exists, the scaffold's app/error.ts does
-// not, and the frontend tsconfig decides which one the import means.
-async function useErrorAlias(
-  root: string,
-  paths: Record<string, string[]> | undefined,
-  extendsValue?: string[],
-): Promise<void> {
-  const frontendRoot = path.join(root, 'src', 'frontend');
-  const configPath = path.join(frontendRoot, 'tsconfig.json');
-  const config = JSON.parse(await readFile(configPath, 'utf8')) as {
-    extends?: unknown;
-    compilerOptions: Record<string, unknown>;
-  };
-  if (paths) config.compilerOptions.paths = paths;
-  if (extendsValue) config.extends = extendsValue;
-  await writeJson(configPath, config);
-  await mkdir(path.join(frontendRoot, 'custom'), { recursive: true });
-  await writeFile(
-    path.join(frontendRoot, 'custom', 'error.ts'),
-    'export function install() {}\n',
-    'utf8',
-  );
-  await writeFile(
-    path.join(frontendRoot, 'app', 'app.ts'),
-    `${CLIENT_NAV_IMPORT}import '~/error';\n`,
-    'utf8',
-  );
-}
-
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-// The shape of a real app: its own instructions, project references in tsconfig.json,
-// base.tsconfig.json only shared compiler options, no src/shared, and an app shell that loads no
-// dev runtime scripts.
+// The shape of a real app: starter files removed, project references kept in tsconfig.json, and
+// base.tsconfig.json holding only shared compiler options.
 async function matureFullApp(root: string): Promise<void> {
-  await writeFile(path.join(root, 'AGENTS.md'), '# App instructions\n', 'utf8');
   for (const relative of REMOVED_BY_MATURE_APP) {
     await rm(path.join(root, relative), { force: true });
   }
-  const app = path.join(root, 'src', 'frontend', 'app');
-  await writeFile(path.join(app, 'app.ts'), CLIENT_NAV_IMPORT, 'utf8');
-  const shell = await readFile(path.join(app, 'app.html'), 'utf8');
-  await writeFile(
-    path.join(app, 'app.html'),
-    shell.replace(/\s*<script[^>]*src="\/(?:hmr|refresh)\.js"[^>]*><\/script>/g, ''),
-    'utf8',
-  );
   const basePath = path.join(root, 'base.tsconfig.json');
   const base = JSON.parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
   delete base.files;
@@ -112,344 +73,120 @@ async function matureFullApp(root: string): Promise<void> {
     files: [],
     references: [{ path: 'src/frontend' }, { path: 'src/backend' }],
   });
-  const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
-  const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
-    compilerOptions: Record<string, unknown>;
-    references?: unknown;
-  };
-  delete frontend.compilerOptions.paths;
-  frontend.references = [];
-  await writeJson(frontendPath, frontend);
 }
 
-const templateRoot = path.join(packageRoot, 'assets', 'templates', 'full');
+const sortPaths = (paths: readonly string[]) =>
+  [...paths].sort((left, right) => left.localeCompare(right));
 
 test.each([
   {
-    name: 'a mature app missing optional scaffold files is left alone',
-    prepare: async () => {},
-    restored: [],
+    name: 'repair leaves a mature app missing scaffold files alone',
+    args: [] as string[],
+    prepare: async (_root: string) => {},
+    changes: [] as string[],
+    missing: REMOVED_BY_MATURE_APP,
   },
   {
-    name: 'an optional scaffold folder the app links elsewhere is neither checked nor written',
-    prepare: async (root: string) => {
-      const outside = path.join(path.dirname(root), 'outside-shared');
-      await mkdir(outside, { recursive: true });
-      await rm(path.join(root, 'src', 'shared'), { recursive: true, force: true });
-      await symlink(outside, path.join(root, 'src', 'shared'), 'dir');
-    },
-    restored: [],
+    name: 'repair --restore-scaffold re-creates every missing scaffold file, AGENTS.md included',
+    args: ['--restore-scaffold'],
+    prepare: async (_root: string) => {},
+    changes: REMOVED_BY_MATURE_APP,
+    missing: [] as string[],
   },
   {
-    name: 'a module the app entry still imports',
-    prepare: async (root: string) => {
-      await writeFile(
-        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
-        "import '@webstir-io/webstir-frontend/features/client-nav';\nvoid import('./error');\n",
-        'utf8',
-      );
-    },
-    restored: ['src/frontend/app/error.ts'],
-  },
-  {
-    name: 'the modules a restored file imports, through the @shared alias',
-    prepare: async (root: string) => {
-      const pagePath = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts');
-      await writeFile(
-        pagePath,
-        `import '../../app/navigation.js';\n${await readFile(pagePath, 'utf8')}`,
-        'utf8',
-      );
-    },
-    restored: [
-      'src/frontend/app/navigation.ts',
-      'src/frontend/app/router.ts',
-      'src/shared/router-types.ts',
-    ],
-  },
-  {
-    name: 'a stylesheet app.css still imports',
-    prepare: async (root: string) => {
-      const cssPath = path.join(root, 'src', 'frontend', 'app', 'app.css');
-      await writeFile(
-        cssPath,
-        `@import "./styles/base.css";\n${await readFile(cssPath, 'utf8')}`,
-        'utf8',
-      );
-    },
-    restored: ['src/frontend/app/styles/base.css'],
-  },
-  {
-    name: 'a dev runtime script the app shell still loads',
-    prepare: async (root: string) => {
-      await writeFile(
-        path.join(root, 'src', 'frontend', 'app', 'app.html'),
-        await readFile(path.join(templateRoot, 'src', 'frontend', 'app', 'app.html'), 'utf8'),
-        'utf8',
-      );
-    },
-    restored: ['src/frontend/app/hmr.js', 'src/frontend/app/refresh.js'],
-  },
-  {
-    name: 'a project tsconfig still references',
-    prepare: async (root: string) => {
-      await writeJson(path.join(root, 'tsconfig.json'), {
-        files: [],
-        references: [{ path: 'src/shared' }, { path: 'src/frontend' }, { path: 'src/backend' }],
-      });
-    },
-    restored: ['src/shared/tsconfig.json'],
-  },
-  {
-    name: 'the app shell every frontend build reads',
-    prepare: async (root: string) => {
-      await rm(path.join(root, 'src', 'frontend', 'app', 'app.html'));
-    },
-    restored: [
-      'src/frontend/app/app.html',
-      'src/frontend/app/hmr.js',
-      'src/frontend/app/refresh.js',
-    ],
-  },
-  {
-    name: 'the app entry an enabled feature is imported from, with what it imports',
-    prepare: async (root: string) => {
-      await rm(path.join(root, 'src', 'frontend', 'app', 'app.ts'));
-    },
-    restored: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
-  },
-  {
-    name: 'the backend entry',
-    prepare: async (root: string) => {
-      await rm(path.join(root, 'src', 'backend', 'index.ts'));
-    },
-    restored: ['src/backend/index.ts'],
-  },
-  {
-    name: 'a dev runtime script the app shell loads through an unquoted attribute',
-    prepare: async (root: string) => {
-      const shellPath = path.join(root, 'src', 'frontend', 'app', 'app.html');
-      await writeFile(
-        shellPath,
-        (await readFile(shellPath, 'utf8')).replace(
-          '</body>',
-          '<script type=module src=/hmr.js></script></body>',
-        ),
-        'utf8',
-      );
-    },
-    restored: ['src/frontend/app/hmr.js'],
-  },
-  {
-    name: 'a module imported through a tsconfig paths alias',
-    prepare: async (root: string) => {
-      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
-      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
-        compilerOptions: Record<string, unknown>;
-      };
-      frontend.compilerOptions.paths = { '~/*': ['./app/*'] };
-      await writeJson(frontendPath, frontend);
-      const pagePath = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts');
-      await writeFile(
-        pagePath,
-        `import '~/router.js';\n${await readFile(pagePath, 'utf8')}`,
-        'utf8',
-      );
-    },
-    restored: ['src/frontend/app/router.ts', 'src/shared/router-types.ts'],
-  },
-  {
-    name: 'an import a file of another kind already answers is left alone',
-    prepare: async (root: string) => {
-      const app = path.join(root, 'src', 'frontend', 'app');
-      await writeFile(
-        path.join(app, 'app.ts'),
-        `${CLIENT_NAV_IMPORT}void import('./error');\n`,
-        'utf8',
-      );
-      await writeFile(path.join(app, 'error.js'), 'export function install() {}\n', 'utf8');
-    },
-    restored: [],
-  },
-  {
-    name: 'an alias whose later target exists is left alone',
-    prepare: async (root: string) => {
-      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
-      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
-        compilerOptions: Record<string, unknown>;
-      };
-      frontend.compilerOptions.paths = {
-        'error-handler': ['./app/error.ts', './custom/error.ts'],
-      };
-      await writeJson(frontendPath, frontend);
-      await mkdir(path.join(root, 'src', 'frontend', 'custom'), { recursive: true });
-      await writeFile(
-        path.join(root, 'src', 'frontend', 'custom', 'error.ts'),
-        'export function install() {}\n',
-        'utf8',
-      );
-      await writeFile(
-        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
-        `${CLIENT_NAV_IMPORT}import 'error-handler';\n`,
-        'utf8',
-      );
-    },
-    restored: [],
-  },
-  {
-    name: "an alias only another project's tsconfig maps to a removed file is left alone",
-    prepare: async (root: string) => {
-      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
-      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
-        compilerOptions: Record<string, unknown>;
-      };
-      frontend.compilerOptions.paths = { '~/*': ['./app/*'] };
-      await writeJson(frontendPath, frontend);
-      const backendPath = path.join(root, 'src', 'backend', 'tsconfig.json');
-      const backend = JSON.parse(await readFile(backendPath, 'utf8')) as {
-        compilerOptions: Record<string, unknown>;
-      };
-      backend.compilerOptions.paths = { '~/*': ['./*'] };
-      await writeJson(backendPath, backend);
-      const backendRoot = path.join(root, 'src', 'backend');
-      await writeFile(path.join(backendRoot, 'error.ts'), 'export const x = 1;\n', 'utf8');
-      await writeFile(path.join(backendRoot, 'uses-alias.ts'), "import '~/error';\n", 'utf8');
-    },
-    restored: [],
-  },
-  {
-    name: 'an import naming the .ts file a .js sibling cannot answer',
-    prepare: async (root: string) => {
-      const app = path.join(root, 'src', 'frontend', 'app');
-      await writeFile(
-        path.join(app, 'app.ts'),
-        `${CLIENT_NAV_IMPORT}void import('./error.ts');\n`,
-        'utf8',
-      );
-      await writeFile(path.join(app, 'error.js'), 'export function install() {}\n', 'utf8');
-    },
-    restored: ['src/frontend/app/error.ts'],
-  },
-  {
-    name: 'an exact tsconfig alias that wins over an earlier wildcard',
-    prepare: async (root: string) => {
-      await useErrorAlias(root, { '~/*': ['./custom/*'], '~/error': ['./app/error.ts'] });
-    },
-    restored: ['src/frontend/app/error.ts'],
-  },
-  {
-    name: 'an alias from the last of several extended tsconfigs',
-    prepare: async (root: string) => {
-      const frontendRoot = path.join(root, 'src', 'frontend');
-      await writeJson(path.join(frontendRoot, 'first.tsconfig.json'), {
-        compilerOptions: { paths: { '~/*': ['./custom/*'] } },
-      });
-      await writeJson(path.join(frontendRoot, 'last.tsconfig.json'), {
-        compilerOptions: { paths: { '~/*': ['./app/*'] } },
-      });
-      await useErrorAlias(root, undefined, [
-        '../../base.tsconfig.json',
-        './first.tsconfig.json',
-        './last.tsconfig.json',
-      ]);
-    },
-    restored: ['src/frontend/app/error.ts'],
-  },
-  {
-    name: 'a stylesheet app.css imports without a ./ prefix',
-    prepare: async (root: string) => {
-      const cssPath = path.join(root, 'src', 'frontend', 'app', 'app.css');
-      await writeFile(
-        cssPath,
-        `@import "styles/base.css";\n${await readFile(cssPath, 'utf8')}`,
-        'utf8',
-      );
-    },
-    restored: ['src/frontend/app/styles/base.css'],
-  },
-  {
-    name: 'a stylesheet a script imports',
+    name: 'repair still moves the hot-module registry out of app.ts',
+    args: [] as string[],
     prepare: async (root: string) => {
       await writeFile(
         path.join(root, 'src', 'frontend', 'app', 'app.ts'),
-        `${CLIENT_NAV_IMPORT}import './styles/base.css';\n`,
+        await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8'),
         'utf8',
       );
     },
-    restored: ['src/frontend/app/styles/base.css'],
+    changes: ['src/frontend/app/app.ts'],
+    missing: REMOVED_BY_MATURE_APP,
   },
   {
-    name: 'an import only a declaration file answers',
+    name: 'repair still adds the backend reference base.tsconfig.json lacks',
+    args: [] as string[],
     prepare: async (root: string) => {
-      const app = path.join(root, 'src', 'frontend', 'app');
-      await writeFile(
-        path.join(app, 'app.ts'),
-        `${CLIENT_NAV_IMPORT}void import('./error');\n`,
-        'utf8',
-      );
-      await writeFile(
-        path.join(app, 'error.d.ts'),
-        'export declare function install(): void;\n',
-        'utf8',
-      );
+      await rm(path.join(root, 'tsconfig.json'));
     },
-    restored: ['src/frontend/app/error.ts'],
+    changes: ['base.tsconfig.json'],
+    missing: REMOVED_BY_MATURE_APP,
   },
-  {
-    name: 'a scaffold alias the tsconfig maps elsewhere is left alone',
-    prepare: async (root: string) => {
-      const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
-      const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
-        compilerOptions: Record<string, unknown>;
-      };
-      frontend.compilerOptions.paths = { '@app/*': ['./custom/*'] };
-      await writeJson(frontendPath, frontend);
-      await writeFile(
-        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
-        `${CLIENT_NAV_IMPORT}import '@app/error';\n`,
-        'utf8',
-      );
-    },
-    restored: [],
-  },
-  {
-    name: 'the document of a page whose script is still there',
-    prepare: async (root: string) => {
-      await rm(path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html'));
-    },
-    restored: ['src/frontend/pages/home/index.html'],
-  },
-])(
-  'CLI repair restores only what a workspace still needs: $name',
-  async ({ prepare, restored }) => {
-    const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-needed-', {
-      workspaceName: 'full',
-    });
-    const root = copiedWorkspace.workspaceRoot;
-    try {
-      await matureFullApp(root);
-      await prepare(root);
+])('CLI $name', async ({ args, prepare, changes, missing }) => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-mature-', {
+    workspaceName: 'full',
+  });
+  const root = copiedWorkspace.workspaceRoot;
+  const restored = (relative: string) => existsSync(path.join(root, relative));
+  try {
+    await matureFullApp(root);
+    await prepare(root);
 
-      const result = await runCli(['repair', '--json', '--workspace', root]);
-      expect(result.exitCode).toBe(0);
-      const parsed = JSON.parse(result.stdout) as { changes: string[] };
-      expect(parsed.changes).toEqual(
-        [...restored].sort((left, right) => left.localeCompare(right)),
-      );
-      for (const relative of restored) {
-        expect(existsSync(path.join(root, relative))).toBe(true);
-      }
-      for (const relative of REMOVED_BY_MATURE_APP.filter((file) => !restored.includes(file))) {
-        expect(existsSync(path.join(root, relative))).toBe(false);
-      }
+    const dryRun = await runCli(['repair', '--dry-run', '--json', ...args, '--workspace', root]);
+    expect(dryRun.exitCode).toBe(0);
+    const planned = JSON.parse(dryRun.stdout) as {
+      restoreScaffold: boolean;
+      changes: string[];
+      missingScaffold: string[];
+    };
+    expect(planned.restoreScaffold).toBe(args.includes('--restore-scaffold'));
+    expect(planned.changes).toEqual(sortPaths(changes));
+    expect(planned.missingScaffold).toEqual(sortPaths(missing));
+    expect(REMOVED_BY_MATURE_APP.filter(restored)).toEqual([]);
 
-      const again = await runCli(['repair', '--dry-run', '--json', '--workspace', root]);
-      expect((JSON.parse(again.stdout) as { changes: string[] }).changes).toEqual([]);
-    } finally {
-      await removeDemoWorkspace(copiedWorkspace);
-    }
-  },
-);
+    const result = await runCli(['repair', '--json', ...args, '--workspace', root]);
+    expect(result.exitCode).toBe(0);
+    expect((JSON.parse(result.stdout) as { changes: string[] }).changes).toEqual(
+      sortPaths(changes),
+    );
+    expect(REMOVED_BY_MATURE_APP.filter(restored)).toEqual(
+      REMOVED_BY_MATURE_APP.filter((file) => changes.includes(file)),
+    );
+
+    const again = await runCli(['repair', '--dry-run', '--json', ...args, '--workspace', root]);
+    expect((JSON.parse(again.stdout) as { changes: string[] }).changes).toEqual([]);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI repair lists missing scaffold files and the flag that restores them', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-mature-text-', {
+    workspaceName: 'full',
+  });
+  const root = copiedWorkspace.workspaceRoot;
+  try {
+    await matureFullApp(root);
+
+    const plain = await runCli(['repair', '--dry-run', '--workspace', root]);
+    expect(plain.stdout).toContain('restore-scaffold: false');
+    expect(plain.stdout).toContain('changes: none');
+    expect(plain.stdout).toContain(
+      `missing scaffold files (left alone; --restore-scaffold re-creates them): ${REMOVED_BY_MATURE_APP.length}`,
+    );
+    expect(plain.stdout).toContain('  - Errors.404.html');
+
+    const restoring = await runCli([
+      'repair',
+      '--dry-run',
+      '--restore-scaffold',
+      '--workspace',
+      root,
+    ]);
+    expect(restoring.stdout).toContain('restore-scaffold: true');
+    expect(restoring.stdout).toContain(`changes: ${REMOVED_BY_MATURE_APP.length}`);
+    expect(restoring.stdout).not.toContain('missing scaffold files');
+
+    const misplaced = await runCli(['doctor', '--restore-scaffold', '--workspace', root]);
+    expect(misplaced.exitCode).toBe(1);
+    expect(misplaced.stderr).toContain('Only repair and agent repair accept --restore-scaffold.');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
 
 test('CLI repair supports dry-run without restoring files', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-spa-', {
@@ -457,17 +194,12 @@ test('CLI repair supports dry-run without restoring files', async () => {
   });
 
   try {
-    const missingFile = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'app.html',
-    );
+    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.500.html');
     await rm(missingFile, { force: true });
 
     const result = await runCli([
       'repair',
+      '--restore-scaffold',
       '--dry-run',
       '--workspace',
       copiedWorkspace.workspaceRoot,
@@ -475,7 +207,7 @@ test('CLI repair supports dry-run without restoring files', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('dry-run: true');
-    expect(result.stdout).toContain('src/frontend/app/app.html');
+    expect(result.stdout).toContain('Errors.500.html');
     expect(existsSync(missingFile)).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
@@ -588,8 +320,6 @@ test('CLI repair restores enabled feature imports and wiring for the SSG site de
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
-
-const fixturesRoot = path.join(packageRoot, 'test-support', 'fixtures');
 
 async function prepareHotModuleWorkspace(
   prefix: string,
@@ -896,7 +626,12 @@ test('CLI repair preserves mode ownership when an enabled feature target overlap
     await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
     await rm(routerPath, { force: true });
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    const result = await runCli([
+      'repair',
+      '--restore-scaffold',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('src/frontend/app/router.ts');
@@ -912,17 +647,12 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
   });
 
   try {
-    const missingFile = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'app.html',
-    );
+    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
     await rm(missingFile, { force: true });
 
     const result = await runCli([
       'repair',
+      '--restore-scaffold',
       '--dry-run',
       '--json',
       '--workspace',
@@ -945,26 +675,20 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
     expect(parsed.workspaceRoot).toBe(copiedWorkspace.workspaceRoot);
     expect(parsed.mode).toBe('spa');
     expect(parsed.dryRun).toBe(true);
-    expect(parsed.changes).toEqual(['AGENTS.md', 'src/frontend/app/app.html']);
+    expect(parsed.changes).toContain('Errors.404.html');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
-test('CLI repair preflights every asset it restores before dry-run or mutation', async () => {
+test('CLI repair preflights every asset before dry-run or mutation', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-assets-symlink-', {
     workspaceName: 'spa',
   });
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-assets-symlink-outside-'),
   );
-  // Still named by base.tsconfig.json's references, so repair would restore it.
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'shared',
-    'tsconfig.json',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -979,6 +703,7 @@ test('CLI repair preflights every asset it restores before dry-run or mutation',
     for (const extraArgs of [['--dry-run'], []] as const) {
       const result = await runCli([
         'repair',
+        '--restore-scaffold',
         ...extraArgs,
         '--workspace',
         copiedWorkspace.workspaceRoot,
@@ -1004,13 +729,7 @@ test('CLI repair preflights enabled feature assets before restoring root assets'
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-feature-symlink-outside-'),
   );
-  // Still named by base.tsconfig.json's references, so repair would restore it.
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'frontend',
-    'tsconfig.json',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
   await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
 
@@ -1027,7 +746,12 @@ test('CLI repair preflights enabled feature assets before restoring root assets'
     await rm(featureStyles, { recursive: true, force: true });
     await symlink(externalRoot, featureStyles, 'dir');
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    const result = await runCli([
+      'repair',
+      '--restore-scaffold',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('symbolic link');
@@ -1048,13 +772,7 @@ test('CLI repair preflights backend provider assets before restoring root assets
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-backend-symlink-outside-'),
   );
-  // Still named by base.tsconfig.json's references, so repair would restore it.
-  const missingRootAsset = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'shared',
-    'tsconfig.json',
-  );
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
   await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
 
@@ -1072,7 +790,12 @@ test('CLI repair preflights backend provider assets before restoring root assets
     await rm(backendAuthRoot, { recursive: true, force: true });
     await symlink(externalRoot, backendAuthRoot, 'dir');
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    const result = await runCli([
+      'repair',
+      '--restore-scaffold',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('symbolic link');

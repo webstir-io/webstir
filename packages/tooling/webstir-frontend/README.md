@@ -47,7 +47,7 @@ Workspaces scaffolded before this split still carry the registry in `app.ts`, wh
 2. If repair reports that `app.ts` was customized, do the replacement by hand. There are two separate ranges, with the error-handler section between them that stays as it is:
    - Range A starts at the line `type HotAsset = {` and ends just before the comment `// Lazy-load error handler on first error`. It holds the hot-module types, the `declare global` block, the registry Map, and the `ensureRecord`, `normalizeModuleId`, `isPromise`, `withHistoryContext`, and `evaluateHandlerResult` helpers. Replace this range with the block below.
    - Range B starts at the line `export function registerHotModule(` and ends just before the comment `// Set up error listeners`. It holds the old `registerHotModule` and the three `window.__webstir*` assignments. Delete this range.
-   - Keep `errorHandlerLoaded`, `loadErrorHandler`, the two `window.addEventListener` calls, and `export { loadErrorHandler };`. Then remove `src/frontend/app/hmr.js` and run `webstir repair` again to restore the current client.
+   - Keep `errorHandlerLoaded`, `loadErrorHandler`, the two `window.addEventListener` calls, and `export { loadErrorHandler };`. Then run `webstir repair` again; it brings a scaffold `hmr.js` up to the current client.
 
 ```ts
 export type HotAsset = {

@@ -50,6 +50,7 @@ const HELP_TEXT = `Usage:
   webstir operations
   webstir mcp
   webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> [...]
+  webstir agent repair --workspace <path> [--restore-scaffold]
   webstir inspect --workspace <path>
   webstir frontend-inspect --workspace <path>
   webstir backend-inspect --workspace <path>
@@ -59,7 +60,7 @@ const HELP_TEXT = `Usage:
   webstir build --workspace <path>
   webstir publish --workspace <path> [--frontend-mode <bundle|ssg>]
   webstir enable <feature> [feature-args...] --workspace <path>
-  webstir repair --workspace <path> [--dry-run]
+  webstir repair --workspace <path> [--dry-run] [--restore-scaffold]
   webstir refresh <mode> --workspace <path>
   webstir watch --workspace <path> [--host <host>] [--port <port>]
 
@@ -81,7 +82,7 @@ Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
-  repair     Restore scaffold files the workspace still needs and apply Webstir migrations.
+  repair     Migrate a workspace to what this Webstir version expects; never re-creates removed files.
   refresh    Reset and re-scaffold an existing valid Webstir workspace.
   watch      Run the Bun dev loop for a supported Webstir workspace.
 
@@ -91,6 +92,7 @@ Options:
   --port <port>            Dev port (SPA default: 8088, API default: 4321).
   --frontend-mode <mode>   Frontend publish mode for publish (defaults to bundle; bundle or ssg).
   --dry-run                Report repair changes without writing files.
+  --restore-scaffold       With repair: also re-create missing scaffold files for the mode.
   --json                   Emit machine-readable JSON for supported commands.
   -v, --verbose            Enable verbose frontend watch diagnostics.
   --hmr-verbose            Enable detailed hot-update diagnostics.
@@ -144,6 +146,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
   if (options.error) {
     io.stderr.write(`${options.error}\n\n${HELP_TEXT}`);
+    return 1;
+  }
+
+  if (options.restoreScaffold && command !== 'repair' && command !== 'agent') {
+    io.stderr.write(`Only repair and agent repair accept --restore-scaffold.\n\n${HELP_TEXT}`);
     return 1;
   }
 
@@ -431,6 +438,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         return 1;
       }
 
+      if (options.restoreScaffold && goal !== 'repair') {
+        io.stderr.write(`Only agent repair accepts --restore-scaffold.\n\n${HELP_TEXT}`);
+        return 1;
+      }
+
       const { runAgent } = await import('./agent.ts');
       const result = await withSuppressedStdout(() =>
         runAgent({
@@ -580,6 +592,7 @@ interface ParsedCommandOptions {
   readonly port?: number;
   readonly frontendMode?: 'bundle' | 'ssg';
   readonly dryRun: boolean;
+  readonly restoreScaffold?: boolean;
   readonly json: boolean;
   readonly verbose: boolean;
   readonly hmrVerbose: boolean;
@@ -598,6 +611,7 @@ function parseCommandOptions(
   let port: number | undefined;
   let frontendMode: 'bundle' | 'ssg' | undefined;
   let dryRun = false;
+  let restoreScaffold = false;
   let json = false;
   let verbose = false;
   let hmrVerbose = false;
@@ -825,6 +839,11 @@ function parseCommandOptions(
       continue;
     }
 
+    if (arg === '--restore-scaffold') {
+      restoreScaffold = true;
+      continue;
+    }
+
     if (options.allowUnknownOptions) {
       continue;
     }
@@ -850,6 +869,7 @@ function parseCommandOptions(
     port,
     frontendMode,
     dryRun,
+    restoreScaffold,
     json,
     verbose,
     hmrVerbose,

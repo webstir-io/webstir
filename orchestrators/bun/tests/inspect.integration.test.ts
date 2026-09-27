@@ -1,9 +1,9 @@
 import { expect, test } from 'bun:test';
 import path from 'node:path';
-import { rm } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { dropBackendReference } from '../test-support/scaffold-drift.ts';
 
 function decodeOutput(buffer: Uint8Array | undefined): string {
   return new TextDecoder().decode(buffer ?? new Uint8Array());
@@ -79,9 +79,7 @@ test('CLI inspect still returns backend details when diagnosis fails', async () 
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-inspect-api-');
 
   try {
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'src', 'shared', 'tsconfig.json'), {
-      force: true,
-    });
+    await dropBackendReference(copiedWorkspace.workspaceRoot);
 
     const result = await runCli(
       ['inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],

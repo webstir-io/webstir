@@ -69,23 +69,22 @@ What it does:
 
 Notes:
 - Exits non-zero when it finds repairable scaffold drift or backend manifest/build failures
+- Missing scaffold files do not make a workspace unhealthy, since an app may remove starter files; doctor lists them and suggests `repair --restore-scaffold` in case they were removed by mistake
 - Use this before `repair` when you want a diagnosis and suggested fix instead of immediately mutating the workspace
 
 ### repair
-Usage: `webstir repair --workspace <path> [--dry-run]`
+Usage: `webstir repair --workspace <path> [--dry-run] [--restore-scaffold]`
 
 What it does:
-- Restores missing scaffold files the workspace still needs, from the current mode scaffold plus any explicitly enabled feature assets: the app shell (`src/frontend/app/app.html`), the app entry an enabled feature is imported from, the backend entry, and any file that existing code, stylesheets, HTML or tsconfig references still name, together with what those restored files import
-- Leaves optional starter files the app removed alone (error pages, starter pages, router files, shared types, global type files), so a mature app is not re-scaffolded
-- Re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, `backend`, and `githubPages`
+- Migrates a workspace to what the installed Webstir expects: moves the hot-module registry from `app.ts` into the dev-only `hmr.js`, adds missing project references and deploy config, and re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, `backend`, and `githubPages`
 - With `clientNav`, `search` or `contentNav`, switches an app from the copies older versions wrote to the package imports, leaving edited or still-imported copies in place with a note
-- For package-managed enabled backends, restores the backend package scaffold instead of reintroducing stale mode-template backend files
+- Never re-creates missing scaffold files on its own: a mature app may have removed starter files (error pages, starter pages, router files, shared types) on purpose. It lists them as `missingScaffold` instead
+- With `--restore-scaffold`, also re-creates every missing scaffold file for the workspace mode and enabled features, including `AGENTS.md`; for package-managed enabled backends it restores the backend package scaffold instead of stale mode-template backend files. Starter tests are never re-created
 - Accepts `--json` for machine-readable dry-run or repair output
 
 Notes:
-- `--dry-run` reports which files or scaffold-managed edits would be restored without writing anything
-- To bring back a starter file nothing references, copy it from a fresh `webstir init` of the same mode
-- This is the Bun-native recovery path when a workspace is missing expected scaffold files but you do not want the full reset behavior of `refresh`
+- `--dry-run` reports the edits repair would make, and with `--restore-scaffold` the files it would re-create, without writing anything
+- Use `--restore-scaffold` when scaffold files were deleted by mistake and you want them back without the full reset behavior of `refresh`; run it with `--dry-run` first and check the listed paths
 
 ### enable
 Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
@@ -143,7 +142,7 @@ What it does:
 Notes:
 - `inspect` remains the thin agent goal; use top-level `webstir inspect` when you want the direct combined inspection contract
 - `validate` runs `doctor` and then `test`
-- `repair` runs `doctor`, applies scaffold repair when available, and then re-checks health
+- `repair` runs `doctor`, applies scaffold migrations when available, and then re-checks health; `agent repair --restore-scaffold` also re-creates missing scaffold files
 - `scaffold-page`, `scaffold-route`, and `scaffold-job` call the matching scaffold commands and then verify the resulting workspace state
 - `scaffold-route` records metadata and reports that the matching application handler still needs implementation and behavioral tests
 
@@ -226,6 +225,7 @@ Usage: `webstir mcp`
 What it does:
 - Runs the Webstir MCP server over stdio
 - Exposes the thin stable tool layer for listing operations plus inspect, validate, repair, and scaffold flows
+- `repair_workspace` and `repair_dry_run` take an optional `restoreScaffold` boolean, the MCP form of `--restore-scaffold`
 - Reuses the existing machine-readable CLI contracts instead of introducing a second control plane
 
 ### add-page
