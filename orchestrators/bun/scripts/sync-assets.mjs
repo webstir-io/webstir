@@ -82,8 +82,6 @@ const modeTemplates = [
 
 const features = [
   { source: path.join(packageRoot, 'resources', 'features', 'router'), target: 'router' },
-  { source: path.join(packageRoot, 'resources', 'features', 'search'), target: 'search' },
-  { source: path.join(packageRoot, 'resources', 'features', 'content_nav'), target: 'content_nav' },
 ];
 
 async function main() {

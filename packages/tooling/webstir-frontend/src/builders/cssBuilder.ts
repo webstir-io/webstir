@@ -18,9 +18,12 @@ import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import {
+  assertCssImportsResolve,
   inlineCssImports,
   inlineSourceAppImports,
+  inlinePackageCssImports,
   isLocalCssImport,
+  linkPackageCssImports,
   isWithinOrEqual,
   parseCssImport,
   serializeCssImport,
@@ -76,6 +79,7 @@ async function processCss(context: BuilderContext, isProduction: boolean): Promi
     }
 
     const css = await readFile(entryPath);
+    assertCssImportsResolve(css, entryPath, { appAlias: true });
     const inlinedCss = await inlinePageImports(css, page.directory);
     const prepared = applyCustomMediaPrelude(inlinedCss, customMediaPrelude);
     const processed = await processor.process(prepared, {
@@ -187,9 +191,14 @@ async function processAppCss(
     return {};
   }
 
-  const source = applyCustomMediaPrelude(await readFile(appCssPath), customMediaPrelude);
+  const appCss = await readFile(appCssPath);
+  assertCssImportsResolve(appCss, appCssPath, { packages: true });
 
   if (isProduction) {
+    const source = applyCustomMediaPrelude(
+      await inlinePackageCssImports(appCss, appCssPath),
+      customMediaPrelude,
+    );
     const stylesMap = await emitAppStylesProduction(config, processor, customMediaPrelude);
     const processed = await processor.process(source, { from: appCssPath, map: false });
     const rewritten = rewriteAppStyleImports(processed.css, stylesMap);
@@ -205,6 +214,21 @@ async function processAppCss(
     return { appCss: fileName };
   }
 
+  const outputAppDir = path.join(config.paths.build.frontend, FOLDERS.app);
+  const source = applyCustomMediaPrelude(
+    await linkPackageCssImports(appCss, appCssPath, async (packageCss) => {
+      const relative = path.posix.join('packages', packageCss.importPath);
+      const processedPackage = await processor.process(
+        applyCustomMediaPrelude(packageCss.css, customMediaPrelude),
+        { from: packageCss.resolved, map: { inline: true } },
+      );
+      const outputPath = path.join(outputAppDir, relative);
+      await ensureDir(path.dirname(outputPath));
+      await writeFile(outputPath, processedPackage.css);
+      return `./${relative}?v=${hashContent(processedPackage.css, 10)}`;
+    }),
+    customMediaPrelude,
+  );
   const processed = await processor.process(source, { from: appCssPath, map: { inline: true } });
   const stylesVersion = await computeAppStylesVersion(config.paths.src.app);
   const rewritten = rewriteAppStyleImportsForDevelopment(processed.css, stylesVersion);
@@ -319,7 +343,9 @@ async function syncAppStyles(
       continue;
     }
 
-    const source = applyCustomMediaPrelude(await readFile(sourcePath), customMediaPrelude);
+    const css = await readFile(sourcePath);
+    assertCssImportsResolve(css, sourcePath);
+    const source = applyCustomMediaPrelude(css, customMediaPrelude);
     const processed = await processor.process(source, { from: sourcePath, map: { inline: true } });
     await writeFile(destinationPath, processed.css);
   }
@@ -400,6 +426,7 @@ async function inlinePageImports(
 
     seen.add(key);
     const imported = await readFile(resolved);
+    assertCssImportsResolve(imported, resolved, { appAlias: true });
     const inlined = await inlinePageImports(imported, pageDirectory, seen);
     seen.delete(key);
     segments.push(inlined);

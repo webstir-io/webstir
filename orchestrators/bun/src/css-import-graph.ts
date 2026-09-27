@@ -21,7 +21,7 @@ export async function resolveLocalCssDependencyGraph(entryPath: string): Promise
   return dependencies;
 }
 
-function findCssImportPaths(css: string): string[] {
+export function findCssImportPaths(css: string): string[] {
   const imports: string[] = [];
   let index = 0;
 
@@ -54,6 +54,43 @@ function findCssImportPaths(css: string): string[] {
   }
 
   return imports;
+}
+
+/**
+ * Where a new `@import` can go: after the last statement of the stylesheet's prelude (its
+ * `@charset`, `@layer` order and `@import` statements), read as CSS so a statement spanning lines
+ * or a commented-out import is never split. The start (after any byte order mark) when the
+ * stylesheet has no prelude.
+ */
+export function findCssImportInsertionPoint(css: string): number {
+  // A byte order mark stays first.
+  let point = css.charCodeAt(0) === 0xfeff ? 1 : 0;
+  let index = point;
+
+  while (index < css.length) {
+    if (css[index] === '/' && css[index + 1] === '*') {
+      index = skipComment(css, index);
+      continue;
+    }
+    if (isWhitespace(css[index])) {
+      index += 1;
+      continue;
+    }
+    if (css[index] !== '@') break;
+
+    const nameStart = index + 1;
+    let nameEnd = nameStart;
+    while (isIdentifierCharacter(css[nameEnd])) nameEnd += 1;
+    const name = css.slice(nameStart, nameEnd).toLowerCase();
+    if (name !== 'import' && name !== 'layer' && name !== 'charset') break;
+    const end = findAtRuleEnd(css, nameEnd);
+    // `@layer name { ... }` is a rule, not a statement.
+    if (end >= css.length || css.slice(nameEnd, end).includes('{')) break;
+    point = end + 1;
+    index = point;
+  }
+
+  return point;
 }
 
 function findAtRuleEnd(css: string, start: number): number {

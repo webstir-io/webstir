@@ -44,6 +44,6 @@ export function registerHotModule(moduleId: string, handlers: HotModuleHandlers)
 }
 
 import '@webstir-io/webstir-frontend/features/client-nav';
-import "./scripts/features/search.js";
+import '@webstir-io/webstir-frontend/features/search';
 import "./scripts/features/content-nav.js";
 import "./scripts/features/page-nav.js";

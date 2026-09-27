@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import postcss from 'postcss';
 import { pathExists, readFile } from '../utils/fs.js';
 
@@ -15,12 +16,153 @@ export async function inlineSourceAppImports(
   sourcePath: string,
   stylesRoot: string,
 ): Promise<string> {
-  return inlineCssImports(css, sourcePath, stylesRoot, (importPath, containingPath) => {
-    if (!isLocalCssImport(importPath)) {
-      return null;
-    }
-    return path.resolve(path.dirname(containingPath), stripUrlSuffix(importPath));
+  assertCssImportsResolve(css, sourcePath);
+  return inlineCssImports(
+    css,
+    sourcePath,
+    stylesRoot,
+    (importPath, containingPath) => {
+      if (!isLocalCssImport(importPath)) {
+        return null;
+      }
+      return path.resolve(path.dirname(containingPath), stripUrlSuffix(importPath));
+    },
+    // Whatever a stylesheet pulls in, whatever its extension, is checked as written.
+    (importedCss, importedPath) => assertCssImportsResolve(importedCss, importedPath),
+  );
+}
+
+/**
+ * Inlines stylesheets an app imports from an installed package, such as
+ * `@import "@webstir-io/webstir-frontend/features/search.css" layer(features);`, so the rest of the
+ * app pipeline (custom media, prefixes, layers) treats them as the app's own CSS. Only scoped
+ * package paths count: in CSS, an unscoped bare path is relative to the importing file. Use this
+ * only when every other import is inlined too: rules left in place of an import make the imports
+ * after it invalid.
+ */
+export async function inlinePackageCssImports(
+  css: string,
+  containingPath: string,
+): Promise<string> {
+  return replacePackageCssImports(css, containingPath, async (packageCss, qualifiers) =>
+    applyCssImportQualifiers(
+      postcss.parse(packageCss.css, { from: packageCss.resolved }).nodes,
+      qualifiers,
+    ),
+  );
+}
+
+/**
+ * Points each package stylesheet import at a file `emit` writes for it, keeping the import where
+ * it was so the imports after it stay valid.
+ */
+export async function linkPackageCssImports(
+  css: string,
+  containingPath: string,
+  emit: (packageCss: PackageCss) => Promise<string>,
+): Promise<string> {
+  return replacePackageCssImports(css, containingPath, async (packageCss, qualifiers) => [
+    postcss.atRule({
+      name: 'import',
+      params: serializeCssImport(await emit(packageCss), qualifiers),
+    }),
+  ]);
+}
+
+export interface PackageCss {
+  readonly importPath: string;
+  readonly resolved: string;
+  readonly css: string;
+}
+
+async function replacePackageCssImports(
+  css: string,
+  containingPath: string,
+  replace: (packageCss: PackageCss, qualifiers: string) => Promise<postcss.ChildNode[]>,
+): Promise<string> {
+  if (!css.includes('@import')) {
+    return css;
+  }
+  const root = postcss.parse(css, { from: containingPath });
+  const imports: postcss.AtRule[] = [];
+  root.walkAtRules('import', (rule) => {
+    imports.push(rule);
   });
+  let changed = false;
+  for (const rule of imports) {
+    const parsed = parseCssImport(rule.params);
+    if (!parsed || !isPackageCssImport(parsed.path)) {
+      continue;
+    }
+    let resolved: string;
+    try {
+      resolved = createRequire(containingPath).resolve(parsed.path);
+    } catch {
+      throw new Error(
+        `Unable to resolve CSS @import "${parsed.path}" at ${sourceLocation(containingPath, rule)}. Is the package installed and does it export that stylesheet?`,
+      );
+    }
+    const packageSource = await inlineSourceAppImports(
+      await readFile(resolved),
+      resolved,
+      path.dirname(resolved),
+    );
+    const inlined = postcss.parse(packageSource, { from: resolved });
+    inlined.walkAtRules('charset', (charset) => {
+      charset.remove();
+    });
+    rule.replaceWith(
+      ...(await replace(
+        { importPath: parsed.path, resolved, css: inlined.toString() },
+        parsed.qualifiers,
+      )),
+    );
+    changed = true;
+  }
+  return changed ? root.toString() : css;
+}
+
+/**
+ * Imports only some stylesheets resolve: a package stylesheet only from app.css, and the `@app/`
+ * alias only from a page's stylesheet. Anywhere else the import would reach the browser as a path
+ * it cannot load, so the build stops instead.
+ */
+export function assertCssImportsResolve(
+  css: string,
+  filePath: string,
+  resolves: { readonly packages?: boolean; readonly appAlias?: boolean } = {},
+): void {
+  if (!css.includes('@import')) {
+    return;
+  }
+  postcss.parse(css, { from: filePath }).walkAtRules('import', (rule) => {
+    const parsed = parseCssImport(rule.params);
+    if (!parsed) return;
+    if (!resolves.packages && isPackageCssImport(parsed.path)) {
+      throw new Error(
+        `CSS @import "${parsed.path}" at ${sourceLocation(filePath, rule)}: package stylesheets can only be imported from src/frontend/app/app.css.`,
+      );
+    }
+    if (!resolves.appAlias && parsed.path.startsWith('@app/')) {
+      throw new Error(
+        `CSS @import "${parsed.path}" at ${sourceLocation(filePath, rule)}: @app/ can only be used in a page's stylesheet.`,
+      );
+    }
+  });
+}
+
+/** `file:line` of an at-rule, for build errors. */
+function sourceLocation(filePath: string, rule: postcss.AtRule): string {
+  const line = rule.source?.start?.line;
+  return line ? `${filePath}:${line}` : filePath;
+}
+
+export function isPackageCssImport(importPath: string): boolean {
+  // `@app/` is Webstir's alias for the app's own stylesheets, not a package scope.
+  return (
+    !importPath.startsWith('@app/') &&
+    /^@[a-z0-9][\w.-]*\/[a-z0-9][\w.-]*\/[^?#]+\.css$/i.test(importPath)
+  );
 }
 
 export async function inlineCssImports(
@@ -28,6 +170,7 @@ export async function inlineCssImports(
   containingPath: string,
   permittedRoot: string,
   resolveImport: CssImportResolver,
+  checkImported?: (css: string, filePath: string) => void,
   importStack: string[] = [],
 ): Promise<string> {
   const canonicalRoot = await realpath(permittedRoot);
@@ -51,25 +194,32 @@ export async function inlineCssImports(
       continue;
     }
     if (!(await pathExists(resolved))) {
-      throw new Error(`Unable to resolve local CSS @import: ${parsed.path} from ${containingPath}`);
+      throw new Error(
+        `Unable to resolve local CSS @import: ${parsed.path} at ${sourceLocation(containingPath, rule)}`,
+      );
     }
 
     const canonicalImport = await realpath(resolved);
     if (!isWithinOrEqual(canonicalImport, canonicalRoot)) {
       throw new Error(
-        `CSS @import escapes the permitted stylesheet root: ${parsed.path} from ${containingPath}`,
+        `CSS @import escapes the permitted stylesheet root: ${parsed.path} at ${sourceLocation(containingPath, rule)}`,
       );
     }
     if (stack.includes(canonicalImport)) {
       const cycle = [...stack, canonicalImport].map((file) => path.basename(file)).join(' -> ');
-      throw new Error(`Circular CSS @import detected: ${cycle}`);
+      throw new Error(
+        `Circular CSS @import detected: ${cycle} (at ${sourceLocation(containingPath, rule)})`,
+      );
     }
 
+    const source = await readFile(canonicalImport);
+    checkImported?.(source, canonicalImport);
     const importedCss = await inlineCssImports(
-      await readFile(canonicalImport),
+      source,
       canonicalImport,
       canonicalRoot,
       resolveImport,
+      checkImported,
       [...stack, canonicalImport],
     );
     const importedRoot = postcss.parse(importedCss, { from: canonicalImport });
@@ -278,7 +428,7 @@ function readCssFunction(input: string, openIndex: number): { value: string; end
   return null;
 }
 
-function applyCssImportQualifiers(
+export function applyCssImportQualifiers(
   importedNodes: postcss.ChildNode[],
   qualifiers: string,
 ): postcss.ChildNode[] {
