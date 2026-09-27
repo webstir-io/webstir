@@ -187,7 +187,7 @@ function copyMetadata(element: Element, url: string, baseHref: string | null): E
   for (const attribute of Array.from(element.attributes)) {
     copy.setAttribute(attribute.name, attribute.value);
   }
-  // This document keeps its own address and <base>, so a relative href is fixed to the page's.
+  // This document keeps its own <base>, so a relative href is fixed to the page's.
   const href = element.getAttribute('href');
   if (href !== null) {
     const resolved = resolveMetadataHref({ href, url, baseHref });

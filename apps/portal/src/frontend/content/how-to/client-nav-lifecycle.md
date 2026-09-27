@@ -42,7 +42,7 @@ There is no initial `webstir:client-nav` event, preserving its existing meaning.
 For a successful document visit:
 
 1. Abort the outgoing page signal and await its registered cleanup in reverse order.
-2. Synchronize styles, replace `<main>`, update title, page metadata and history, and restore focus/scroll.
+2. Synchronize styles, update history, title and page metadata, replace `<main>`, and restore focus/scroll.
 3. Load incoming head scripts, then activate scripts inside `<main>`.
 4. Import the page entry at its existing URL and call its setup export.
 5. Emit `webstir:client-nav` with the existing `detail.url`.

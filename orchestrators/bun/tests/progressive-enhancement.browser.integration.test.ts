@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { chromium, type Browser, type Page } from 'playwright';
+import { chromium, type Browser, type Page, type Route } from 'playwright';
 
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -432,7 +432,8 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
 
 // The title, named meta and page links follow the page on screen, and so does the referrer policy:
 // leaving a page whose meta says no-referrer sends Referer again, as a full load of the next page
-// would. A relative canonical resolves against the page's own <base>, not this document's.
+// would, and only ever with the new page's address. A relative canonical resolves against the
+// page's own <base>, not this document's.
 async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
   const html = (title: string, head: string, main: string) =>
     `<!doctype html><html><head><title>${title}</title>${head}</head><body><main>${main}</main></body></html>`;
@@ -449,7 +450,20 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
           '<base href="/client-nav-base/"><meta name="referrer" content="no-referrer">' +
             '<meta name="description" content="Private">' +
             '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-no-referrer">',
-          '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-origin-policy" href="/client-nav-origin-policy">on</a>',
+          '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-plain" href="/client-nav-plain">on</a>',
+        ),
+      ),
+    ),
+  );
+  // Its frame starts loading the moment the content goes in.
+  await page.route(`${origin}/client-nav-plain`, (route) =>
+    route.fulfill(
+      fulfillPage(
+        html(
+          '',
+          '',
+          '<h1 id="plain-heading">Plain</h1><iframe src="/client-nav-referer-frame"></iframe>' +
+            '<a id="to-origin-policy" href="/client-nav-origin-policy">on</a>',
         ),
       ),
     ),
@@ -460,20 +474,9 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
         html(
           'Origin Policy',
           '<meta name="description" content="Public">',
-          '<h1 id="origin-policy-heading">Origin Policy</h1><a id="to-plain" href="/client-nav-plain">on</a>',
+          '<h1 id="origin-policy-heading">Origin Policy</h1><a id="to-main-referrer" href="/client-nav-main-referrer">on</a>',
         ),
         { 'referrer-policy': 'origin' },
-      ),
-    ),
-  );
-  await page.route(`${origin}/client-nav-plain`, (route) =>
-    route.fulfill(
-      fulfillPage(
-        html(
-          '',
-          '',
-          '<h1 id="plain-heading">Plain</h1><a id="to-main-referrer" href="/client-nav-main-referrer">on</a>',
-        ),
       ),
     ),
   );
@@ -488,13 +491,19 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       ),
     ),
   );
+  const readReferer = async (route: Route) => (await route.request().allHeaders()).referer ?? '';
   await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
     route.fulfill({
       status: 200,
       headers: { 'content-type': 'text/plain' },
-      body: (await route.request().allHeaders()).referer ?? '',
+      body: await readReferer(route),
     }),
   );
+  let frameReferer: string | undefined;
+  await page.route(`${origin}/client-nav-referer-frame`, async (route) => {
+    frameReferer = await readReferer(route);
+    await route.fulfill(fulfillPage('<!doctype html><p>frame</p>'));
+  });
   const probeReferer = () =>
     page.evaluate(() => fetch('/client-nav-referer-probe').then((response) => response.text()));
   const readMetadata = () =>
@@ -527,22 +536,24 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   });
   expect(await probeReferer()).toBe('');
 
-  await page.locator('#to-origin-policy').click({ noWaitAfter: true });
-  await page.locator('#origin-policy-heading').waitFor({ state: 'visible' });
+  await page.locator('#to-plain').click({ noWaitAfter: true });
+  await page.locator('#plain-heading').waitFor({ state: 'visible' });
+  expect(await page.title()).toBe('');
   expect(await readMetadata()).toEqual({
     referrer: null,
-    description: 'Public',
+    description: null,
     robots: null,
     canonical: null,
     viewport,
   });
-  expect(await probeReferer()).toBe(`${origin}/`);
-
-  await page.locator('#to-plain').click({ noWaitAfter: true });
-  await page.locator('#plain-heading').waitFor({ state: 'visible' });
-  expect(await page.title()).toBe('');
-  expect((await readMetadata()).description).toBeNull();
   expect(await probeReferer()).toBe(`${origin}/client-nav-plain`);
+  await waitFor(async () => expect(frameReferer).toBeDefined(), 5_000);
+  expect(frameReferer).toBe(`${origin}/client-nav-plain`);
+
+  await page.locator('#to-origin-policy').click({ noWaitAfter: true });
+  await page.locator('#origin-policy-heading').waitFor({ state: 'visible' });
+  expect((await readMetadata()).description).toBe('Public');
+  expect(await probeReferer()).toBe(`${origin}/`);
 
   // A referrer meta in the page's content applies after its head's, as in a full load.
   await page.locator('#to-main-referrer').click({ noWaitAfter: true });
@@ -550,8 +561,8 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(await probeReferer()).toBe(`${origin}/`);
   expect(await readClientNavEvents(page)).toEqual([
     '/client-nav-no-referrer',
-    '/client-nav-origin-policy',
     '/client-nav-plain',
+    '/client-nav-origin-policy',
     '/client-nav-main-referrer',
   ]);
 

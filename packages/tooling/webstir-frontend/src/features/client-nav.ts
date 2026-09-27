@@ -475,19 +475,20 @@ async function renderDocumentHtml(
   await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
 
-  syncHeadMetadata(doc, options.url, options.referrerPolicy);
-  const newMain = doc.querySelector('main');
-  const currentMain = document.querySelector('main');
-  if (newMain && currentMain) {
-    currentMain.replaceWith(newMain);
-  }
-
+  // The address changes before the page's referrer policy and content arrive, so a request the
+  // content starts on insertion never carries the outgoing address under the incoming policy.
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
   } else if (options.history === 'replace') {
     window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
+  syncHeadMetadata(doc, options.url, options.referrerPolicy);
+  const newMain = doc.querySelector('main');
+  const currentMain = document.querySelector('main');
+  if (newMain && currentMain) {
+    currentMain.replaceWith(newMain);
+  }
   const anchor = fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();
