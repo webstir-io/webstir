@@ -52,9 +52,11 @@ behavior without appropriate app tests and browser checks.
 ## Repair and instruction updates
 
 Use `repair --dry-run --json` to inspect proposed scaffold restoration before
-applying it. Repair restores missing scaffold files; application defects need
-application code changes. Starter tests belong to the app after generation;
-repair does not recreate deleted starter tests. Keep unrelated user changes intact.
+applying it. Repair restores missing scaffold files the app still needs (the app
+shell, entries, and files something still imports or references); application
+defects need application code changes. Starter files and tests belong to the app
+after generation; repair does not recreate ones the app removed. Keep unrelated
+user changes intact.
 
 This file belongs to the app after generation. Repair restores it only when it
 is missing and leaves existing contents unchanged. Its absence does not make the

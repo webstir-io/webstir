@@ -93,7 +93,9 @@ test('MCP inspect_workspace preserves structured output when inspection is unhea
   });
 
   try {
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html'), { force: true });
+    await rm(path.join(copiedWorkspace.workspaceRoot, 'src', 'shared', 'tsconfig.json'), {
+      force: true,
+    });
 
     const result = await client.callTool({
       name: 'inspect_workspace',
@@ -482,7 +484,13 @@ test('MCP repair tools reject unsafe fixed destinations without reporting a repa
     workspaceName: 'site',
   });
   const externalRoot = await mkdtemp(path.join(os.tmpdir(), 'webstir-mcp-repair-symlink-outside-'));
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'app',
+    'app.html',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -523,7 +531,13 @@ test('MCP repair tools reject malformed frontend config without reporting a repa
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-mcp-invalid-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'app',
+    'app.html',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,

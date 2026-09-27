@@ -31,36 +31,204 @@ async function runCli(args: readonly string[]): Promise<{
   };
 }
 
-test('CLI repair restores missing scaffold files in a SPA workspace', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-spa-', {
-    workspaceName: 'spa',
-  });
+// Files a mature full-mode app removes when it moves to server-rendered views. Nothing it keeps
+// names them, so repair must leave them absent.
+const REMOVED_BY_MATURE_APP = [
+  'Errors.404.html',
+  'Errors.500.html',
+  'Errors.default.html',
+  'types.global.d.ts',
+  'types/global.d.ts',
+  'src/frontend/app/error.ts',
+  'src/frontend/app/hmr.js',
+  'src/frontend/app/refresh.js',
+  'src/frontend/app/navigation.ts',
+  'src/frontend/app/router.ts',
+  'src/frontend/app/styles/base.css',
+  'src/frontend/pages/lifecycle/index.html',
+  'src/frontend/pages/lifecycle/index.ts',
+  'src/shared/router-types.ts',
+  'src/shared/tsconfig.json',
+  'src/shared/types/index.ts',
+];
 
-  try {
-    const missingRoot = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
-    const missingFrontend = path.join(
-      copiedWorkspace.workspaceRoot,
-      'src',
-      'frontend',
-      'app',
-      'app.html',
-    );
-    await rm(missingRoot, { force: true });
-    await rm(missingFrontend, { force: true });
+async function writeJson(filePath: string, value: unknown): Promise<void> {
+  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
 
-    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('[webstir] repair complete');
-    expect(result.stdout).toContain('dry-run: false');
-    expect(result.stdout).toContain('Errors.404.html');
-    expect(result.stdout).toContain('src/frontend/app/app.html');
-    expect(existsSync(missingRoot)).toBe(true);
-    expect(existsSync(missingFrontend)).toBe(true);
-  } finally {
-    await removeDemoWorkspace(copiedWorkspace);
+// The shape of a real app: its own instructions, project references in tsconfig.json,
+// base.tsconfig.json only shared compiler options, no src/shared, and an app shell that loads no
+// dev runtime scripts.
+async function matureFullApp(root: string): Promise<void> {
+  await writeFile(path.join(root, 'AGENTS.md'), '# App instructions\n', 'utf8');
+  for (const relative of REMOVED_BY_MATURE_APP) {
+    await rm(path.join(root, relative), { force: true });
   }
-});
+  const app = path.join(root, 'src', 'frontend', 'app');
+  await writeFile(
+    path.join(app, 'app.ts'),
+    "import '@webstir-io/webstir-frontend/features/client-nav';\n",
+    'utf8',
+  );
+  const shell = await readFile(path.join(app, 'app.html'), 'utf8');
+  await writeFile(
+    path.join(app, 'app.html'),
+    shell.replace(/\s*<script[^>]*src="\/(?:hmr|refresh)\.js"[^>]*><\/script>/g, ''),
+    'utf8',
+  );
+  const basePath = path.join(root, 'base.tsconfig.json');
+  const base = JSON.parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
+  delete base.files;
+  delete base.references;
+  await writeJson(basePath, base);
+  await writeJson(path.join(root, 'tsconfig.json'), {
+    files: [],
+    references: [{ path: 'src/frontend' }, { path: 'src/backend' }],
+  });
+  const frontendPath = path.join(root, 'src', 'frontend', 'tsconfig.json');
+  const frontend = JSON.parse(await readFile(frontendPath, 'utf8')) as {
+    compilerOptions: Record<string, unknown>;
+    references?: unknown;
+  };
+  delete frontend.compilerOptions.paths;
+  frontend.references = [];
+  await writeJson(frontendPath, frontend);
+}
+
+const templateRoot = path.join(packageRoot, 'assets', 'templates', 'full');
+
+test.each([
+  {
+    name: 'a mature app missing optional scaffold files is left alone',
+    prepare: async () => {},
+    restored: [],
+  },
+  {
+    name: 'an optional scaffold folder the app links elsewhere is neither checked nor written',
+    prepare: async (root: string) => {
+      const outside = path.join(path.dirname(root), 'outside-shared');
+      await mkdir(outside, { recursive: true });
+      await rm(path.join(root, 'src', 'shared'), { recursive: true, force: true });
+      await symlink(outside, path.join(root, 'src', 'shared'), 'dir');
+    },
+    restored: [],
+  },
+  {
+    name: 'a module the app entry still imports',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'app.ts'),
+        "import '@webstir-io/webstir-frontend/features/client-nav';\nvoid import('./error');\n",
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/error.ts'],
+  },
+  {
+    name: 'the modules a restored file imports, through the @shared alias',
+    prepare: async (root: string) => {
+      const pagePath = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts');
+      await writeFile(
+        pagePath,
+        `import '../../app/navigation.js';\n${await readFile(pagePath, 'utf8')}`,
+        'utf8',
+      );
+    },
+    restored: [
+      'src/frontend/app/navigation.ts',
+      'src/frontend/app/router.ts',
+      'src/shared/router-types.ts',
+    ],
+  },
+  {
+    name: 'a stylesheet app.css still imports',
+    prepare: async (root: string) => {
+      const cssPath = path.join(root, 'src', 'frontend', 'app', 'app.css');
+      await writeFile(
+        cssPath,
+        `@import "./styles/base.css";\n${await readFile(cssPath, 'utf8')}`,
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/styles/base.css'],
+  },
+  {
+    name: 'a dev runtime script the app shell still loads',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'app.html'),
+        await readFile(path.join(templateRoot, 'src', 'frontend', 'app', 'app.html'), 'utf8'),
+        'utf8',
+      );
+    },
+    restored: ['src/frontend/app/hmr.js', 'src/frontend/app/refresh.js'],
+  },
+  {
+    name: 'a project tsconfig still references',
+    prepare: async (root: string) => {
+      await writeJson(path.join(root, 'tsconfig.json'), {
+        files: [],
+        references: [{ path: 'src/shared' }, { path: 'src/frontend' }, { path: 'src/backend' }],
+      });
+    },
+    restored: ['src/shared/tsconfig.json'],
+  },
+  {
+    name: 'the app shell every frontend build reads',
+    prepare: async (root: string) => {
+      await rm(path.join(root, 'src', 'frontend', 'app', 'app.html'));
+    },
+    restored: [
+      'src/frontend/app/app.html',
+      'src/frontend/app/hmr.js',
+      'src/frontend/app/refresh.js',
+    ],
+  },
+  {
+    name: 'the app entry an enabled feature is imported from, with what it imports',
+    prepare: async (root: string) => {
+      await rm(path.join(root, 'src', 'frontend', 'app', 'app.ts'));
+    },
+    restored: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+  },
+  {
+    name: 'the backend entry',
+    prepare: async (root: string) => {
+      await rm(path.join(root, 'src', 'backend', 'index.ts'));
+    },
+    restored: ['src/backend/index.ts'],
+  },
+])(
+  'CLI repair restores only what a workspace still needs: $name',
+  async ({ prepare, restored }) => {
+    const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-needed-', {
+      workspaceName: 'full',
+    });
+    const root = copiedWorkspace.workspaceRoot;
+    try {
+      await matureFullApp(root);
+      await prepare(root);
+
+      const result = await runCli(['repair', '--json', '--workspace', root]);
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as { changes: string[] };
+      expect(parsed.changes).toEqual(
+        [...restored].sort((left, right) => left.localeCompare(right)),
+      );
+      for (const relative of restored) {
+        expect(existsSync(path.join(root, relative))).toBe(true);
+      }
+      for (const relative of REMOVED_BY_MATURE_APP.filter((file) => !restored.includes(file))) {
+        expect(existsSync(path.join(root, relative))).toBe(false);
+      }
+
+      const again = await runCli(['repair', '--dry-run', '--json', '--workspace', root]);
+      expect((JSON.parse(again.stdout) as { changes: string[] }).changes).toEqual([]);
+    } finally {
+      await removeDemoWorkspace(copiedWorkspace);
+    }
+  },
+);
 
 test('CLI repair supports dry-run without restoring files', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-spa-', {
@@ -68,7 +236,13 @@ test('CLI repair supports dry-run without restoring files', async () => {
   });
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.500.html');
+    const missingFile = path.join(
+      copiedWorkspace.workspaceRoot,
+      'src',
+      'frontend',
+      'app',
+      'app.html',
+    );
     await rm(missingFile, { force: true });
 
     const result = await runCli([
@@ -80,7 +254,7 @@ test('CLI repair supports dry-run without restoring files', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('dry-run: true');
-    expect(result.stdout).toContain('Errors.500.html');
+    expect(result.stdout).toContain('src/frontend/app/app.html');
     expect(existsSync(missingFile)).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
@@ -474,7 +648,13 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
   });
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    const missingFile = path.join(
+      copiedWorkspace.workspaceRoot,
+      'src',
+      'frontend',
+      'app',
+      'app.html',
+    );
     await rm(missingFile, { force: true });
 
     const result = await runCli([
@@ -501,20 +681,26 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
     expect(parsed.workspaceRoot).toBe(copiedWorkspace.workspaceRoot);
     expect(parsed.mode).toBe('spa');
     expect(parsed.dryRun).toBe(true);
-    expect(parsed.changes).toContain('Errors.404.html');
+    expect(parsed.changes).toEqual(['AGENTS.md', 'src/frontend/app/app.html']);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
-test('CLI repair preflights every asset before dry-run or mutation', async () => {
+test('CLI repair preflights every asset it restores before dry-run or mutation', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-assets-symlink-', {
     workspaceName: 'spa',
   });
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-assets-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  // Still named by base.tsconfig.json's references, so repair would restore it.
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'shared',
+    'tsconfig.json',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -554,7 +740,13 @@ test('CLI repair preflights enabled feature assets before restoring root assets'
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-feature-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  // Still named by base.tsconfig.json's references, so repair would restore it.
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'tsconfig.json',
+  );
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
   await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
 
@@ -592,7 +784,13 @@ test('CLI repair preflights backend provider assets before restoring root assets
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-backend-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  // Still named by base.tsconfig.json's references, so repair would restore it.
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'shared',
+    'tsconfig.json',
+  );
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
   await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
 

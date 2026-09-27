@@ -62,7 +62,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
   },
   {
     id: 'repair',
-    summary: 'Restore missing scaffold-managed files and wiring.',
+    summary: 'Restore scaffold files the workspace still needs, and wiring.',
     requiresWorkspace: true,
     mutatesWorkspace: true,
     supportsJson: true,

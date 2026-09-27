@@ -1,11 +1,9 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import ts from '@typescript/typescript6';
 
 import { findCssImportPaths } from './css-import-graph.ts';
 import type { PackagedFeature } from './feature-imports.ts';
-
-const SCRIPT_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.mts', '.cjs', '.cts']);
+import { SCRIPT_EXTENSIONS, scriptSpecifiers, workspaceFiles } from './workspace-sources.ts';
 
 /**
  * Files anywhere in the workspace (app code, tests, tooling) that would still use one of a
@@ -57,63 +55,6 @@ export async function findCopyReferences(
 
 function relativePath(workspaceRoot: string, filePath: string): string {
   return path.relative(workspaceRoot, filePath).split(path.sep).join('/');
-}
-
-const BUILD_OUTPUT = new Set(['dist', 'build', 'coverage']);
-
-async function workspaceFiles(root: string): Promise<string[]> {
-  const files: string[] = [];
-  const walk = async (directory: string): Promise<void> => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
-      if (directory === root && BUILD_OUTPUT.has(entry.name)) continue;
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) await walk(entryPath);
-      else if (entry.isFile()) files.push(entryPath);
-    }
-  };
-  await walk(root);
-  return files;
-}
-
-/**
- * Every module a script names, from TypeScript's syntax tree, so regexes, comments and strings are
- * read exactly: imports and re-exports (type-only included), import types, import() and require()
- * calls, and `import x = require()`.
- */
-function scriptSpecifiers(text: string, filePath: string): string[] {
-  const kind = /\.[jt]sx$/.test(filePath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  const source = ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, false, kind);
-  const specifiers: string[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteralLike(node.moduleSpecifier)
-    ) {
-      specifiers.push(node.moduleSpecifier.text);
-    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
-      const literal = node.argument.literal;
-      if (ts.isStringLiteralLike(literal)) specifiers.push(literal.text);
-    } else if (
-      ts.isCallExpression(node) &&
-      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-        (ts.isIdentifier(node.expression) && node.expression.text === 'require')) &&
-      node.arguments[0] &&
-      ts.isStringLiteralLike(node.arguments[0])
-    ) {
-      specifiers.push(node.arguments[0].text);
-    } else if (
-      ts.isImportEqualsDeclaration(node) &&
-      ts.isExternalModuleReference(node.moduleReference) &&
-      ts.isStringLiteralLike(node.moduleReference.expression)
-    ) {
-      specifiers.push(node.moduleReference.expression.text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(source);
-  return specifiers;
 }
 
 function withoutExtension(filePath: string): string {

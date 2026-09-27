@@ -81,14 +81,14 @@ test('repair preserves user-authored instructions byte for byte', async () => {
     const instructions = path.join(workspace, 'AGENTS.md');
     const customized = '# App-specific instructions\r\n\r\nKeep this exact content.\r\n';
     await writeFile(instructions, customized);
-    await rm(path.join(workspace, 'Errors.404.html'));
+    await rm(path.join(workspace, 'src', 'frontend', 'app', 'app.html'));
     for (const flags of [['--dry-run'], []]) {
       const result = runCli(['repair', '--json', ...flags, '--workspace', workspace]);
       expect(result.exitCode).toBe(0);
       expect(JSON.parse(result.stdout).changes).not.toContain('AGENTS.md');
       expect(await readFile(instructions, 'utf8')).toBe(customized);
     }
-    expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(true);
+    expect(existsSync(path.join(workspace, 'src', 'frontend', 'app', 'app.html'))).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -112,18 +112,18 @@ test('missing optional app instructions do not make an existing app unhealthy', 
     );
     expect(existsSync(path.join(workspace, 'AGENTS.md'))).toBe(false);
 
-    await rm(path.join(workspace, 'Errors.404.html'));
+    await rm(path.join(workspace, 'src', 'frontend', 'app', 'app.html'));
     const unhealthy = runCli(['doctor', '--json', '--workspace', workspace]);
     expect(unhealthy.exitCode).toBe(1);
     const drift = JSON.parse(unhealthy.stdout);
     expect(drift.healthy).toBe(false);
     expect(drift.issues).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: 'scaffold_drift', changes: ['Errors.404.html'] }),
+        expect.objectContaining({ code: 'scaffold_drift', changes: ['src/frontend/app/app.html'] }),
       ]),
     );
     expect(drift.repair.changes).toContain('AGENTS.md');
-    expect(drift.repair.changes).toContain('Errors.404.html');
+    expect(drift.repair.changes).toContain('src/frontend/app/app.html');
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -175,17 +175,17 @@ test('existing instruction links and directories do not block unrelated scaffold
       } else {
         await symlink(kind === 'symlink' ? external : path.join(root, 'missing.md'), instructions);
       }
-      await rm(path.join(workspace, 'Errors.404.html'));
+      await rm(path.join(workspace, 'src', 'frontend', 'app', 'app.html'));
 
       const preview = runCli(['repair', '--dry-run', '--json', '--workspace', workspace]);
       expect(preview.exitCode).toBe(0);
       expect(JSON.parse(preview.stdout).changes).not.toContain('AGENTS.md');
-      expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(false);
+      expect(existsSync(path.join(workspace, 'src', 'frontend', 'app', 'app.html'))).toBe(false);
 
       const repair = runCli(['repair', '--json', '--workspace', workspace]);
       expect(repair.exitCode).toBe(0);
       expect(JSON.parse(repair.stdout).changes).not.toContain('AGENTS.md');
-      expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(true);
+      expect(existsSync(path.join(workspace, 'src', 'frontend', 'app', 'app.html'))).toBe(true);
       const preserved = await lstat(instructions);
       expect(kind === 'directory' ? preserved.isDirectory() : preserved.isSymbolicLink()).toBe(
         true,
@@ -229,20 +229,20 @@ test('repair preserves removed starter tests while restoring required runtime fi
     const appTest = path.join(workspace, 'src', 'backend', 'tests', 'notes.test.ts');
     const appTestContent = '// Application-specific behavior checks belong here.\n';
     await writeFile(appTest, appTestContent);
-    await rm(path.join(workspace, 'Errors.404.html'));
+    await rm(path.join(workspace, 'src', 'frontend', 'app', 'app.html'));
 
     for (const flags of [['--dry-run'], []]) {
       const result = runCli(['repair', '--json', ...flags, '--workspace', workspace]);
       expect(result.exitCode).toBe(0);
       const changes = JSON.parse(result.stdout).changes;
-      expect(changes).toContain('Errors.404.html');
+      expect(changes).toContain('src/frontend/app/app.html');
       for (const relativePath of removedTests) {
         expect(changes).not.toContain(relativePath);
         expect(existsSync(path.join(workspace, relativePath))).toBe(false);
       }
       expect(await readFile(appTest, 'utf8')).toBe(appTestContent);
     }
-    expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(true);
+    expect(existsSync(path.join(workspace, 'src', 'frontend', 'app', 'app.html'))).toBe(true);
     const diagnosis = runCli(['doctor', '--json', '--workspace', workspace]);
     expect(diagnosis).toMatchObject({ exitCode: 0 });
     expect(JSON.parse(diagnosis.stdout).healthy).toBe(true);

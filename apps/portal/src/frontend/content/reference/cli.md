@@ -75,8 +75,8 @@ Notes:
 Usage: `webstir repair --workspace <path> [--dry-run]`
 
 What it does:
-- Restores missing scaffold-managed files for the current workspace mode
-- Uses the current mode scaffold plus any explicitly enabled feature assets
+- Restores missing scaffold files the workspace still needs, from the current mode scaffold plus any explicitly enabled feature assets: the app shell (`src/frontend/app/app.html`), the app entry an enabled feature is imported from, the backend entry, and any file that existing code, stylesheets, HTML or tsconfig references still name, together with what those restored files import
+- Leaves optional starter files the app removed alone (error pages, starter pages, router files, shared types, global type files), so a mature app is not re-scaffolded
 - Re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, `backend`, and `githubPages`
 - With `clientNav`, `search` or `contentNav`, switches an app from the copies older versions wrote to the package imports, leaving edited or still-imported copies in place with a note
 - For package-managed enabled backends, restores the backend package scaffold instead of reintroducing stale mode-template backend files
@@ -84,6 +84,7 @@ What it does:
 
 Notes:
 - `--dry-run` reports which files or scaffold-managed edits would be restored without writing anything
+- To bring back a starter file nothing references, copy it from a fresh `webstir init` of the same mode
 - This is the Bun-native recovery path when a workspace is missing expected scaffold files but you do not want the full reset behavior of `refresh`
 
 ### enable

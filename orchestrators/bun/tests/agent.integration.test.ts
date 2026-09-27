@@ -80,7 +80,13 @@ test('CLI agent repair restores scaffold drift and re-validates the workspace', 
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-agent-repair-spa-');
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    const missingFile = path.join(
+      copiedWorkspace.workspaceRoot,
+      'src',
+      'frontend',
+      'app',
+      'app.html',
+    );
     await rm(missingFile, { force: true });
 
     const result = await runCli([
@@ -108,7 +114,7 @@ test('CLI agent repair restores scaffold drift and re-validates the workspace', 
     expect(parsed.steps).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'repair', status: 'completed' })]),
     );
-    expect(parsed.repair?.changes).toContain('Errors.404.html');
+    expect(parsed.repair?.changes).toContain('src/frontend/app/app.html');
     expect(parsed.doctor?.healthy).toBe(true);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
@@ -119,7 +125,9 @@ test('CLI agent inspect still returns backend manifest when scaffold drift exist
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-agent-inspect-api-');
 
   try {
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html'), { force: true });
+    await rm(path.join(copiedWorkspace.workspaceRoot, 'src', 'shared', 'tsconfig.json'), {
+      force: true,
+    });
 
     const result = await runCli(
       ['agent', 'inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],
@@ -260,7 +268,13 @@ test('CLI agent repair rejects unsafe fixed destinations without partial repair'
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-agent-repair-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'app',
+    'app.html',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -296,7 +310,13 @@ test('CLI agent repair rejects malformed frontend config without partial repair'
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-agent-invalid-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'app',
+    'app.html',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,

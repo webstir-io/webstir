@@ -21,6 +21,8 @@ import {
 import { classifyHmrClient, migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
+import { selectNeededScaffoldAssets } from './scaffold-needs.ts';
+import { parseTsconfigText } from './workspace-sources.ts';
 
 interface RepairAsset extends ScaffoldAssetDescriptor {
   readonly executable?: boolean;
@@ -90,9 +92,16 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     }
   }
 
-  const preparedAssets = await preflightScaffoldAssets(
+  // A scaffold file comes back only when the workspace still needs it; the rest are the app's to
+  // keep or remove.
+  const neededAssets = await selectNeededScaffoldAssets(
     workspace.root,
     hasAppInstructions ? assets.filter((asset) => asset.targetPath !== 'AGENTS.md') : assets,
+    getRequiredScaffoldTargets(workspace.root, workspace.mode, enable),
+  );
+  const preparedAssets = await preflightScaffoldAssets(
+    workspace.root,
+    neededAssets,
     'restore scaffold assets',
   );
   await preflightWorkspaceWriteTargets(
@@ -148,6 +157,35 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     changes: uniqueSorted(changes),
     notes,
   };
+}
+
+const BACKEND_ENTRIES = ['index.ts', 'index.tsx', 'index.js', 'index.mjs'];
+
+// What the workspace cannot work without, whether or not anything names it: the app shell every
+// frontend build reads, the app entry an enabled feature is imported from, and the backend entry.
+// Missing app instructions are restored too; they are guidance the app can then edit or delete.
+function getRequiredScaffoldTargets(
+  workspaceRoot: string,
+  mode: string,
+  enable: RepairEnableFlags,
+): readonly string[] {
+  const targets = ['AGENTS.md'];
+  if (mode !== 'api') {
+    targets.push(path.join('src', 'frontend', 'app', 'app.html'));
+  }
+  if (
+    (enable.clientNav || enable.search || enable.contentNav) &&
+    !appEntryPaths(workspaceRoot).some((entryPath) => existsSync(entryPath))
+  ) {
+    targets.push(path.join('src', 'frontend', 'app', 'app.ts'));
+  }
+  if (
+    (enable.backend || mode === 'api' || mode === 'full') &&
+    !BACKEND_ENTRIES.some((entry) => existsSync(path.join(workspaceRoot, 'src', 'backend', entry)))
+  ) {
+    targets.push(path.join('src', 'backend', 'index.ts'));
+  }
+  return targets;
 }
 
 function getFixedRepairWriteTargets(
@@ -354,7 +392,7 @@ async function ensureBackendTsReference(
   dryRun: boolean,
 ): Promise<void> {
   const tsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
-  if (!existsSync(tsconfigPath)) {
+  if (!existsSync(tsconfigPath) || (await solutionReferencesBackend(workspaceRoot))) {
     return;
   }
 
@@ -379,6 +417,30 @@ async function ensureBackendTsReference(
     await Bun.write(tsconfigPath, updated);
   }
   changes.push(relativeWorkspacePath(workspaceRoot, tsconfigPath));
+}
+
+// An app may keep its project references in tsconfig.json and use base.tsconfig.json only for
+// shared compiler options; a backend referenced there needs nothing added to the base.
+async function solutionReferencesBackend(workspaceRoot: string): Promise<boolean> {
+  const solutionPath = path.join(workspaceRoot, 'tsconfig.json');
+  if (!existsSync(solutionPath)) {
+    return false;
+  }
+  const config = parseTsconfigText(await readTextFile(solutionPath), solutionPath);
+  const references = (config as { references?: unknown } | undefined)?.references;
+  const backendPath = path.join(workspaceRoot, 'src', 'backend');
+  return (
+    Array.isArray(references) &&
+    references.some((entry) => {
+      const referencePath = (entry as { path?: unknown } | null)?.path;
+      return (
+        typeof referencePath === 'string' &&
+        [backendPath, path.join(backendPath, 'tsconfig.json')].includes(
+          path.resolve(workspaceRoot, referencePath),
+        )
+      );
+    })
+  );
 }
 
 async function ensureGithubPagesDeployScript(

@@ -79,7 +79,9 @@ test('CLI inspect still returns backend details when diagnosis fails', async () 
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-inspect-api-');
 
   try {
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html'), { force: true });
+    await rm(path.join(copiedWorkspace.workspaceRoot, 'src', 'shared', 'tsconfig.json'), {
+      force: true,
+    });
 
     const result = await runCli(
       ['inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],

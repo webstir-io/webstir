@@ -206,7 +206,13 @@ test('CLI repair preflights late fixed config targets before dry-run or asset re
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-fixed-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'app',
+    'app.html',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,
@@ -242,7 +248,13 @@ test('CLI repair rejects invalid frontend config before dry-run or asset restora
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-invalid-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'frontend',
+    'app',
+    'app.html',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,
@@ -275,7 +287,12 @@ test('CLI repair rejects invalid frontend config before dry-run or asset restora
 
 test('CLI repair preflights mode-owned tsconfig before dry-run or asset restoration', async () => {
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-repair-fixed-tsconfig-');
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src',
+    'shared',
+    'tsconfig.json',
+  );
   const tsconfigPath = path.join(copiedWorkspace.workspaceRoot, 'base.tsconfig.json');
   const externalTsconfigPath = path.join(copiedWorkspace.cleanupRoot, 'outside-tsconfig.json');
   const tsconfig = await readFile(tsconfigPath, 'utf8');

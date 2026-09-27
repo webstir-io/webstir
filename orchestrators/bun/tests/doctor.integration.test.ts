@@ -50,7 +50,13 @@ test('CLI doctor reports scaffold drift and suggests repair', async () => {
   });
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    const missingFile = path.join(
+      copiedWorkspace.workspaceRoot,
+      'src',
+      'frontend',
+      'app',
+      'app.html',
+    );
     await rm(missingFile, { force: true });
 
     const result = await runCli(['doctor', '--workspace', copiedWorkspace.workspaceRoot]);
@@ -61,7 +67,7 @@ test('CLI doctor reports scaffold drift and suggests repair', async () => {
     expect(result.stdout).toContain('healthy: false');
     expect(result.stdout).toContain('scaffold: fail');
     expect(result.stdout).toContain('scaffold_drift');
-    expect(result.stdout).toContain('Errors.404.html');
+    expect(result.stdout).toContain('src/frontend/app/app.html');
     expect(result.stdout).toContain(
       `repair: webstir repair --workspace ${copiedWorkspace.workspaceRoot}`,
     );

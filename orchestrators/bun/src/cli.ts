@@ -81,7 +81,7 @@ Commands:
   build      Build a Webstir workspace with the Bun orchestrator.
   publish    Publish a Webstir workspace with the Bun orchestrator.
   enable     Scaffold an optional Webstir feature into a workspace.
-  repair     Restore missing scaffold-managed workspace files.
+  repair     Restore scaffold files the workspace still needs and apply Webstir migrations.
   refresh    Reset and re-scaffold an existing valid Webstir workspace.
   watch      Run the Bun dev loop for a supported Webstir workspace.
 
