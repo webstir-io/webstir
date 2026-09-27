@@ -1905,6 +1905,10 @@ const countRoute = {
       case 'slow':
         await new Promise((resolve) => setTimeout(resolve, 50));
         return { status: 303, redirect: { location } };
+      case 'signed-out':
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        ctx.session = null;
+        return { status: 303, redirect: { location } };
       case 'replaced':
         // An action may hand back a new session object; the submission is recorded on that one.
         ctx.session = { ...ctx.session, lastCount: counted };
@@ -2217,6 +2221,12 @@ async function assertRenderedViewRuntimeBehavior() {
     ]);
     assert.deepEqual(concurrent, ['/clients?n=12#top', '/clients?n=12#top']);
     assert.equal(await count({ header: 'submission-0007', as: 'slow' }), '/clients?n=12#top');
+    // An action that ends the session still answers the copies waiting on it.
+    const signedOut = await Promise.all([
+      count({ header: 'submission-0009', as: 'signed-out' }),
+      count({ header: 'submission-0009', as: 'signed-out' }),
+    ]);
+    assert.deepEqual(signedOut, ['/clients?n=13#top', '/clients?n=13#top']);
 
     const actionMissing = await fetch(`${base}/action-missing`, {
       method: 'POST',

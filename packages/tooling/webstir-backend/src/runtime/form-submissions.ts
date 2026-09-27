@@ -49,10 +49,10 @@ export async function claimSubmission(
   running.set(key, done);
   return {
     record(committed, status, location, now) {
-      if (committed && location && REPLAYABLE_REDIRECTS.has(status)) {
-        recordSubmission(committed, id, location, now);
-        recorded = location;
-      }
+      if (!location || !REPLAYABLE_REDIRECTS.has(status)) return;
+      // Copies already waiting get the answer even when the action ended the session.
+      recorded = location;
+      if (committed) recordSubmission(committed, id, location, now);
     },
     release() {
       if (running.get(key) === done) running.delete(key);
