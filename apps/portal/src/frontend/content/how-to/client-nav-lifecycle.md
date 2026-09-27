@@ -42,7 +42,7 @@ There is no initial `webstir:client-nav` event, preserving its existing meaning.
 For a successful document visit:
 
 1. Abort the outgoing page signal and await its registered cleanup in reverse order.
-2. Synchronize styles, replace `<main>`, update title and history, and restore focus/scroll.
+2. Synchronize styles, replace `<main>`, update title, page metadata and history, and restore focus/scroll.
 3. Load incoming head scripts, then activate scripts inside `<main>`.
 4. Import the page entry at its existing URL and call its setup export.
 5. Emit `webstir:client-nav` with the existing `detail.url`.
@@ -65,6 +65,33 @@ Native document departures keep browser lifetime semantics, including BFCache.
 Ordinary links without enhancement, opt-outs, modifier clicks, non-self targets,
 downloads, external links, and same-document anchors keep native behavior.
 The framework does not decide authentication policy.
+
+## What follows the page in `<head>`
+
+Client-nav keeps the document it started in and brings the parts of the new
+page's `<head>` that describe that page:
+
+- **Title:** the new page's `<title>`.
+- **Styles:** the new page's stylesheets load before the swap and the old page's
+  are removed after it; `app.css` stays. `<style data-critical>` is replaced.
+- **Scripts:** the old page's entry script goes, and the new page's head scripts
+  load after the swap. The client-nav, `hmr.js` and `refresh.js` scripts stay.
+- **Page metadata:** every `<meta name>` except `viewport`, every
+  `<meta property>` (Open Graph), and `<link>`s whose rel is only `canonical`,
+  `alternate`, `prev` or `next`. The old page's are removed and the new page's
+  added in its order, with relative `href`s resolved against the new address, so
+  a page that lacks a `description`, `robots`, `theme-color` or canonical does
+  not inherit the previous page's.
+- **Referrer policy:** what a full load of the new page would give: its last
+  valid `<meta name="referrer">`, else its `Referrer-Policy` header, else the
+  browser default (`strict-origin-when-cross-origin`). A page that sets
+  `no-referrer` to keep a token in its address out of `Referer` does so only
+  while it is on screen.
+
+Everything else stays as the first load left it: `charset`, `viewport`,
+`http-equiv` (a Content-Security-Policy included), `<base>`, icons, the manifest,
+preloads and inline head scripts. A page that needs a different one of those
+should opt its links out with `data-client-nav="off"` so it loads in full.
 
 ## Redirects keep their destination
 

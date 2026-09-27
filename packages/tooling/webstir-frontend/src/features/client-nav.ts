@@ -30,12 +30,13 @@ import {
   type HistoryMode,
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
+import { syncHeadMetadata } from './head-metadata.js';
 
 export {};
 
 /**
  * Minimal document navigation enhancement: swaps the <main> content, updates
- * title/URL, restores scroll/focus, and can consume fragment responses from
+ * title, page metadata and URL, restores scroll/focus, and can consume fragment responses from
  * enhanced POST forms.
  *
  * Opt out per-link with:
@@ -441,9 +442,10 @@ async function renderDocumentResponse(
       return;
     }
   }
+  const referrerPolicy = response.headers.get('referrer-policy');
   const commit = commitQueue.then(async () => {
     if (requestId !== activeRequestId) return;
-    await renderDocumentHtml(doc, options, requestId, prepared);
+    await renderDocumentHtml(doc, { ...options, referrerPolicy }, requestId, prepared);
   });
   commitQueue = commit.catch(() => {});
   try {
@@ -456,7 +458,11 @@ async function renderDocumentResponse(
 
 async function renderDocumentHtml(
   doc: Document,
-  options: { readonly history: HistoryMode; readonly url: string },
+  options: {
+    readonly history: HistoryMode;
+    readonly url: string;
+    readonly referrerPolicy: string | null;
+  },
   requestId: number,
   prepared?: PreparedPage,
 ): Promise<void> {
@@ -479,6 +485,7 @@ async function renderDocumentHtml(
   if (newTitle && newTitle.textContent) {
     document.title = newTitle.textContent;
   }
+  syncHeadMetadata(doc, options.url, options.referrerPolicy);
 
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);

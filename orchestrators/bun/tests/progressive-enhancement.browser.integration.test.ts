@@ -148,6 +148,8 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
       await assertFragmentUpdateAndFocus(fragmentPage);
       setScenarioStep(progress, 'verify document navigation browser boundaries');
       await assertDocumentNavigationBoundaries(fragmentPage, origin);
+      setScenarioStep(progress, 'bring the page metadata along');
+      await assertHeadMetadataFollowsPage(fragmentPage, origin);
     } finally {
       await fragmentContext.close().catch(() => undefined);
     }
@@ -423,6 +425,107 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
   await waitForPathname(page, '/client-nav-http-error-fixture');
   expect(httpErrorFallbackRequests).toBeGreaterThan(0);
   expect(await readClientNavEvents(page)).toEqual([]);
+
+  await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
+  await page.locator('#demo-name').waitFor({ state: 'visible' });
+}
+
+// Named meta and page links follow the page on screen, and so does the referrer policy: leaving a
+// page whose meta says no-referrer sends Referer again, as a full load of the next page would.
+async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
+  const html = (title: string, head: string, main: string) =>
+    `<!doctype html><html><head><title>${title}</title>${head}</head><body><main>${main}</main></body></html>`;
+  const fulfillPage = (body: string, headers: Record<string, string> = {}) => ({
+    status: 200,
+    headers: { 'content-type': 'text/html; charset=utf-8', ...headers },
+    body,
+  });
+  await page.route(`${origin}/client-nav-no-referrer`, (route) =>
+    route.fulfill(
+      fulfillPage(
+        html(
+          'No Referrer',
+          '<meta name="referrer" content="no-referrer"><meta name="description" content="Private">' +
+            '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-no-referrer">',
+          '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-origin-policy" href="/client-nav-origin-policy">on</a>',
+        ),
+      ),
+    ),
+  );
+  await page.route(`${origin}/client-nav-origin-policy`, (route) =>
+    route.fulfill(
+      fulfillPage(
+        html(
+          'Origin Policy',
+          '<meta name="description" content="Public">',
+          '<h1 id="origin-policy-heading">Origin Policy</h1><a id="to-plain" href="/client-nav-plain">on</a>',
+        ),
+        { 'referrer-policy': 'origin' },
+      ),
+    ),
+  );
+  await page.route(`${origin}/client-nav-plain`, (route) =>
+    route.fulfill(fulfillPage(html('Plain', '', '<h1 id="plain-heading">Plain</h1>'))),
+  );
+  await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+      body: (await route.request().allHeaders()).referer ?? '',
+    }),
+  );
+  const probeReferer = () =>
+    page.evaluate(() => fetch('/client-nav-referer-probe').then((response) => response.text()));
+  const readMetadata = () =>
+    page.evaluate(() => ({
+      referrer: document.querySelector('meta[name="referrer"]')?.getAttribute('content') ?? null,
+      description:
+        document.querySelector('meta[name="description"]')?.getAttribute('content') ?? null,
+      robots: document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null,
+      canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? null,
+      viewport: document.querySelectorAll('meta[name="viewport"]').length,
+    }));
+
+  const viewport = (await readMetadata()).viewport;
+  await installClientNavRecorder(page);
+  await page.evaluate(() => {
+    const link = document.createElement('a');
+    link.id = 'to-no-referrer';
+    link.href = '/client-nav-no-referrer';
+    link.textContent = 'no referrer';
+    document.body.append(link);
+  });
+  await page.locator('#to-no-referrer').click({ noWaitAfter: true });
+  await page.locator('#no-referrer-heading').waitFor({ state: 'visible' });
+  expect(await readMetadata()).toEqual({
+    referrer: 'no-referrer',
+    description: 'Private',
+    robots: 'noindex',
+    canonical: `${origin}/client-nav-no-referrer`,
+    viewport,
+  });
+  expect(await probeReferer()).toBe('');
+
+  await page.locator('#to-origin-policy').click({ noWaitAfter: true });
+  await page.locator('#origin-policy-heading').waitFor({ state: 'visible' });
+  expect(await readMetadata()).toEqual({
+    referrer: null,
+    description: 'Public',
+    robots: null,
+    canonical: null,
+    viewport,
+  });
+  expect(await probeReferer()).toBe(`${origin}/`);
+
+  await page.locator('#to-plain').click({ noWaitAfter: true });
+  await page.locator('#plain-heading').waitFor({ state: 'visible' });
+  expect((await readMetadata()).description).toBeNull();
+  expect(await probeReferer()).toBe(`${origin}/client-nav-plain`);
+  expect(await readClientNavEvents(page)).toEqual([
+    '/client-nav-no-referrer',
+    '/client-nav-origin-policy',
+    '/client-nav-plain',
+  ]);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });
