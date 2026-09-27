@@ -231,6 +231,27 @@ test.each([
     'https://a.test/pages/guide',
   ],
   ['an unparseable href', 'http://[', 'https://a.test/pages/next', null, null],
+  [
+    'a javascript: base is ignored',
+    'guide',
+    'https://a.test/pages/next',
+    'javascript:alert(1)',
+    'https://a.test/pages/guide',
+  ],
+  [
+    'a JavaScript: base is ignored for a fragment',
+    '#top',
+    'https://a.test/pages/next',
+    'JavaScript:void 0',
+    'https://a.test/pages/next#top',
+  ],
+  [
+    'a data: base is ignored',
+    'guide',
+    'https://a.test/pages/next',
+    'data:text/html,x',
+    'https://a.test/pages/guide',
+  ],
 ])('resolveMetadataHref: %s', (_label, href, url, baseHref, expected) => {
   expect(resolveMetadataHref({ href, url, baseHref })).toBe(expected);
 });

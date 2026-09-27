@@ -475,13 +475,12 @@ async function renderDocumentHtml(
   await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
 
+  syncHeadMetadata(doc, options.url, options.referrerPolicy);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
   if (newMain && currentMain) {
     currentMain.replaceWith(newMain);
   }
-
-  syncHeadMetadata(doc, options.url, options.referrerPolicy);
 
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);

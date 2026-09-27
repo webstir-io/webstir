@@ -467,7 +467,26 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     ),
   );
   await page.route(`${origin}/client-nav-plain`, (route) =>
-    route.fulfill(fulfillPage(html('', '', '<h1 id="plain-heading">Plain</h1>'))),
+    route.fulfill(
+      fulfillPage(
+        html(
+          '',
+          '',
+          '<h1 id="plain-heading">Plain</h1><a id="to-main-referrer" href="/client-nav-main-referrer">on</a>',
+        ),
+      ),
+    ),
+  );
+  await page.route(`${origin}/client-nav-main-referrer`, (route) =>
+    route.fulfill(
+      fulfillPage(
+        html(
+          'Main Referrer',
+          '',
+          '<meta name="referrer" content="origin"><h1 id="main-referrer-heading">Main Referrer</h1>',
+        ),
+      ),
+    ),
   );
   await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
     route.fulfill({
@@ -524,10 +543,16 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(await page.title()).toBe('');
   expect((await readMetadata()).description).toBeNull();
   expect(await probeReferer()).toBe(`${origin}/client-nav-plain`);
+
+  // A referrer meta in the page's content applies after its head's, as in a full load.
+  await page.locator('#to-main-referrer').click({ noWaitAfter: true });
+  await page.locator('#main-referrer-heading').waitFor({ state: 'visible' });
+  expect(await probeReferer()).toBe(`${origin}/`);
   expect(await readClientNavEvents(page)).toEqual([
     '/client-nav-no-referrer',
     '/client-nav-origin-policy',
     '/client-nav-plain',
+    '/client-nav-main-referrer',
   ]);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });

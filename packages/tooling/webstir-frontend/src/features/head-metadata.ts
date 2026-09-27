@@ -36,6 +36,8 @@ const LEGACY_REFERRER_POLICIES: Readonly<Record<string, string>> = {
 
 const DEFAULT_REFERRER_POLICY = 'strict-origin-when-cross-origin';
 
+const IGNORED_BASE_PROTOCOLS = new Set(['data:', 'javascript:']);
+
 /**
  * Metadata that belongs to the page rather than the document: every `<meta name>` except
  * `viewport`, every `<meta property>` (Open Graph), and `<link>`s whose rel is only
@@ -82,7 +84,8 @@ export function resolveHeadMetadataSync(options: {
 
 /**
  * Where a metadata href from the incoming page points: resolved against that page's own base, its
- * first `<base href>` read against its address, as a full load of it would.
+ * first `<base href>` read against its address, as a full load of it would. Like a browser, a base
+ * that does not parse or is a `data:` or `javascript:` URL is ignored.
  */
 export function resolveMetadataHref(options: {
   readonly href: string;
@@ -92,7 +95,8 @@ export function resolveMetadataHref(options: {
   let base = options.url;
   if (options.baseHref !== null) {
     try {
-      base = new URL(options.baseHref, options.url).href;
+      const resolved = new URL(options.baseHref, options.url);
+      if (!IGNORED_BASE_PROTOCOLS.has(resolved.protocol)) base = resolved.href;
     } catch {}
   }
   try {
@@ -102,7 +106,11 @@ export function resolveMetadataHref(options: {
   }
 }
 
-/** Replace the current page's title and metadata with `doc`'s, fetched from `url`. */
+/**
+ * Replace the current page's title and metadata with `doc`'s, fetched from `url`. Run it just before
+ * the new content goes in, so a referrer meta inside that content applies after the head's, as it
+ * would in a full load.
+ */
 export function syncHeadMetadata(
   doc: Document,
   url: string,
