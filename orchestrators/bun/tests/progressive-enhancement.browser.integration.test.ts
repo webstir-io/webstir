@@ -430,8 +430,9 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
   await page.locator('#demo-name').waitFor({ state: 'visible' });
 }
 
-// Named meta and page links follow the page on screen, and so does the referrer policy: leaving a
-// page whose meta says no-referrer sends Referer again, as a full load of the next page would.
+// The title, named meta and page links follow the page on screen, and so does the referrer policy:
+// leaving a page whose meta says no-referrer sends Referer again, as a full load of the next page
+// would. A relative canonical resolves against the page's own <base>, not this document's.
 async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
   const html = (title: string, head: string, main: string) =>
     `<!doctype html><html><head><title>${title}</title>${head}</head><body><main>${main}</main></body></html>`;
@@ -445,7 +446,8 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       fulfillPage(
         html(
           'No Referrer',
-          '<meta name="referrer" content="no-referrer"><meta name="description" content="Private">' +
+          '<base href="/client-nav-base/"><meta name="referrer" content="no-referrer">' +
+            '<meta name="description" content="Private">' +
             '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-no-referrer">',
           '<h1 id="no-referrer-heading">No Referrer</h1><a id="to-origin-policy" href="/client-nav-origin-policy">on</a>',
         ),
@@ -465,7 +467,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     ),
   );
   await page.route(`${origin}/client-nav-plain`, (route) =>
-    route.fulfill(fulfillPage(html('Plain', '', '<h1 id="plain-heading">Plain</h1>'))),
+    route.fulfill(fulfillPage(html('', '', '<h1 id="plain-heading">Plain</h1>'))),
   );
   await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
     route.fulfill({
@@ -501,7 +503,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     referrer: 'no-referrer',
     description: 'Private',
     robots: 'noindex',
-    canonical: `${origin}/client-nav-no-referrer`,
+    canonical: `${origin}/client-nav-base/client-nav-no-referrer`,
     viewport,
   });
   expect(await probeReferer()).toBe('');
@@ -519,6 +521,7 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
 
   await page.locator('#to-plain').click({ noWaitAfter: true });
   await page.locator('#plain-heading').waitFor({ state: 'visible' });
+  expect(await page.title()).toBe('');
   expect((await readMetadata()).description).toBeNull();
   expect(await probeReferer()).toBe(`${origin}/client-nav-plain`);
   expect(await readClientNavEvents(page)).toEqual([

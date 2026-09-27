@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import { isPageMetadata, resolveHeadMetadataSync } from '../dist/features/head-metadata.js';
+import {
+  isPageMetadata,
+  resolveHeadMetadataSync,
+  resolveMetadataHref,
+} from '../dist/features/head-metadata.js';
 
 const meta = (attributes) => ({ tag: 'meta', attributes });
 const link = (attributes) => ({ tag: 'link', attributes });
@@ -127,11 +131,39 @@ test.each([
     expected: { remove: [], add: [0, 1, 2, 3], referrerPolicy: 'no-referrer' },
   },
   {
-    label: 'legacy referrer keywords map to their policies',
+    label: 'legacy referrer keyword origin-when-crossorigin',
     current: shell,
     next: [meta({ name: 'referrer', content: 'origin-when-crossorigin' })],
     header: null,
     expected: { remove: [], add: [0], referrerPolicy: 'origin-when-cross-origin' },
+  },
+  {
+    label: 'legacy referrer keyword always',
+    current: shell,
+    next: [meta({ name: 'referrer', content: 'Always' })],
+    header: null,
+    expected: { remove: [], add: [0], referrerPolicy: 'unsafe-url' },
+  },
+  {
+    label: 'legacy referrer keyword default is the old default, as browsers read it',
+    current: shell,
+    next: [meta({ name: 'referrer', content: 'default' })],
+    header: 'no-referrer',
+    expected: { remove: [], add: [0], referrerPolicy: 'no-referrer-when-downgrade' },
+  },
+  {
+    label: 'legacy keywords are not read from the header',
+    current: shell,
+    next: shell,
+    header: 'origin, never',
+    expected: { remove: [], add: [], referrerPolicy: 'origin' },
+  },
+  {
+    label: 'a meta whose name is referrer only after trimming is not a referrer meta',
+    current: shell,
+    next: [meta({ name: ' referrer ', content: 'no-referrer' })],
+    header: null,
+    expected: { remove: [], add: [0], referrerPolicy: 'strict-origin-when-cross-origin' },
   },
   {
     label: 'an invalid header and meta leave the browser default',
@@ -151,4 +183,54 @@ test.each([
   expect(resolveHeadMetadataSync({ current, next, referrerPolicyHeader: header })).toEqual(
     expected,
   );
+});
+
+test.each([
+  [
+    'a relative href against the page address',
+    'guide',
+    'https://a.test/docs/page',
+    null,
+    'https://a.test/docs/guide',
+  ],
+  ['a root-relative href', '/guide', 'https://a.test/docs/page', null, 'https://a.test/guide'],
+  ['an absolute href', 'https://b.test/x', 'https://a.test/docs/page', null, 'https://b.test/x'],
+  [
+    'a relative href against an absolute-path base',
+    'guide',
+    'https://a.test/pages/next',
+    '/docs/',
+    'https://a.test/docs/guide',
+  ],
+  [
+    'a relative href against a relative base',
+    'guide',
+    'https://a.test/pages/next',
+    'v2/',
+    'https://a.test/pages/v2/guide',
+  ],
+  [
+    'a relative href against another origin base',
+    'guide',
+    'https://a.test/pages/next',
+    'https://cdn.test/root/',
+    'https://cdn.test/root/guide',
+  ],
+  [
+    'an empty href is the base itself',
+    '',
+    'https://a.test/pages/next',
+    '/docs/',
+    'https://a.test/docs/',
+  ],
+  [
+    'an unparseable base falls back to the page address',
+    'guide',
+    'https://a.test/pages/next',
+    'http://[',
+    'https://a.test/pages/guide',
+  ],
+  ['an unparseable href', 'http://[', 'https://a.test/pages/next', null, null],
+])('resolveMetadataHref: %s', (_label, href, url, baseHref, expected) => {
+  expect(resolveMetadataHref({ href, url, baseHref })).toBe(expected);
 });

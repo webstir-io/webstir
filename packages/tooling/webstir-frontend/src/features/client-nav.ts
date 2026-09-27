@@ -481,10 +481,6 @@ async function renderDocumentHtml(
     currentMain.replaceWith(newMain);
   }
 
-  const newTitle = doc.querySelector('title');
-  if (newTitle && newTitle.textContent) {
-    document.title = newTitle.textContent;
-  }
   syncHeadMetadata(doc, options.url, options.referrerPolicy);
 
   if (options.history === 'push') {

@@ -26,9 +26,10 @@ const REFERRER_POLICIES = new Set([
   'unsafe-url',
 ]);
 
+// Legacy meta keywords, as browsers map them: `default` is the old default, not today's.
 const LEGACY_REFERRER_POLICIES: Readonly<Record<string, string>> = {
   never: 'no-referrer',
-  default: 'strict-origin-when-cross-origin',
+  default: 'no-referrer-when-downgrade',
   always: 'unsafe-url',
   'origin-when-crossorigin': 'origin-when-cross-origin',
 };
@@ -73,22 +74,46 @@ export function resolveHeadMetadataSync(options: {
   const add = pageMetadataIndices(options.next);
   let referrerPolicy = parseReferrerPolicyHeader(options.referrerPolicyHeader);
   for (const { attributes } of options.next.filter(isPageMetadata)) {
-    if (attributes.name?.trim().toLowerCase() !== 'referrer') continue;
+    if (attributes.name?.toLowerCase() !== 'referrer') continue;
     referrerPolicy = parseReferrerPolicyMeta(attributes.content) ?? referrerPolicy;
   }
   return { remove, add, referrerPolicy: referrerPolicy ?? DEFAULT_REFERRER_POLICY };
 }
 
-/** Replace the current page's metadata in `<head>` with `doc`'s, fetched from `url`. */
+/**
+ * Where a metadata href from the incoming page points: resolved against that page's own base, its
+ * first `<base href>` read against its address, as a full load of it would.
+ */
+export function resolveMetadataHref(options: {
+  readonly href: string;
+  readonly url: string;
+  readonly baseHref: string | null;
+}): string | null {
+  let base = options.url;
+  if (options.baseHref !== null) {
+    try {
+      base = new URL(options.baseHref, options.url).href;
+    } catch {}
+  }
+  try {
+    return new URL(options.href, base).href;
+  } catch {
+    return null;
+  }
+}
+
+/** Replace the current page's title and metadata with `doc`'s, fetched from `url`. */
 export function syncHeadMetadata(
   doc: Document,
   url: string,
   referrerPolicyHeader: string | null,
 ): void {
+  document.title = doc.title;
   const head = document.head;
   const newHead = doc.head;
   if (!head || !newHead) return;
 
+  const baseHref = doc.querySelector('base[href]')?.getAttribute('href') ?? null;
   const current = headMetadataCandidates(head);
   const next = headMetadataCandidates(newHead);
   const sync = resolveHeadMetadataSync({
@@ -101,7 +126,7 @@ export function syncHeadMetadata(
   const added = new Set(sync.add);
   for (const element of current.filter((_, index) => removed.has(index))) element.remove();
   for (const element of next.filter((_, index) => added.has(index))) {
-    head.appendChild(copyMetadata(element, url));
+    head.appendChild(copyMetadata(element, url, baseHref));
   }
 
   // A referrer meta sets the policy when it is inserted and keeps it after it is removed.
@@ -149,19 +174,17 @@ function describe(element: Element): HeadElementDescriptor {
   return { tag: element.localName, attributes };
 }
 
-function copyMetadata(element: Element, url: string): Element {
+function copyMetadata(element: Element, url: string, baseHref: string | null): Element {
   const copy = document.createElement(element.localName);
   for (const attribute of Array.from(element.attributes)) {
     copy.setAttribute(attribute.name, attribute.value);
   }
-  // The copy lands before the address changes, so a relative href must not resolve against it.
+  // This document keeps its own address and <base>, so a relative href is fixed to the page's.
   const href = element.getAttribute('href');
   if (href !== null) {
-    try {
-      copy.setAttribute('href', new URL(href, url).href);
-    } catch {
-      copy.removeAttribute('href');
-    }
+    const resolved = resolveMetadataHref({ href, url, baseHref });
+    if (resolved === null) copy.removeAttribute('href');
+    else copy.setAttribute('href', resolved);
   }
   return copy;
 }

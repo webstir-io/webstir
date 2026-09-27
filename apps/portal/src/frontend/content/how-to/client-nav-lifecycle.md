@@ -71,7 +71,7 @@ The framework does not decide authentication policy.
 Client-nav keeps the document it started in and brings the parts of the new
 page's `<head>` that describe that page:
 
-- **Title:** the new page's `<title>`.
+- **Title:** the new page's `<title>`, empty if it has none.
 - **Styles:** the new page's stylesheets load before the swap and the old page's
   are removed after it; `app.css` stays. `<style data-critical>` is replaced.
 - **Scripts:** the old page's entry script goes, and the new page's head scripts
@@ -79,9 +79,9 @@ page's `<head>` that describe that page:
 - **Page metadata:** every `<meta name>` except `viewport`, every
   `<meta property>` (Open Graph), and `<link>`s whose rel is only `canonical`,
   `alternate`, `prev` or `next`. The old page's are removed and the new page's
-  added in its order, with relative `href`s resolved against the new address, so
-  a page that lacks a `description`, `robots`, `theme-color` or canonical does
-  not inherit the previous page's.
+  added in its order, with relative `href`s resolved against the new page's
+  address and `<base>`, so a page that lacks a `description`, `robots`,
+  `theme-color` or canonical does not inherit the previous page's.
 - **Referrer policy:** what a full load of the new page would give: its last
   valid `<meta name="referrer">`, else its `Referrer-Policy` header, else the
   browser default (`strict-origin-when-cross-origin`). A page that sets
