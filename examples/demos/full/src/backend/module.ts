@@ -11,6 +11,7 @@ const SESSION_PANEL_TARGET = 'session-panel';
 const SESSION_COOKIE_NAME = 'webstir_demo_session';
 const SESSION_SIGN_IN_ACTION = './progressive-enhancement/session/sign-in';
 const SESSION_SIGN_OUT_ACTION = './progressive-enhancement/session/sign-out';
+const JUMP_ACTION = './progressive-enhancement/jump';
 const DEV_FRONTEND_ASSETS = {
   cssHref: '/src/frontend/app/app.css',
   scriptSrc: '/src/frontend/app/app.ts',
@@ -236,6 +237,11 @@ function renderDemoPage(
       </form>
       ${renderGreeting(name, source)}
     </section>
+    <section class="card stack">
+      <form method="post" action="${JUMP_ACTION}">
+        <button id="demo-jump" type="submit">Save and return to the session panel</button>
+      </form>
+    </section>
   </main>
 </body>
 </html>`;
@@ -407,12 +413,32 @@ const sessionSignOutRoute: DemoRoute = {
   },
 };
 
+// A post whose redirect names a section of the page: with or without JavaScript the browser lands
+// on that section, since client-nav keeps a redirect's #fragment.
+const jumpRoute: DemoRoute = {
+  definition: {
+    name: 'progressiveEnhancementJump',
+    method: 'POST',
+    path: `${DEMO_PATH}/jump`,
+    summary: 'Redirect back to a section of the progressive enhancement page.',
+    interaction: 'mutation',
+    form: {
+      contentType: 'application/x-www-form-urlencoded',
+    },
+  },
+  handler: () => ({
+    status: 303,
+    redirect: { location: `${DEMO_PATH}?jumped=1#${SESSION_PANEL_TARGET}` },
+  }),
+};
+
 const routes: readonly DemoRoute[] = [
   rootStatusRoute,
   progressiveEnhancementPageRoute,
   progressiveEnhancementSubmitRoute,
   sessionSignInRoute,
   sessionSignOutRoute,
+  jumpRoute,
 ];
 
 export const module = {

@@ -38,6 +38,8 @@ import {
 import { ensureSessionCsrfToken } from './forms.js';
 import { createSessionFormReader, renderFormRerender } from './rerender.js';
 import { readRequestBody } from './request-body.js';
+import { toClientNavLocation } from './client-nav.js';
+import { findSubmission, recordSubmission, takeSubmissionId } from './form-submissions.js';
 import { isViewRedirect, readViewControl } from './view-control.js';
 import { loadNotFoundDocument } from './view-documents.js';
 import {
@@ -213,16 +215,19 @@ export async function startBunBackend<
     port: env.PORT,
     hostname: '0.0.0.0',
     fetch: async (request) => {
-      return await handleRequest({
+      return toClientNavLocation(
         request,
-        runtime,
-        readiness,
-        manifestSummary,
-        env,
-        logger,
-        metrics,
-        options,
-      });
+        await handleRequest({
+          request,
+          runtime,
+          readiness,
+          manifestSummary,
+          env,
+          logger,
+          metrics,
+          options,
+        }),
+      );
     },
     error: (error) => {
       logger.error({ err: error }, '[webstir-backend] Bun server request failed');
@@ -514,7 +519,50 @@ async function handleRequest<
         return response;
       }
 
-      const handlerResult = await routeMatch.route.handler(ctx);
+      // The same form submission sent again (a lost response the browser resent, a double click)
+      // gets the first answer instead of running the action twice.
+      const submissionId = method === 'POST' ? takeSubmissionId(request, ctx.body) : undefined;
+      const answered =
+        submissionId && ctx.session ? findSubmission(ctx.session, submissionId) : undefined;
+      if (answered) {
+        const commit = sessionState.commit({
+          session: ctx.session,
+          result: { status: 303 },
+          retainFlash: true,
+          publishFlash: false,
+        });
+        const headers = new Headers({
+          location: answered,
+          'cache-control': 'no-store',
+          'x-request-id': requestId,
+        });
+        if (commit.setCookie) {
+          headers.append('set-cookie', commit.setCookie);
+        }
+        responseStatus = 303;
+        return new Response(null, { status: 303, headers });
+      }
+
+      let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
+      try {
+        handlerResult = await routeMatch.route.handler(ctx);
+      } catch (error) {
+        // An action can end with redirect() or notFound() just as a view loader can.
+        const control = readViewControl(error);
+        if (!control) {
+          throw error;
+        }
+        const response = await createViewControlResponse(control, {
+          method,
+          requestId,
+          workspaceRoot: options.resolveWorkspaceRoot(),
+          // Its session changes land; messages already queued wait for the page it leads to.
+          commit: (status) =>
+            sessionState.commit({ session: ctx.session, result: { status }, retainFlash: true }),
+        });
+        responseStatus = response.status;
+        return response;
+      }
       const afterHandler = await executeRequestHookPhase({
         hooks: routeMatch.route.requestHooks,
         phase: 'afterHandler',
@@ -592,6 +640,10 @@ async function handleRequest<
         return new Response(method === 'HEAD' ? null : rerendered.html, { status, headers });
       }
 
+      const redirectedTo = finalResult.redirect?.location;
+      if (submissionId && ctx.session && redirectedTo) {
+        recordSubmission(ctx.session, submissionId, redirectedTo, now());
+      }
       const response = createCommittedResponse(finalResult, {
         method,
         sessionState,

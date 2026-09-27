@@ -54,6 +54,31 @@ test('attributes follow boolean, null and string rules', () => {
   assert.equal(html, '<input value="it&#39;s &quot;quoted&quot; &lt;x&gt;" required>');
 });
 
+// ARIA states are words: a boolean renders as "true" or "false", while null still omits the
+// attribute and other attributes keep presence semantics.
+test('aria attributes render booleans as words', () => {
+  const cases = [
+    [true, ' aria-expanded="true"'],
+    [false, ' aria-expanded="false"'],
+    [null, ''],
+    ['mixed', ' aria-expanded="mixed"'],
+  ];
+  for (const [value, rendered] of cases) {
+    const html = executeRenderProgram(
+      program([
+        '<button',
+        { op: 'attr', name: 'aria-expanded', url: false, path: root('open'), loc },
+        { op: 'attr', name: 'data-open', url: false, path: root('open'), loc },
+        '>',
+      ]),
+      { open: value },
+    );
+    const presence =
+      value === true ? ' data-open' : typeof value === 'string' ? ` data-open="${value}"` : '';
+    assert.equal(html, `<button${rendered}${presence}>`, String(value));
+  }
+});
+
 test('url attributes block unsafe schemes and keep safe ones', () => {
   const render = (href) =>
     executeRenderProgram(

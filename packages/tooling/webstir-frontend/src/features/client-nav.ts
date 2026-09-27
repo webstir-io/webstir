@@ -6,6 +6,10 @@ import {
   type PageSetup,
 } from '../runtime/index.js';
 import {
+  CLIENT_NAV_HEADERS,
+  CLIENT_NAV_SUBMISSION_FIELD,
+} from '@webstir-io/module-contract/client-nav';
+import {
   buildEnhancedFormRequest,
   normalizeFormEnctype,
   normalizeFormMethod,
@@ -22,6 +26,7 @@ import {
   loadHeadScripts,
   syncHead,
 } from './document-navigation.js';
+import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 
 export {};
 
@@ -37,8 +42,16 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
+  // The page is busy until its own script has run, on the first load and after every navigation:
+  // the one signal for anything (a test, say) that must wait for a page to be ready.
+  setBusy(true);
   const initial = () => {
-    void startPage(window.location.href).catch(console.error);
+    const requestId = activeRequestId;
+    void startPage(window.location.href)
+      .catch(console.error)
+      .finally(() => {
+        if (requestId === activeRequestId) setBusy(false);
+      });
   };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initial, { once: true });
@@ -220,13 +233,28 @@ function stripBasePath(value: string): string {
   return value;
 }
 
-async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean }): Promise<void> {
+async function renderUrl(
+  url: string,
+  { pushHistory, hops = 0 }: { pushHistory: boolean; hops?: number },
+): Promise<void> {
   const { controller, requestId } = beginRequest();
+  try {
+    await renderUrlRequest(url, { pushHistory, hops }, controller, requestId);
+  } finally {
+    if (requestId === activeRequestId) setBusy(false);
+  }
+}
 
+async function renderUrlRequest(
+  url: string,
+  { pushHistory, hops }: { pushHistory: boolean; hops: number },
+  controller: AbortController,
+  requestId: number,
+): Promise<void> {
   let response: Response;
   try {
     response = await fetch(url, {
-      headers: { 'X-Webstir-Client-Nav': '1' },
+      headers: { [CLIENT_NAV_HEADERS.request]: '1', [CLIENT_NAV_HEADERS.acceptLocation]: '1' },
       signal: controller.signal,
     });
   } catch {
@@ -239,6 +267,11 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
   }
 
   if (requestId !== activeRequestId) return;
+  const next = response.headers.get(CLIENT_NAV_HEADERS.location);
+  if (next) {
+    await followLocation(next, url, hops);
+    return;
+  }
   if (response.redirected) {
     window.location.href = response.url;
     return;
@@ -262,10 +295,23 @@ async function renderUrl(url: string, { pushHistory }: { pushHistory: boolean })
 async function submitForm(
   form: HTMLFormElement,
   submitter: HTMLButtonElement | HTMLInputElement | null,
-  submission: { readonly url: string; readonly init: RequestInit },
+  submission: EnhancedFormSubmission,
 ): Promise<void> {
   const { controller, requestId } = beginRequest();
+  try {
+    await submitFormRequest(form, submitter, submission, controller, requestId);
+  } finally {
+    if (requestId === activeRequestId) setBusy(false);
+  }
+}
 
+async function submitFormRequest(
+  form: HTMLFormElement,
+  submitter: HTMLButtonElement | HTMLInputElement | null,
+  submission: EnhancedFormSubmission,
+  controller: AbortController,
+  requestId: number,
+): Promise<void> {
   let response: Response;
   try {
     response = await fetch(submission.url, {
@@ -277,11 +323,19 @@ async function submitForm(
       return;
     }
 
-    submitFormNatively(form, submitter);
+    // The post may have reached the server; the same submission id lets it answer the resend
+    // with the first result instead of running the action again.
+    submitFormNatively(form, submitter, submission.submissionId);
     return;
   }
 
   if (requestId !== activeRequestId) {
+    return;
+  }
+
+  const next = response.headers.get(CLIENT_NAV_HEADERS.location);
+  if (next) {
+    await followLocation(next, submission.url, 0);
     return;
   }
 
@@ -300,7 +354,13 @@ async function submitForm(
   });
 
   if (resolution.kind === 'fragment') {
-    await handleFragmentResponse(response, requestId, resolution.fragment, fragmentTarget);
+    await handleFragmentResponse(
+      response,
+      resolution.fragment,
+      fragmentTarget,
+      () => requestId === activeRequestId,
+      DOM_RUNTIME,
+    );
     return;
   }
 
@@ -320,6 +380,7 @@ async function submitForm(
 }
 
 function beginRequest(): { readonly controller: AbortController; readonly requestId: number } {
+  setBusy(true);
   activeRequestId += 1;
   const requestId = activeRequestId;
 
@@ -407,7 +468,12 @@ async function renderDocumentHtml(
     window.history.pushState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const anchor = fragmentTarget(documentUrl.hash);
+  if (anchor) {
+    anchor.scrollIntoView();
+  } else {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
   focusAutofocus(document);
 
   // Opted-in pages render prepared data before yielding to additional document scripts.
@@ -429,10 +495,16 @@ function getSubmitter(event: SubmitEvent): HTMLButtonElement | HTMLInputElement 
   return null;
 }
 
+type EnhancedFormSubmission = {
+  readonly url: string;
+  readonly init: RequestInit;
+  readonly submissionId?: string;
+};
+
 function createEnhancedFormSubmission(
   form: HTMLFormElement,
   submitter: HTMLButtonElement | HTMLInputElement | null,
-): { readonly url: string; readonly init: RequestInit } | null {
+): EnhancedFormSubmission | null {
   if (hasClientNavOptOut(form) || hasClientNavOptOut(submitter)) {
     return null;
   }
@@ -459,6 +531,7 @@ function createEnhancedFormSubmission(
     method,
     enctype,
     formData,
+    submissionId: newSubmissionId(),
   });
 }
 
@@ -523,200 +596,20 @@ function createFormData(
   return formData;
 }
 
-async function handleFragmentResponse(
-  response: Response,
-  requestId: number,
-  fragment: {
-    readonly target: string;
-    readonly selector?: string;
-    readonly mode: 'replace' | 'append' | 'prepend';
-  },
-  target: Element | null,
-): Promise<void> {
-  if (!target) {
-    return;
-  }
-
-  const html = await response.text();
-  if (requestId !== activeRequestId) {
-    return;
-  }
-
-  const appliedFragment = applyFragmentHtml(target, html, fragment);
-  focusInsertedAutofocus(appliedFragment.focusRoots);
-  window.dispatchEvent(
-    new CustomEvent('webstir:fragment-update', {
-      detail: {
-        target: fragment.target,
-        selector: fragment.selector,
-        mode: fragment.mode,
-      },
-    }),
-  );
-}
-
-function resolveFragmentTarget(target: string, selector?: string): Element | null {
-  if (selector) {
-    return document.querySelector(selector);
-  }
-
-  const byId = document.getElementById(target);
-  if (byId) {
-    return byId;
-  }
-
-  return document.querySelector(`[data-webstir-fragment-target="${cssEscape(target)}"]`);
-}
-
-function applyFragmentHtml(
-  target: Element,
-  html: string,
-  fragment: {
-    readonly target: string;
-    readonly selector?: string;
-    readonly mode: 'replace' | 'append' | 'prepend';
-  },
-): { readonly focusRoots: readonly Element[] } {
-  const template = document.createElement('template');
-  template.innerHTML = html;
-  const insertedRoots = Array.from(template.content.children);
-  const insertionBehavior = resolveFragmentInsertionBehavior({
-    mode: fragment.mode,
-    target: fragment.target,
-    hasMeaningfulSiblingContent: hasMeaningfulSiblingContent(
-      template.content,
-      insertedRoots[0] ?? null,
-    ),
-    roots: insertedRoots.map((root) => ({
-      id: root.id,
-      fragmentTarget: root.getAttribute('data-webstir-fragment-target'),
-      matchesSelector: elementMatchesSelector(root, fragment.selector),
-    })),
-  });
-
-  if (insertionBehavior === 'replace-target') {
-    target.replaceWith(template.content);
-    executeInsertedScripts(insertedRoots);
-    return { focusRoots: insertedRoots };
-  }
-
-  if (
-    insertionBehavior === 'append-matching-root-children' ||
-    insertionBehavior === 'prepend-matching-root-children'
-  ) {
-    const { content, roots } = extractMatchingRootChildren(template.content);
-    if (insertionBehavior === 'append-matching-root-children') {
-      target.append(content);
-    } else {
-      target.prepend(content);
-    }
-    executeInsertedScripts(roots);
-    return { focusRoots: roots };
-  }
-
-  if (insertionBehavior === 'append-payload') {
-    target.append(template.content);
-  } else if (insertionBehavior === 'prepend-payload') {
-    target.prepend(template.content);
-  } else {
-    target.replaceChildren(template.content);
-  }
-
-  executeInsertedScripts(insertedRoots);
-  return { focusRoots: insertedRoots };
-}
-
-function elementMatchesSelector(element: Element, selector: string | undefined): boolean {
-  if (!selector) {
-    return false;
-  }
-
-  try {
-    return element.matches(selector);
-  } catch {
-    return false;
-  }
-}
-
-function hasMeaningfulSiblingContent(content: DocumentFragment, root: Element | null): boolean {
-  for (const node of Array.from(content.childNodes)) {
-    if (node === root || node instanceof Comment) {
-      continue;
-    }
-    if (node instanceof Text && !node.textContent?.trim()) {
-      continue;
-    }
-    return true;
-  }
-  return false;
-}
-
-function extractMatchingRootChildren(content: DocumentFragment): {
-  readonly content: DocumentFragment;
-  readonly roots: readonly Element[];
-} {
-  const fragment = document.createDocumentFragment();
-  const roots: Element[] = [];
-  const root = content.firstElementChild;
-  if (!root) {
-    return { content: fragment, roots };
-  }
-
-  while (root.firstChild) {
-    const node = root.firstChild;
-    fragment.append(node);
-    if (node instanceof Element) {
-      roots.push(node);
-    }
-  }
-
-  return { content: fragment, roots };
-}
-
-function executeInsertedScripts(roots: readonly Element[]): void {
-  for (const root of roots) {
-    if (root.tagName.toLowerCase() === 'script') {
-      executeTopLevelScriptRoot(root as HTMLScriptElement);
-      continue;
-    }
-    void executeScripts(root, DOM_RUNTIME).catch(console.error);
-  }
-}
-
-function executeTopLevelScriptRoot(script: HTMLScriptElement): void {
-  const wrapper = document.createElement('div');
-  wrapper.append(script.cloneNode(true));
-  void executeScripts(wrapper, DOM_RUNTIME).catch(console.error);
-
-  const replacement = wrapper.querySelector('script');
-  if (replacement) {
-    script.replaceWith(replacement);
-    return;
-  }
-
-  script.remove();
-}
-
-function focusInsertedAutofocus(roots: readonly Element[]): void {
-  for (const root of roots) {
-    if (root instanceof HTMLElement && root.hasAttribute('autofocus')) {
-      root.focus();
-      return;
-    }
-
-    const descendant = root.querySelector('[autofocus]');
-    if (descendant instanceof HTMLElement) {
-      descendant.focus();
-      return;
-    }
-  }
-}
-
 function submitFormNatively(
   form: HTMLFormElement,
   submitter: HTMLButtonElement | HTMLInputElement | null,
+  submissionId?: string,
 ): void {
   form.setAttribute(BYPASS_ATTR, 'true');
+  if (submissionId) {
+    const field = document.createElement('input');
+    field.type = 'hidden';
+    field.name = CLIENT_NAV_SUBMISSION_FIELD;
+    field.value = submissionId;
+    form.append(field);
+    window.setTimeout(() => field.remove(), 0);
+  }
   if (submitter && typeof form.requestSubmit === 'function') {
     form.requestSubmit(submitter);
     return;
@@ -725,6 +618,39 @@ function submitFormNatively(
     form.removeAttribute(BYPASS_ATTR);
   }, 0);
   form.submit();
+}
+
+/** Goes where the server said a redirect leads, keeping its #fragment; another origin loads in full. */
+async function followLocation(location: string, base: string, hops: number): Promise<void> {
+  const target = new URL(location, base);
+  if (target.origin !== window.location.origin || hops >= 10) {
+    window.location.href = target.href;
+    return;
+  }
+  await renderUrl(target.href, { pushHistory: true, hops: hops + 1 });
+}
+
+function fragmentTarget(hash: string): Element | null {
+  if (hash.length <= 1) return null;
+  try {
+    return document.getElementById(decodeURIComponent(hash.slice(1)));
+  } catch {
+    return null;
+  }
+}
+
+function setBusy(busy: boolean): void {
+  if (busy) {
+    document.documentElement.setAttribute('aria-busy', 'true');
+  } else {
+    document.documentElement.removeAttribute('aria-busy');
+  }
+}
+
+function newSubmissionId(): string {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 enableClientNav();

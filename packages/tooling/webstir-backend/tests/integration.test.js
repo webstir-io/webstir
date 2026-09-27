@@ -1880,6 +1880,29 @@ const brokenRoute = {
   })
 };
 
+// Counts how often it really runs, so a replayed submission can be told apart from a new one.
+let counted = 0;
+const countDefinition = {
+  name: 'count',
+  method: 'POST',
+  path: '/count',
+  interaction: 'mutation',
+  form: { contentType: 'application/x-www-form-urlencoded', session: { write: true } }
+};
+const countRoute = {
+  definition: countDefinition,
+  handler: () => {
+    counted += 1;
+    return { status: 303, redirect: { location: \`/clients?n=\${counted}#top\` } };
+  }
+};
+
+// An action may end with redirect() or notFound(), as a view loader can.
+const actionRedirectDefinition = { name: 'actionRedirect', method: 'POST', path: '/action-redirect', interaction: 'mutation' };
+const actionRedirectRoute = { definition: actionRedirectDefinition, handler: () => redirect('/clients') };
+const actionMissingDefinition = { name: 'actionMissing', method: 'POST', path: '/action-missing', interaction: 'mutation' };
+const actionMissingRoute = { definition: actionMissingDefinition, handler: () => notFound() };
+
 const clientsView = {
   definition: { name: 'clientsPage', path: '/clients', page: 'clients' },
   load: async () => ({
@@ -1920,10 +1943,10 @@ export const module = {
     version: '0.1.0',
     kind: 'backend',
     capabilities: ['http', 'views'],
-    routes: [createClientDefinition, checkClientDefinition, brokenDefinition],
+    routes: [createClientDefinition, checkClientDefinition, brokenDefinition, actionRedirectDefinition, actionMissingDefinition, countDefinition],
     views: [clientsView.definition]
   },
-  routes: [createClientRoute, checkClientRoute, brokenRoute],
+  routes: [createClientRoute, checkClientRoute, brokenRoute, actionRedirectRoute, actionMissingRoute, countRoute],
   views: [clientsView, guardedView, missingView, strictView]
 };
 `;
@@ -2112,6 +2135,61 @@ async function assertRenderedViewRuntimeBehavior() {
 
     const broken = await fetch(`${base}/broken`, { method: 'POST', redirect: 'manual' });
     assert.equal(broken.status, 500);
+
+    const actionRedirect = await fetch(`${base}/action-redirect`, {
+      method: 'POST',
+      redirect: 'manual',
+    });
+    assert.equal(actionRedirect.status, 303);
+    assert.equal(actionRedirect.headers.get('location'), '/clients');
+    // Client-nav following redirects itself gets the destination, #fragment and all, instead of a 3xx.
+    const followed = await fetch(`${base}/action-redirect`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'x-webstir-accept-location': '1' },
+    });
+    assert.equal(followed.status, 204);
+    assert.equal(followed.headers.get('x-webstir-location'), '/clients');
+    assert.equal(followed.headers.get('location'), null);
+
+    // The same submission sent again (header from client-nav, or the field its fallback post adds)
+    // gets the first answer without the action running again; a new submission runs.
+    let countCookie = checkedCookie;
+    const count = async ({ header, field, follow }) => {
+      const response = await fetch(`${base}/count`, {
+        method: 'POST',
+        redirect: 'manual',
+        headers: {
+          cookie: countCookie,
+          'content-type': 'application/x-www-form-urlencoded',
+          ...(header ? { 'x-webstir-submission': header } : {}),
+          ...(follow ? { 'x-webstir-accept-location': '1' } : {}),
+        },
+        body: field ? `_webstir_submission=${field}` : '',
+      });
+      countCookie = extractCookieHeader(response.headers.get('set-cookie')) || countCookie;
+      return response.headers.get('location') ?? response.headers.get('x-webstir-location');
+    };
+    const replays = [
+      [{ header: 'submission-0001' }, '/clients?n=1#top'],
+      [{ header: 'submission-0001' }, '/clients?n=1#top'],
+      [{ field: 'submission-0001' }, '/clients?n=1#top'],
+      [{ header: 'submission-0002' }, '/clients?n=2#top'],
+      [{ field: 'submission-0003' }, '/clients?n=3#top'],
+      [{ header: 'submission-0003', follow: true }, '/clients?n=3#top'],
+      [{}, '/clients?n=4#top'],
+      [{}, '/clients?n=5#top'],
+    ];
+    for (const [request, location] of replays) {
+      assert.equal(await count(request), location, JSON.stringify(request));
+    }
+
+    const actionMissing = await fetch(`${base}/action-missing`, {
+      method: 'POST',
+      redirect: 'manual',
+    });
+    assert.equal(actionMissing.status, 404);
+    assert.match(await actionMissing.text(), /<h1>Page not found<\/h1>/);
 
     const strict = await fetch(`${base}/strict`);
     assert.equal(strict.status, 200);

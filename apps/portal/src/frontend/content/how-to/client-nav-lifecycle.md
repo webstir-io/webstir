@@ -64,8 +64,40 @@ Native document departures keep browser lifetime semantics, including BFCache.
 
 Ordinary links without enhancement, opt-outs, modifier clicks, non-self targets,
 downloads, external links, and same-document anchors keep native behavior.
-Redirected link fetches use a full navigation to the final URL, including auth
-redirects. The framework does not decide authentication policy.
+The framework does not decide authentication policy.
+
+## Redirects keep their destination
+
+A fetch that follows a redirect cannot see where it went, so a destination's
+`#fragment` would be lost. Client-nav asks the backend to answer a redirect with
+`204` and the destination in `x-webstir-location` instead, then navigates there
+itself: a same-origin destination renders like any client visit and scrolls to
+its `#section`; another origin loads in full. This covers form actions and view
+loaders that `redirect()`, including auth redirects. A request without client-nav
+still gets a normal redirect.
+
+## Submitting a form twice
+
+Each enhanced post carries a submission id. If the post fails before a response
+arrives, client-nav falls back to a normal post with the same id, and a double
+click or a resend reuses it too. The backend remembers where each submission's
+action redirected (per session, the last 20), so the same submission sent again
+gets that answer instead of running the action a second time. Posts that fail
+validation are not remembered, so correcting and resubmitting runs again.
+
+## Waiting for a page to be ready
+
+`<html>` carries `aria-busy="true"` from the moment client-nav starts a
+navigation, and on first load, until the new page's script has run its setup.
+That is the one signal to wait on, in tests and in code:
+
+```ts
+await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
+```
+
+Prefer behavior that needs no waiting at all: attach handlers for controls the
+server renders once, at the document level, keyed on data attributes, instead of
+in each page's setup. They then work the moment a page appears.
 
 ## Migration
 

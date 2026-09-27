@@ -827,3 +827,5 @@ export {
   schemaDeclaresField,
 } from './render-execute.js';
 export type { ExecuteRenderProgramOptions, PreparedViewData } from './render-execute.js';
+
+export { CLIENT_NAV_HEADERS, CLIENT_NAV_SUBMISSION_FIELD } from './client-nav.js';

@@ -90,7 +90,10 @@ function run(
       }
       case 'attr': {
         const value = read(node.path, data, scopes);
-        if (value === true) {
+        // ARIA states are the words "true" and "false", not an attribute's presence.
+        if (typeof value === 'boolean' && node.name.startsWith('aria-')) {
+          out.push(` ${node.name}="${value}"`);
+        } else if (value === true) {
           out.push(` ${node.name}`);
         } else if (value !== false && value !== null && value !== undefined) {
           const label = `data-attr-${node.name}="${node.path.source}"`;

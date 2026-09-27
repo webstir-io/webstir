@@ -166,6 +166,8 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
       await sessionPage.locator('#session-name').waitFor({ state: 'visible' });
       setScenarioStep(progress, 'exercise enhanced session flow');
       await assertSessionFlow(sessionPage);
+      setScenarioStep(progress, 'follow a redirect to a section of the page');
+      await assertRedirectKeepsFragment(sessionPage);
     } finally {
       await sessionContext.close().catch(() => undefined);
     }
@@ -185,6 +187,24 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
   } finally {
     await browser.close().catch(() => undefined);
   }
+}
+
+// A redirect that names a section keeps it: client-nav follows the destination itself, lands on
+// the section, and the page stops being busy once its script has run.
+async function assertRedirectKeepsFragment(page: Page): Promise<void> {
+  await page.locator('#demo-jump').click();
+  await page.waitForFunction(
+    () => window.location.hash === '#session-panel' && window.location.search === '?jumped=1',
+  );
+  await page.waitForFunction(() => !document.documentElement.hasAttribute('aria-busy'));
+  // Scrolled to the panel, or as far as the page allows when it is too short to bring the panel up.
+  const { scrollY, expected } = await page.evaluate(() => {
+    const panel = document.getElementById('session-panel')!;
+    const top = panel.getBoundingClientRect().top + window.scrollY;
+    const furthest = document.documentElement.scrollHeight - window.innerHeight;
+    return { scrollY: window.scrollY, expected: Math.max(0, Math.min(top, furthest)) };
+  });
+  expect(Math.abs(scrollY - expected)).toBeLessThan(5);
 }
 
 async function assertDocumentNavigationResetsScroll(page: Page, _origin: string): Promise<void> {
