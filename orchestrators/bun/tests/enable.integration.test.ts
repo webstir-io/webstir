@@ -224,6 +224,19 @@ const clientNavCases: Array<{
     copies: false,
   },
   {
+    name: 'an app with a string that only looks like a copy',
+    setup: async (root) => {
+      await writeLegacyClientNav(root);
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'app', 'help.ts'),
+        "export const helpLink = '/docs/client-nav';\n",
+      );
+    },
+    exitCode: 0,
+    imports: 'packaged',
+    copies: false,
+  },
+  {
     name: 'an app whose import carries a comment',
     setup: (root) =>
       writeLegacyClientNav(

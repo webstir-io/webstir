@@ -312,6 +312,12 @@ const packagedImportCases = [
   },
   {
     entry: 'app.ts',
+    source:
+      "const routePattern = '/api/*';\nimport '@webstir-io/webstir-frontend/features/client-nav';\n/* setup */\nexport { routePattern };\n",
+    builds: true,
+  },
+  {
+    entry: 'app.ts',
     source: "// import '@webstir-io/webstir-frontend/features/client-nav';\nexport {};\n",
     builds: false,
   },

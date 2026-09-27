@@ -3,7 +3,7 @@ import { build as esbuild, type Metafile } from 'esbuild';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import type { Builder, BuilderContext } from './types.js';
 import { getPages } from '../core/pages.js';
-import { ensureDir, pathExists, copy, readFile, remove, stat } from '../utils/fs.js';
+import { ensureDir, pathExists, copy, remove, stat } from '../utils/fs.js';
 import { scanGlob } from '../utils/glob.js';
 import {
   updatePageManifest,
@@ -452,7 +452,8 @@ const PACKAGED_FEATURES = new Set(['client-nav']);
 
 /**
  * A feature the package ships is enabled by importing it from the app entry the build bundles.
- * An import that is only in a comment does not count.
+ * esbuild parses the entry, so an import in a comment or a string never counts; an entry that does
+ * not parse is left for the real compile to report.
  */
 async function appImportsPackagedFeature(
   config: BuilderContext['config'],
@@ -462,12 +463,36 @@ async function appImportsPackagedFeature(
   if (!entry) {
     return false;
   }
-  const specifier = `${PACKAGED_FEATURE_PREFIX}${name}`.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
-  const pattern = new RegExp(`^\\s*import\\s+(['"])${specifier}\\1`, 'm');
-  const code = (await readFile(entry))
-    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
-    .replace(/^[ \t]*\/\/.*$/gm, '');
-  return pattern.test(code);
+  try {
+    return (await listEntryImports(entry)).includes(`${PACKAGED_FEATURE_PREFIX}${name}`);
+  } catch {
+    return true;
+  }
+}
+
+async function listEntryImports(entry: string): Promise<string[]> {
+  const result = await esbuild({
+    entryPoints: [entry],
+    bundle: true,
+    write: false,
+    metafile: true,
+    logLevel: 'silent',
+    platform: 'browser',
+    format: 'esm',
+    plugins: [
+      {
+        name: 'webstir-list-imports',
+        setup(build) {
+          build.onResolve({ filter: /.*/ }, (args) =>
+            args.kind === 'entry-point' ? undefined : { path: args.path, external: true },
+          );
+        },
+      },
+    ],
+  });
+  return Object.values(result.metafile.inputs).flatMap((input) =>
+    input.imports.map((imported) => imported.original ?? imported.path),
+  );
 }
 
 async function hasFeatureModule(config: BuilderContext['config'], name: string): Promise<boolean> {

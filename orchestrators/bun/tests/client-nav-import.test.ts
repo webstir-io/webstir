@@ -5,7 +5,7 @@ import { usePackagedImport } from '../src/client-nav-import.ts';
 const PACKAGED = "import '@webstir-io/webstir-frontend/features/client-nav';";
 
 // The local import is swapped in place, a trailing comment survives, an existing packaged import
-// wins, a packaged import that is only commented out does not count, and line endings are kept.
+// wins, imports are parsed so comments and strings never count, and line endings are kept.
 const cases: Array<{ name: string; source: string; expected: string }> = [
   {
     name: 'swaps the local import in place',
@@ -26,6 +26,16 @@ const cases: Array<{ name: string; source: string; expected: string }> = [
     name: 'ignores a packaged import that is only in a comment',
     source: `/*\n${PACKAGED}\n*/\nimport './scripts/features/client-nav.js';\n`,
     expected: `/*\n${PACKAGED}\n*/\n${PACKAGED}\n`,
+  },
+  {
+    name: 'leaves a commented-out local import and the code after it alone',
+    source: `${PACKAGED}\n// import './scripts/features/client-nav.js';\nstart();\n`,
+    expected: `${PACKAGED}\n// import './scripts/features/client-nav.js';\nstart();\n`,
+  },
+  {
+    name: 'is not fooled by comment markers inside strings',
+    source: "const pattern = '/api/*';\nimport './scripts/features/client-nav.js';\n/* setup */\n",
+    expected: `const pattern = '/api/*';\n${PACKAGED}\n/* setup */\n`,
   },
   {
     name: 'adds the import when there is none',
