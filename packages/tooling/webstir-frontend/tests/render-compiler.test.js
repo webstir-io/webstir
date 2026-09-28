@@ -5,7 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { prepareViewData, schemaDeclaresField } from '@webstir-io/module-contract';
+import {
+  RENDER_PROGRAM_VERSION,
+  prepareViewData,
+  schemaDeclaresField,
+} from '@webstir-io/module-contract';
 
 import {
   RenderTemplateError,
@@ -172,7 +176,7 @@ test('the clients page compiles through the provider build with partials and CSR
   const root = await createWorkspace();
   const program = await buildWorkspace(root);
 
-  assert.equal(program.version, 1);
+  assert.equal(program.version, RENDER_PROGRAM_VERSION);
   assert.equal(program.page, 'clients');
   assert.equal(program.source, CLIENTS_SOURCE);
 

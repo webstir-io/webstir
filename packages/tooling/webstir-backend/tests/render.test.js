@@ -1,4 +1,5 @@
 import { test } from 'bun:test';
+import { RENDER_PROGRAM_VERSION } from '@webstir-io/module-contract';
 import assert from 'node:assert/strict';
 
 import {
@@ -19,7 +20,7 @@ function scoped(source, scope) {
 }
 
 function program(nodes) {
-  return { version: 1, page: 'clients', source: loc.file, bindings: 1, nodes };
+  return { version: RENDER_PROGRAM_VERSION, page: 'clients', source: loc.file, bindings: 1, nodes };
 }
 
 test('text escapes values and renders nothing for null', () => {
@@ -207,8 +208,11 @@ test('wrong runtime shapes fail with the source location', () => {
 test('readRenderProgram rejects other versions', () => {
   assert.equal(readRenderProgram(program([]), 'p.json').page, 'clients');
   assert.throws(
-    () => readRenderProgram({ version: 2, nodes: [] }, 'p.json'),
-    /not a version 1 program/,
+    () => readRenderProgram({ version: RENDER_PROGRAM_VERSION + 1, nodes: [] }, 'p.json'),
+    new RegExp(`not a version ${RENDER_PROGRAM_VERSION} program`),
   );
-  assert.throws(() => readRenderProgram(null, 'p.json'), /not a version 1 program/);
+  assert.throws(
+    () => readRenderProgram(null, 'p.json'),
+    new RegExp(`not a version ${RENDER_PROGRAM_VERSION} program`),
+  );
 });

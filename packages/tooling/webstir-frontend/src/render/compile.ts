@@ -241,6 +241,27 @@ function compileElement(
     state.bindings += 1;
   }
 
+  const propsValue = attribs['data-props'];
+  if (propsValue !== undefined) {
+    const parsed = parsePath(propsValue);
+    if (attribs['data-island'] === undefined) {
+      report('data-props', 'passes data to an island; add data-island="<name>" to this element');
+    } else if (typeof parsed === 'string') {
+      report('data-props', parsed);
+    } else {
+      // Rendered into its own attribute, so a rendered page never reads as a template again.
+      attributeOps.push({
+        op: 'attr',
+        name: 'data-island-props',
+        url: false,
+        json: true,
+        path: resolvePath(propsValue.trim(), parsed, innerScopes),
+        loc,
+      });
+      state.bindings += 1;
+    }
+  }
+
   pushStatic(container, `<${element.name}${renderStaticAttributes(element, boundAttributes)}`);
   for (const op of attributeOps) {
     container.push(op);

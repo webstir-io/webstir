@@ -1,4 +1,5 @@
 import { test } from 'bun:test';
+import { RENDER_PROGRAM_VERSION } from '@webstir-io/module-contract';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
@@ -2011,7 +2012,7 @@ function createClientsRenderProgram() {
     keys: scope === -1 ? source.split('.') : source.split('.').slice(1),
   });
   return {
-    version: 1,
+    version: RENDER_PROGRAM_VERSION,
     page: 'clients',
     source: loc.file,
     bindings: 7,

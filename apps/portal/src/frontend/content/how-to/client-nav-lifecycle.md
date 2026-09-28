@@ -214,6 +214,8 @@ new `load` and `setup`, while scroll, focus and the app shell stay. So a page co
 back in the state `load` and `setup` describe, not with values left in module
 variables.
 
+Islands, components from other libraries placed with `data-island` (see [Islands](./islands.md)), follow the same lifecycle: a page's islands unmount when client-nav leaves it and mount after its `setup`.
+
 The website-style event rebind pattern remains valid. A portal that uses only
 module top-level initialization needs this migration before adopting client-nav;
 its application data, menus, error display, and auth redirects remain its code.

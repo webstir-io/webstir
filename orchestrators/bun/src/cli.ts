@@ -44,6 +44,7 @@ const HELP_TEXT = `Usage:
   webstir init <starter> <directory>
   webstir init <directory>
   webstir add-page <name> --workspace <path> [--no-script]
+  webstir add-island <name> --workspace <path> [--react|--preact|--solid|--svelte|--vue]
   webstir add-test <name-or-path> --workspace <path>
   webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--interaction <navigation|mutation>] [--session <optional|required>] [--session-write] [--form-urlencoded] [--csrf] [--fragment-target <target>] [--fragment-selector <selector>] [--fragment-mode <replace|append|prepend>]
   webstir add-job <name> --workspace <path> [--schedule <expression>]
@@ -67,6 +68,7 @@ const HELP_TEXT = `Usage:
 Commands:
   init       Scaffold a new Webstir workspace.
   add-page   Scaffold a frontend page in an existing workspace.
+  add-island Scaffold an island: a component from React, Preact, Solid, Svelte, Vue, or none.
   add-test   Scaffold a test file in an existing workspace.
   add-route  Scaffold a backend route in an existing workspace.
   add-job    Scaffold a backend job in an existing workspace.
@@ -111,6 +113,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   if (
     command !== 'init' &&
     command !== 'add-page' &&
+    command !== 'add-island' &&
     command !== 'add-test' &&
     command !== 'add-route' &&
     command !== 'add-job' &&
@@ -135,7 +138,11 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
   }
 
   const options = parseCommandOptions(rest, {
-    allowUnknownOptions: command === 'add-route' || command === 'add-job' || command === 'agent',
+    allowUnknownOptions:
+      command === 'add-route' ||
+      command === 'add-job' ||
+      command === 'agent' ||
+      command === 'add-island',
   });
   if (options.help) {
     io.stdout.write(HELP_TEXT);
@@ -254,6 +261,30 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       await runMcpServer();
       return 0;
     }
+    if (command === 'add-island') {
+      const unknown = options.rawArgs.filter(
+        (arg) =>
+          arg.startsWith('-') &&
+          !['--react', '--preact', '--solid', '--svelte', '--vue', '--workspace', '-w'].includes(
+            arg,
+          ),
+      );
+      if (unknown.length > 0) {
+        io.stderr.write(`Unknown option "${unknown[0]}".\n\n${HELP_TEXT}`);
+        return 1;
+      }
+      const { runAddIsland } = await import('./add-island.ts');
+      const result = await runAddIsland({
+        workspaceRoot: requireWorkspaceRoot(),
+        args: options.positionals,
+        rawArgs: options.rawArgs,
+      });
+      io.stdout.write(
+        `${formatAddSummary('[webstir] add-island complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
+      );
+      return 0;
+    }
+
     if (command === 'add-page') {
       if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);

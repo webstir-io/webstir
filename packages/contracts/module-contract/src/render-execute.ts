@@ -112,6 +112,13 @@ function run(
       }
       case 'attr': {
         const value = read(node.path, data, scopes);
+        if (node.json) {
+          // An island's props: the value as JSON, escaped like any attribute.
+          if (value !== undefined) {
+            out.push(` ${node.name}="${escapeAttribute(JSON.stringify(value))}"`);
+          }
+          break;
+        }
         // ARIA states are the words "true" and "false", not an attribute's presence.
         if (typeof value === 'boolean' && ARIA_TRUE_FALSE.has(node.name.toLowerCase())) {
           out.push(` ${node.name}="${value}"`);

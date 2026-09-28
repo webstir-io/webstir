@@ -243,6 +243,14 @@ What it does:
 - Uses the canonical frontend tooling path rather than a Bun-only fork
 - Scaffolds `index.ts` by default; `--no-script` scaffolds a page without it
 
+### add-island
+Usage: `webstir add-island <name> --workspace <path> [--react|--preact|--solid|--svelte|--vue]`
+
+What it does:
+- Scaffolds `src/frontend/islands/<name>` in the library a flag names, else the one the app already uses, else plain code with a `mount` function
+- Adds the library to `package.json` when the app doesn't have it (run `bun install` afterwards), and for JSX sets the frontend `tsconfig.json`'s JSX options
+- Needs an app with pages; see [Islands](../how-to/islands.md)
+
 ### add-test
 Usage: `webstir add-test <name-or-path> --workspace <path>`
 

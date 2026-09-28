@@ -63,6 +63,10 @@ test('createHotUpdatePayload sends each rebuilt file the way the browser should 
     { file: 'pages/home/index.html', ssg: false, expected: 'reload' },
     { file: 'app/app.ts', ssg: false, expected: 'reload' },
     { file: 'app/app.html', ssg: true, expected: 'reload' },
+    { file: 'islands/price-chart.tsx', ssg: false, expected: 'island:price-chart' },
+    { file: 'islands/editor.vue', ssg: true, expected: 'island:editor' },
+    { file: 'islands/counter.svelte', ssg: false, expected: 'island:counter' },
+    { file: 'islands/styles.css', ssg: false, expected: 'reload' },
   ];
 
   for (const { file, ssg, expected } of cases) {
@@ -75,11 +79,13 @@ test('createHotUpdatePayload sends each rebuilt file the way the browser should 
     });
     const kind = !payload
       ? 'reload'
-      : payload.pageRefresh
-        ? 'refresh'
-        : payload.styles[0]
-          ? `css:${payload.styles[0].relativePath}`
-          : `module:${payload.modules[0]?.relativePath}`;
+      : payload.islandRefresh
+        ? `island:${payload.islandRefresh}`
+        : payload.pageRefresh
+          ? 'refresh'
+          : payload.styles[0]
+            ? `css:${payload.styles[0].relativePath}`
+            : `module:${payload.modules[0]?.relativePath}`;
     expect(`${file} (ssg: ${ssg}) -> ${kind}`).toBe(`${file} (ssg: ${ssg}) -> ${expected}`);
     if (payload?.pageRefresh) expect(payload.requiresReload).toBe(true);
   }

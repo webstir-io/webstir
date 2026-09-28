@@ -1,9 +1,15 @@
 export const SOURCE_STAMP_ATTRIBUTE = 'data-webstir-src';
 export const ATTR_BINDING_PREFIX = 'data-attr-';
 
-export const BINDING_ATTRIBUTES = ['data-text', 'data-if', 'data-each', 'data-include'] as const;
+export const BINDING_ATTRIBUTES = [
+  'data-text',
+  'data-if',
+  'data-each',
+  'data-include',
+  'data-props',
+] as const;
 
-const BINDING_PATTERN = /\sdata-(?:text|if|each|include|attr-[^\s=>]+)\s*=/i;
+const BINDING_PATTERN = /\sdata-(?:text|if|each|include|props|attr-[^\s=>]+)\s*=/i;
 const SEGMENT_PATTERN = /^[A-Za-z_$][\w$]*$/;
 const EACH_PATTERN = /^(\S+)\s+as\s+(\S+)$/;
 const PARTIAL_NAME_PATTERN = /^[A-Za-z0-9][\w-]*(?:\/[A-Za-z0-9][\w-]*)*$/;

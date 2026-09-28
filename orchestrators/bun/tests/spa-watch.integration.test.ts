@@ -308,6 +308,48 @@ test('SPA watch stops when a view names a missing page', async () => {
   }
 }, 120_000);
 
+test('SPA watch remounts an edited island in place, leaving the rest of the page', async () => {
+  const islandSource = (version: string) =>
+    `export function mount(element: HTMLElement) {\n  element.innerHTML = '<span data-version="${version}">${version}</span>';\n}\n`;
+  const islandPath = (workspace: string) =>
+    path.join(workspace, 'src', 'frontend', 'islands', 'badge.ts');
+
+  await withSpaWatch('webstir-spa-watch-island-', {
+    prepare: async (workspace) => {
+      await mkdir(path.dirname(islandPath(workspace)), { recursive: true });
+      await writeFile(islandPath(workspace), islandSource('v1'), 'utf8');
+      const htmlPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
+      const html = await readFile(htmlPath, 'utf8');
+      await writeFile(
+        htmlPath,
+        html.replace(
+          /<main>[\s\S]*<\/main>/,
+          '<main><p id="page">page</p><div data-island="badge" data-load="load"></div></main>',
+        ),
+        'utf8',
+      );
+    },
+    run: async ({ workspace, port }) => {
+      const page = await openPage(port);
+      await page.waitForSelector('[data-island="badge"] [data-version="v1"]', { timeout: 15_000 });
+      await page.evaluate(() => {
+        (window as Window & { __marker?: string }).__marker = 'kept';
+        document.getElementById('page')!.dataset.touched = 'yes';
+      });
+
+      await writeFile(islandPath(workspace), islandSource('v2'), 'utf8');
+
+      await page.waitForSelector('[data-island="badge"] [data-version="v2"]', { timeout: 20_000 });
+      expect(
+        await page.evaluate(() => ({
+          marker: (window as Window & { __marker?: string }).__marker,
+          touched: document.getElementById('page')?.dataset.touched,
+        })),
+      ).toEqual({ marker: 'kept', touched: 'yes' });
+    },
+  });
+}, 120_000);
+
 test('SPA watch hot-applies CSS edits without a full page reload', async () => {
   await withSpaWatch('webstir-spa-watch-css-', {
     run: async ({ workspace, port }) => {
