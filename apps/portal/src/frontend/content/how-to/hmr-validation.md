@@ -19,8 +19,8 @@ Follow these steps after touching the frontend hot-update pipeline.
 2. Confirm the DOM injects a fresh stylesheet and the page does not reload.
 
 ## Fallback Scenario
-1. Remove the client-nav import from `examples/demos/spa/src/frontend/app/app.ts`.
-2. Edit the page script again.
+1. In a copy of `examples/demos/ssg/base` (no client-nav), run `webstir enable scripts home` and start `webstir watch` on it.
+2. Edit `src/frontend/pages/home/index.ts`.
 3. Confirm the console warns about the fallback and the page reloads with the new code.
 
 ## HTML/Manifest Change

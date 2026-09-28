@@ -1,14 +1,3 @@
-import path from 'node:path';
-
-import { assetsRoot } from './paths.ts';
-
-export interface StaticFeatureAsset {
-  readonly sourcePath: string;
-  readonly targetPath: string;
-  readonly executable?: boolean;
-  readonly overwrite?: boolean;
-}
-
 export const pageScriptTemplate = `// Client-side script for this page.
 // Add your interactive behavior here. This runs after the static HTML renders.
 

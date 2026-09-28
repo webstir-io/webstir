@@ -1,6 +1,6 @@
 import { afterAll, afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
@@ -90,9 +90,15 @@ test('SPA watch shows the page again from edited page code, in place, through cl
     [
       "import type { PageContext } from '@webstir-io/webstir-frontend/runtime';",
       '',
-      'type Log = Window & { __setups?: string[]; __cleanups?: string[] };',
+      'type Log = Window & { __evaluations?: string[]; __setups?: string[]; __cleanups?: string[] };',
       '',
-      'export function setup({ root, scope }: PageContext): void {',
+      `((window as Log).__evaluations ??= []).push('${version}');`,
+      '',
+      // An async setup that builds the page's content, so scroll and focus can only come back
+      // once it finishes.
+      'export async function setup({ root, scope }: PageContext): Promise<void> {',
+      '  await new Promise((resolve) => setTimeout(resolve, 100));',
+      `  root.innerHTML = '<input id="query" /><div style="height: 4000px"></div>';`,
       `  root.dataset.version = '${version}';`,
       `  ((window as Log).__setups ??= []).push('${version}');`,
       `  scope.add(() => ((window as Log).__cleanups ??= []).push('${version}'));`,
@@ -104,15 +110,6 @@ test('SPA watch shows the page again from edited page code, in place, through cl
     prepare: async (workspace) => {
       const home = path.join(workspace, 'src', 'frontend', 'pages', 'home');
       await writeFile(path.join(home, 'index.ts'), pageScript('v1'), 'utf8');
-      const html = await readFile(path.join(home, 'index.html'), 'utf8');
-      await writeFile(
-        path.join(home, 'index.html'),
-        html.replace(
-          /<main>[\s\S]*<\/main>/,
-          '<main>\n        <input id="query" />\n        <div style="height: 4000px"></div>\n    </main>',
-        ),
-        'utf8',
-      );
     },
     run: async ({ workspace, port }) => {
       const page = await openPage(port);
@@ -136,11 +133,13 @@ test('SPA watch shows the page again from edited page code, in place, through cl
       const state = await page.evaluate(() => {
         const log = window as Window & {
           __marker?: string;
+          __evaluations?: string[];
           __setups?: string[];
           __cleanups?: string[];
         };
         return {
           marker: log.__marker,
+          evaluations: log.__evaluations,
           setups: log.__setups,
           cleanups: log.__cleanups,
           scrollY: window.scrollY,
@@ -149,6 +148,7 @@ test('SPA watch shows the page again from edited page code, in place, through cl
       });
       expect(state).toEqual({
         marker: 'kept',
+        evaluations: ['v1', 'v2'],
         setups: ['v1', 'v2'],
         cleanups: ['v1'],
         scrollY: 1200,
@@ -156,6 +156,111 @@ test('SPA watch shows the page again from edited page code, in place, through cl
       });
     },
   });
+}, 120_000);
+
+test('SPA watch loads the page in full when a refresh at a #fragment address cannot render in place', async () => {
+  const scriptPath = (workspace: string) =>
+    path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.ts');
+  const setupFor = (version: string) =>
+    `export function setup({ root }: { root: HTMLElement }): void {\n  root.dataset.version = '${version}';\n}\n`;
+
+  await withSpaWatch('webstir-spa-watch-refresh-hash-', {
+    prepare: (workspace) => writeFile(scriptPath(workspace), setupFor('v1'), 'utf8'),
+    run: async ({ workspace, port }) => {
+      const page = await openPage(port, '/#top');
+      await page.waitForSelector('html[data-webstir-ready] main[data-version="v1"]');
+      await page.evaluate(() => {
+        (window as Window & { __marker?: string }).__marker = 'kept';
+      });
+
+      // The new code fails its first evaluation, so the refresh falls back to a full load.
+      await writeFile(
+        scriptPath(workspace),
+        [
+          "if (!sessionStorage.getItem('webstir-test-failed-once')) {",
+          "  sessionStorage.setItem('webstir-test-failed-once', '1');",
+          "  throw new Error('first evaluation fails');",
+          '}',
+          setupFor('v2'),
+        ].join('\n'),
+        'utf8',
+      );
+
+      await page.waitForSelector('html[data-webstir-ready] main[data-version="v2"]', {
+        timeout: 20_000,
+      });
+      expect(
+        await page.evaluate(() => ({
+          marker: (window as Window & { __marker?: string }).__marker ?? null,
+          hash: window.location.hash,
+        })),
+      ).toEqual({ marker: null, hash: '#top' });
+    },
+  });
+}, 120_000);
+
+test('SPA watch keeps the last output when a full rebuild is rejected', async () => {
+  await withSpaWatch('webstir-spa-watch-rejected-build-', {
+    run: async ({ workspace, fetchText, stderr }) => {
+      const dataPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'data.ts');
+      expect(await fetchText('/')).toContain('Home');
+
+      // A new file rebuilds everything; this one fails the browser-page checks.
+      await writeFile(dataPath, 'export const data = {};\n', 'utf8');
+      await waitFor(async () => {
+        expect(stderr()).toContain('must export `data`');
+      }, 30_000);
+      expect(await fetchText('/')).toContain('Home');
+      expect(await fetchText('/pages/home/index.js')).toContain('setup');
+
+      await rm(dataPath);
+      await waitFor(async () => {
+        expect(stderr().split('must export `data`').length).toBe(2);
+        expect(await fetchText('/')).toContain('Home');
+      }, 30_000);
+    },
+  });
+}, 120_000);
+
+test('SPA watch stops when a view names a missing page', async () => {
+  const copy = await copyDemoWorkspace('spa', 'webstir-spa-watch-bad-view-');
+  try {
+    const packageJsonPath = path.join(copy.workspaceRoot, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+      webstir: Record<string, unknown>;
+    };
+    packageJson.webstir.moduleManifest = {
+      views: [{ name: 'missing', path: '/missing/:id', page: 'missing' }],
+    };
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+
+    const child = Bun.spawn({
+      cmd: [
+        process.execPath,
+        path.join(packageRoot, 'src', 'cli.ts'),
+        'watch',
+        '--workspace',
+        copy.workspaceRoot,
+        '--port',
+        String(await getFreePort()),
+      ],
+      cwd: repoRoot,
+      env: process.env,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    childProcesses.push(child);
+    const stderr = { text: '' };
+    const drain = collectOutput(child.stderr, stderr);
+
+    const exitCode = await Promise.race([child.exited, Bun.sleep(60_000).then(() => 'running')]);
+    await settleOutputDrains(drain);
+    removeTrackedChild(childProcesses, child);
+    expect(exitCode).toBe(1);
+    expect(stderr.text).toContain('src/frontend/pages/missing does not exist');
+  } finally {
+    await removeDemoWorkspace(copy);
+  }
 }, 120_000);
 
 test('SPA watch hot-applies CSS edits without a full page reload', async () => {
@@ -405,11 +510,11 @@ async function addPage(workspace: string, name: string): Promise<void> {
   expect(result.exitCode).toBe(0);
 }
 
-async function openPage(port: number): Promise<Page> {
+async function openPage(port: number, address = '/'): Promise<Page> {
   sharedBrowser ??= await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'] });
   const context = await sharedBrowser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
-  await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`http://127.0.0.1:${port}${address}`, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(
     () =>
       (window as Window & { __webstirEventSource?: EventSource }).__webstirEventSource

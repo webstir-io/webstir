@@ -63,6 +63,7 @@ async function createFrontendWatchSession(
       verbose: options.verbose,
       afterBuild: () => pages.refresh(),
       renderedPage: (pathname) => pages.lookup(pathname),
+      docsModuleSwap: true,
     });
   }
 

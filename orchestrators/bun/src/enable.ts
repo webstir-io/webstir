@@ -11,7 +11,6 @@ import {
   renderS3CloudFrontDeployScript,
   renderS3CloudFrontFunction,
   renderS3CloudFrontWorkflow,
-  type StaticFeatureAsset,
 } from './enable-assets.ts';
 import {
   adoptPackagedFeature,

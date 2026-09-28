@@ -1,7 +1,8 @@
 import { createRenderedViewMatcher } from '@webstir-io/webstir-backend';
-import { checkWorkspacePageRoutes } from './page-route-checks.ts';
-import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+import { checkWorkspacePageRoutes } from './page-route-checks.ts';
 
 import { createBuildOutputLock } from './build-output-lock.ts';
 import { DevServer, type DevServerAddress } from './dev-server.ts';
@@ -25,6 +26,11 @@ export interface DocumentWatchOptions {
   readonly exclusive?: <T>(task: () => Promise<T>) => Promise<T>;
   /** Serves pages rendered in memory ahead of the build output; see DevServerOptions. */
   readonly renderedPage?: (pathname: string) => string | null | undefined;
+  /**
+   * The SSG docs page swaps its module in place (its sidebar remounts itself) instead of being
+   * refreshed through client-nav.
+   */
+  readonly docsModuleSwap?: boolean;
 }
 
 export interface DocumentWatchSession {
@@ -81,6 +87,7 @@ export async function startDocumentWatch(
           frontendSourceRoot,
           buildRoot,
           verbose: options.verbose === true,
+          docsModuleSwap: options.docsModuleSwap === true,
           afterBuild: options.afterBuild,
           exclusive: (task) => exclusive(() => buildOutput.write(task)),
         });
@@ -116,6 +123,7 @@ export async function startDocumentWatch(
     },
   });
 
+  let pageRoutes: Awaited<ReturnType<typeof checkWorkspacePageRoutes>>;
   try {
     await watcher.start();
     // A template or loader that fails at startup stops watch, as a failed build does, rather than
@@ -124,6 +132,7 @@ export async function startDocumentWatch(
       await operations.runBuild({ workspaceRoot });
       await options.afterBuild?.();
     });
+    pageRoutes = await checkWorkspacePageRoutes(workspaceRoot);
   } catch (error) {
     stopping = true;
     await watcher.stop();
@@ -135,7 +144,7 @@ export async function startDocumentWatch(
   server = new DevServer({
     buildRoot,
     apiProxyOrigin: options.apiProxyOrigin,
-    pageRoutes: await checkWorkspacePageRoutes(workspaceRoot),
+    pageRoutes,
     isRenderedView: options.apiProxyOrigin
       ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
       : undefined,
@@ -191,6 +200,7 @@ interface RunWatchEventOptions {
   readonly frontendSourceRoot: string;
   readonly buildRoot: string;
   readonly verbose: boolean;
+  readonly docsModuleSwap: boolean;
   readonly afterBuild?: () => Promise<void>;
   readonly exclusive: <T>(task: () => Promise<T>) => Promise<T>;
 }
@@ -207,16 +217,20 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
   let hotUpdate: HotUpdatePayload | null = null;
   const changedPath = getSingleWorkspaceWatchEventPath(event);
   await options.exclusive(async () => {
+    if (event.type !== 'change') {
+      // A full build empties the output first, so a rejected one puts the last output back.
+      await withOutputKept(buildRoot, async () => {
+        await operations.runBuild({ workspaceRoot });
+        await options.afterBuild?.();
+      });
+      return;
+    }
     // A rebuild the checks reject leaves the last accepted programs for the backend to render.
     const accepted = options.afterBuild ? await readPrograms(buildRoot) : undefined;
-    if (event.type === 'change') {
-      await operations.runRebuild({
-        workspaceRoot,
-        changedFile: event.path,
-      });
-    } else {
-      await operations.runBuild({ workspaceRoot });
-    }
+    await operations.runRebuild({
+      workspaceRoot,
+      changedFile: event.path,
+    });
     try {
       await options.afterBuild?.();
     } catch (error) {
@@ -231,6 +245,7 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
       frontendSourceRoot,
       buildRoot,
       changedFile: changedPath,
+      docsModuleSwap: options.docsModuleSwap,
     });
   }
 
@@ -242,6 +257,20 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
 
   await server.publishStatus('hmr-fallback');
   await server.publishReload();
+}
+
+async function withOutputKept(buildRoot: string, build: () => Promise<void>): Promise<void> {
+  const kept = `${buildRoot}.last`;
+  await rm(kept, { recursive: true, force: true });
+  await cp(buildRoot, kept, { recursive: true }).catch(() => undefined);
+  try {
+    await build();
+  } catch (error) {
+    await rm(buildRoot, { recursive: true, force: true });
+    await rename(kept, buildRoot).catch(() => undefined);
+    throw error;
+  }
+  await rm(kept, { recursive: true, force: true });
 }
 
 async function readPrograms(buildRoot: string): Promise<Map<string, string>> {
@@ -369,11 +398,13 @@ function formatWorkspaceWatchPath(workspaceRoot: string, eventPath: string): str
   return normalizeForwardSlashes(relative);
 }
 
-function createHotUpdatePayload(options: {
+/** How the browser takes a rebuilt file: a CSS swap, a page refresh, a module swap, or (null) a reload. */
+export function createHotUpdatePayload(options: {
   readonly workspaceRoot: string;
   readonly frontendSourceRoot: string;
   readonly buildRoot: string;
   readonly changedFile: string;
+  readonly docsModuleSwap: boolean;
 }): HotUpdatePayload | null {
   const changedFile = path.resolve(options.changedFile);
   if (!isWithinDirectory(changedFile, options.frontendSourceRoot)) {
@@ -408,6 +439,7 @@ function createHotUpdatePayload(options: {
   }
 
   if (
+    options.docsModuleSwap &&
     relativeParts[0] === 'pages' &&
     relativeParts[1] === 'docs' &&
     typeof relativeParts[2] === 'string' &&
@@ -439,6 +471,7 @@ function createHotUpdatePayload(options: {
   }
 
   if (
+    options.docsModuleSwap &&
     relativeParts[0] === 'content' &&
     relativeParts[relativeParts.length - 1] === '_sidebar.json'
   ) {

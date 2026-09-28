@@ -608,6 +608,9 @@ async function renderDocumentHtml(
   if (!prepared) await startPage(options.url);
   if (requestId !== activeRequestId) return;
   if (kept) {
+    // An async setup may still be building what the page scrolls through or focuses.
+    await pageSettled.catch(() => {});
+    if (requestId !== activeRequestId) return;
     window.scrollTo({ left: kept.left, top: kept.top, behavior: 'instant' });
     kept.restoreFocus();
   } else {
@@ -799,8 +802,23 @@ function pageSetsReferrerPolicy(): boolean {
 function leave(url: string, history: HistoryMode = 'push'): void {
   leaving = true;
   setBusy(false);
+  // Going to this document's own address with a #fragment only scrolls, so it reloads instead: a
+  // refresh or a Back that could not render in place still ends on a fresh load.
+  const target = new URL(url, window.location.href);
+  if (target.hash && withoutHash(target) === withoutHash(new URL(window.location.href))) {
+    if (target.href !== window.location.href) {
+      if (history === 'push') window.history.pushState({}, '', target.href);
+      else window.history.replaceState({}, '', target.href);
+    }
+    window.location.reload();
+    return;
+  }
   if (history === 'push') window.location.href = url;
   else window.location.replace(url);
+}
+
+function withoutHash(url: URL): string {
+  return url.href.slice(0, url.href.length - url.hash.length);
 }
 
 // Whether the form would still send what it sent: a native repost must not carry values the user

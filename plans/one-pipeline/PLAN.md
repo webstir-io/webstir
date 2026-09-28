@@ -87,6 +87,6 @@ One PR. The navigation and pipeline changes can't be split: turning client-nav o
 - **The watch session is `document-watch.ts`** (was `bun-ssg-watch.ts`), since it now serves every frontend mode.
 - **Page refresh** is a `pageRefresh` hot update: page code changes send it with `requiresReload`, so an app whose `hmr.js` predates it, or has no client-nav, reloads as before. Client-nav's `refreshPage` re-imports page scripts under a new version, so the browser runs the new code once.
 - **`repair` upgrades existing `hmr.js` clients.** The client Webstir shipped from 0.1.59 to 0.4 counts as Webstir's own, so repair replaces it rather than calling it customized.
-- **The SPA template's home page uses `setup`,** as the full template's does, instead of a `registerHotModule` demo. The registry itself stays: the SSG docs page swaps its module through it.
+- **The SPA template's home page uses `setup`,** as the full template's does, instead of a `registerHotModule` demo. The registry itself stays for modules that opt in; in `ssg` workspaces, docs page and `_sidebar.json` edits still re-import the docs module instead of refreshing.
 - **The demo "home boundary" tests are gone,** with the Bun-only demo code they exercised. The SPA watch suite proves the refresh instead: the old cleanup runs, the new setup runs, and scroll, focus and page state stay. The remaining boundary tests no longer start watch or a browser, so they run with the core tests.
 - **`enable.spa` is no longer read,** and `inspect` no longer reports it.
