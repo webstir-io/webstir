@@ -22,15 +22,23 @@ export interface Files {
   delete(key: string): Promise<void>;
 }
 
-let customStore: Files | undefined;
+/** An app's own storage, for `setFileStore`: Webstir checks keys and settles the options first. */
+export interface FileStore {
+  put(key: string, data: FileData, options?: PutOptions): Promise<void>;
+  get(key: string): Promise<Blob | undefined>;
+  url(key: string, options: { readonly expiresIn: number }): Promise<string>;
+  delete(key: string): Promise<void>;
+}
+
+let customStore: FileStore | undefined;
 
 /** Keeps files with this store instead of STORAGE_URL: an app's own client for its storage. */
-export function setFileStore(store: Files | undefined): void {
+export function setFileStore(store: FileStore | undefined): void {
   customStore = store;
 }
 
 /** The app's own store, when it set one, for a key that passes the same check. */
-function appStore(key: string): Files | undefined {
+function appStore(key: string): FileStore | undefined {
   if (customStore) checkKey(key);
   return customStore;
 }
@@ -48,7 +56,10 @@ export const files: Files = {
     const type =
       options?.contentType ?? (data instanceof Blob && data.type ? data.type : undefined);
     const own = appStore(key);
-    if (own) return own.put(key, data, type ? { contentType: type } : undefined);
+    if (own) {
+      const contentType = type ?? typeFromKey(key);
+      return own.put(key, data, contentType ? { contentType } : undefined);
+    }
     const store = resolveStore();
     if (store.kind === 's3') {
       await store.client.write(store.key(key), data, type ? { type } : undefined);
@@ -99,6 +110,12 @@ export const files: Files = {
     await rm(store.typeFile(key), { force: true });
   },
 };
+
+/** The media type a key's extension names, as local disk and S3 infer it, or undefined. */
+function typeFromKey(key: string): string | undefined {
+  const type = Bun.file(key).type;
+  return type && !type.startsWith('application/octet-stream') ? type : undefined;
+}
 
 // Types a browser shows without running anything; anything else is served as a download.
 const INLINE_TYPES =

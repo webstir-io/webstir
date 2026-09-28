@@ -45,7 +45,7 @@ const starts = [
     },
   },
   {
-    name: "Webstir 0.7.0's webstir_sessions, whose sessions carry over",
+    name: "Webstir 0.7.0's webstir_sessions, whose sessions carry over and stay for a 0.7.0 server",
     async prepare(db) {
       await db.exec(`CREATE TABLE webstir_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
 CREATE TABLE webstir_sessions (id TEXT PRIMARY KEY, record TEXT NOT NULL, expires_at TEXT NOT NULL);
@@ -62,7 +62,12 @@ CREATE INDEX webstir_sessions_expires_at ON webstir_sessions (expires_at);`);
     },
     async check(db, store) {
       assert.deepEqual(await store.get('kept'), record('kept'));
-      assert.ok(!(await tableNames(db)).includes('webstir_sessions'));
+      assert.deepEqual(await db.query('SELECT id FROM webstir_sessions'), [{ id: 'kept' }]);
+      await db.execute('INSERT INTO webstir_sessions (id, record, expires_at) VALUES (?, ?, ?)', [
+        'from-0.7.0',
+        '{}',
+        '2999-01-01T00:00:00.000Z',
+      ]);
     },
   },
 ];
