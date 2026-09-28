@@ -90,7 +90,10 @@ test('add-migration numbers migrations, and migrate applies them and lists them'
     expect((await add('create-notes')).exitCode).toBe(0);
     expect((await add('seed-notes', '--ts')).exitCode).toBe(0);
     const migrations = path.join(root, 'src', 'backend', 'migrations');
-    expect(await readdir(migrations)).toEqual(['0001-create-notes.sql', '0002-seed-notes.ts']);
+    expect((await readdir(migrations)).sort()).toEqual([
+      '0001-create-notes.sql',
+      '0002-seed-notes.ts',
+    ]);
     const duplicate = await add('create-notes');
     expect(duplicate.exitCode).toBe(1);
     expect(duplicate.stderr).toContain('Migration "create-notes" already exists');
