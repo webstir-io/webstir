@@ -159,6 +159,16 @@ test('migrate leaves the users table to an app whose migrations make it', async 
       ),
     );
     await writeFile(path.join(root, '.env'), 'USERS_TABLE=app\n');
+
+    // A module that cannot load stops the migration before it writes anything.
+    const working = await readFile(signIn, 'utf8');
+    await writeFile(signIn, `throw new Error('sign-in settings are missing');\n${working}`);
+    const broken = await runWebstir(['migrate', '--workspace', root], { env });
+    expect(broken.exitCode).toBe(1);
+    expect(broken.stderr).toContain('sign-in settings are missing');
+    expect(existsSync(path.join(root, 'data', 'app.sqlite'))).toBe(false);
+    await writeFile(signIn, working);
+
     const applied = await runWebstir(['migrate', '--workspace', root], { env });
     expect(applied.exitCode).toBe(0);
     expect(applied.stdout).toContain('[webstir] applied\n  0001-users');

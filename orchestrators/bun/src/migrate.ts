@@ -12,20 +12,18 @@ function hasSignIn(workspaceRoot: string): boolean {
   );
 }
 
-/** Sign-in's choices, from the built module, where the server reads them too. */
+/**
+ * Sign-in's choices, from the built module, where the server reads them too. A module that cannot
+ * load stops the migration, as it would stop the server, before either writes a table.
+ */
 async function readSignInOptions(
   workspaceRoot: string,
 ): Promise<{ usersTable?: 'webstir' | 'app' }> {
   const built = path.join(workspaceRoot, 'build', 'backend', 'module.js');
-  try {
-    const loaded = (await import(pathToFileURL(built).href)) as {
-      module?: { signIn?: { usersTable?: 'webstir' | 'app' } };
-    };
-    return loaded.module?.signIn ?? {};
-  } catch {
-    // A module that cannot load here leaves Webstir's defaults, as before it was read.
-    return {};
-  }
+  const loaded = (await import(pathToFileURL(built).href)) as {
+    module?: { signIn?: { usersTable?: 'webstir' | 'app' } };
+  };
+  return loaded.module?.signIn ?? {};
 }
 
 export interface MigrateResult {
