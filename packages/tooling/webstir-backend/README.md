@@ -100,14 +100,14 @@ Fresh scaffolds now boot through the package-managed Bun runtime by default:
   bun build/backend/index.js
   ```
 
-Published `api` and `full` workspaces also ship the supported Bun deploy runner:
+Published apps with a server also ship the supported Bun deploy runner:
 
 - Start the published workspace through the single-port deploy host:
   ```bash
   bun ./node_modules/.bin/webstir-backend-deploy --workspace "$PWD"
   ```
-- `api` workspaces proxy all requests to the published backend runtime.
-- `full` workspaces serve `dist/frontend/**` and proxy `/api/*` to the published backend runtime.
+- An app without pages proxies all requests to the published backend runtime.
+- An app with pages serves `dist/frontend/**` and proxies `/api/*` to the published backend runtime.
 
 Fresh scaffolds do not copy `src/backend/server/bun.ts` or `src/backend/runtime/*` re-export files. The operational runtime lives in upgradeable package exports instead.
 

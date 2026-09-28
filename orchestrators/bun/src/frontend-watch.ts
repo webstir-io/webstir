@@ -3,6 +3,7 @@ import { createSsgDevPages } from './ssg-dev-pages.ts';
 import type { DevServerAddress } from './dev-server.ts';
 import { createStopSignal } from './stop-signal.ts';
 import type { WorkspaceDescriptor } from './types.ts';
+import { describeLayers } from './workspace.ts';
 import type { WatchIo, WatchOptions } from './watch.ts';
 
 export interface FrontendWatchSession {
@@ -21,7 +22,7 @@ export async function runFrontendWatch(
   const session = await startFrontendWatchSession(workspace, options, io);
 
   io.stdout.write(
-    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.address.origin}\n`,
+    `[webstir] watch starting\nworkspace: ${workspace.name}\nlayers: ${describeLayers(workspace.layers)}\nurl: ${session.address.origin}\n`,
   );
 
   const stopSignal = createStopSignal();
@@ -54,23 +55,15 @@ async function createFrontendWatchSession(
   options: FrontendWatchSessionOptions,
   _io: WatchIo,
 ): Promise<FrontendWatchSession> {
-  if (workspace.mode === 'ssg') {
-    const pages = createSsgDevPages(workspace.root);
-    return await startDocumentWatch({
-      workspaceRoot: workspace.root,
-      host: options.host,
-      port: options.port,
-      verbose: options.verbose,
-      afterBuild: () => pages.refresh(),
-      renderedPage: (pathname) => pages.lookup(pathname),
-      docsModuleSwap: true,
-    });
-  }
-
+  // Without a server, views render at publish, so watch renders them as the publish will.
+  const pages = createSsgDevPages(workspace.root);
   return await startDocumentWatch({
     workspaceRoot: workspace.root,
     host: options.host,
     port: options.port,
     verbose: options.verbose,
+    afterBuild: () => pages.refresh(),
+    renderedPage: (pathname) => pages.lookup(pathname),
+    docsModuleSwap: true,
   });
 }

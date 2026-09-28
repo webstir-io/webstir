@@ -1,10 +1,9 @@
-export type FrontendPublishMode = 'bundle' | 'ssg';
+import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
 
 export interface FrontendCommandOptions {
   readonly workspaceRoot: string;
   readonly changedFile?: string;
   readonly watch?: boolean;
-  readonly publishMode?: FrontendPublishMode;
 }
 
 export interface FrontendConfig {
@@ -17,7 +16,6 @@ export interface FrontendConfig {
 
 export interface EnableFlags {
   readonly clientNav?: boolean;
-  readonly backend?: boolean;
   readonly search?: boolean;
   readonly contentNav?: boolean;
 }
@@ -82,7 +80,6 @@ export interface AddPageCommandOptions extends FrontendCommandOptions {
 
 export interface FrontendWorkspaceKnownEnableFlags {
   readonly clientNav: boolean;
-  readonly backend: boolean;
   readonly search: boolean;
   readonly contentNav: boolean;
 }
@@ -95,7 +92,6 @@ export interface FrontendWorkspaceEnableFlagsInspect {
 export interface FrontendWorkspacePackageInspect {
   readonly path: string;
   readonly exists: boolean;
-  readonly mode?: string;
   readonly enable: FrontendWorkspaceEnableFlagsInspect;
 }
 
@@ -130,6 +126,8 @@ export interface FrontendWorkspaceContentInspect {
 
 export interface FrontendWorkspaceInspectResult {
   readonly workspaceRoot: string;
+  /** What the app is made of, read from its files. */
+  readonly layers: WorkspaceLayers;
   readonly config: FrontendConfig;
   readonly packageJson: FrontendWorkspacePackageInspect;
   readonly appShell: FrontendWorkspaceAppShellInspect;

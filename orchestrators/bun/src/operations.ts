@@ -1,5 +1,3 @@
-import type { WorkspaceMode } from './types.ts';
-
 export interface WebstirOperationDescriptor {
   readonly id:
     | 'init'
@@ -24,13 +22,14 @@ export interface WebstirOperationDescriptor {
   readonly mutatesWorkspace: boolean;
   readonly supportsJson: boolean;
   readonly stableForMcp: boolean;
-  readonly workspaceModes?: readonly WorkspaceMode[];
+  /** The layer the app must have for this command. */
+  readonly requiresLayer?: 'pages' | 'server';
 }
 
 const OPERATIONS: readonly WebstirOperationDescriptor[] = [
   {
     id: 'init',
-    summary: 'Scaffold a new workspace for the supported Webstir modes.',
+    summary: 'Scaffold a new app from a starter (full, spa, ssg or api).',
     requiresWorkspace: false,
     mutatesWorkspace: true,
     supportsJson: false,
@@ -84,7 +83,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: true,
     supportsJson: false,
     stableForMcp: true,
-    workspaceModes: ['spa', 'ssg', 'full'],
+    requiresLayer: 'pages',
   },
   {
     id: 'add-test',
@@ -101,7 +100,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: true,
     supportsJson: false,
     stableForMcp: true,
-    workspaceModes: ['api', 'full'],
+    requiresLayer: 'server',
   },
   {
     id: 'add-job',
@@ -110,7 +109,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: true,
     supportsJson: false,
     stableForMcp: true,
-    workspaceModes: ['api', 'full'],
+    requiresLayer: 'server',
   },
   {
     id: 'frontend-inspect',
@@ -119,7 +118,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: false,
     supportsJson: true,
     stableForMcp: true,
-    workspaceModes: ['spa', 'ssg', 'full'],
+    requiresLayer: 'pages',
   },
   {
     id: 'backend-inspect',
@@ -128,7 +127,7 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: false,
     supportsJson: true,
     stableForMcp: true,
-    workspaceModes: ['api', 'full'],
+    requiresLayer: 'server',
   },
   {
     id: 'build',

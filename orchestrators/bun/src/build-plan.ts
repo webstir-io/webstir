@@ -1,12 +1,10 @@
-import type { BuildTargetKind, WorkspaceMode } from './types.ts';
+import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
 
-const BUILD_PLANS = {
-  spa: ['frontend'],
-  ssg: ['frontend'],
-  api: ['backend'],
-  full: ['frontend', 'backend'],
-} as const satisfies Record<WorkspaceMode, readonly BuildTargetKind[]>;
+import type { BuildTargetKind } from './types.ts';
 
-export function createBuildPlan(mode: WorkspaceMode): readonly BuildTargetKind[] {
-  return BUILD_PLANS[mode];
+export function createBuildPlan(layers: WorkspaceLayers): readonly BuildTargetKind[] {
+  return [
+    ...(layers.pages ? (['frontend'] as const) : []),
+    ...(layers.server ? (['backend'] as const) : []),
+  ];
 }

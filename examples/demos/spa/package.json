@@ -23,7 +23,6 @@
     "not dead"
   ],
   "webstir": {
-    "mode": "spa",
     "moduleManifest": {},
     "enable": {
       "clientNav": true

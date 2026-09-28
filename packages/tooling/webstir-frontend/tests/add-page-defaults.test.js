@@ -13,36 +13,28 @@ async function createWorkspace(pkg) {
   return root;
 }
 
-test('add-page defaults to ssg scaffold when webstir.mode=ssg', async () => {
-  const workspace = await createWorkspace({
-    name: 'webstir-project',
-    version: '1.0.0',
-    webstir: { mode: 'ssg' },
-  });
+test('add-page scaffolds a page without a script when asked, and writes no view in a static app', async () => {
+  const workspace = await createWorkspace({ name: 'webstir-project', version: '1.0.0' });
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
 
   try {
-    await runAddPage({ workspaceRoot: workspace, pageName: 'about' });
+    await runAddPage({ workspaceRoot: workspace, pageName: 'about', ssg: true });
 
     const pageDir = path.join(workspace, 'src', 'frontend', 'pages', 'about');
-    const htmlPath = path.join(pageDir, 'index.html');
-    const cssPath = path.join(pageDir, 'index.css');
-    const tsPath = path.join(pageDir, 'index.ts');
-
-    assert.equal(fssync.existsSync(htmlPath), true);
-    assert.equal(fssync.existsSync(cssPath), true);
-    assert.equal(fssync.existsSync(tsPath), false);
-
-    const html = await fs.readFile(htmlPath, 'utf8');
-    assert.ok(
-      !html.includes('<script type="module"'),
-      'ssg scaffold should not include module script tag',
-    );
+    assert.equal(fssync.existsSync(path.join(pageDir, 'index.html')), true);
+    assert.equal(fssync.existsSync(path.join(pageDir, 'index.css')), true);
+    assert.equal(fssync.existsSync(path.join(pageDir, 'index.ts')), false);
+    const html = await fs.readFile(path.join(pageDir, 'index.html'), 'utf8');
+    assert.ok(!html.includes('<script type="module"'), 'the page should have no script tag');
+    // A static app's views render at publish already, so no view metadata is written.
+    const pkg = JSON.parse(await fs.readFile(path.join(workspace, 'package.json'), 'utf8'));
+    assert.equal(pkg.webstir, undefined);
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
 
-test('add-page defaults to standard scaffold when webstir.mode is not ssg', async () => {
+test('add-page defaults to a page with a script in every app', async () => {
   const workspace = await createWorkspace({
     name: 'webstir-project',
     version: '1.0.0',

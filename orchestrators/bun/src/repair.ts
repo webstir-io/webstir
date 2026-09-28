@@ -2,8 +2,7 @@ import path from 'node:path';
 import { chmod, lstat, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
-import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
-import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
+import { getAppScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import {
   renderGithubPagesDeployScript,
   renderS3CloudFrontDeployScript,
@@ -19,6 +18,7 @@ import {
 import { classifyHmrClient, migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
+import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import ts from '@typescript/typescript6';
 
 interface RepairAsset extends ScaffoldAssetDescriptor {
@@ -37,7 +37,6 @@ interface RepairEnableFlags {
   clientNav?: boolean;
   search?: boolean;
   contentNav?: boolean;
-  backend?: boolean;
   githubPages?: boolean;
   s3CloudFront?: boolean;
 }
@@ -45,7 +44,6 @@ interface RepairEnableFlags {
 interface RepairPackageJson {
   scripts?: Record<string, unknown>;
   webstir?: {
-    mode?: string;
     enable?: RepairEnableFlags;
   };
 }
@@ -57,7 +55,7 @@ export interface RunRepairOptions {
 
 export interface RepairResult {
   readonly workspaceRoot: string;
-  readonly mode: string;
+  readonly layers: WorkspaceLayers;
   readonly dryRun: boolean;
   readonly restoreScaffold: boolean;
   readonly changes: readonly string[];
@@ -79,12 +77,8 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   const notes: string[] = [];
   const assets: RepairAsset[] = [
     ...getRootScaffoldAssets(),
-    ...filterModeScaffoldAssets(await getModeScaffoldAssets(workspace.mode), enable),
+    ...filterStarterScaffoldAssets(await getAppScaffoldAssets(workspace.root, workspace.layers)),
   ];
-
-  if (enable.backend) {
-    assets.push(...(await getBackendScaffoldAssets()));
-  }
 
   // Generated instructions become app-owned. Existing files, links, or directories
   // must not block unrelated scaffold repairs or be rewritten by the framework.
@@ -113,7 +107,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     : [];
   await preflightWorkspaceWriteTargets(
     workspace.root,
-    getFixedRepairWriteTargets(workspace.root, workspace.mode, enable),
+    getFixedRepairWriteTargets(workspace.root, workspace.layers, enable),
     'repair workspace files',
   );
   const frontendConfig = enable.githubPages
@@ -122,6 +116,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
   await ensureHotModulePair(workspace.root, assets, changes, notes, dryRun);
   noteRetiredRouter(workspace.root, notes);
+  await retireShapeFields(packageJsonPath, changes, notes, dryRun);
 
   if (enable.search || enable.contentNav) {
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
@@ -135,7 +130,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
       await adoptPackagedFeature(workspace.root, name, changes, notes, dryRun);
     }
   }
-  if (enable.backend || workspace.mode === 'api' || workspace.mode === 'full') {
+  if (workspace.layers.server) {
     await ensureBackendTsReference(workspace.root, changes, dryRun);
   }
   if (frontendConfig) {
@@ -160,7 +155,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
 
   return {
     workspaceRoot: workspace.root,
-    mode: workspace.mode,
+    layers: workspace.layers,
     dryRun,
     restoreScaffold,
     changes: uniqueSorted(changes),
@@ -174,14 +169,15 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
 
 function getFixedRepairWriteTargets(
   workspaceRoot: string,
-  mode: string,
+  layers: WorkspaceLayers,
   enable: RepairEnableFlags,
 ): readonly string[] {
-  const targets: string[] = [];
+  // Retiring old shape fields may rewrite package.json.
+  const targets: string[] = [path.join(workspaceRoot, 'package.json')];
   const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
 
   // The hot-module migration may rewrite these even when neither is missing.
-  if (mode !== 'api') {
+  if (layers.pages) {
     targets.push(path.join(appRoot, 'app.ts'), path.join(appRoot, 'hmr.js'));
   }
   if (enable.clientNav || enable.search || enable.contentNav) {
@@ -202,7 +198,7 @@ function getFixedRepairWriteTargets(
   if (enable.search) {
     targets.push(path.join(appRoot, 'app.html'));
   }
-  if (enable.backend || mode === 'api' || mode === 'full') {
+  if (layers.server) {
     targets.push(path.join(workspaceRoot, 'base.tsconfig.json'));
   }
   if (enable.githubPages) {
@@ -232,20 +228,48 @@ function noteRetiredRouter(workspaceRoot: string, notes: string[]): void {
   }
 }
 
-function filterModeScaffoldAssets(
+function filterStarterScaffoldAssets(
   assets: readonly { sourcePath: string; targetPath: string }[],
-  enable: RepairEnableFlags,
 ): readonly { sourcePath: string; targetPath: string }[] {
   // Starter tests belong to the app after init; deleted examples are not runtime drift.
-  const runtimeAssets = assets.filter(
+  return assets.filter(
     (asset) => !normalizeRelativePath(asset.targetPath).split('/').includes('tests'),
   );
-  if (!enable.backend) {
-    return runtimeAssets;
+}
+
+/**
+ * Removes the fields older versions used to say what an app is (`webstir.mode`,
+ * `webstir.enable.backend`); its files say it now, and a leftover field could only disagree.
+ */
+async function retireShapeFields(
+  packageJsonPath: string,
+  changes: string[],
+  notes: string[],
+  dryRun: boolean,
+): Promise<void> {
+  const root = JSON.parse(await readTextFile(packageJsonPath)) as Record<string, unknown>;
+  const webstir = asRecord(root.webstir);
+  const enable = asRecord(webstir.enable);
+  const retired = [
+    'mode' in webstir ? 'webstir.mode' : undefined,
+    'backend' in enable ? 'webstir.enable.backend' : undefined,
+  ].filter((field): field is string => field !== undefined);
+  if (retired.length === 0) {
+    return;
   }
 
-  return runtimeAssets.filter(
-    (asset) => !normalizeRelativePath(asset.targetPath).startsWith('src/backend/'),
+  delete webstir.mode;
+  delete enable.backend;
+  if ('enable' in webstir) {
+    webstir.enable = enable;
+  }
+  root.webstir = webstir;
+  if (!dryRun) {
+    await Bun.write(packageJsonPath, `${JSON.stringify(root, null, 2)}\n`);
+  }
+  changes.push(path.basename(packageJsonPath));
+  notes.push(
+    `Removed ${retired.join(' and ')} from package.json: an app's files say what it is (src/frontend for pages, src/backend/index.ts for a server).`,
   );
 }
 

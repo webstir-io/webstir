@@ -3,7 +3,7 @@ import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
+import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import {
   pageScriptTemplate,
   renderGithubPagesDeployScript,
@@ -18,6 +18,7 @@ import {
   legacyFeaturePaths,
   type PackagedFeatureName,
 } from './feature-imports.ts';
+import { getServerScaffoldAssets, getStarterScaffoldAssets } from './init-assets.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import {
   assertNoExistingSymlinkComponents,
@@ -33,6 +34,7 @@ type EnableFeature =
   | 'search'
   | 'content-nav'
   | 'backend'
+  | 'frontend'
   | 'github-pages'
   | 'gh-pages'
   | 'gh-deploy'
@@ -47,6 +49,7 @@ export interface EnableResult {
   readonly workspaceRoot: string;
   readonly feature: EnableFeature;
   readonly changes: readonly string[];
+  readonly notes?: readonly string[];
 }
 
 export async function runEnable(options: RunEnableOptions): Promise<EnableResult> {
@@ -54,12 +57,13 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   const [featureToken, ...rest] = options.args;
   if (!featureToken) {
     throw new Error(
-      'Missing enable feature. Usage: webstir enable <scripts <page>|client-nav|search|content-nav|backend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
+      'Missing enable feature. Usage: webstir enable <scripts <page>|client-nav|search|content-nav|backend|frontend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
     );
   }
 
   const feature = parseEnableFeature(featureToken);
   const changes: string[] = [];
+  const notes: string[] = [];
   await preflightWorkspaceWriteTargets(
     workspace.root,
     getFixedEnableWriteTargets(workspace.root, feature),
@@ -87,7 +91,10 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       );
       break;
     case 'backend':
-      await enableBackend(workspace.root, changes);
+      await enableBackend(workspace.root, changes, notes);
+      break;
+    case 'frontend':
+      await enableFrontend(workspace.root, changes, notes);
       break;
     case 'github-pages':
     case 'gh-pages':
@@ -117,6 +124,7 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
     workspaceRoot: workspace.root,
     feature,
     changes,
+    ...(notes.length > 0 ? { notes } : {}),
   };
 }
 
@@ -133,6 +141,7 @@ function parseEnableFeature(value: string): EnableFeature {
     case 'search':
     case 'content-nav':
     case 'backend':
+    case 'frontend':
     case 'github-pages':
     case 'gh-pages':
     case 'gh-deploy':
@@ -140,7 +149,7 @@ function parseEnableFeature(value: string): EnableFeature {
       return normalized;
     default:
       throw new Error(
-        `Unknown feature "${value}". Expected scripts, client-nav, search, content-nav, backend, github-pages, gh-deploy, or s3-cloudfront.`,
+        `Unknown feature "${value}". Expected scripts, client-nav, search, content-nav, backend, frontend, github-pages, gh-deploy, or s3-cloudfront.`,
       );
   }
 }
@@ -170,6 +179,7 @@ function getFixedEnableWriteTargets(
         ...legacyFeaturePaths(workspaceRoot, feature),
       ];
     case 'backend':
+    case 'frontend':
       return [packageJsonPath, path.join(workspaceRoot, 'base.tsconfig.json')];
     case 'github-pages':
     case 'gh-pages':
@@ -228,16 +238,23 @@ async function enableScripts(
   changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
 }
 
-async function enableBackend(workspaceRoot: string, changes: string[]): Promise<void> {
-  const backendRoot = path.join(workspaceRoot, 'src', 'backend');
+async function enableBackend(
+  workspaceRoot: string,
+  changes: string[],
+  notes: string[],
+): Promise<void> {
+  const installed = await hasDependency(workspaceRoot, '@webstir-io/webstir-backend');
   const assets = await preflightScaffoldAssets(
     workspaceRoot,
-    await getBackendScaffoldAssets(),
+    await getServerScaffoldAssets(),
     'write backend scaffold assets',
   );
-  if (!existsSync(backendRoot)) {
+  // An app without a server gets one; files it already has, such as the module.ts a static app
+  // keeps for build-time views, stay as they are.
+  if (!readWorkspaceLayers(workspaceRoot).server) {
     for (const asset of assets) {
       const { sourcePath, targetPath } = asset;
+      if (existsSync(targetPath)) continue;
       await mkdir(path.dirname(targetPath), { recursive: true });
       await Bun.write(targetPath, Bun.file(sourcePath));
       changes.push(asset.relativeTargetPath);
@@ -246,10 +263,58 @@ async function enableBackend(workspaceRoot: string, changes: string[]): Promise<
 
   await updatePackageJson(
     workspaceRoot,
-    { enableBackend: true, ensureBackendDependency: true, mode: 'full' },
+    { enableBackend: true, ensureBackendDependency: true },
     changes,
   );
   await ensureTsReference(workspaceRoot, 'src/backend', changes);
+  if (!installed) notes.push(INSTALL_NOTE);
+}
+
+const INSTALL_NOTE = 'package.json gained a dependency; run `bun install` before building.';
+
+async function hasDependency(workspaceRoot: string, name: string): Promise<boolean> {
+  const root = JSON.parse(await readTextFile(path.join(workspaceRoot, 'package.json'))) as {
+    readonly dependencies?: Record<string, unknown>;
+  };
+  return typeof root.dependencies?.[name] === 'string';
+}
+
+async function enableFrontend(
+  workspaceRoot: string,
+  changes: string[],
+  notes: string[],
+): Promise<void> {
+  const hadPages = readWorkspaceLayers(workspaceRoot).pages;
+  const installed = await hasDependency(workspaceRoot, '@webstir-io/webstir-frontend');
+  if (!hadPages) {
+    const assets = await preflightScaffoldAssets(
+      workspaceRoot,
+      (await getStarterScaffoldAssets('spa')).filter((asset) =>
+        asset.targetPath.split(path.sep).join('/').startsWith('src/frontend/'),
+      ),
+      'write frontend scaffold assets',
+    );
+    for (const asset of assets) {
+      const { sourcePath, targetPath } = asset;
+      if (existsSync(targetPath)) continue;
+      await mkdir(path.dirname(targetPath), { recursive: true });
+      await Bun.write(targetPath, Bun.file(sourcePath));
+      changes.push(asset.relativeTargetPath);
+    }
+  }
+
+  await updatePackageJson(
+    workspaceRoot,
+    { enableClientNav: true, ensureFrontendDependency: true },
+    changes,
+  );
+  await ensureTsReference(workspaceRoot, 'src/frontend', changes);
+  if (!installed) notes.push(INSTALL_NOTE);
+  if (!hadPages && readWorkspaceLayers(workspaceRoot).server) {
+    notes.push(
+      "With pages, the site's addresses are its pages, and the server answers under /api/*: routes outside /api/ are no longer reachable from the browser, so move them under /api/.",
+    );
+  }
 }
 
 async function enableGithubPages(
@@ -351,8 +416,8 @@ async function updatePackageJson(
     readonly enableBackend?: boolean;
     readonly enableGithubPages?: boolean;
     readonly enableS3CloudFront?: boolean;
-    readonly mode?: string;
     readonly ensureBackendDependency?: boolean;
+    readonly ensureFrontendDependency?: boolean;
     readonly ensureDeployScript?: string;
   },
   changes: string[],
@@ -363,8 +428,10 @@ async function updatePackageJson(
   const webstir = asRecord(root.webstir);
   const enable = asRecord(webstir.enable);
 
-  if (options.mode) {
-    webstir.mode = options.mode;
+  // An app's files say what it is; fields older versions wrote to say it could only disagree.
+  if (options.enableBackend) {
+    delete webstir.mode;
+    delete enable.backend;
   }
   if (options.enableClientNav !== undefined) {
     enable.clientNav = options.enableClientNav;
@@ -374,9 +441,6 @@ async function updatePackageJson(
   }
   if (options.enableContentNav !== undefined) {
     enable.contentNav = options.enableContentNav;
-  }
-  if (options.enableBackend !== undefined) {
-    enable.backend = options.enableBackend;
   }
   if (options.enableGithubPages !== undefined) {
     enable.githubPages = options.enableGithubPages;
@@ -390,6 +454,9 @@ async function updatePackageJson(
 
   if (options.ensureBackendDependency) {
     await ensureBackendScaffoldDependencies(root);
+  }
+  if (options.ensureFrontendDependency) {
+    await ensureFrontendDependency(root);
   }
 
   if (options.ensureDeployScript) {
@@ -409,21 +476,24 @@ async function updatePackageJson(
   changes.push(relativeWorkspacePath(workspaceRoot, packageJsonPath));
 }
 
+async function ensureFrontendDependency(root: Record<string, unknown>): Promise<void> {
+  const dependencies = asRecord(root.dependencies);
+  if (typeof dependencies['@webstir-io/webstir-frontend'] !== 'string') {
+    const backendSpec = dependencies['@webstir-io/webstir-backend'];
+    dependencies['@webstir-io/webstir-frontend'] =
+      typeof backendSpec === 'string' && backendSpec.startsWith('workspace:')
+        ? 'workspace:*'
+        : await readInstalledPackageVersion('@webstir-io/webstir-frontend');
+  }
+  root.dependencies = dependencies;
+}
+
 async function ensureBackendScaffoldDependencies(root: Record<string, unknown>): Promise<void> {
   const dependencies = asRecord(root.dependencies);
   if (typeof dependencies['@webstir-io/webstir-backend'] !== 'string') {
     dependencies['@webstir-io/webstir-backend'] = await resolveBackendDependencySpec(root);
   }
-  if (typeof dependencies.pino !== 'string') {
-    dependencies.pino = '^10.1.0';
-  }
   root.dependencies = dependencies;
-
-  const devDependencies = asRecord(root.devDependencies);
-  if (typeof devDependencies['@types/bun'] !== 'string') {
-    devDependencies['@types/bun'] = '^1.3.11';
-  }
-  root.devDependencies = devDependencies;
 }
 
 async function resolveBackendDependencySpec(root: Record<string, unknown>): Promise<string> {

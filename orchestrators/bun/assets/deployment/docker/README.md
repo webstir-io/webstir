@@ -1,6 +1,6 @@
 # Webstir Docker Deployment
 
-Canonical Bun deployment contract for published `api` and `full` workspaces.
+Canonical Bun deployment contract for published apps with a server.
 
 ## Workspace Prerequisites
 
@@ -15,7 +15,7 @@ Required inputs in the workspace root:
 - `package.json`
 - `bun.lock`
 - `build/backend/**`
-- `dist/frontend/**` for `full` workspaces
+- `dist/frontend/**` for apps with pages
 - The canonical `.dockerignore`
 
 ## Build
@@ -38,7 +38,7 @@ docker run --rm \
 The container starts `webstir-backend-deploy`, which:
 
 - runs the published backend under Bun
-- serves `dist/frontend/**` for `full` workspaces
-- proxies `/api/*` to the backend runtime for `full` workspaces
-- proxies all requests to the backend for `api` workspaces
+- serves `dist/frontend/**` for apps with pages
+- proxies `/api/*` to the backend runtime for apps with pages
+- proxies all requests to the backend for apps without pages
 - keeps `/readyz`, `/healthz`, and `/metrics` available from the single public port

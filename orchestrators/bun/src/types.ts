@@ -1,8 +1,10 @@
 import type { ModuleBuildResult, ModuleProvider } from '@webstir-io/module-contract';
+import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
 
-export const SUPPORTED_WORKSPACE_MODES = ['spa', 'ssg', 'api', 'full'] as const;
+/** The templates `init` and `refresh` start an app from; nothing records which one was used. */
+export const SUPPORTED_STARTERS = ['spa', 'ssg', 'api', 'full'] as const;
 
-export type WorkspaceMode = (typeof SUPPORTED_WORKSPACE_MODES)[number];
+export type Starter = (typeof SUPPORTED_STARTERS)[number];
 export type CommandMode = 'build' | 'publish';
 export type BuildTargetKind = 'frontend' | 'backend';
 export type BuildProvider = Pick<ModuleProvider, 'build' | 'resolveWorkspace'>;
@@ -10,7 +12,7 @@ export type BuildProvider = Pick<ModuleProvider, 'build' | 'resolveWorkspace'>;
 export interface WorkspaceDescriptor {
   readonly root: string;
   readonly name: string;
-  readonly mode: WorkspaceMode;
+  readonly layers: WorkspaceLayers;
 }
 
 export interface CommandTargetResult {

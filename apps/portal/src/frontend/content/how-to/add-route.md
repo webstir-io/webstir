@@ -41,7 +41,7 @@ After writing the manifest entry, implement the handler in `src/backend/module.t
 - The backend provider auto-loads `build/backend/module.js`, logs the manifest summary, and mounts every exported route. No manual registration is required when you edit `src/backend/module.ts`.
 
 ## Verify the manifest
-- Run `webstir build --workspace "$PWD"` (or `webstir watch --workspace "$PWD"` in an `api` or `full` workspace).
+- Run `webstir build --workspace "$PWD"` (or `webstir watch --workspace "$PWD"` in an app with a server).
 - Print the manifest summary without starting the dev service:\
   `webstir backend-inspect --workspace "$PWD"`
 - The inspect command rebuilds the backend and lists capabilities, routes, and jobs so you can verify manifest metadata before sharing it with collaborators or publishing packages.

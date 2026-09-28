@@ -4,6 +4,8 @@ import path from 'node:path';
 import { link, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 
+import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
+
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
@@ -538,6 +540,66 @@ for (const scenario of clientNavCases) {
   });
 }
 
+test('CLI enable frontend gives a server-only app pages that build beside its server', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-enable-frontend-');
+  const root = copiedWorkspace.workspaceRoot;
+
+  try {
+    expect(readWorkspaceLayers(root)).toEqual({ pages: false, server: true });
+
+    const result = await runEnableInWorkspace(root, ['frontend']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('feature: frontend');
+    // The api starter's route at / is now the home page's address.
+    expect(result.stdout).toContain('the server answers under /api/*');
+    expect(readWorkspaceLayers(root)).toEqual({ pages: true, server: true });
+    const packageJson = await readJsonFile(path.join(root, 'package.json'));
+    expect(packageJson.dependencies['@webstir-io/webstir-frontend']).toBe('workspace:*');
+    expect(packageJson.webstir.enable.clientNav).toBe(true);
+    const baseTsconfig = await readJsonFile(path.join(root, 'base.tsconfig.json'));
+    expect(baseTsconfig.references).toContainEqual({ path: 'src/frontend' });
+
+    expect(result.stdout).toContain('run `bun install` before building');
+    await materializeRepoLocalWorkspaceDependencies(root, { installStdio: 'pipe' });
+    const build = await runWorkspaceCli(root, ['build']);
+    expect(build.stderr).toBe('');
+    expect(build.exitCode).toBe(0);
+    expect(existsSync(path.join(root, 'build', 'frontend', 'pages', 'home', 'index.html'))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(root, 'build', 'backend', 'index.js'))).toBe(true);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('CLI enable backend gives a static app with build-time loaders a server and keeps its module', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-backend-static-');
+  const modulePath = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'module.ts');
+  const moduleSource = 'export const module = { views: [] };\n';
+
+  try {
+    await mkdir(path.dirname(modulePath), { recursive: true });
+    await writeFile(modulePath, moduleSource, 'utf8');
+    expect(readWorkspaceLayers(copiedWorkspace.workspaceRoot)).toEqual({
+      pages: true,
+      server: false,
+    });
+
+    const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['backend']);
+
+    expect(result.exitCode).toBe(0);
+    expect(readWorkspaceLayers(copiedWorkspace.workspaceRoot)).toEqual({
+      pages: true,
+      server: true,
+    });
+    expect(await readFile(modulePath, 'utf8')).toBe(moduleSource);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI enable spa stops and points to client-nav without touching the workspace', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-enable-spa-removed-');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
@@ -567,11 +629,11 @@ test('CLI enables backend on the SPA demo workspace end to end', async () => {
     path.join(copiedWorkspace.workspaceRoot, 'base.tsconfig.json'),
   );
 
-  expect(packageJson.webstir.mode).toBe('full');
-  expect(packageJson.webstir.enable.backend).toBe(true);
+  expect(packageJson.webstir.mode).toBeUndefined();
+  expect(packageJson.webstir.enable?.backend).toBeUndefined();
   expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBe('workspace:*');
-  expect(packageJson.dependencies.pino).toBe('^10.1.0');
-  expect(packageJson.devDependencies['@types/bun']).toBe('^1.3.11');
+  // The same thin server init gives: the backend package carries the runtime.
+  expect(packageJson.dependencies.pino).toBeUndefined();
   expect(existsSync(path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'index.ts'))).toBe(
     true,
   );
@@ -582,9 +644,14 @@ test('CLI enables backend on the SPA demo workspace end to end', async () => {
     '--dry-run',
     '--json',
   ]);
-  const repair = JSON.parse(repairResult.stdout) as { changes: string[] };
+  const repair = JSON.parse(repairResult.stdout) as {
+    changes: string[];
+    missingScaffold: string[];
+  };
   expect(repairResult.exitCode).toBe(0);
   expect(repairResult.stderr).toBe('');
+  // Enable and repair share one server scaffold, so nothing of it counts as missing.
+  expect(repair.missingScaffold.filter((file) => file.startsWith('src/backend/'))).toEqual([]);
   expect(repair.changes).not.toContain('src/backend/tests/progressive-enhancement.test.ts');
   expect(repair.changes.some((change) => change.startsWith('src/backend/'))).toBe(false);
 });
@@ -620,7 +687,7 @@ test('CLI enables gh-deploy with Bun-native deploy scaffolding', async () => {
     'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"',
   );
   expect(deployScript).toContain(
-    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg',
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR"',
   );
   expect(workflow).toContain('uses: oven-sh/setup-bun@v2');
   expect(workflow).toContain('run: bun run deploy');
@@ -654,7 +721,7 @@ test('CLI enables s3-cloudfront with a deploy script, edge function, and workflo
     'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"',
   );
   expect(deployScript).toContain(
-    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg',
+    'bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR"',
   );
   expect(deployScript).toContain('--cache-control "$IMMUTABLE_CACHE"');
   expect(deployScript).toContain('--cache-control "$DOCUMENT_CACHE"');
@@ -938,6 +1005,8 @@ test('CLI enable backend rejects a symlinked scaffold ancestor before external w
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
   await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+  // The linked src still holds the app's pages.
+  await mkdir(path.join(externalRoot, 'frontend'), { recursive: true });
 
   try {
     await rm(path.join(copiedWorkspace.workspaceRoot, 'src'), { recursive: true, force: true });

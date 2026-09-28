@@ -21,6 +21,16 @@
       "import": "./dist/render-execute.js",
       "default": "./dist/render-execute.js"
     },
+    "./page-routes": {
+      "types": "./dist/page-routes.d.ts",
+      "import": "./dist/page-routes.js",
+      "default": "./dist/page-routes.js"
+    },
+    "./workspace": {
+      "types": "./dist/workspace.d.ts",
+      "import": "./dist/workspace.js",
+      "default": "./dist/workspace.js"
+    },
     "./ts-rest": {
       "types": "./dist/adapters/ts-rest.d.ts",
       "import": "./dist/adapters/ts-rest.js",

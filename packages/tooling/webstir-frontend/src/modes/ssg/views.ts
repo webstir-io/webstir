@@ -1,3 +1,4 @@
+import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import path from 'node:path';
 import type { FrontendConfig } from '../../types.js';
 import { ensureDir, pathExists, readJson, writeJson } from '../../utils/fs.js';
@@ -34,8 +35,7 @@ export async function generateSsgViewData(config: FrontendConfig): Promise<void>
   const pkg = await readJson<WorkspacePackageJson>(pkgPath);
   const moduleConfig = pkg?.webstir?.moduleManifest;
   const viewMetadata = moduleConfig?.views ?? [];
-  const workspaceMode = pkg?.webstir?.mode;
-  const isSsgWorkspace = typeof workspaceMode === 'string' && workspaceMode.toLowerCase() === 'ssg';
+  const isSsgWorkspace = isStaticApp(readWorkspaceLayers(workspaceRoot));
 
   const moduleDefinition = await loadBackendModuleDefinition<ModuleDefinitionLike>(workspaceRoot);
   if (!moduleDefinition?.views || moduleDefinition.views.length === 0) {

@@ -1,3 +1,4 @@
+import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import path from 'node:path';
 
 import { FILES, FILE_NAMES } from './core/constants.js';
@@ -15,7 +16,6 @@ import { pathExists, readJson } from './utils/fs.js';
 
 interface WorkspacePackageJson {
   readonly webstir?: {
-    readonly mode?: string;
     readonly enable?: Record<string, unknown>;
   };
 }
@@ -33,6 +33,7 @@ export async function inspectFrontendWorkspace(
 
   return {
     workspaceRoot,
+    layers: readWorkspaceLayers(workspaceRoot),
     config,
     packageJson,
     appShell,
@@ -51,7 +52,6 @@ async function readWorkspacePackageInspect(
   return {
     path: packagePath,
     exists: pkg !== null,
-    mode: pkg?.webstir?.mode,
     enable: {
       raw: enable,
       known: normalizeKnownEnableFlags(enable),
@@ -150,7 +150,6 @@ function normalizeKnownEnableFlags(
 ): FrontendWorkspaceKnownEnableFlags {
   return {
     clientNav: value?.clientNav === true,
-    backend: value?.backend === true,
     search: value?.search === true,
     contentNav: value?.contentNav === true,
   };

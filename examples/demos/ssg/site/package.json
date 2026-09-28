@@ -23,7 +23,6 @@
     "not dead"
   ],
   "webstir": {
-    "mode": "ssg",
     "moduleManifest": {},
     "enable": {
       "clientNav": true,

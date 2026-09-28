@@ -37,7 +37,7 @@ const SHELL =
   '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>';
 
 async function createWorkspace({
-  mode = 'ssg',
+  server = false,
   template = TEMPLATE,
   data = DATA,
   shell = SHELL,
@@ -50,12 +50,16 @@ async function createWorkspace({
   await fs.mkdir(page, { recursive: true });
   await fs.writeFile(
     path.join(root, 'package.json'),
-    JSON.stringify({ name: 'fixture', type: 'module', webstir: { mode } }),
+    JSON.stringify({ name: 'fixture', type: 'module' }),
   );
   await fs.writeFile(path.join(app, 'app.html'), shell);
   await fs.writeFile(path.join(page, 'index.html'), template);
   if (script !== null) await fs.writeFile(path.join(page, 'index.ts'), script);
   if (data !== null) await fs.writeFile(path.join(page, 'data.ts'), data);
+  if (server) {
+    await fs.mkdir(path.join(root, 'src', 'backend'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src', 'backend', 'index.ts'), 'export {};\n');
+  }
   // A real app depends on the frontend package; the page bundle imports its runtime.
   const scope = path.join(root, 'node_modules', '@webstir-io');
   await fs.mkdir(scope, { recursive: true });
@@ -167,7 +171,6 @@ const refusals = [
   {
     name: 'a POST form in the app shell',
     workspace: {
-      mode: 'full',
       shell: SHELL.replace(
         '<body>',
         '<body>\n<form method="POST" action="/sign-out/"><button>Out</button></form>',
@@ -182,10 +185,10 @@ const refusals = [
     error:
       /page 'items' has src\/frontend\/pages\/items\/data\.ts, so it renders in the browser, but it has no index\.ts to export load/,
   },
-  ...['ssg', 'full'].map((mode) => ({
-    name: `a POST form (${mode})`,
+  ...[false, true].map((server) => ({
+    name: `a POST form (${server ? 'with' : 'without'} a server)`,
     workspace: {
-      mode,
+      server,
       template: TEMPLATE.replace(
         '</main>',
         '<form method="post" action="/items/"><button>Add</button></form></main>',
@@ -231,19 +234,21 @@ test("a browser page's first load is rendered from its initial data", async () =
   }
 });
 
-// An SPA can have bindings only on pages that render in the browser.
+// A page with bindings needs something to render it: here, the browser, through its data.ts.
 for (const withData of [true, false]) {
-  test(`an SPA page with bindings ${withData ? 'builds with' : 'fails without'} a data.ts`, async () => {
-    const root = await createWorkspace({ mode: 'spa', data: withData ? DATA : null });
+  test(`a page with bindings ${withData ? 'passes with' : 'fails without'} a data.ts`, async () => {
+    const root = await createWorkspace({ data: withData ? DATA : null });
     try {
-      const run = build(root);
+      const run = build(root).then(() =>
+        validateRenderPrograms({
+          workspaceRoot: root,
+          pagesRoot: path.join(root, 'build', 'frontend', 'pages'),
+        }),
+      );
       if (withData) {
         await run;
       } else {
-        await assert.rejects(
-          run,
-          /page 'items' has bindings, but an SPA has no server to render them/,
-        );
+        await assert.rejects(run, /page 'items' has bindings, but nothing renders it/);
       }
     } finally {
       await fs.rm(root, { recursive: true, force: true });

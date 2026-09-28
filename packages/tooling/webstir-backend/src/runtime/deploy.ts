@@ -11,11 +11,10 @@ import {
   DEFAULT_PUBLIC_PORT,
   defaultIo,
   getOpenPort,
-  readPublishedWorkspaceMode,
+  readPublishedLayers,
   requireBunRuntime,
   textResponse,
   type DeploymentIo,
-  type PublishedWorkspaceMode,
   type PublishedWorkspaceServer,
   type PublishedWorkspaceServerOptions,
 } from './deploy-shared.js';
@@ -31,8 +30,8 @@ export async function startPublishedWorkspaceServer(
   const bun = requireBunRuntime();
   const workspaceRoot = path.resolve(options.workspaceRoot);
   const io = options.io ?? defaultIo;
-  const mode = await readPublishedWorkspaceMode(workspaceRoot);
-  const frontendRoot = mode === 'full' ? path.join(workspaceRoot, 'dist', 'frontend') : undefined;
+  const layers = readPublishedLayers(workspaceRoot);
+  const frontendRoot = layers.pages ? path.join(workspaceRoot, 'dist', 'frontend') : undefined;
   const backendEntry = path.join(workspaceRoot, 'build', 'backend', 'index.js');
 
   await assertExists(backendEntry, 'published backend entry');
@@ -74,7 +73,7 @@ export async function startPublishedWorkspaceServer(
     fetch: async (request) =>
       await handlePublishedWorkspaceRequest({
         request,
-        mode,
+        pages: layers.pages,
         frontendRoot,
         backendOrigin,
         pageRoutes,
@@ -109,7 +108,7 @@ export async function startPublishedWorkspaceServer(
 
   return {
     origin: `http://${displayHost}:${server.port}`,
-    mode,
+    layers,
     async stop() {
       stopping = true;
       server.stop(true);
@@ -122,7 +121,7 @@ export async function startPublishedWorkspaceServer(
 
 async function handlePublishedWorkspaceRequest(options: {
   readonly request: Request;
-  readonly mode: PublishedWorkspaceMode;
+  readonly pages: boolean;
   readonly frontendRoot?: string;
   readonly backendOrigin: string;
   readonly pageRoutes: readonly PageRoute[];
@@ -131,22 +130,13 @@ async function handlePublishedWorkspaceRequest(options: {
   const requestUrl = new URL(options.request.url);
   const pathname = requestUrl.pathname;
 
-  if (options.mode === 'api') {
-    return await proxyRequest(options.request, requestUrl, pathname, options.backendOrigin, 'api');
+  if (!options.pages) {
+    return await proxyRequest(options.request, requestUrl, pathname, options.backendOrigin, false);
   }
 
-  if (
-    shouldProxyToBackend(options.request, pathname) ||
-    (options.mode === 'full' && (await options.isRenderedView(pathname)))
-  ) {
+  if (shouldProxyToBackend(options.request, pathname) || (await options.isRenderedView(pathname))) {
     const proxyPath = getFullWorkspaceProxyPath(pathname);
-    return await proxyRequest(
-      options.request,
-      requestUrl,
-      proxyPath,
-      options.backendOrigin,
-      'full',
-    );
+    return await proxyRequest(options.request, requestUrl, proxyPath, options.backendOrigin, true);
   }
 
   if (!options.frontendRoot) {

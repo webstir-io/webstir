@@ -91,7 +91,6 @@ test('inspectFrontendWorkspace resolves shallow workspace facts without building
   });
   assert.deepEqual(result.packageJson.enable.known, {
     clientNav: true,
-    backend: false,
     search: false,
     contentNav: true,
   });
@@ -135,7 +134,6 @@ test('inspectFrontendWorkspace reports absent frontend facts cleanly', async (t)
   assert.equal(result.packageJson.enable.raw, undefined);
   assert.deepEqual(result.packageJson.enable.known, {
     clientNav: false,
-    backend: false,
     search: false,
     contentNav: false,
   });

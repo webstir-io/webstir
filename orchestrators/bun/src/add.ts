@@ -11,6 +11,8 @@ import { assertNoExistingSymlinkComponents, normalizeScaffoldSegment } from './s
 export interface RunAddPageOptions {
   readonly workspaceRoot: string;
   readonly args: readonly string[];
+  /** Scaffold the page without an index.ts, for a page that needs no JavaScript. */
+  readonly noScript?: boolean;
 }
 
 export interface RunAddTestOptions {
@@ -77,6 +79,7 @@ export async function runAddPageCommand(options: RunAddPageOptions): Promise<Add
   await runAddPage({
     workspaceRoot: options.workspaceRoot,
     pageName,
+    ssg: options.noScript,
   });
 
   const changes = await collectChangedFiles(options.workspaceRoot, trackedPaths, before);

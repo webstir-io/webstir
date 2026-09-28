@@ -10,6 +10,8 @@ import { applySsgRouting, generateSsgViewData } from '../dist/modes/ssg/index.js
 
 async function createWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-defaults-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(root, 'src', 'frontend'), { recursive: true });
 
   const distFrontend = path.join(root, 'dist', 'frontend');
   const distPages = path.join(distFrontend, 'pages');
@@ -31,7 +33,6 @@ async function createWorkspace() {
     name: 'webstir-project',
     version: '1.0.0',
     webstir: {
-      mode: 'ssg',
       moduleManifest: {
         views: [
           {
@@ -125,6 +126,8 @@ test('ssg workspace defaults views to renderMode=ssg when omitted', async () => 
 
 test('ssg routing aliases configured content pages outside the pages root', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-content-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
   const distFrontend = path.join(workspace, 'dist', 'frontend');
   const distPages = path.join(distFrontend, 'pages');
   const sourcePage = path.join(distPages, 'company', 'what-we-do', 'index.html');
@@ -133,11 +136,7 @@ test('ssg routing aliases configured content pages outside the pages root', asyn
   await fs.writeFile(sourcePage, '<!doctype html><main>what we do</main>', 'utf8');
   await fs.writeFile(
     path.join(workspace, 'package.json'),
-    JSON.stringify(
-      { name: 'webstir-project', version: '1.0.0', webstir: { mode: 'ssg' } },
-      null,
-      2,
-    ),
+    JSON.stringify({ name: 'webstir-project', version: '1.0.0', webstir: {} }, null, 2),
     'utf8',
   );
 
@@ -155,6 +154,8 @@ test('ssg routing aliases configured content pages outside the pages root', asyn
 
 test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-no-slash-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
   const distFrontend = path.join(workspace, 'dist', 'frontend');
   const distPages = distFrontend;
 
@@ -195,7 +196,6 @@ test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', asy
         name: 'webstir-project',
         version: '1.0.0',
         webstir: {
-          mode: 'ssg',
           siteUrl: 'https://webstir.io',
           trailingSlash: false,
         },
@@ -250,6 +250,8 @@ test('ssg routing can emit no-trailing-slash html aliases and sitemap urls', asy
 
 test('ssg canonical urls keep declared tags and refresh compressed copies', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-canonical-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
   const distFrontend = path.join(workspace, 'dist', 'frontend');
 
   await fs.mkdir(path.join(distFrontend, 'about'), { recursive: true });
@@ -268,7 +270,7 @@ test('ssg canonical urls keep declared tags and refresh compressed copies', asyn
     path.join(workspace, 'package.json'),
     JSON.stringify({
       name: 'webstir-project',
-      webstir: { mode: 'ssg', siteUrl: 'https://webstir.io' },
+      webstir: { siteUrl: 'https://webstir.io' },
     }),
     'utf8',
   );
@@ -306,6 +308,8 @@ test('ssg canonical urls keep declared tags and refresh compressed copies', asyn
 
 test('ssg workspace defaults staticPaths to [path] for view data', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-default-paths-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
   const distFrontend = path.join(workspace, 'dist', 'frontend');
   const distPages = path.join(distFrontend, 'pages');
   const buildBackend = path.join(workspace, 'build', 'backend');
@@ -340,7 +344,6 @@ test('ssg workspace defaults staticPaths to [path] for view data', async () => {
         name: 'webstir-project',
         version: '1.0.0',
         webstir: {
-          mode: 'ssg',
           moduleManifest: {
             views: [
               {
@@ -375,6 +378,8 @@ test('ssg workspace defaults staticPaths to [path] for view data', async () => {
 
 test('ssg view-data generation fails when a backend module candidate cannot be imported', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-import-fail-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
   const distPages = path.join(workspace, 'dist', 'frontend', 'pages');
   const buildBackend = path.join(workspace, 'build', 'backend');
 
@@ -387,11 +392,7 @@ test('ssg view-data generation fails when a backend module candidate cannot be i
   await fs.writeFile(path.join(buildBackend, 'module.mjs'), 'export const module = ;\n', 'utf8');
   await fs.writeFile(
     path.join(workspace, 'package.json'),
-    JSON.stringify(
-      { name: 'webstir-project', version: '1.0.0', webstir: { mode: 'ssg' } },
-      null,
-      2,
-    ),
+    JSON.stringify({ name: 'webstir-project', version: '1.0.0', webstir: {} }, null, 2),
     'utf8',
   );
 
@@ -407,6 +408,8 @@ test('ssg view-data generation fails when a backend module candidate cannot be i
 
 test('ssg view-data generation fails when a view loader throws', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-ssg-load-fail-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
   const distPages = path.join(workspace, 'dist', 'frontend', 'pages');
   const buildBackend = path.join(workspace, 'build', 'backend');
 
@@ -437,7 +440,6 @@ test('ssg view-data generation fails when a view loader throws', async () => {
         name: 'webstir-project',
         version: '1.0.0',
         webstir: {
-          mode: 'ssg',
           moduleManifest: {
             views: [{ name: 'AboutView', path: '/about', staticPaths: ['/about'] }],
           },

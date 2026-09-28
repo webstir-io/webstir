@@ -34,10 +34,7 @@ test('portal docs match the Bun backend scaffold split', () => {
     /editing the existing backend route in `src\/backend\/index\.ts`/,
   );
 
-  assert.match(
-    templatesDoc,
-    /Fresh `api` and `full` scaffolds keep `src\/backend\/index\.ts` thin/,
-  );
+  assert.match(templatesDoc, /Fresh `api` and `full` starters keep `src\/backend\/index\.ts` thin/);
   assert.match(
     templatesDoc,
     /Manifest-backed route and demo logic lives in `src\/backend\/module\.ts`\./,

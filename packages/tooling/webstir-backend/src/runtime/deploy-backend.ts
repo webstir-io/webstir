@@ -5,7 +5,7 @@ import type { Readable } from 'node:stream';
 import { CLIENT_NAV_HEADERS } from '@webstir-io/module-contract/client-nav';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import type { DeploymentIo, PublishedWorkspaceMode } from './deploy-shared.js';
+import type { DeploymentIo } from './deploy-shared.js';
 import { resolveRuntimeCommand, textResponse } from './deploy-shared.js';
 
 interface RuntimeProcessRecord {
@@ -85,14 +85,15 @@ export async function proxyRequest(
   requestUrl: URL,
   proxyPath: string,
   backendOrigin: string,
-  mode: PublishedWorkspaceMode,
+  /** The app has pages, so a redirect to the backend's own address maps back to the public one. */
+  pages: boolean,
 ): Promise<Response> {
   const targetUrl = new URL(proxyPath + requestUrl.search, backendOrigin);
 
   try {
     const requestInit = createProxyRequestInit(request, targetUrl);
     const proxyResponse = await fetch(targetUrl, requestInit);
-    const headers = rewriteProxyResponseHeaders(proxyResponse.headers, targetUrl, mode);
+    const headers = rewriteProxyResponseHeaders(proxyResponse.headers, targetUrl, pages);
 
     return new Response(request.method !== 'HEAD' ? proxyResponse.body : null, {
       status: proxyResponse.status,
@@ -157,25 +158,21 @@ async function canConnectToPort(port: number): Promise<boolean> {
   });
 }
 
-function rewriteProxyResponseHeaders(
-  headers: Headers,
-  targetUrl: URL,
-  mode: PublishedWorkspaceMode,
-): Headers {
+function rewriteProxyResponseHeaders(headers: Headers, targetUrl: URL, pages: boolean): Headers {
   const nextHeaders = new Headers(headers);
   // A redirect, and the same destination handed to client-nav.
   for (const name of ['location', CLIENT_NAV_HEADERS.location]) {
     const location = headers.get(name);
     if (location) {
-      nextHeaders.set(name, rewriteProxyLocation(location, targetUrl, mode));
+      nextHeaders.set(name, rewriteProxyLocation(location, targetUrl, pages));
     }
   }
   return nextHeaders;
 }
 
-function rewriteProxyLocation(value: string, targetUrl: URL, mode: PublishedWorkspaceMode): string {
+function rewriteProxyLocation(value: string, targetUrl: URL, pages: boolean): string {
   const trimmed = value.trim();
-  if (!trimmed || mode === 'api') {
+  if (!trimmed || !pages) {
     return value;
   }
 

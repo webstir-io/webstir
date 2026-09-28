@@ -1,5 +1,7 @@
 import path from 'node:path';
 
+import { isStaticApp } from '@webstir-io/module-contract/workspace';
+
 import { createBuildPlan } from './build-plan.ts';
 import { loadProvider } from './providers.ts';
 import { assertNoProviderErrorDiagnostics } from './provider-diagnostics.ts';
@@ -28,13 +30,13 @@ export async function runCommand(
   await assertNoActiveWorkspaceWatch(workspace.root, mode);
   const providerLoader = options.loadProvider ?? loadProvider;
   const targets = [];
-  if (workspace.mode === 'ssg') {
-    // A static site's views load at build time, so their module compiles without a server.
+  if (isStaticApp(workspace.layers)) {
+    // A static app's views load at build time, so their module compiles without a server.
     const { buildWorkspaceModuleDefinition } = await import('@webstir-io/webstir-backend');
     await buildWorkspaceModuleDefinition(workspace.root, mode);
   }
 
-  for (const kind of createBuildPlan(workspace.mode)) {
+  for (const kind of createBuildPlan(workspace.layers)) {
     const provider = await providerLoader(kind);
     const resolvedWorkspace = await provider.resolveWorkspace({
       workspaceRoot: workspace.root,
@@ -55,7 +57,7 @@ export async function runCommand(
     });
   }
 
-  if (workspace.mode === 'full' || workspace.mode === 'ssg') {
+  if (workspace.layers.pages) {
     await validateRenderTemplates(workspace.root);
   }
 

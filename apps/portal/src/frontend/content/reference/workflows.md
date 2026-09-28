@@ -31,16 +31,17 @@ When in doubt, use this path:
 6. Enable `client-nav` only after the baseline HTML flow is already correct
 7. Use `webstir inspect` to confirm scaffold health plus the frontend/backend contract surfaces before shipping
 8. Use `webstir repair` to restore scaffold drift without changing the app shape
-9. Use `webstir publish` plus the Bun Docker deployment contract for shipped `api` and `full` workspaces
+9. Use `webstir publish` plus the Bun Docker deployment contract for shipped apps with a server
 
 ## Flow Shape
 
-1. Resolve the workspace and detect which surfaces exist.
-2. Choose the active build plan from `webstir.mode`:
-   - `spa` and `ssg` => frontend
-   - `api` => backend
-   - `full` => frontend + backend
-   - `full` is the main lane for server-first apps with forms, redirects, auth, and optional enhancement.
+1. Resolve the workspace and read its layers from its files.
+2. Choose the active build plan from the layers:
+   - pages (`src/frontend/`) => frontend
+   - server (`src/backend/index.ts`) => backend
+   - pages + server => frontend + backend
+   - pages + server is the main lane for server-first apps with forms, redirects, auth, and optional enhancement.
+   - pages without a server publish as a static site, with views rendered at publish.
 3. Run the canonical package logic from `packages/tooling/**`.
 4. Emit `build/**` for development and test work.
 5. Emit `dist/frontend/**` for publish-ready frontend assets when a frontend surface exists.
@@ -50,19 +51,19 @@ When in doubt, use this path:
 
 ### `init`
 
-- Creates a starter workspace for `spa`, `ssg`, `api`, or `full`
+- Creates a workspace from the `full`, `spa`, `ssg`, or `api` starter
 - Writes source roots under `src/**` plus `types/**`
 
 ### `build`
 
-- Runs the frontend and/or backend package pipelines for the workspace mode
+- Runs the frontend and/or backend package pipelines for the app's layers
 - Writes `build/frontend/**` and `build/backend/**`
 
 ### `watch`
 
-- Starts frontend watch for `spa`, `ssg`, and `full`, through the same pipeline as `build`
-- Starts the backend build watcher and runtime for `api` and `full`
-- Proxies `/api/*` in full-stack watch mode
+- Starts frontend watch for an app with pages, through the same pipeline as `build`; without a server it also renders build-time views
+- Starts the backend build watcher and runtime for an app with a server
+- Proxies `/api/*` when the app has pages and a server
 
 ### `test`
 
@@ -72,16 +73,16 @@ When in doubt, use this path:
 
 ### `publish`
 
-- Produces optimized frontend assets under `dist/frontend/**`
-- Produces backend bundles under `build/backend/**`
+- Produces optimized frontend assets under `dist/frontend/**`, in the static layout when the app has no server
+- Produces backend bundles under `build/backend/**` when the app has a server
 - Validates the same runtime shape that the proof apps use in publish mode
-- For published `api` and `full`, pair the workspace with the supported Bun Docker deployment helper under `orchestrators/bun/resources/deployment/docker`
+- For a published app with a server, pair the workspace with the supported Bun Docker deployment helper under `orchestrators/bun/resources/deployment/docker`
 
 ## Runtime Scope
 
 Only `webstir test` supports `--runtime <frontend|backend|all>`.
 
-`build`, `watch`, and `publish` follow the workspace mode instead of a runtime flag. If you need a backend-only loop, use an `api` workspace. If you need frontend-only output, use `spa` or `ssg`.
+`build`, `watch`, and `publish` follow the app's layers instead of a runtime flag. An app with only a server gets a backend-only loop; an app with only pages gets frontend-only output.
 
 ## Practical Reference
 

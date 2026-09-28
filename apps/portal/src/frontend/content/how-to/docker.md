@@ -40,16 +40,17 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 
 ## Runtime Contract
 
-- `api` workspaces expose the published backend on the container port.
-- `full` workspaces expose one public port that serves `dist/frontend/**` and proxies `/api/*` to the published backend.
-- `dist/frontend/**` is only required for `full`; `api` workspaces can build the image without a `dist` tree.
+- The deploy reads what the app is from the published output: `build/backend/index.js` is its server, and `dist/frontend/` its pages. The image carries no `src/`.
+- An app without pages exposes the published backend on the container port.
+- An app with pages exposes one public port that serves `dist/frontend/**` and proxies `/api/*` to the published backend.
+- `dist/frontend/**` is only there for an app with pages; an app without pages builds the image without a `dist` tree.
 - The single public port keeps the runtime probes available without a second sidecar port:
   - `GET /healthz`
   - `GET /readyz`
   - `GET /metrics`
 - `/metrics` stays reachable on that port even when metrics are disabled; the default scaffold returns `{ "enabled": false }` instead of exposing rolling counters.
 - `SESSION_SECRET` is required in production for the default Bun backend scaffold.
-- Only published `api` and `full` workspaces are in contract for this deploy path.
+- Only published apps with a server are in contract for this deploy path; an app without one publishes as a static site.
 
 ## Canonical Source
 

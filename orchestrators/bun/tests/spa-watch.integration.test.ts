@@ -393,9 +393,7 @@ test('SPA watch keeps the last valid page when an edit adds a binding', async ()
         'utf8',
       );
       await waitFor(async () => {
-        expect(stderr()).toContain(
-          "page 'home' has bindings, but an SPA has no server to render them",
-        );
+        expect(stderr()).toContain("page 'home' has bindings, but nothing renders it");
       }, 30_000);
       expect(await fetchText('/')).not.toContain('binding-v2');
 

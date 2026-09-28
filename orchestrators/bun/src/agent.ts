@@ -88,7 +88,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentResult> {
         : `Workspace diagnosis found ${doctor.issues.length} issue(s).`,
     });
 
-    const backendSupported = doctor.workspace.mode === 'api' || doctor.workspace.mode === 'full';
+    const backendSupported = doctor.workspace.layers.server;
     let inspectFailed = false;
     let inspect: BackendInspectResult | undefined;
     if (backendSupported) {

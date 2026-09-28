@@ -1,3 +1,4 @@
+import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import path from 'node:path';
 import { FOLDERS, FILES } from '../../core/constants.js';
 import type { FrontendConfig } from '../../types.js';
@@ -157,8 +158,7 @@ async function applyStaticPathAliases(
   const workspaceRoot = config.paths.workspace;
   const pkgPath = path.join(workspaceRoot, 'package.json');
   const pkg = await readJson<WorkspacePackageJson>(pkgPath);
-  const workspaceMode = pkg?.webstir?.mode;
-  const isSsgWorkspace = typeof workspaceMode === 'string' && workspaceMode.toLowerCase() === 'ssg';
+  const isSsgWorkspace = isStaticApp(readWorkspaceLayers(workspaceRoot));
   const moduleConfig = pkg?.webstir?.moduleManifest;
   assertNoSsgRoutesInModuleConfig(moduleConfig);
 

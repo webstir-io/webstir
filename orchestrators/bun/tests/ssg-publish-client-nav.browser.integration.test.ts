@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium, type Browser } from 'playwright';
 
@@ -85,6 +85,73 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
   }
 }, 180_000);
 
+test('a published site without a server shows a page at the addresses its views route to', async () => {
+  const copy = await copyDemoWorkspace('spa', 'webstir-static-page-routes');
+  const workspace = copy.workspaceRoot;
+  let server: ReturnType<typeof Bun.serve> | undefined;
+  let browser: Browser | undefined;
+
+  try {
+    await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
+    const pageDir = path.join(workspace, 'src', 'frontend', 'pages', 'items');
+    await mkdir(pageDir, { recursive: true });
+    await writeFile(
+      path.join(pageDir, 'index.html'),
+      '<head><title>Item</title><script type="module" src="index.js"></script></head><body><main><h1>Item</h1></main></body>\n',
+      'utf8',
+    );
+    // The page reads which item from the address, as a page whose data loads in the browser does.
+    await writeFile(
+      path.join(pageDir, 'index.ts'),
+      "export function setup({ root, url }: { root: HTMLElement; url: URL }): void {\n  root.dataset.item = url.pathname.split('/').filter(Boolean).pop() ?? '';\n}\n",
+      'utf8',
+    );
+    const packageJsonPath = path.join(workspace, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+    packageJson.webstir.moduleManifest = {
+      views: [
+        { name: 'item', path: '/items/:id', page: 'items' },
+        { name: 'featured', path: '/featured', page: 'items' },
+      ],
+    };
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+    await runCli(workspace, ['publish']);
+
+    const distRoot = path.join(workspace, 'dist', 'frontend');
+    expect(await readFile(path.join(distRoot, '_redirects'), 'utf8')).toBe(
+      '/items/:id /items/ 200\n',
+    );
+    expect(existsSync(path.join(distRoot, 'featured', 'index.html'))).toBe(true);
+    expect(await readFile(path.join(distRoot, '404.html'), 'utf8')).toContain('/items/:id');
+
+    const port = await getFreePort();
+    server = serveStatic(distRoot, port);
+    const origin = `http://127.0.0.1:${port}`;
+    browser = await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'] });
+    const page = await browser.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    for (const [address, item] of [
+      ['/items/42', '42'],
+      ['/featured/', 'featured'],
+    ] as const) {
+      await page.goto(`${origin}${address}`);
+      await page.waitForSelector(`main[data-item="${item}"]`, { timeout: 10_000 });
+      expect(await page.evaluate(() => location.pathname)).toBe(address);
+    }
+
+    await page.goto(`${origin}/nowhere/at/all`);
+    await page.waitForSelector('main h1');
+    expect(await page.textContent('main h1')).toBe('Not found');
+    expect(errors).toEqual([]);
+  } finally {
+    await browser?.close();
+    server?.stop(true);
+    await removeDemoWorkspace(copy);
+  }
+}, 180_000);
+
 async function readPageState(page: import('playwright').Page) {
   return page.evaluate(() => ({
     path: location.pathname,
@@ -160,6 +227,11 @@ function serveStatic(root: string, port: number): ReturnType<typeof Bun.serve> {
       const indexFile = Bun.file(path.join(filePath, 'index.html'));
       if (await indexFile.exists()) {
         return new Response(indexFile);
+      }
+      // Like GitHub Pages: a missing address gets the site's 404.html, with a 404 status.
+      const notFound = Bun.file(path.join(root, '404.html'));
+      if (await notFound.exists()) {
+        return new Response(notFound, { status: 404, headers: { 'content-type': 'text/html' } });
       }
       return new Response('Not found', { status: 404 });
     },

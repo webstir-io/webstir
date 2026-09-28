@@ -7,12 +7,12 @@ The current Bun implementation is split across `frontend-watch.ts`, `api-watch.t
 ## Responsibilities
 - Serve `build/frontend/**` over HTTP with clean URLs.
 - Expose an SSE endpoint to notify connected browsers to reload after frontend rebuilds.
-- Proxy `/api/*` to the backend runtime in `full` mode.
+- Proxy `/api/*` to the backend runtime when the app has pages and a server.
 - Apply sensible cache headers in dev (HTML not cached; assets short-TTL).
 
 ## Lifecycle
-1. Start the dev server for frontend-capable workspaces.
-2. Start the frontend watch daemon and/or backend runtime depending on workspace mode.
+1. Start the dev server for apps with pages.
+2. Start the frontend watch and/or backend runtime depending on the app's layers.
 3. Watch `src/**` and `types/**`; on changes:
    - Frontend change → incremental frontend rebuild → broadcast HMR or reload events.
    - Backend change → rebuild backend → restart the runtime if the rebuild succeeded.

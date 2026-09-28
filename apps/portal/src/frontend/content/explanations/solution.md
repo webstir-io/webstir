@@ -44,8 +44,8 @@ Use this as the default app path today:
 5. Define request-time views in `src/backend/module.ts` when a document needs server-loaded data at request time.
 6. Enable `client-nav` only after the baseline HTML path is already correct.
 7. Use `webstir inspect` to check scaffold drift plus the frontend/backend contract surfaces before shipping or automating fixes.
-8. If scaffold wiring drifts, use `webstir repair` to restore the same mode and enabled-feature shape.
-9. Publish with `webstir publish`, then deploy `api` or `full` workspaces with the supported Bun Docker contract.
+8. If scaffold wiring drifts, use `webstir repair` to restore the scaffold and enabled-feature shape.
+9. Publish with `webstir publish`, then deploy apps with a server with the supported Bun Docker contract.
 
 ## Runtime Model
 

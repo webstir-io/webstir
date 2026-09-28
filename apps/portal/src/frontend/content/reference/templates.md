@@ -5,16 +5,18 @@ Embedded scaffolding used by the CLI to create projects and generate files. Keep
 ## Overview
 - Repo source of truth lives under `orchestrators/bun/resources/templates/**`.
 - Generated package assets live under `orchestrators/bun/assets/templates/**` and are embedded into the Bun CLI package.
-- `webstir init` lays down a server-first `full` project by default.
+- `webstir init` lays down a server-first project from the `full` starter by default.
 - Generators add files in the right place with sensible defaults.
 
 ## Layout
-Created by `webstir init` according to workspace mode:
+Created by `webstir init` according to the starter:
 
 - `full`: frontend, backend, shared, and types, with client-nav on
 - `spa`: frontend, shared, and types, with client-nav on
 - `ssg`: frontend and types
 - `api`: backend, shared, and types
+
+The starter only chooses the starting files. After init, the app's layers come from those files: pages when `src/frontend/` exists, a server when `src/backend/index.ts` exists.
 
 Typical frontend scaffold:
 
@@ -33,13 +35,13 @@ Typical backend scaffold:
 ## Conventions
 - Base HTML requires a `<main>` in `src/frontend/app/app.html` for page merge.
 - Page folder names must be one non-empty path segment without separators, `.` / `..`, NUL bytes, or platform-reserved names and characters.
-- Each page has `index.html` and `index.css`; standard pages also have `index.ts`, while SSG page scaffolds omit it by default.
+- Each page has `index.html` and `index.css`; standard pages also have `index.ts`, while `add-page --no-script` omits it.
 - Backend entry is `src/backend/index.ts`.
-- Fresh `api` and `full` scaffolds keep `src/backend/index.ts` thin and use it to boot the package-managed Bun runtime.
+- Fresh `api` and `full` starters keep `src/backend/index.ts` thin and use it to boot the package-managed Bun runtime.
 - Manifest-backed route and demo logic lives in `src/backend/module.ts`.
 - The default app primitives are documented in [Primitives](./primitives.md); treat that page as the naming contract for pages, forms, actions, fragment targets, request-time views, and auth-gated routes.
 - For optional app features, prefer absolute app-asset imports such as `await import('/app/search.js')` so dev and publish paths stay aligned.
-- Start with `full` when the app needs forms, redirects, auth, or server-rendered documents; opt into `spa` or `ssg` only when you need those delivery modes specifically.
+- Start with `full` when the app needs forms, redirects, auth, or server-rendered documents; start with `spa` or `ssg` for pages without a server, which publish as a static site.
 
 ## TypeScript
 - Uses an embedded `base.tsconfig.json` referenced by template tsconfigs.
@@ -69,14 +71,14 @@ Typical backend scaffold:
   - Throttled: max 1 event/second; capped at 20 per page session.
   - Deduped: repeats suppressed within 60s using a fingerprint of type|message|file:line:col|stack-hash.
   - Correlation: includes a client correlation id; the server also accepts `X-Correlation-ID`.
-- Where reports go: `webstir watch` prints each report in the terminal next to the build output; the Bun backend runtime logs it at error level, so full and API workspaces have a sink in production.
+- Where reports go: `webstir watch` prints each report in the terminal next to the build output; the Bun backend runtime logs it at error level, so apps with a server have a sink in production.
 - Opt-out: delete `src/frontend/app/error.ts` and remove the `loadErrorHandler` section from `src/frontend/app/app.ts`.
 
 ## Generators
 
 ### add-page
-- Command: `webstir add-page <name> --workspace <path>`
-- Calls the canonical `@webstir-io/webstir-frontend` helper to scaffold `index.html|css` plus `index.ts` for standard pages.
+- Command: `webstir add-page <name> --workspace <path> [--no-script]`
+- Calls the canonical `@webstir-io/webstir-frontend` helper to scaffold `index.html|css` plus `index.ts`; `--no-script` leaves out `index.ts`.
 - Does not modify existing pages or `app.html`.
 - Name validation: rejects control characters, trims surrounding spacing, preserves case and internal spaces, and requires one portable non-empty path segment (not `.` or `..`, a platform-reserved name, or a name containing reserved characters).
 
@@ -98,7 +100,7 @@ Typical backend scaffold:
 - Jobs & scheduling: `src/backend/jobs/**` plus `build/backend/jobs/scheduler.js` support one-off runs, manifest export, and local watch-mode execution. On Bun `1.3.11+`, the built-in scheduler uses `Bun.cron.parse(...)` for real cron expressions and nicknames while still preserving `rate(...)` and `@reboot` schedules for local development loops. Local watch mode skips overlapping runs for the same job and disposes scheduled timers on `SIGINT`/`SIGTERM`.
 
 ## Publish Outputs
-- Per page: `dist/frontend/pages/<page>/index.html`
+- Per page: `dist/frontend/pages/<page>/index.html` in an app with a server; `dist/frontend/<page>/index.html` (and `dist/frontend/index.html` for `home`) in an app without one
 - Fingerprinted assets: `dist/frontend/pages/<page>/index.<timestamp>.{css|js}`
 - Per-page `manifest.json` listing hashed asset names.
 - App assets copied to `dist/frontend/app/*`.

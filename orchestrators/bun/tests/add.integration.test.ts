@@ -75,13 +75,14 @@ test('CLI add-page scaffolds a SPA page end to end', async () => {
   }
 });
 
-test('CLI add-page scaffolds an SSG page without a page script', async () => {
+test('CLI add-page --no-script scaffolds a page without a page script', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-add-ssg-base-');
 
   try {
     const result = await runCli([
       'add-page',
       'guides',
+      '--no-script',
       '--workspace',
       copiedWorkspace.workspaceRoot,
     ]);

@@ -10,7 +10,8 @@ Active command reference for the Bun orchestrator. The default user-facing path 
   - invoke the installed binary from `node_modules/.bin/webstir`
 - Primary entrypoint in this repo: `bun run webstir -- <command>`
 - Works against a workspace root selected with `--workspace <path>` for all mutating or execution commands except `init` and `smoke`
-- Supports the current workspace modes: `spa`, `ssg`, `api`, and `full`
+- Reads each app's layers from its files: pages when `src/frontend/` exists, a server when `src/backend/index.ts` exists. Commands follow the layers; `package.json` does not record them
+- Command summaries print `layers: pages + server`, `layers: pages`, or `layers: server`; JSON output has `layers: { pages, server }`
 
 ## Usage
 
@@ -32,30 +33,32 @@ Common patterns:
 
 ### init
 Usage:
-- `webstir init <mode> <directory>`
+- `webstir init <starter> <directory>`
 - `webstir init <directory>`
 
 What it does:
-- Scaffolds a new workspace for `full`, `ssg`, `spa`, or `api`
+- Scaffolds a new app from the `full`, `ssg`, `spa`, or `api` starter
 - Uses workspace dependencies when the target lives inside this monorepo; uses published package versions for external workspaces
-- Creates the expected `src/frontend`, `src/backend`, `src/shared`, and `types` layout for the selected mode
+- Creates the expected `src/frontend`, `src/backend`, `src/shared`, and `types` layout for the selected starter
+- Prints `starter: <name>`
 
 Notes:
-- Omitting `<mode>` falls back to the default scaffold path already supported by the Bun orchestrator
+- Omitting `<starter>` uses `full`
+- The starter only chooses the starting template; nothing records it after init
 - Follow with `watch`, `build`, `test`, or `publish` against the new workspace
 
 ### refresh
-Usage: `webstir refresh <mode> --workspace <path>`
+Usage: `webstir refresh <starter> --workspace <path>`
 
 What it does:
-- Clears and re-scaffolds an existing, valid Webstir workspace for the selected mode
+- Clears and re-scaffolds an existing, valid Webstir workspace from the selected starter
 - Restores the canonical workspace structure without routing through the archived CLI
 
 Notes:
-- The target must already contain a valid `package.json` with a supported `webstir.mode`; use `init` for a missing directory
+- The target must already contain a valid `package.json` and pages or a server; use `init` for a missing directory
 - This is destructive to all contents inside the target directory
 - Filesystem roots and the user home directory are always rejected
-- Package name and description are preserved, and the selected mode may differ from the current mode
+- Package name and description are preserved, and the selected starter may differ from the one the app started from
 - Demo refresh helper scripts in `examples/demos/utils/*.sh` use this Bun path now
 
 ### doctor
@@ -63,8 +66,8 @@ Usage: `webstir doctor --workspace <path>`
 
 What it does:
 - Checks scaffold drift by running the same workspace-aware analysis that powers `repair --dry-run`
-- For `api` and `full`, also validates backend manifest health through the backend build path
-- Reports backend data/migration health in JSON for backend-capable workspaces, including whether the runner and migrations directory are present, how many migration files exist, and which migration table is configured
+- For apps with a server, also validates backend manifest health through the backend build path
+- Reports backend data/migration health in JSON for apps with a server, including whether the runner and migrations directory are present, how many migration files exist, and which migration table is configured
 - Accepts `--json` for machine-readable health output
 
 Notes:
@@ -76,10 +79,10 @@ Notes:
 Usage: `webstir repair --workspace <path> [--dry-run] [--restore-scaffold]`
 
 What it does:
-- Migrates a workspace to what the installed Webstir expects: moves the hot-module registry from `app.ts` into the dev-only `hmr.js`, adds missing project references and deploy config, and re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, `backend`, and `githubPages`
+- Migrates a workspace to what the installed Webstir expects: moves the hot-module registry from `app.ts` into the dev-only `hmr.js`, adds missing project references and deploy config, and re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, and `githubPages`, and removes `webstir.mode` and `webstir.enable.backend`, which older versions wrote to say what an app is
 - With `clientNav`, `search` or `contentNav`, switches an app from the copies older versions wrote to the package imports, leaving edited or still-imported copies in place with a note
 - Never re-creates missing scaffold files on its own: a mature app may have removed starter files (error pages, starter pages, router files, shared types) on purpose. It lists them as `missingScaffold` instead
-- With `--restore-scaffold`, also re-creates every missing scaffold file for the workspace mode and enabled features, including `AGENTS.md`; for package-managed enabled backends it restores the backend package scaffold instead of stale mode-template backend files. Starter tests are never re-created
+- With `--restore-scaffold`, also re-creates every missing scaffold file from the starter that fits the app's layers (pages + server: `full`; server: `api`; pages: `ssg` when `src/frontend/content/` exists, else `spa`) and enabled features, including `AGENTS.md`. Starter tests are never re-created
 - Accepts `--json` for machine-readable dry-run or repair output
 
 Notes:
@@ -91,7 +94,7 @@ Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
 
 What it does:
 - Adds optional enhancements to an existing workspace
-- Supported features include `scripts`, `client-nav`, `search`, `content-nav`, `backend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
+- Supported features include `scripts`, `client-nav`, `search`, `content-nav`, `backend`, `frontend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
 - Updates workspace files and `package.json` flags so the feature is active on the next build/watch
 
 Notes:
@@ -104,6 +107,7 @@ Usage: `webstir operations`
 What it does:
 - Lists the stable Webstir framework operations that the Bun CLI exposes
 - Marks which operations mutate a workspace, which support `--json`, and which are ready to wrap through MCP
+- Marks the layer an operation needs (`needs: pages` or `needs: server`; `requiresLayer` in JSON)
 - Accepts `--json` for a machine-readable operation catalog
 
 Notes:
@@ -113,9 +117,9 @@ Notes:
 Usage: `webstir inspect --workspace <path>`
 
 What it does:
-- Runs `doctor` first and then surfaces the stable frontend and backend contract data that apply to the workspace mode
-- Uses `frontend-inspect` for `spa`, `ssg`, and `full`
-- Uses `backend-inspect` for `api` and `full`
+- Runs `doctor` first and then surfaces the stable frontend and backend contract data that apply to the app's layers
+- Uses `frontend-inspect` when the app has pages
+- Uses `backend-inspect` when the app has a server
 - Accepts `--json` for machine-readable inspection output
 
 Notes:
@@ -129,7 +133,7 @@ What it does:
 - Reads stable frontend workspace facts without running a build
 - Reports resolved frontend config, recorded enable flags, app-shell presence, discovered pages, and content-root basics
 - Accepts `--json` for machine-readable inspection output
-- Supports `spa`, `ssg`, and `full` workspaces only
+- Needs an app with pages
 
 ### agent
 Usage: `webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> --workspace <path> [goal-args...]`
@@ -151,34 +155,36 @@ Usage: `webstir build --workspace <path>`
 
 What it does:
 - Builds the selected workspace through the canonical provider packages
-- Supports `spa`, `ssg`, `api`, and `full`
-- Produces `build/frontend/**` and/or `build/backend/**` depending on workspace mode
+- Builds the frontend when the app has pages and the backend when it has a server
+- Produces `build/frontend/**` and/or `build/backend/**` depending on the app's layers
+- Fails when the app has neither pages nor a server, or when a page has bindings that nothing renders (no view names it and it has no `data.ts`)
 
 ### publish
-Usage: `webstir publish --workspace <path> [--frontend-mode <bundle|ssg>]`
+Usage: `webstir publish --workspace <path>`
 
 What it does:
 - Produces publish artifacts in `dist/**`
 - Reuses the same provider seams as `build`
-- Handles the required frontend prebuild for `ssg` and `full` before publish output is finalized
-- Accepts `--frontend-mode ssg` to force static-site publish behavior from the top-level Bun CLI
+- Handles the required frontend prebuild before publish output is finalized
+- With a server, publishes pages under `dist/frontend/pages/<page>/` for the server to serve
+- Without a server, publishes the static layout (`dist/frontend/index.html`, `dist/frontend/<page>/index.html`) and renders views at publish
 
 ### watch
 Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--verbose]`
 
 What it does:
 - Starts the Bun dev loop for the selected workspace
-- Supports `spa`, `ssg`, `api`, and `full`
-- Builds the frontend with the same pipeline as `build` and serves it, swapping CSS in place and, with client-nav, showing edited page code in place
-- Supervises the backend runtime for `api` and `full`
-- Proxies `/api/*` in `full` mode
+- Builds the frontend of an app with pages with the same pipeline as `build` and serves it, swapping CSS in place and, with client-nav, showing edited page code in place
+- Without a server, also renders build-time views as the publish will
+- Supervises the backend runtime when the app has a server
+- Proxies `/api/*` when the app has pages and a server
 
 Notes:
 - Frontend runtime selection is no longer a CLI option
-- Every frontend mode watches through the same pipeline: CSS edits swap in place, page code edits show the page again in place with client-nav, other edits reload
+- Every app with pages watches through the same pipeline: CSS edits swap in place, page code edits show the page again in place with client-nav, other edits reload
 - A rebuild that fails a build check keeps serving the last valid page
 - API watch rebuilds and restarts the backend runtime after successful backend changes
-- Full watch adds the backend runtime and `/api` proxying to the same frontend watch
+- With pages and a server, watch adds the backend runtime and `/api` proxying to the same frontend watch
 
 ### test
 Usage: `webstir test --workspace <path> [--runtime <frontend|backend|all>]`
@@ -190,9 +196,9 @@ What it does:
 - Supports runtime filtering with `--runtime` or `WEBSTIR_TEST_RUNTIME`
 
 Notes:
-- `frontend` only: runs frontend suites for `spa`, `ssg`, and `full`
-- `backend` only: runs backend suites for `api` and `full`
-- `all` is the default and runs whatever the workspace mode supports
+- `frontend` only: runs frontend suites when the app has pages
+- `backend` only: runs backend suites when the app has a server
+- `all` is the default and runs whatever the app's layers support
 
 ### smoke
 Usage: `webstir smoke [--workspace <path>]`
@@ -203,7 +209,7 @@ What it does:
 - `test`
 - `publish`
   - `doctor`
-  - `backend-inspect` for backend-capable workspaces
+  - `backend-inspect` for apps with a server
 - If `--workspace` is omitted, scaffolds a temporary server-first full workspace from Bun-owned templates
 - Prints a compact phase-by-phase summary
 
@@ -218,7 +224,7 @@ What it does:
 - Builds the backend and reads the resulting manifest data
 - Prints module metadata, capabilities, routes, views, jobs, and data/migration facts
 - Accepts `--json` for machine-readable manifest output
-- Supports `api` and `full` workspaces only
+- Needs an app with a server
 
 ### mcp
 Usage: `webstir mcp`
@@ -230,12 +236,12 @@ What it does:
 - Reuses the existing machine-readable CLI contracts instead of introducing a second control plane
 
 ### add-page
-Usage: `webstir add-page <name> --workspace <path>`
+Usage: `webstir add-page <name> --workspace <path> [--no-script]`
 
 What it does:
 - Scaffolds a frontend page in the selected workspace
 - Uses the canonical frontend tooling path rather than a Bun-only fork
-- Handles SSG page generation without forcing page scripts when the workspace mode is `ssg`
+- Scaffolds `index.ts` by default; `--no-script` scaffolds a page without it
 
 ### add-test
 Usage: `webstir add-test <name-or-path> --workspace <path>`

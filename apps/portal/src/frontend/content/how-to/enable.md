@@ -14,7 +14,8 @@ Supported features:
 - `client-nav` — enable client-side navigation (feature module)
 - `search` — enable site search UI + behavior (feature modules + CSS)
 - `content-nav` — enable docs content navigation (sidebar, breadcrumb, h2 TOC)
-- `backend` — add backend scaffold and switch to `webstir.mode=full`
+- `backend` — add a server (the backend scaffold) to an app that has none
+- `frontend` — add pages (an app shell and a home page) to an app that has none
 - `github-pages [basePath]` — scaffold a Bun-based GitHub Pages deploy script and set the publish base path
 - `gh-deploy [basePath]` — `github-pages` plus a GitHub Actions workflow
 - `s3-cloudfront` — scaffold an S3 + CloudFront deploy script, the edge function that maps directory URLs to `index.html`, and a GitHub Actions workflow
@@ -53,13 +54,15 @@ Supported features:
 An app that still has the copies an older version wrote under `src/frontend/app/scripts/features/` and `src/frontend/app/styles/features/` is switched over: its imports are rewritten and the copies removed, unless a copy was edited or another file still imports one; then everything stays and the command says how to move over.
 
 ### backend
-- Creates `src/backend/**` if missing (using the current backend package scaffold).
-- Ensures the workspace has the backend package dependency plus scaffold runtime dependencies such as `pino` and Bun types.
-- Updates `package.json`:
-  - `webstir.mode=full`
-  - `webstir.enable.backend=true`
+- In an app without a server, writes the same server `init` gives: the entry `src/backend/index.ts` and `src/backend/tsconfig.json`. Files the app already has stay as they are, such as the `module.ts` a static app keeps for build-time views.
+- Adds the backend package dependency; run `bun install` afterwards.
+- Removes a leftover `webstir.mode` or `webstir.enable.backend` from `package.json`.
 - Ensures `base.tsconfig.json` includes a `references` entry for `src/backend`.
-- Records the enabled backend shape so `webstir repair --restore-scaffold` restores package-managed backend assets instead of stale mode-template backend files.
+
+### frontend
+- In an app without pages, writes an app shell and a home page under `src/frontend/**` (from the `spa` starter), with client-nav on.
+- Adds the frontend package dependency (run `bun install` afterwards) and a `base.tsconfig.json` reference for `src/frontend`.
+- Once an app has pages, its pages own the site's addresses and its server answers under `/api/*`. Routes outside `/api/` are no longer reachable from the browser, so the command says to move them under `/api/`.
 
 ### github-pages
 - Writes `utils/deploy-gh-pages.sh`.

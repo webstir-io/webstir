@@ -5,24 +5,24 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 ## Overview
 
 - Parses CLI commands and workspace paths.
-- Chooses the active build plan from `webstir.mode`.
+- Chooses the active build plan from the app's layers: pages (`src/frontend`) and server (`src/backend/index.ts`).
 - Loads the canonical frontend, backend, and testing packages.
 - Coordinates build, publish, watch, test, and scaffold flows.
 - Keeps the live runtime Bun-first.
 
 ## Responsibilities
 
-- Resolve the workspace descriptor from `package.json`.
-- Run frontend and backend providers in the right order for the workspace mode.
+- Resolve the workspace descriptor from `package.json` and the app's layers.
+- Run frontend and backend providers in the right order for the app's layers.
 - Serve `build/frontend/**` in watch mode and proxy `/api/*` when both surfaces are active.
-- Supervise the frontend watch for `spa`, `ssg`, and `full`, plus the backend runtime in long-running loops.
+- Supervise the frontend watch for apps with pages, plus the backend runtime for apps with a server, in long-running loops.
 - Keep command output compact and machine-friendly enough for CI and smoke flows.
 
 ## Structure
 
 - CLI entrypoint: `orchestrators/bun/src/cli.ts`
 - Command execution: `build.ts`, `publish.ts`, `watch.ts`, `test.ts`, `smoke.ts`
-- Workspace and mode resolution: `workspace.ts`, `build-plan.ts`, `types.ts`
+- Workspace and layer resolution: `workspace.ts`, `build-plan.ts`, `types.ts`
 - Provider loading: `providers.ts`
 - Watch runtime: `frontend-watch.ts`, `api-watch.ts`, `full-watch.ts`
 - Dev server and runtime supervision: `dev-server.ts`, `backend-runtime.ts`
@@ -33,24 +33,24 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 
 - Copies generated Bun template assets from `orchestrators/bun/assets/templates/**`
 - Repo contributors edit `orchestrators/bun/resources/templates/**`, then regenerate `assets/**` before build or pack boundaries
-- Writes `package.json`, `base.tsconfig.json`, and the mode-specific `src/**` layout
+- Writes `package.json`, `base.tsconfig.json`, and the starter's `src/**` layout
 
 ### `build`
 
-- Runs the current build plan for the workspace mode
+- Runs the build plan for the app's layers: frontend for pages, backend for a server
 - Emits readable development artifacts under `build/**`
 
 ### `publish`
 
 - Reuses the same providers in publish mode
-- Emits optimized frontend assets under `dist/frontend/**`
+- Emits optimized frontend assets under `dist/frontend/**`: the static layout with views rendered at publish when the app has no server, `dist/frontend/pages/<page>/` served by the server when it has one
 - Emits backend publish output under `build/backend/**`
 
 ### `watch`
 
-- `spa`, `ssg`: frontend watch (the build pipeline plus the dev server)
-- `api`: backend watcher + runtime supervisor
-- `full`: frontend watch plus backend watcher/runtime and `/api/*` proxying
+- Pages only: frontend watch (the build pipeline plus the dev server), rendering build-time views as the publish will
+- Server only: backend watcher + runtime supervisor
+- Pages and server: frontend watch plus backend watcher/runtime and `/api/*` proxying
 
 ### `test`
 
@@ -60,7 +60,7 @@ Core implementation that powers the active Bun CLI. In the current monorepo, the
 
 ## Watch Runtime Pieces
 
-- `document-watch.ts`: the frontend watch session for `spa`, `ssg` and `full`: rebuilds with the build pipeline and sends each change to the browser as a CSS swap, a page refresh or a reload
+- `document-watch.ts`: the frontend watch session for every app with pages: rebuilds with the build pipeline and sends each change to the browser as a CSS swap, a page refresh or a reload
 - `DevServer`: static file server with SSE status/reload events and optional `/api/*` proxying
 - `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload events
 - `BackendRuntimeSupervisor`: starts `build/backend/index.js`, waits for readiness, and restarts on successful rebuilds

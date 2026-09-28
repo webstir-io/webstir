@@ -53,7 +53,7 @@ test('CLI frontend-inspect reports frontend pages and feature flags for a full w
     };
 
     expect(parsed.command).toBe('frontend-inspect');
-    expect(parsed.workspace.mode).toBe('full');
+    expect(parsed.workspace.layers).toEqual({ pages: true, server: true });
     expect(parsed.workspace.root).toBe(copiedWorkspace.workspaceRoot);
     expect(parsed.frontend.packageJson.enable.known.clientNav).toBe(true);
     expect(parsed.frontend.appShell.templateExists).toBe(true);
@@ -72,7 +72,7 @@ test('CLI frontend-inspect rejects backend-only workspaces', async () => {
     const result = await runCli(['frontend-inspect', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('frontend-inspect only supports spa, ssg, and full workspaces');
+    expect(result.stderr).toContain('frontend-inspect needs pages');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

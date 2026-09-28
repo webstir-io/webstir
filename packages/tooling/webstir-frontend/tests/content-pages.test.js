@@ -23,6 +23,8 @@ async function createWorkspaceWithContent(options = {}) {
   const contentLabel = options.content?.label ?? 'Docs';
   const contentPageName = contentBasePath.split('/').filter(Boolean)[0] ?? 'docs';
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-content-'));
+  // Pages without a server: a static app.
+  await fs.mkdir(path.join(root, 'src', 'frontend'), { recursive: true });
   const appDir = path.join(root, 'src', 'frontend', 'app');
   const pageDir = path.join(root, 'src', 'frontend', 'pages', 'home');
   const contentHubPageDir = path.join(root, 'src', 'frontend', 'pages', contentPageName);
@@ -72,7 +74,6 @@ async function createWorkspaceWithContent(options = {}) {
         name: 'content-test',
         private: true,
         webstir: {
-          mode: 'ssg',
           ...(options.siteUrl ? { siteUrl: options.siteUrl } : {}),
           enable: {
             contentNav: true,
@@ -268,7 +269,7 @@ test('content builder supports configured content base path and nav manifest', a
     await fs.mkdir(path.dirname(distStaleNavPath), { recursive: true });
     await fs.writeFile(distStaleNavPath, '[]', 'utf8');
 
-    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    await runPublish({ workspaceRoot: workspace });
 
     const pagePath = path.join(
       workspace,
@@ -318,7 +319,7 @@ test('content titleTemplate sets content page titles in build and publish', asyn
 
   try {
     await runBuild({ workspaceRoot: workspace });
-    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    await runPublish({ workspaceRoot: workspace });
 
     for (const pagePath of [
       path.join(workspace, 'build', 'frontend', 'pages', 'company', 'section', 'one', 'index.html'),
@@ -375,7 +376,7 @@ test('published content pages name their canonical address', async (t) => {
 
   try {
     await runBuild({ workspaceRoot: workspace });
-    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    await runPublish({ workspaceRoot: workspace });
     const html = await fs.readFile(
       path.join(workspace, 'dist', 'frontend', 'docs', 'section', 'one', 'index.html'),
       'utf8',
@@ -517,7 +518,7 @@ test('Markdown code, callouts, and GFM content survive build and publish', async
   try {
     await fs.writeFile(path.join(workspace, 'src/frontend/content/readme.md'), markdown);
     await runBuild({ workspaceRoot: workspace });
-    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    await runPublish({ workspaceRoot: workspace });
 
     for (const output of ['build/frontend/pages/docs/readme', 'dist/frontend/docs/readme']) {
       const $ = load(await fs.readFile(path.join(workspace, output, 'index.html'), 'utf8'));
@@ -588,7 +589,7 @@ test('content pages inline shell sources during build, source rebuild, and publi
     assert.match(rebuilt, /paint-v2/);
     assert.doesNotMatch(rebuilt, /paint-v1/);
 
-    await runPublish({ workspaceRoot: workspace, publishMode: 'ssg' });
+    await runPublish({ workspaceRoot: workspace });
     const published = await fs.readFile(
       path.join(workspace, 'dist/frontend/docs/readme/index.html'),
       'utf8',

@@ -60,7 +60,7 @@ test('CLI test runs the full demo workspace end to end', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir] test complete');
-    expect(result.stdout).toContain('mode: full');
+    expect(result.stdout).toContain('layers: pages + server');
     expect(result.stdout).toContain('runtime: all');
     expect(result.stdout).toContain('build-targets: frontend, backend');
     expect(readSummaryCounts(result.stdout)).toEqual({
@@ -81,7 +81,7 @@ test('CLI test still supports frontend-only SPA workspaces', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir] test complete');
-    expect(result.stdout).toContain('mode: spa');
+    expect(result.stdout).toContain('layers: pages');
     expect(result.stdout).toContain('runtime: all');
     expect(result.stdout).toContain('build-targets: frontend');
     expect(result.stdout).toContain('tests: 1');
@@ -111,7 +111,7 @@ test('CLI test honors --runtime backend for the full demo workspace', async () =
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir] test complete');
-    expect(result.stdout).toContain('mode: full');
+    expect(result.stdout).toContain('layers: pages + server');
     expect(result.stdout).toContain('runtime: backend');
     expect(result.stdout).toContain('build-targets: backend');
     expect(result.stdout).toContain(

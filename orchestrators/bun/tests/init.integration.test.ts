@@ -81,7 +81,8 @@ test('CLI init scaffolds an external SSG workspace with published package versio
     const baseTsconfig = await readJson(path.join(workspaceRoot, 'base.tsconfig.json'));
 
     expect(packageJson.name).toBe('docs-site');
-    expect(packageJson.webstir.mode).toBe('ssg');
+    // The app is its files; init records no mode.
+    expect(packageJson.webstir.mode).toBeUndefined();
     expect(packageJson.dependencies['@webstir-io/webstir-frontend']).toBe(`^${frontendVersion}`);
     expect(packageJson.dependencies['@webstir-io/webstir-testing']).toBe(`^${testingVersion}`);
     expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBeUndefined();
@@ -109,7 +110,7 @@ test('CLI init keeps workspace dependencies for repo-local workspaces', async ()
 
     const packageJson = await readJson(path.join(workspaceRoot, 'package.json'));
 
-    expect(packageJson.webstir.mode).toBe('spa');
+    expect(packageJson.webstir.mode).toBeUndefined();
     expect(packageJson.dependencies['@webstir-io/webstir-frontend']).toBe('workspace:*');
     expect(packageJson.dependencies['@webstir-io/webstir-testing']).toBe('workspace:*');
     expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBeUndefined();
@@ -181,14 +182,9 @@ test('CLI refresh preserves invalid workspace contents', async () => {
       expectedError: 'is not valid JSON',
     },
     {
-      name: 'missing-mode',
-      packageJson: `${JSON.stringify({ name: 'missing-mode' }, null, 2)}\n`,
-      expectedError: 'is missing webstir.mode',
-    },
-    {
-      name: 'unsupported-mode',
-      packageJson: `${JSON.stringify({ name: 'unsupported-mode', webstir: { mode: 'legacy' } }, null, 2)}\n`,
-      expectedError: 'Unsupported webstir.mode',
+      name: 'no-layers',
+      packageJson: `${JSON.stringify({ name: 'no-layers' }, null, 2)}\n`,
+      expectedError: 'so there is nothing to build',
     },
   ] as const;
 
@@ -255,7 +251,7 @@ test('CLI refresh can change a valid workspace mode', async () => {
 
     expect(refreshResult.exitCode).toBe(0);
     expect(refreshResult.stderr).toBe('');
-    expect((await readJson(path.join(workspaceRoot, 'package.json'))).webstir.mode).toBe('full');
+    expect(existsSync(path.join(workspaceRoot, 'src', 'backend', 'index.ts'))).toBe(true);
     await assertPackageManagedBackendScaffold(workspaceRoot, { expectModule: true });
   } finally {
     await rm(tempRoot, { recursive: true, force: true });

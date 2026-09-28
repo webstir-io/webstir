@@ -1,3 +1,4 @@
+import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import path from 'node:path';
 
 import {
@@ -45,7 +46,7 @@ export async function renderSsgViews(options: {
   const pkg = await readJson<WorkspacePackageJson>(
     path.join(options.workspaceRoot, 'package.json'),
   );
-  const isSsgWorkspace = pkg?.webstir?.mode?.toLowerCase() === 'ssg';
+  const isSsgWorkspace = isStaticApp(readWorkspaceLayers(options.workspaceRoot));
   const metadata = pkg?.webstir?.moduleManifest?.views ?? [];
   const moduleDefinition = await loadBackendModuleDefinition<{ views?: readonly PageViewLike[] }>(
     options.workspaceRoot,

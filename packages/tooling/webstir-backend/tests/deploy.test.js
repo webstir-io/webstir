@@ -244,9 +244,7 @@ async function buildRuntimeWorkspace(workspace, mode) {
         name: `@demo/${mode}-deploy`,
         version: '0.1.0',
         type: 'module',
-        webstir: {
-          mode,
-        },
+        webstir: {},
       },
       null,
       2,
@@ -268,6 +266,8 @@ async function buildRuntimeWorkspace(workspace, mode) {
     },
     incremental: false,
   });
+  // A deploy image carries only the published output (see the Docker .dockerignore), not src/.
+  await fs.rm(path.join(workspace, 'src'), { recursive: true, force: true });
 }
 
 function createModuleSource(mode) {

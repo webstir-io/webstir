@@ -618,6 +618,41 @@ test('CLI repair restores the s3-cloudfront deploy script and edge function', as
   }
 });
 
+test('CLI repair removes the fields that used to say what an app is, and a dry run only reports it', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-shape-', {
+    workspaceName: 'full',
+  });
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+
+  try {
+    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
+      webstir: { mode?: string; enable?: Record<string, unknown> };
+    };
+    packageJson.webstir.mode = 'spa';
+    packageJson.webstir.enable = { ...packageJson.webstir.enable, backend: true };
+    const legacy = `${JSON.stringify(packageJson, null, 2)}\n`;
+    await writeFile(packageJsonPath, legacy, 'utf8');
+
+    const dryRun = await runCli([
+      'repair',
+      '--dry-run',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+    ]);
+    expect(dryRun.exitCode).toBe(0);
+    expect(dryRun.stdout).toContain('Removed webstir.mode and webstir.enable.backend');
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(legacy);
+
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
+    expect(result.exitCode).toBe(0);
+    const repaired = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+    expect(repaired.webstir.mode).toBeUndefined();
+    expect(repaired.webstir.enable).toEqual({ clientNav: true });
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI repair lists the retired SPA router as removable and leaves it in place', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-router-', {
     workspaceName: 'spa',
@@ -679,7 +714,7 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
 
     expect(parsed.command).toBe('repair');
     expect(parsed.workspaceRoot).toBe(copiedWorkspace.workspaceRoot);
-    expect(parsed.mode).toBe('spa');
+    expect(parsed.layers).toEqual({ pages: true, server: false });
     expect(parsed.dryRun).toBe(true);
     expect(parsed.changes).toContain('Errors.404.html');
   } finally {
@@ -771,30 +806,26 @@ test('CLI repair preflights enabled feature assets before restoring root assets'
   }
 });
 
-test('CLI repair preflights backend provider assets before restoring root assets', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-backend-symlink-', {
-    workspaceName: 'spa',
+test('CLI repair preflights backend scaffold assets before restoring root assets', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-backend-symlink-', {
+    workspaceName: 'full',
   });
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-backend-symlink-outside-'),
   );
   const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
-  const sentinelPath = path.join(externalRoot, 'sentinel.txt');
-  await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
+  const backendRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend');
 
   try {
-    const enableResult = await runCli([
-      'enable',
-      'backend',
-      '--workspace',
-      copiedWorkspace.workspaceRoot,
-    ]);
-    expect(enableResult.exitCode).toBe(0);
-
+    // The server entry lives outside the app, behind a linked src/backend without its module.ts.
+    await writeFile(
+      path.join(externalRoot, 'index.ts'),
+      await readFile(path.join(backendRoot, 'index.ts'), 'utf8'),
+      'utf8',
+    );
+    await rm(backendRoot, { recursive: true, force: true });
+    await symlink(externalRoot, backendRoot, 'dir');
     await rm(missingRootAsset, { force: true });
-    const backendAuthRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'auth');
-    await rm(backendAuthRoot, { recursive: true, force: true });
-    await symlink(externalRoot, backendAuthRoot, 'dir');
 
     const result = await runCli([
       'repair',
@@ -806,8 +837,7 @@ test('CLI repair preflights backend provider assets before restoring root assets
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('symbolic link');
     expect(existsSync(missingRootAsset)).toBe(false);
-    expect(await readFile(sentinelPath, 'utf8')).toBe('outside-sentinel');
-    expect(existsSync(path.join(externalRoot, 'adapter.ts'))).toBe(false);
+    expect(existsSync(path.join(externalRoot, 'module.ts'))).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
     await rm(externalRoot, { recursive: true, force: true });

@@ -7,7 +7,7 @@ Build and publish stages for HTML, CSS, JS/TS, and static assets (Images, Fonts,
 - Fast dev builds; optimized production bundles.
 - Clear errors that name the stage and file.
 
-## Modes
+## Build and Publish
 - Dev (build/watch): readable output in `build/**`, source context preserved, no minification.
 - Publish: optimized output in `dist/**`, fingerprinted asset names, HTML rewritten to point at the manifest.
 
@@ -66,13 +66,14 @@ Build and publish stages for HTML, CSS, JS/TS, and static assets (Images, Fonts,
 - Graceful fallback: optimization tools are optional; originals served if tools unavailable.
 
 ## Manifests
-- One `manifest.json` per page under `dist/frontend/pages/<page>/` listing fingerprinted assets.
+- One `manifest.json` per published page directory listing fingerprinted assets.
 - HTML is rewritten in publish to reference manifest entries (stable HTML URLs).
 
 ## Outputs
 - Dev: `build/frontend/**`, `build/backend/**`.
 - Publish:
   - Pages: `dist/frontend/pages/<page>/index.html`, `index-<hash>.js`, `index.<hash>.css`, `manifest.json`
+  - Static apps (pages, no server) use the static layout instead: `dist/frontend/<page>/` for each page and `dist/frontend/index.html` for the home page, with views rendered at publish
   - Shared chunks: `dist/frontend/chunks/*-<hash>.js` (vendor libraries, common code)
 
 ## Hooks
