@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import net from 'node:net';
 import path from 'node:path';
@@ -47,13 +47,22 @@ export interface BunLike {
 export const DEFAULT_PUBLIC_PORT = 8080;
 
 /**
- * The published app's layers, read from what publish wrote, since a deploy image carries only the
- * published output (no src/): a server is build/backend/index.js, pages are dist/frontend.
+ * The published app's layers, as publish recorded them in build/published-layers.json, since a
+ * deploy image carries only the published output (no src/). Output published before that record
+ * existed is read from its files: a server is build/backend/index.js, pages are dist/frontend.
  */
 export function readPublishedLayers(workspaceRoot: string): WorkspaceLayers {
+  const recordPath = path.join(workspaceRoot, 'build', 'published-layers.json');
+  const record = existsSync(recordPath)
+    ? (JSON.parse(readFileSync(recordPath, 'utf8')) as Partial<WorkspaceLayers>)
+    : undefined;
   const layers = {
-    pages: existsSync(path.join(workspaceRoot, 'dist', 'frontend')),
-    server: existsSync(path.join(workspaceRoot, 'build', 'backend', 'index.js')),
+    pages: record
+      ? record.pages === true
+      : existsSync(path.join(workspaceRoot, 'dist', 'frontend')),
+    server: record
+      ? record.server === true
+      : existsSync(path.join(workspaceRoot, 'build', 'backend', 'index.js')),
   };
   if (!layers.server) {
     throw new Error(

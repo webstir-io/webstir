@@ -212,3 +212,17 @@ test('servePublishedStaticFile serves page routes after static files and an HTML
     await fs.rm(frontendRoot, { recursive: true, force: true });
   }
 });
+
+test('normalizePageRoutes refuses a page name that is not a page folder', () => {
+  for (const page of ['/items', 'items/', '../secret', 'a//b', 'items/..', 'a b', '<x>']) {
+    assert.throws(
+      () => normalizePageRoutes([{ name: 'bad', path: '/things/:id', page }]),
+      /is not a page name/,
+      page,
+    );
+  }
+  assert.equal(
+    normalizePageRoutes([{ path: '/guides/:id', page: 'docs/intro' }])[0].page,
+    'docs/intro',
+  );
+});

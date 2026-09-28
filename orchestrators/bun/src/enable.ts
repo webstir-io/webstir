@@ -263,7 +263,7 @@ async function enableBackend(
 
   await updatePackageJson(
     workspaceRoot,
-    { enableBackend: true, ensureBackendDependency: true },
+    { ensureBackendDependency: true, retireShape: true },
     changes,
   );
   await ensureTsReference(workspaceRoot, 'src/backend', changes);
@@ -303,9 +303,14 @@ async function enableFrontend(
     }
   }
 
+  // New pages start with client-nav on, as the spa starter's do; an app's own pages keep its setting.
   await updatePackageJson(
     workspaceRoot,
-    { enableClientNav: true, ensureFrontendDependency: true },
+    {
+      ...(hadPages ? {} : { enableClientNav: true }),
+      ensureFrontendDependency: true,
+      retireShape: true,
+    },
     changes,
   );
   await ensureTsReference(workspaceRoot, 'src/frontend', changes);
@@ -413,11 +418,11 @@ async function updatePackageJson(
     readonly enableClientNav?: boolean;
     readonly enableSearch?: boolean;
     readonly enableContentNav?: boolean;
-    readonly enableBackend?: boolean;
     readonly enableGithubPages?: boolean;
     readonly enableS3CloudFront?: boolean;
     readonly ensureBackendDependency?: boolean;
     readonly ensureFrontendDependency?: boolean;
+    readonly retireShape?: boolean;
     readonly ensureDeployScript?: string;
   },
   changes: string[],
@@ -429,7 +434,7 @@ async function updatePackageJson(
   const enable = asRecord(webstir.enable);
 
   // An app's files say what it is; fields older versions wrote to say it could only disagree.
-  if (options.enableBackend) {
+  if (options.retireShape) {
     delete webstir.mode;
     delete enable.backend;
   }

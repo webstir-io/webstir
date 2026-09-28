@@ -1,3 +1,4 @@
+import { checkUnrenderedBindings } from './render/unrendered-bindings.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -64,6 +65,10 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
       ...options.env,
     },
   });
+
+  if (mode === 'build') {
+    await checkUnrenderedBindings(options.workspaceRoot, config.paths.build.pages);
+  }
 
   if (shouldRunSsgPublish) {
     await publishSsgSite(publishConfig);

@@ -1,4 +1,4 @@
-import { writePageRouteFallbacks } from './page-route-fallback.js';
+import { writeFixedPageRoutes, writePageRouteFallbacks } from './page-route-fallback.js';
 import path from 'node:path';
 
 import { RENDER_PROGRAM_FILE } from '@webstir-io/module-contract';
@@ -58,12 +58,18 @@ export async function publishSsgSite(config: FrontendConfig): Promise<void> {
   }
 
   await generateSsgViewData(config);
-  await applySsgRouting(config, { rendered: renderedPaths });
-  await writePageRouteFallbacks({
+  const pageRoutes = {
     workspaceRoot: config.paths.workspace,
     distRoot,
     pageDirectory,
-  });
+    renderedPages: new Set(rendered.map((entry) => entry.page)),
+    written: (file: string) =>
+      config.features.precompression ? createCompressedVariants(file) : removeVariants(file),
+  };
+  // Fixed addresses first, so the site's aliases and sitemap include them.
+  await writeFixedPageRoutes(pageRoutes);
+  await applySsgRouting(config, { rendered: renderedPaths });
+  await writePageRouteFallbacks(pageRoutes);
 }
 
 async function removeWithVariants(filePath: string): Promise<void> {

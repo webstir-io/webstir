@@ -106,6 +106,14 @@ test('a published site without a server shows a page at the addresses its views 
       "export function setup({ root, url }: { root: HTMLElement; url: URL }): void {\n  root.dataset.item = url.pathname.split('/').filter(Boolean).pop() ?? '';\n}\n",
       'utf8',
     );
+    // The app's own 404 page loads the app's scripts; a routed page must still run its own.
+    const notFoundDir = path.join(workspace, 'src', 'frontend', 'pages', '404');
+    await mkdir(notFoundDir, { recursive: true });
+    await writeFile(
+      path.join(notFoundDir, 'index.html'),
+      '<head><title>Lost</title></head><body><main><h1>Lost at sea</h1></main></body>\n',
+      'utf8',
+    );
     const packageJsonPath = path.join(workspace, 'package.json');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
     packageJson.webstir.moduleManifest = {
@@ -143,7 +151,7 @@ test('a published site without a server shows a page at the addresses its views 
 
     await page.goto(`${origin}/nowhere/at/all`);
     await page.waitForSelector('main h1');
-    expect(await page.textContent('main h1')).toBe('Not found');
+    expect(await page.textContent('main h1')).toBe('Lost at sea');
     expect(errors).toEqual([]);
   } finally {
     await browser?.close();

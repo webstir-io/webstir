@@ -161,7 +161,7 @@ Binary name: `webstir-frontend`. All commands require `--workspace`.
 | `build` | Runs the development-oriented pipeline. | `--changed-file <path>` to scope rebuilds. |
 | `publish` | Produces optimized frontend assets; the app's layers decide the output shape. | None (`--mode` is accepted and ignored) |
 | `rebuild` | Incremental rebuild after a file change. | `--changed-file <path>` |
-| `add-page <name>` | Scaffolds `index.html`, `index.css`, and `index.ts`. | `--mode ssg` to leave out `index.ts` |
+| `add-page <name>` | Scaffolds `index.html`, `index.css`, and `index.ts`. | `--mode ssg` to leave out `index.ts`; in an app with a server it also adds an `ssg` view for the page to `package.json` |
 
 ## Feature Flags
 

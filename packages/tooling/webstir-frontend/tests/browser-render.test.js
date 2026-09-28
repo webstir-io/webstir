@@ -239,12 +239,9 @@ for (const withData of [true, false]) {
   test(`a page with bindings ${withData ? 'passes with' : 'fails without'} a data.ts`, async () => {
     const root = await createWorkspace({ data: withData ? DATA : null });
     try {
-      const run = build(root).then(() =>
-        validateRenderPrograms({
-          workspaceRoot: root,
-          pagesRoot: path.join(root, 'build', 'frontend', 'pages'),
-        }),
-      );
+      // The build checks it on its own: an app with no server and no view loaders has nothing
+      // else that could render the page.
+      const run = build(root);
       if (withData) {
         await run;
       } else {

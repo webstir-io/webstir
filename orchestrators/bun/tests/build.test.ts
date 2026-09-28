@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 
 import { runBuild } from '../src/build.ts';
@@ -246,5 +247,36 @@ test('runPublish refuses while watch owns the workspace', async () => {
     expect(calls).toHaveLength(0);
   } finally {
     await lock.release();
+  }
+});
+
+test('runPublish removes the published output of a layer the app no longer has', async () => {
+  for (const layers of [
+    { pages: false, server: true },
+    { pages: true, server: false },
+  ]) {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-publish-retired-'));
+    await writeFile(path.join(workspace, 'package.json'), JSON.stringify({ name: 'app' }));
+    await writeLayers(workspace, layers);
+    // What an earlier publish, with both layers, left behind.
+    await mkdir(path.join(workspace, 'dist', 'frontend'), { recursive: true });
+    await writeFile(path.join(workspace, 'dist', 'frontend', 'index.html'), '<main>old</main>');
+    await mkdir(path.join(workspace, 'build', 'backend'), { recursive: true });
+    await writeFile(path.join(workspace, 'build', 'backend', 'index.js'), 'export {};');
+
+    const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
+    await runPublish({
+      workspaceRoot: workspace,
+      loadProvider: async (kind) => createFakeProvider(kind, calls),
+    });
+
+    expect({ layers, pages: existsSync(path.join(workspace, 'dist', 'frontend')) }).toEqual({
+      layers,
+      pages: layers.pages,
+    });
+    expect({
+      layers,
+      server: existsSync(path.join(workspace, 'build', 'backend', 'index.js')),
+    }).toEqual({ layers, server: layers.server });
   }
 });

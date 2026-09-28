@@ -1,3 +1,4 @@
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { isStaticApp } from '@webstir-io/module-contract/workspace';
@@ -12,6 +13,7 @@ import type {
   BuildTargetKind,
   CommandExecutionResult,
   CommandMode,
+  WorkspaceDescriptor,
 } from './types.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { assertNoActiveWorkspaceWatch } from './workspace-lock.ts';
@@ -57,6 +59,16 @@ export async function runCommand(
     });
   }
 
+  if (mode === 'publish') {
+    await removeRetiredLayerOutput(workspace);
+    // The deploy reads what the app is from this, since its image carries no src/.
+    await mkdir(path.join(workspace.root, 'build'), { recursive: true });
+    await writeFile(
+      path.join(workspace.root, 'build', 'published-layers.json'),
+      `${JSON.stringify(workspace.layers)}\n`,
+    );
+  }
+
   if (workspace.layers.pages) {
     await validateRenderTemplates(workspace.root);
   }
@@ -99,4 +111,20 @@ function resolveOutputRoot(
   }
 
   return buildRoot;
+}
+
+/**
+ * A published deploy tells an app's layers from its output, so a layer the app no longer has must
+ * leave no published output behind: pages removed means no dist/frontend, a server removed means
+ * no server entry in build/backend.
+ */
+async function removeRetiredLayerOutput(workspace: WorkspaceDescriptor): Promise<void> {
+  if (!workspace.layers.pages) {
+    await rm(path.join(workspace.root, 'dist', 'frontend'), { recursive: true, force: true });
+  }
+  if (!workspace.layers.server) {
+    for (const file of ['index.js', 'index.js.map']) {
+      await rm(path.join(workspace.root, 'build', 'backend', file), { force: true });
+    }
+  }
 }

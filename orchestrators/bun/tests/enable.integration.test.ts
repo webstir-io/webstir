@@ -574,6 +574,23 @@ test('CLI enable frontend gives a server-only app pages that build beside its se
   }
 });
 
+test('CLI enable frontend leaves an app that has pages its own client-nav setting', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-enable-frontend-has-pages-');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  try {
+    const packageJson = await readJsonFile(packageJsonPath);
+    packageJson.webstir.enable.clientNav = false;
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+
+    const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['frontend']);
+
+    expect(result.exitCode).toBe(0);
+    expect((await readJsonFile(packageJsonPath)).webstir.enable.clientNav).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI enable backend gives a static app with build-time loaders a server and keeps its module', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-backend-static-');
   const modulePath = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'module.ts');

@@ -127,7 +127,7 @@ A static host only serves files, so publish writes what each host needs:
 - A pattern without parameters (`/featured`) gets the page's HTML as a file at that address.
 - A pattern with parameters (`/items/:id`) can't have a file per address, so publish writes two fallbacks:
   - a `_redirects` rewrite, which Netlify and Cloudflare Pages serve with a 200. The app's own `_redirects` rules come first.
-  - a `404.html` that loads the routed page in place, keeping the address, and shows the not-found page for any other address. GitHub Pages serves it on its own. S3 + CloudFront needs the error responses below.
+  - a `404.html` that loads the routed page in its place, keeping the address, and loads the app's `404` page (or a plain "Not found") for any other address. It has no scripts of its own, so the page it loads runs as on a direct visit. GitHub Pages serves it on its own. S3 + CloudFront needs the error responses below.
 
 On a host without rewrites, a routed address answers with a 404 status while showing its page.
 
@@ -161,4 +161,4 @@ Attach the generated `utils/cloudfront-rewrite-directory-index.js` as a CloudFro
 
 ### Error pages
 
-Add a `404` page to the workspace and point the distribution's custom error responses for 403 and 404 at `/404.html`, with response code 404. That is also what shows a page at an address a view routes to (see above). The 404 page is excluded from the sitemap automatically, and `webstir watch` serves it with a 404 status for any page address that does not exist, so you can see it locally.
+Add a `404` page to the workspace (publish writes it as `/404.html` too) and point the distribution's custom error responses for 403 and 404 at `/404.html`, with response code 404. That is also what shows a page at an address a view routes to (see above). The 404 page is excluded from the sitemap automatically, and `webstir watch` serves it with a 404 status for any page address that does not exist, so you can see it locally.

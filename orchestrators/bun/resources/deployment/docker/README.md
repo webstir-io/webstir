@@ -41,4 +41,5 @@ The container starts `webstir-backend-deploy`, which:
 - serves `dist/frontend/**` for apps with pages
 - proxies `/api/*` to the backend runtime for apps with pages
 - proxies all requests to the backend for apps without pages
+- reads whether the app has pages from `build/published-layers.json`, which publish writes (the image carries no `src/`), and fails at startup when an app recorded with pages has no `dist/frontend/**`
 - keeps `/readyz`, `/healthz`, and `/metrics` available from the single public port

@@ -9,6 +9,7 @@ import {
 } from './modes/ssg/index.js';
 import path from 'node:path';
 import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
+import { checkUnrenderedBindings } from './render/unrendered-bindings.js';
 import { emptyDir, readJson } from './utils/fs.js';
 
 export async function runBuild(options: FrontendCommandOptions): Promise<void> {
@@ -23,6 +24,7 @@ export async function runBuild(options: FrontendCommandOptions): Promise<void> {
     enable,
     env: process.env,
   });
+  await checkUnrenderedBindings(options.workspaceRoot, config.paths.build.pages);
   console.info('[webstir-frontend] Build pipeline completed.');
 }
 
@@ -56,6 +58,7 @@ export async function runRebuild(options: FrontendCommandOptions): Promise<void>
     enable,
     env: process.env,
   });
+  await checkUnrenderedBindings(options.workspaceRoot, config.paths.build.pages);
   console.info('[webstir-frontend] Rebuild pipeline completed.');
 }
 
@@ -81,7 +84,7 @@ export async function runAddPage(options: AddPageCommandOptions): Promise<void> 
   await createPageScaffold({
     workspaceRoot: options.workspaceRoot,
     pageName,
-    mode: effectiveSsg ? 'ssg' : 'standard',
+    mode: effectiveSsg || options.noScript ? 'ssg' : 'standard',
     paths: {
       pages: config.paths.src.pages,
       app: config.paths.src.app,

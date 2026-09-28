@@ -41,6 +41,14 @@ test('an app is its files: layers, build plan and static output follow from them
       plan: ['frontend', 'backend'],
       static: false,
     },
+    // A backend of functions or jobs alone is still built and run.
+    {
+      files: ['src/backend/jobs/nightly/index.ts'],
+      pages: false,
+      server: true,
+      plan: ['backend'],
+      static: false,
+    },
     // A leftover mode never overrides the files.
     {
       files: ['src/frontend/'],

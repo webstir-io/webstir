@@ -17,6 +17,7 @@ Scaffold a new frontend page with `index.html|css` and, unless you pass `--no-sc
 - In an app with a server, document pages live here while form handlers, redirects, and auth stay in `src/backend/module.ts`.
 - Internals: the CLI calls the canonical `@webstir-io/webstir-frontend` scaffold helper so generated files stay in sync with the framework templates.
 - `--no-script` scaffolds a JS-free page (no `index.ts` and no module script tag); add `index.ts` later with `webstir enable scripts <page>` if the page needs JavaScript.
+- An app without pages has nowhere to put one: run `webstir enable frontend` first.
 - Standard page source lives in `index.ts`, but the HTML module script must reference `index.js`. Build and publish resolve that browser-safe name to the compiled or fingerprinted bundle; do not point HTML directly at `index.ts`.
 
 ## Inputs

@@ -75,7 +75,10 @@ export interface FrontendContentConfig {
 
 export interface AddPageCommandOptions extends FrontendCommandOptions {
   readonly pageName: string;
+  /** A page without index.ts that a view renders at publish, with the view added when needed. */
   readonly ssg?: boolean;
+  /** Only leaves out index.ts. */
+  readonly noScript?: boolean;
 }
 
 export interface FrontendWorkspaceKnownEnableFlags {

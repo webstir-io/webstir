@@ -40,7 +40,7 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 
 ## Runtime Contract
 
-- The deploy reads what the app is from the published output: `build/backend/index.js` is its server, and `dist/frontend/` its pages. The image carries no `src/`.
+- The deploy reads what the app is from `build/published-layers.json`, which publish writes, since the image carries no `src/`. An app recorded with pages whose `dist/frontend/` is missing fails at startup rather than serving only its API.
 - An app without pages exposes the published backend on the container port.
 - An app with pages exposes one public port that serves `dist/frontend/**` and proxies `/api/*` to the published backend.
 - `dist/frontend/**` is only there for an app with pages; an app without pages builds the image without a `dist` tree.

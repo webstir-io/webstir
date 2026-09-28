@@ -60,6 +60,16 @@ export function normalizePageRoutes(views: readonly unknown[]): readonly PageRou
     if (typeof page !== 'string' || page.length === 0) {
       throw new Error('[webstir] a view "page" must be a non-empty page name.');
     }
+    // The name becomes a path and an address (pages/<name>, /<name>/), so it is one.
+    if (
+      !page
+        .split('/')
+        .every((segment) => STATIC_SEGMENT.test(segment) && segment !== '.' && segment !== '..')
+    ) {
+      throw new Error(
+        `[webstir] view page "${page}" is not a page name; use the page's folder under src/frontend/pages, such as "items" or "docs/intro".`,
+      );
+    }
     if (renderMode !== undefined && renderMode !== 'spa') {
       continue;
     }
