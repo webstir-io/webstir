@@ -8,6 +8,24 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { executeRequestHookPhase, type RequestHookReferenceLike } from './request-hooks.js';
+import { isProduction, setAppRoot } from '../app/app-root.js';
+import { appUrl, loadAppEnv, loadEnvFiles } from '../app/env.js';
+import { appServices } from '../app/services.js';
+import { appDatabase, appDatabaseExists, declareWebstirTables } from '../db/app-database.js';
+import type { Database } from '../db/database.js';
+import { readAppMigrations } from '../db/migrations.js';
+import { emailSetupProblem, type Email } from '../email/index.js';
+import { LOCAL_FILES_PATH, serveLocalFile, type Files } from '../files/index.js';
+import { startJobs, type Jobs } from '../jobs/index.js';
+import {
+  requiresSignIn,
+  resolveSessionUser,
+  signInLocation,
+  signInRequired,
+} from '../sign-in/guard.js';
+import type { SessionUser } from '../sign-in/users.js';
+import { createRequestMetricsTracker } from './metrics.js';
+import { createDatabaseSessionStore } from './session-database-store.js';
 import {
   createProcessEnvAccessor,
   createReadinessTracker,
@@ -33,7 +51,6 @@ import {
   type SessionCommitResult,
   type SessionCookieConfig,
   type SessionFlashMessage,
-  createInMemorySessionStore,
   type SessionStore,
 } from './session.js';
 import { ensureSessionCsrfToken } from './forms.js';
@@ -107,7 +124,8 @@ export interface DefaultBunBackendBootstrapOptions<
   TMetricsTracker extends MetricsTracker = MetricsTracker,
 > {
   importMetaUrl: string;
-  loadEnv(): TEnv;
+  /** The server's settings; by default, from the environment and the app's `.env` files. */
+  loadEnv?(): TEnv;
   moduleCandidates?: readonly string[];
   resolveWorkspaceRoot?: () => string;
   resolveRequestAuth?: BunRuntimeBootstrapOptions<
@@ -148,7 +166,14 @@ interface RouteContext<
   auth: TAuth | undefined;
   session: TSession | null;
   flash: SessionFlashMessage[];
-  db: Record<string, unknown>;
+  /** The signed-in user, when the app has sign-in; null when nobody is signed in. */
+  user: SessionUser | null;
+  db: Database;
+  /** This request's own scratch space, for request hooks and the handler to hand values along. */
+  locals: Record<string, unknown>;
+  jobs: Jobs;
+  email: Email;
+  files: Files;
   env: EnvAccessor;
   logger: TLogger;
   requestId: string;
@@ -169,6 +194,9 @@ export async function startBunBackend<
   options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>,
 ): Promise<void> {
   const bun = requireBunRuntime();
+  const workspaceRoot = options.resolveWorkspaceRoot();
+  setAppRoot(workspaceRoot);
+  loadEnvFiles(workspaceRoot);
   const env = options.loadEnv();
   const logger = options.createBaseLogger(env);
   const metrics = options.createMetricsTracker(env.metrics);
@@ -211,6 +239,23 @@ export async function startBunBackend<
     logger.warn({ warning }, '[webstir-backend] module configuration warning');
   }
   const manifestSummary = summarizeManifest(runtime.manifest);
+  const signInEnabled = Boolean((runtime.definition as { signIn?: unknown } | undefined)?.signIn);
+  const signInProblem = checkSignInSetup(runtime, signInEnabled);
+  if (signInProblem) {
+    throw new Error(`[webstir-backend] ${signInProblem}`);
+  }
+  if (signInEnabled) declareWebstirTables('sign-in');
+  // A database the app has, or needs for its migrations, opens now, so a failing migration stops
+  // the server before it listens.
+  if (readAppMigrations(workspaceRoot).length > 0 || appDatabaseExists()) {
+    await appDatabase();
+  }
+  // Jobs stop with the process; one it was running goes back in the queue at the next start.
+  startJobs({
+    info: (message) => logger.info(message),
+    warn: (message) => logger.warn(message),
+    error: (message) => logger.error(message),
+  });
 
   bun.serve({
     port: env.PORT,
@@ -227,6 +272,7 @@ export async function startBunBackend<
           logger,
           metrics,
           options,
+          signInEnabled,
         }),
       );
     },
@@ -255,16 +301,46 @@ export function createDefaultBunBackendBootstrap<
   return {
     importMetaUrl: options.importMetaUrl,
     moduleCandidates: options.moduleCandidates,
-    loadEnv: options.loadEnv,
+    loadEnv: options.loadEnv ?? (() => loadAppEnv() as TEnv),
     resolveWorkspaceRoot:
       options.resolveWorkspaceRoot ??
       (() => resolveWorkspaceRootFromImportMetaUrl(options.importMetaUrl)),
     resolveRequestAuth: options.resolveRequestAuth ?? (async () => undefined),
     createBaseLogger: options.createBaseLogger ?? (() => createDefaultBaseLogger() as TLogger),
     createMetricsTracker:
-      options.createMetricsTracker ?? (() => createDefaultMetricsTracker() as TMetricsTracker),
-    sessionStore: options.sessionStore ?? createInMemorySessionStore<TSession>(),
+      options.createMetricsTracker ?? (() => createRequestMetricsTracker() as TMetricsTracker),
+    sessionStore: options.sessionStore ?? createDatabaseSessionStore<TSession>(appDatabase),
   };
+}
+
+/**
+ * What sign-in needs before the server listens: routes or views that require it need sign-in
+ * enabled, and in production sign-in needs APP_URL for its links and a way to send email.
+ */
+function checkSignInSetup(
+  runtime: {
+    routes: readonly { definition?: { auth?: unknown } }[];
+    views: readonly CompiledView[];
+  },
+  signInEnabled: boolean,
+): string | undefined {
+  const guarded = [
+    ...runtime.routes.map((route) => route.definition),
+    ...runtime.views.map((view) => view.definition as { auth?: unknown } | undefined),
+  ].some(requiresSignIn);
+  if (guarded && !signInEnabled) {
+    return "a route or view says auth: 'required', but the app has no sign-in; run `webstir enable sign-in`.";
+  }
+  if (signInEnabled && isProduction()) {
+    try {
+      appUrl();
+    } catch (error) {
+      return (error as Error).message;
+    }
+    const email = emailSetupProblem();
+    if (email) return `sign-in sends codes by email, but ${email}`;
+  }
+  return undefined;
 }
 
 function createDefaultBaseLogger(): RuntimeLogger {
@@ -280,15 +356,6 @@ function createDefaultBaseLogger(): RuntimeLogger {
     },
     error(value: unknown, message?: string) {
       writeDefaultLog('error', value, message);
-    },
-  };
-}
-
-function createDefaultMetricsTracker(): MetricsTracker {
-  return {
-    record() {},
-    snapshot() {
-      return { enabled: false };
     },
   };
 }
@@ -334,8 +401,10 @@ async function handleRequest<
   metrics: TMetricsTracker;
   manifestSummary?: ManifestSummary;
   options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>;
+  signInEnabled: boolean;
 }): Promise<Response> {
   const { request, runtime, readiness, manifestSummary, env, logger, metrics, options } = args;
+  const { signInEnabled } = args;
 
   try {
     const url = new URL(request.url);
@@ -387,6 +456,11 @@ async function handleRequest<
       });
     }
 
+    if ((method === 'GET' || method === 'HEAD') && url.pathname.startsWith(LOCAL_FILES_PATH)) {
+      const served = await serveLocalFile(url);
+      if (served) return served;
+    }
+
     const matchedRoute = matchRoute(runtime.routes, method, pathname);
     const matchedView =
       !matchedRoute && (method === 'GET' || method === 'HEAD')
@@ -424,6 +498,7 @@ async function handleRequest<
           requestId,
           now,
           options,
+          signInEnabled,
         });
         responseStatus = response.status;
         return response;
@@ -435,7 +510,7 @@ async function handleRequest<
       }
 
       const body = await readRequestBody(request, env.http.bodyLimitBytes);
-      const sessionState = prepareSessionState<TSession, RouteHandlerResult>({
+      const sessionState = await prepareSessionState<TSession, RouteHandlerResult>({
         cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
         route: routeMatch.route.definition,
         config: env.sessions,
@@ -451,7 +526,9 @@ async function handleRequest<
         auth: undefined,
         session: sessionState.session,
         flash: sessionState.flash,
-        db: Object.create(null),
+        user: signInEnabled ? await resolveSessionUser(sessionState.session) : null,
+        ...appServices,
+        locals: Object.create(null),
         env: envAccessor,
         logger: requestLogger,
         requestId,
@@ -472,7 +549,7 @@ async function handleRequest<
         logger: structuredLogger,
       });
       if (beforeAuth.shortCircuited && beforeAuth.result) {
-        const response = createCommittedResponse(beforeAuth.result, {
+        const response = await createCommittedResponse(beforeAuth.result, {
           method,
           sessionState,
           session: ctx.session,
@@ -495,7 +572,7 @@ async function handleRequest<
         logger: structuredLogger,
       });
       if (beforeHandler.shortCircuited && beforeHandler.result) {
-        const response = createCommittedResponse(beforeHandler.result, {
+        const response = await createCommittedResponse(beforeHandler.result, {
           method,
           sessionState,
           session: ctx.session,
@@ -535,7 +612,7 @@ async function handleRequest<
       if (requiresSession(routeMatch.route.definition) && ctx.session === null) {
         // The route never ran, so its flash declarations must not fire: publishing one would
         // persist a brand-new session and hand the caller the cookie needed to pass this guard.
-        const response = createCommittedResponse(createSessionRequiredResult(), {
+        const response = await createCommittedResponse(createSessionRequiredResult(), {
           method,
           sessionState,
           session: null,
@@ -543,6 +620,22 @@ async function handleRequest<
           requestId,
           publishFlash: false,
         });
+        responseStatus = response.status;
+        return response;
+      }
+
+      if (requiresSignIn(routeMatch.route.definition) && ctx.user === null) {
+        const response = await createCommittedResponse(
+          signInRequired(request, routeMatch.route.definition),
+          {
+            method,
+            sessionState,
+            session: ctx.session,
+            route: routeMatch.route.definition,
+            requestId,
+            publishFlash: false,
+          },
+        );
         responseStatus = response.status;
         return response;
       }
@@ -561,14 +654,14 @@ async function handleRequest<
           requestId,
           workspaceRoot: options.resolveWorkspaceRoot(),
           // Its session changes land; messages already queued wait for the page it leads to.
-          commit: (status) => {
+          commit: async (status) => {
             submission?.record(
               ctx.session,
               status,
               isViewRedirect(control) ? control.location : undefined,
               now(),
             );
-            const committed = sessionState.commit({
+            const committed = await sessionState.commit({
               session: ctx.session,
               result: { status },
               retainFlash: true,
@@ -612,6 +705,7 @@ async function handleRequest<
             logger: structuredLogger,
             requestId,
             now,
+            services: { ...appServices, user: ctx.user },
             // The re-rendered page is where the action's messages are seen, so they are not queued.
             flash: toViewFlash([...sessionState.flash, ...rerenderFlash]),
           });
@@ -637,7 +731,7 @@ async function handleRequest<
           return response;
         }
         const status = finalResult.status ?? 422;
-        const commit = sessionState.commit({
+        const commit = await sessionState.commit({
           session: rerendered.session,
           route: routeMatch.route.definition,
           result: { status },
@@ -667,7 +761,7 @@ async function handleRequest<
           now(),
         );
       }
-      const response = createCommittedResponse(finalResult, {
+      const response = await createCommittedResponse(finalResult, {
         method,
         sessionState,
         session: ctx.session,
@@ -734,6 +828,7 @@ async function handleViewRequest<
   requestId: string;
   now: () => Date;
   options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>;
+  signInEnabled: boolean;
 }): Promise<Response> {
   const {
     request,
@@ -746,9 +841,10 @@ async function handleViewRequest<
     requestId,
     now,
     options,
+    signInEnabled,
   } = args;
   const rendersPage = Boolean(matchedView.view.definition?.page);
-  const sessionState = prepareSessionState<TSession, RouteHandlerResult>({
+  const sessionState = await prepareSessionState<TSession, RouteHandlerResult>({
     cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
     config: env.sessions,
     store: options.sessionStore,
@@ -757,6 +853,22 @@ async function handleViewRequest<
     now,
   });
   let session = sessionState.session;
+  const user = signInEnabled ? await resolveSessionUser(session) : null;
+  if (requiresSignIn(matchedView.view.definition) && user === null) {
+    // Messages wait for the page the visitor reaches after signing in.
+    const { setCookie } = await sessionState.commit({
+      session,
+      result: { status: 303 },
+      retainFlash: true,
+    });
+    const headers = new Headers({
+      location: signInLocation(`${url.pathname}${url.search}`),
+      'cache-control': 'no-store',
+      'x-request-id': requestId,
+    });
+    if (setCookie) headers.append('set-cookie', setCookie);
+    return new Response(null, { status: 303, headers });
+  }
   let rendered: Awaited<ReturnType<typeof renderRequestTimeView>>;
   try {
     rendered = await renderRequestTimeView({
@@ -774,6 +886,7 @@ async function handleViewRequest<
       now,
       flash: rendersPage && method !== 'HEAD' ? toViewFlash(sessionState.flash) : undefined,
       forms: createSessionFormReader(() => session),
+      services: { ...appServices, user },
       csrfToken: () => {
         const ensured = ensureSessionCsrfToken(session);
         session = ensured.session;
@@ -793,7 +906,7 @@ async function handleViewRequest<
       commit: (status) => sessionState.commit({ session, result: { status }, retainFlash: true }),
     });
   }
-  const commit = sessionState.commit({
+  const commit = await sessionState.commit({
     session,
     result: { status: 200 },
   });
@@ -820,13 +933,13 @@ async function createViewControlResponse(
     method: string;
     requestId: string;
     workspaceRoot: string;
-    commit: (status: number) => { setCookie?: string };
+    commit: (status: number) => Promise<{ setCookie?: string }>;
   },
 ): Promise<Response> {
   const redirecting = isViewRedirect(control);
   const status = redirecting ? control.status : 404;
   const headers = new Headers({ 'cache-control': 'no-store', 'x-request-id': options.requestId });
-  const { setCookie } = options.commit(status);
+  const { setCookie } = await options.commit(status);
   if (setCookie) {
     headers.append('set-cookie', setCookie);
   }
@@ -846,7 +959,7 @@ function toViewFlash(flash: readonly SessionFlashMessage[]): ViewFlashMessage[] 
   return flash.map((entry) => ({ level: entry.level, message: entry.message ?? entry.key }));
 }
 
-function createCommittedResponse<
+async function createCommittedResponse<
   TSession extends Record<string, unknown>,
   TResult extends RouteHandlerResult,
   TRouteDefinition extends BackendRouteDefinitionLike,
@@ -854,16 +967,16 @@ function createCommittedResponse<
   result: TResult,
   options: {
     method: string;
-    sessionState: ReturnType<typeof prepareSessionState<TSession, TResult>>;
+    sessionState: Awaited<ReturnType<typeof prepareSessionState<TSession, TResult>>>;
     session: TSession | null;
     route?: TRouteDefinition;
     requestId: string;
     publishFlash?: boolean;
     onCommit?: (commit: SessionCommitResult<TSession>) => void;
   },
-): Response {
+): Promise<Response> {
   const normalizedResult = normalizeRouteHandlerResult(result);
-  const commit = options.sessionState.commit({
+  const commit = await options.sessionState.commit({
     session: options.session,
     route: options.route,
     result: normalizedResult as TResult,

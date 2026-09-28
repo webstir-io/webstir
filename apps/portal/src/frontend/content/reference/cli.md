@@ -67,7 +67,7 @@ Usage: `webstir doctor --workspace <path>`
 What it does:
 - Checks scaffold drift by running the same workspace-aware analysis that powers `repair --dry-run`
 - For apps with a server, also validates backend manifest health through the backend build path
-- Reports backend data/migration health in JSON for apps with a server, including whether the runner and migrations directory are present, how many migration files exist, and which migration table is configured
+- Reports backend migrations in JSON for apps with a server: whether `src/backend/migrations/` exists, how many migrations it holds, and the table that records them
 - Accepts `--json` for machine-readable health output
 
 Notes:
@@ -94,7 +94,9 @@ Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
 
 What it does:
 - Adds optional enhancements to an existing workspace
-- Supported features include `scripts`, `client-nav`, `search`, `content-nav`, `backend`, `frontend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
+- Supported features include `scripts`, `client-nav`, `search`, `content-nav`, `backend`, `sign-in`, `frontend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
+- `backend` also writes `.env.example`, and a `.gitignore` (or the lines an existing one lacks) that keeps `data/`, `.webstir/` and `.env` out of git
+- `sign-in` writes `src/backend/sign-in.ts` and the sign-in pages; it needs pages and a server. See [Add Sign-In](../how-to/sign-in.md)
 - Updates workspace files and `package.json` flags so the feature is active on the next build/watch
 
 Notes:
@@ -222,7 +224,7 @@ Usage: `webstir backend-inspect --workspace <path>`
 
 What it does:
 - Builds the backend and reads the resulting manifest data
-- Prints module metadata, capabilities, routes, views, jobs, and data/migration facts
+- Prints module metadata, capabilities, routes, views, jobs, and the app's migrations
 - Accepts `--json` for machine-readable manifest output
 - Needs an app with a server
 
@@ -282,7 +284,31 @@ What it does:
 - Adds a backend job entry to `webstir.moduleManifest.jobs`
 - Preserves schedule, description, and priority metadata in the manifest
 - Validates cron fields, `@macro` schedules, and `rate(...)` schedules before writing files
-- The generated scheduler supports one-off runs, `--list`, `--json`, cron/nickname schedules, `rate(...)`, and `@reboot`; local watch mode skips overlapping runs and disposes timers on `SIGINT`/`SIGTERM`
+- The server runs the job on its schedule, in `watch` and in production, or when code queues it; see [Run Jobs](../how-to/add-job.md)
+
+### add-migration
+Usage: `webstir add-migration <name> --workspace <path> [--ts]`
+
+What it does:
+- Writes the next migration in `src/backend/migrations/`, numbered after the last: `0003-<name>.sql`, or `.ts` exporting `up(db)` with `--ts`
+- Refuses a name another migration already has
+- The server applies it once, when it next starts; see [Use the Database](../how-to/database.md)
+
+### migrate
+Usage: `webstir migrate --workspace <path> [--status]`
+
+What it does:
+- Builds the backend and applies the app's pending migrations to the database `DATABASE_URL` names, as the server does when it starts
+- `--status` lists each migration and when it was applied, without changing anything
+
+### jobs
+Usage:
+- `webstir jobs --workspace <path>`
+- `webstir jobs run <name> --workspace <path> [--payload <json>]`
+
+What it does:
+- Lists the app's jobs with their schedules, the queue by status, and failed jobs with their errors
+- `run` builds the backend and runs one job now, in the CLI's process, with the payload given
 
 ## Dependency Management
 - There is no Bun `webstir install` command.

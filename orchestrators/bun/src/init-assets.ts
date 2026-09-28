@@ -18,6 +18,37 @@ const ssgTemplateRoot = path.join(templatesRoot, 'ssg');
 const spaTemplateRoot = path.join(templatesRoot, 'spa');
 const apiTemplateRoot = path.join(templatesRoot, 'api');
 const fullTemplateRoot = path.join(templatesRoot, 'full');
+const serverRootTemplateRoot = path.join(templatesRoot, 'server');
+const signInTemplateRoot = path.join(templatesRoot, 'sign-in');
+
+/** What a server app keeps beside its code: its settings example, and what git leaves out. */
+export function getServerRootAssets(): readonly ScaffoldAsset[] {
+  return [
+    createAsset(serverRootTemplateRoot, 'env.example', '.env.example'),
+    createAsset(serverRootTemplateRoot, 'gitignore', '.gitignore'),
+  ];
+}
+
+/** What `enable sign-in` writes: the app's sign-in choices and its two pages. */
+export function getSignInAssets(): readonly ScaffoldAsset[] {
+  return [
+    createAsset(
+      signInTemplateRoot,
+      path.join('backend', 'sign-in.ts'),
+      path.join('src', 'backend', 'sign-in.ts'),
+    ),
+    createAsset(
+      signInTemplateRoot,
+      path.join('pages', 'sign-in', 'index.html'),
+      path.join('src', 'frontend', 'pages', 'sign-in', 'index.html'),
+    ),
+    createAsset(
+      signInTemplateRoot,
+      path.join('pages', 'sign-in-confirm', 'index.html'),
+      path.join('src', 'frontend', 'pages', 'sign-in-confirm', 'index.html'),
+    ),
+  ];
+}
 
 export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
   return [

@@ -43,6 +43,35 @@ async function hydrateBackendScaffold(workspace) {
   }
 }
 
+// The scaffold's server with bearer auth turned on, as an API with its own identity provider does.
+const BEARER_AUTH_ENTRY = `import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createDefaultBunBackendBootstrap, startBunBackend } from '@webstir-io/webstir-backend';
+import { resolveBearerAuth } from '@webstir-io/webstir-backend/auth/bearer';
+
+export async function start() {
+  await startBunBackend(
+    createDefaultBunBackendBootstrap({
+      importMetaUrl: import.meta.url,
+      resolveRequestAuth: (request) => resolveBearerAuth(request),
+    }),
+  );
+}
+
+const entrypointPath = process.argv[1];
+if (entrypointPath && path.resolve(entrypointPath) === fileURLToPath(import.meta.url)) {
+  start().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
+`;
+
+async function useBearerAuthEntry(workspace) {
+  await fs.writeFile(path.join(workspace, 'src', 'backend', 'index.ts'), BEARER_AUTH_ENTRY, 'utf8');
+}
+
 async function writePackageRuntimeEntry(workspace, filename, specifier, exportsBlock = '*') {
   const target = path.join(workspace, filename);
   await ensureDir(path.dirname(target));
@@ -253,6 +282,7 @@ async function startBuiltServer(workspace, port, extraEnv = {}, options = {}) {
 
 async function buildRuntimeWorkspace(workspace, { moduleSource, mode = 'publish' } = {}) {
   await hydrateBackendScaffold(workspace);
+  await useBearerAuthEntry(workspace);
   await linkWorkspaceNodeModules(workspace);
   await fs.writeFile(
     path.join(workspace, 'package.json'),
@@ -302,11 +332,11 @@ function createRequestHookRuntimeModuleSource() {
       ]
     },
     handler: async (ctx) => {
-      ctx.db.trace.push('handler');
+      ctx.locals.trace.push('handler');
       return {
         status: 200,
         body: {
-          trace: [...ctx.db.trace],
+          trace: [...ctx.locals.trace],
           authSource: ctx.auth?.source ?? null,
           sessionId: ctx.session?.id ?? null
         }
@@ -319,25 +349,25 @@ const requestHooks = [
   {
     id: 'setup-request',
     handler: async (ctx) => {
-      ctx.db.trace = ['beforeAuth'];
+      ctx.locals.trace = ['beforeAuth'];
       ctx.session = { id: 'session-from-hook' };
     }
   },
   {
     id: 'annotate-auth',
     handler: async (ctx) => {
-      ctx.db.trace.push(\`beforeHandler:\${String(ctx.auth?.source ?? 'missing')}\`);
+      ctx.locals.trace.push(\`beforeHandler:\${String(ctx.auth?.source ?? 'missing')}\`);
     }
   },
   {
     id: 'short-circuit',
     handler: async (ctx) => {
-      ctx.db.trace.push('beforeHandler:short-check');
+      ctx.locals.trace.push('beforeHandler:short-check');
       if (ctx.query.short === '1') {
         return {
           status: 202,
           body: {
-            trace: [...ctx.db.trace],
+            trace: [...ctx.locals.trace],
             authSource: ctx.auth?.source ?? null,
             sessionId: ctx.session?.id ?? null,
             shortCircuited: true
@@ -2856,7 +2886,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
     flash: { consume: ['signed-in'] },
   };
 
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
@@ -2864,7 +2894,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   assert.equal(created.session, null);
   assert.deepEqual(created.flash, []);
 
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
       data: { email: 'ada@example.com' },
@@ -2878,7 +2908,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   const cookieHeader = extractCookieHeader(createdCommit.setCookie);
   assert.match(cookieHeader, /^webstir_session=/);
 
-  const firstRead = prepareSessionState({
+  const firstRead = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -2888,7 +2918,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
     firstRead.flash.map((message) => ({ key: message.key, level: message.level })),
     [{ key: 'signed-in', level: 'success' }],
   );
-  const firstReadCommit = firstRead.commit({
+  const firstReadCommit = await firstRead.commit({
     session: firstRead.session,
     route: accountRoute,
     result: {
@@ -2898,7 +2928,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   });
   assert.equal(firstReadCommit.setCookie, undefined);
 
-  const secondRead = prepareSessionState({
+  const secondRead = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -2906,7 +2936,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   assert.equal(secondRead.session.userId, 'ada@example.com');
   assert.deepEqual(secondRead.flash, []);
 
-  const invalidated = secondRead.commit({
+  const invalidated = await secondRead.commit({
     session: null,
     route: accountRoute,
     result: {
@@ -2916,7 +2946,7 @@ test('session scaffold helper resolves, consumes, and invalidates session state'
   });
   assert.match(String(invalidated.setCookie), /Max-Age=0/);
 
-  const afterInvalidation = prepareSessionState({
+  const afterInvalidation = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,

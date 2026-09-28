@@ -91,7 +91,7 @@ export interface PreparedSessionState<TSession, TResult> {
     publishFlash?: boolean;
     /** Keep every stored message for a later page, as when a request renders none (default false). */
     retainFlash?: boolean;
-  }): SessionCommitResult<TSession>;
+  }): Promise<SessionCommitResult<TSession>>;
 }
 
 export interface SessionStoreRuntimeState extends SessionRuntimeState {
@@ -109,22 +109,28 @@ export interface SessionStoreRecord<
   expiresAt: string;
 }
 
+/** Where sessions are kept. Each method may answer at once or with a promise. */
 export interface SessionStore<TSession extends Record<string, unknown> = Record<string, unknown>> {
-  get(sessionId: string): SessionStoreRecord<TSession> | undefined;
-  set(record: SessionStoreRecord<TSession>): void;
-  delete(sessionId: string): void;
+  get(
+    sessionId: string,
+  ): SessionStoreRecord<TSession> | undefined | Promise<SessionStoreRecord<TSession> | undefined>;
+  set(record: SessionStoreRecord<TSession>): void | Promise<void>;
+  delete(sessionId: string): void | Promise<void>;
 }
 
 export interface InMemorySessionStore<
   TSession extends Record<string, unknown> = Record<string, unknown>,
 > extends SessionStore<TSession> {
+  get(sessionId: string): SessionStoreRecord<TSession> | undefined;
+  set(record: SessionStoreRecord<TSession>): void;
+  delete(sessionId: string): void;
   clear(): void;
 }
 
 const SESSION_STORE_KEY = Symbol.for('webstir.webstir-backend.session-store');
 const LEGACY_FORM_RUNTIME_KEY = '__webstir_form_runtime';
 
-export function prepareSessionState<
+export async function prepareSessionState<
   TSession extends Record<string, unknown>,
   TResult extends {
     status?: number;
@@ -139,14 +145,14 @@ export function prepareSessionState<
   store?: SessionStore<TSession>;
   consumeAllFlash?: boolean;
   now?: () => Date;
-}): PreparedSessionState<TSession, TResult> {
+}): Promise<PreparedSessionState<TSession, TResult>> {
   const now = options.now ?? (() => new Date());
   const cookies = normalizeCookies(options.cookies);
   const store = options.store ?? getDefaultSessionStore<TSession>();
   const sessionCookie = cookies[options.config.cookieName];
   const initialId = verifySignedSessionCookie(sessionCookie, options.config.secret);
   const invalidCookie = Boolean(sessionCookie) && !initialId;
-  const initialRecord = initialId ? loadSessionRecord(store, initialId, now) : undefined;
+  const initialRecord = initialId ? await loadSessionRecord(store, initialId, now) : undefined;
   const staleCookie = Boolean(initialId) && !initialRecord;
   const delivered = options.consumeAllFlash
     ? { flash: readStoredFlash(initialRecord), remaining: [] }
@@ -164,7 +170,7 @@ export function prepareSessionState<
     session: initialSession,
     cookieSessionId: initialId,
     flash: delivered.flash,
-    commit({
+    async commit({
       session,
       route,
       result,
@@ -178,10 +184,6 @@ export function prepareSessionState<
       const renewed = isSessionRenewed(session);
       const kept = retainFlash ? readStoredFlash(initialRecord) : delivered.remaining;
 
-      if (initialRecord) {
-        store.delete(initialRecord.id);
-      }
-
       const shouldPersist =
         normalized.session !== null ||
         publishFlash.length > 0 ||
@@ -190,6 +192,7 @@ export function prepareSessionState<
         hasSessionRuntimeState(normalized.runtime);
 
       if (!shouldPersist) {
+        if (initialRecord) await store.delete(initialRecord.id);
         return {
           session: null,
           setCookie:
@@ -212,7 +215,12 @@ export function prepareSessionState<
         now,
       });
 
-      store.set(record);
+      // The new record goes in before an old one under another id comes out, and a record kept
+      // under its id is overwritten in place: a request reading meanwhile always finds a session.
+      await store.set(record);
+      if (initialRecord && initialRecord.id !== record.id) {
+        await store.delete(initialRecord.id);
+      }
 
       return {
         session: attachSessionRuntimeState(
@@ -344,18 +352,18 @@ function signSessionId(sessionId: string, secret: string): string {
   return createHmac('sha256', secret).update(sessionId).digest('base64url');
 }
 
-function loadSessionRecord<TSession extends Record<string, unknown>>(
+async function loadSessionRecord<TSession extends Record<string, unknown>>(
   store: SessionStore<TSession>,
   sessionId: string,
   now: () => Date,
-): SessionStoreRecord<TSession> | undefined {
-  const record = store.get(sessionId);
+): Promise<SessionStoreRecord<TSession> | undefined> {
+  const record = await store.get(sessionId);
   if (!record) {
     return undefined;
   }
   const expiresAt = Date.parse(record.expiresAt);
   if (Number.isFinite(expiresAt) && expiresAt <= now().getTime()) {
-    store.delete(sessionId);
+    await store.delete(sessionId);
     return undefined;
   }
   return record;

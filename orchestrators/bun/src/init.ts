@@ -3,7 +3,11 @@ import { mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { getStarterScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
+import {
+  getServerRootAssets,
+  getStarterScaffoldAssets,
+  getRootScaffoldAssets,
+} from './init-assets.ts';
 import { monorepoRoot } from './paths.ts';
 import type { Starter } from './types.ts';
 
@@ -78,6 +82,14 @@ export async function scaffoldWorkspace(
     const targetPath = path.join(workspaceRoot, asset.targetPath);
     await copyAsset(asset.sourcePath, targetPath);
     changes.push(toWorkspaceRelative(workspaceRoot, targetPath));
+  }
+
+  if (starter === 'full' || starter === 'api') {
+    for (const asset of getServerRootAssets()) {
+      const targetPath = path.join(workspaceRoot, asset.targetPath);
+      await copyAsset(asset.sourcePath, targetPath);
+      changes.push(toWorkspaceRelative(workspaceRoot, targetPath));
+    }
   }
 
   const packageJsonPath = path.join(workspaceRoot, 'package.json');

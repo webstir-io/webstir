@@ -1,0 +1,38 @@
+<head>
+    <title>Sign in</title>
+</head>
+<body>
+    <main>
+        <section class="sign-in">
+            <h1>Sign in</h1>
+            <p class="sign-in-error" role="alert" data-if="error" data-text="error"></p>
+
+            <form method="post" action="/sign-in/" data-if="asking">
+                <input type="hidden" name="intent" value="request" />
+                <input type="hidden" name="returnTo" data-attr-value="returnTo" />
+                <label for="email">Email</label>
+                <input id="email" name="email" type="email" autocomplete="email" required data-attr-value="email" />
+                <button type="submit">Send me a code</button>
+            </form>
+
+            <div data-if="checking">
+                <p>If <strong data-text="email"></strong> can sign in, a code is on its way. It works for 5 minutes.</p>
+                <p data-if="development">In development the email is not sent: the code is in the terminal and in <code>.webstir/email.log</code>.</p>
+                <form method="post" action="/sign-in/">
+                    <input type="hidden" name="intent" value="code" />
+                    <label for="code">Code</label>
+                    <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" required />
+                    <button type="submit">Sign in</button>
+                </form>
+                <form method="post" action="/sign-in/">
+                    <input type="hidden" name="intent" value="resend" />
+                    <button type="submit">Send a new code</button>
+                </form>
+                <form method="post" action="/sign-in/">
+                    <input type="hidden" name="intent" value="change" />
+                    <button type="submit">Use a different email</button>
+                </form>
+            </div>
+        </section>
+    </main>
+</body>

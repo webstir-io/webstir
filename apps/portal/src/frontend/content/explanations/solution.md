@@ -59,7 +59,7 @@ The canonical primitive breakdown for those behaviors lives in [Primitives](../r
 ## Proof Of The Model
 
 - `full` is the canonical scaffold-aligned reference for the default path.
-- `auth-crud` proves sign-in gates, validation recovery, redirect-after-post, and CRUD mutations.
+- `auth-crud` proves the batteries: email-code sign-in, a guarded page, projects in the database through a migration, validation recovery, redirect-after-post, and a queued job that emails the owner.
 - `dashboard` proves shell and panel refreshes without shifting into SPA-first architecture.
 
 ## Agent Surface

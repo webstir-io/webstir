@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Database } from 'bun:sqlite';
+import type { Database } from '@webstir-io/webstir-backend/db';
 import type { RouteHandlerResult } from '@webstir-io/webstir-backend/runtime/bun';
 import {
   prepareFormState,
@@ -8,6 +8,7 @@ import {
 } from '@webstir-io/webstir-backend/runtime/forms';
 
 interface Context {
+  db: Database;
   params: Record<string, string>;
   body: unknown;
   session: Record<string, unknown> | null;
@@ -22,26 +23,18 @@ interface Note {
 const BASE = '/api/notes';
 const htmlHeaders = { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' };
 
-// Defer opening storage until a request; build/inspect import the route module.
-export function createNotesRoutes(getDatabase: () => Database) {
-  let connection: Database | undefined;
-  function database(): Database {
-    if (connection) return connection;
-    const db = getDatabase();
-    db.exec(`CREATE TABLE IF NOT EXISTS notes (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 120),
-      body TEXT NOT NULL CHECK(length(body) <= 10000)
-    )`);
-    connection = db;
-    return db;
+// The notes table comes from the app's migration (see README.md).
+export function createNotesRoutes() {
+  function read(context: Context, id: string): Promise<Note | undefined> {
+    return context.db.get<Note>('SELECT id, title, body FROM notes WHERE id = ?', [id]);
   }
 
-  function read(id: string): Note | null {
-    return database().query<Note, [string]>('SELECT id, title, body FROM notes WHERE id = ?').get(id);
-  }
-
-  function form(context: Context, id: string, note?: Note, errorStatus = 200): RouteHandlerResult {
+  async function form(
+    context: Context,
+    id: string,
+    note?: Note,
+    errorStatus = 200,
+  ): Promise<RouteHandlerResult> {
     const state = prepareFormState({ session: context.session, formId: id, csrf: true });
     context.session = state.session;
     const title = text(state.values, 'title', note?.title ?? '');
@@ -54,7 +47,7 @@ export function createNotesRoutes(getDatabase: () => Database) {
       <label>Body <textarea name="body" maxlength="10000">${escapeHtml(body)}</textarea></label>
       <button type="submit">${note ? 'Save note' : 'Create note'}</button>
     </form>`;
-    const notes = note ? '' : database().query<Note, []>('SELECT id, title, body FROM notes ORDER BY rowid DESC').all()
+    const notes = note ? '' : (await context.db.query<Note>('SELECT id, title, body FROM notes ORDER BY created_at DESC'))
       .map((item) => `<article data-note-id="${escapeHtml(item.id)}">
         <h2>${escapeHtml(item.title)}</h2><p>${escapeHtml(item.body)}</p>
         <a href="${BASE}/${encodeURIComponent(item.id)}/edit">Edit ${escapeHtml(item.title)}</a>
@@ -72,7 +65,7 @@ export function createNotesRoutes(getDatabase: () => Database) {
       ${fields}${deleteForm}${notes}<p><a href="${BASE}">All notes</a></p>`, errorStatus);
   }
 
-  function save(context: Context, note?: Note): RouteHandlerResult {
+  async function save(context: Context, note?: Note): Promise<RouteHandlerResult> {
     const formId = note ? `edit:${note.id}` : 'create';
     const submitted = processFormSubmission({
       session: context.session,
@@ -95,9 +88,11 @@ export function createNotesRoutes(getDatabase: () => Database) {
     const title = text(submitted.values, 'title').trim();
     const body = text(submitted.values, 'body');
     if (note) {
-      database().query('UPDATE notes SET title = ?, body = ? WHERE id = ?').run(title, body, note.id);
+      await context.db.execute('UPDATE notes SET title = ?, body = ? WHERE id = ?', [title, body, note.id]);
     } else {
-      database().query('INSERT INTO notes (id, title, body) VALUES (?, ?, ?)').run(randomUUID(), title, body);
+      await context.db.execute('INSERT INTO notes (id, title, body, created_at) VALUES (?, ?, ?, ?)', [
+        randomUUID(), title, body, new Date(),
+      ]);
     }
     return { status: 303, redirect: { location: BASE } };
   }
@@ -105,16 +100,16 @@ export function createNotesRoutes(getDatabase: () => Database) {
   return [
     route('notesList', 'GET', BASE, (context) => form(context, 'create')),
     route('notesCreate', 'POST', BASE, (context) => save(context)),
-    route('notesEdit', 'GET', `${BASE}/:id/edit`, (context) => {
-      const note = read(context.params.id);
+    route('notesEdit', 'GET', `${BASE}/:id/edit`, async (context) => {
+      const note = await read(context, context.params.id);
       return note ? form(context, `edit:${note.id}`, note) : page('Not found', 'Note not found.', 404);
     }),
-    route('notesUpdate', 'POST', `${BASE}/:id`, (context) => {
-      const note = read(context.params.id);
+    route('notesUpdate', 'POST', `${BASE}/:id`, async (context) => {
+      const note = await read(context, context.params.id);
       return note ? save(context, note) : page('Not found', 'Note not found.', 404);
     }),
-    route('notesDelete', 'POST', `${BASE}/:id/delete`, (context) => {
-      const note = read(context.params.id);
+    route('notesDelete', 'POST', `${BASE}/:id/delete`, async (context) => {
+      const note = await read(context, context.params.id);
       if (!note) return page('Not found', 'Note not found.', 404);
       const submitted = processFormSubmission({
         session: context.session, body: context.body, formId: `delete:${note.id}`, csrf: true,
@@ -123,13 +118,18 @@ export function createNotesRoutes(getDatabase: () => Database) {
       if (!submitted.ok) {
         return page('Delete blocked', `Form session expired. <a href="${BASE}/${encodeURIComponent(note.id)}/edit">Return to the note</a> and try again.`, 403);
       }
-      database().query('DELETE FROM notes WHERE id = ?').run(note.id);
+      await context.db.execute('DELETE FROM notes WHERE id = ?', [note.id]);
       return { status: 303, redirect: { location: BASE } };
     }),
   ];
 }
 
-function route(name: string, method: 'GET' | 'POST', path: string, handler: (context: Context) => RouteHandlerResult) {
+function route(
+  name: string,
+  method: 'GET' | 'POST',
+  path: string,
+  handler: (context: Context) => Promise<RouteHandlerResult>,
+) {
   return {
     definition: {
       name, method, path,

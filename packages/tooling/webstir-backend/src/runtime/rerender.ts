@@ -41,6 +41,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   readonly now: () => Date;
   /** Messages this page shows: those the action consumed, then those it returned. */
   readonly flash?: readonly ViewFlashMessage[];
+  readonly services?: Record<string, unknown>;
 }): Promise<{ html: string; session: TSession | null; location: string }> {
   const { rerender } = options;
   const view = findView(options.views, rerender.view);
@@ -73,6 +74,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
     requestId: options.requestId,
     now: options.now,
     flash: options.flash ?? [],
+    services: options.services,
     csrfToken: () => {
       const ensured = ensureSessionCsrfToken(session);
       session = ensured.session;

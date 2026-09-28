@@ -31,8 +31,8 @@ For example:
 
 ## Complete features, then verify them
 
-- [Persisted notes](recipes/notes/README.md) includes real handlers, SQLite, HTML, validation, CSRF, and a copyable HTTP test.
-- [Authenticated status and filtering](recipes/projects/README.md) preserves an existing identity boundary and scopes every data operation by owner.
+- [Persisted notes](recipes/notes/README.md) includes real handlers, a migration and the app's database, HTML, validation, CSRF, and a copyable HTTP test.
+- [Authenticated status and filtering](recipes/projects/README.md) builds on the app's sign-in (Webstir's, or its own identity provider) and scopes every data operation by owner.
 
 Append implemented routes in `src/backend/module.ts` and keep the exported manifest in sync. `add-route` and `agent scaffold-route` scaffold route metadata; they do not create your handler, data storage, or complete feature. Backend runtime form helpers are available through `@webstir-io/webstir-backend/runtime/forms`.
 

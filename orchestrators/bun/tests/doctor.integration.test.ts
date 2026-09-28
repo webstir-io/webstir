@@ -98,10 +98,9 @@ test('CLI doctor emits machine-readable JSON for a healthy API workspace', async
         module: string;
         data: {
           migrations: {
-            runnerPresent: boolean;
+            migrationsDirectoryPresent: boolean;
             migrationFilesCount: number;
-            tableEnvKey: string;
-            configuredTable: string;
+            table: string;
           };
         };
       };
@@ -118,10 +117,9 @@ test('CLI doctor emits machine-readable JSON for a healthy API workspace', async
     expect(parsed.backend?.module).toBe('api@1.0.0');
     expect(typeof parsed.backend?.routes).toBe('number');
     expect(typeof parsed.backend?.jobs).toBe('number');
-    expect(parsed.backend?.data.migrations.runnerPresent).toBe(false);
+    expect(parsed.backend?.data.migrations.migrationsDirectoryPresent).toBe(false);
     expect(parsed.backend?.data.migrations.migrationFilesCount).toBe(0);
-    expect(parsed.backend?.data.migrations.tableEnvKey).toBe('DATABASE_MIGRATIONS_TABLE');
-    expect(parsed.backend?.data.migrations.configuredTable).toBe('_webstir_migrations');
+    expect(parsed.backend?.data.migrations.table).toBe('webstir_migrations');
   } finally {
     await rm(path.dirname(workspaceRoot), { recursive: true, force: true });
   }

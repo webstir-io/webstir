@@ -25,10 +25,28 @@ beforeAll(async () => {
     path.join(recipeRoot, 'projects/projects.ts'),
     path.join(workspace, 'src/backend/projects.ts'),
   );
-  const guide = await readFile(path.join(recipeRoot, 'notes/README.md'), 'utf8');
-  const databaseSource = guide.match(/```ts\n([\s\S]+?)```/)?.[1];
-  if (!databaseSource) throw new Error('Expected the cookbook database module.');
-  await writeFile(path.join(workspace, 'src/backend/database.ts'), databaseSource);
+  // The migrations the guides give, after one that stands for an app's existing projects table.
+  const sqlFrom = async (guide: string) =>
+    (await readFile(path.join(recipeRoot, guide), 'utf8')).match(/```sql\n([\s\S]+?)```/)?.[1];
+  const migrations = path.join(workspace, 'src/backend/migrations');
+  await mkdir(migrations, { recursive: true });
+  await writeFile(
+    path.join(migrations, '0001-existing-projects.sql'),
+    [
+      'CREATE TABLE projects (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL);',
+      "INSERT INTO projects (id, owner_id, title) VALUES ('existing', 'alpha', 'Before migration');",
+      "INSERT INTO projects (id, owner_id, title) VALUES ('private', 'beta', 'Other owner');",
+      '',
+    ].join('\n'),
+  );
+  for (const [file, guide] of [
+    ['0002-project-status.sql', 'projects/README.md'],
+    ['0003-create-notes.sql', 'notes/README.md'],
+  ] as const) {
+    const sql = await sqlFrom(guide);
+    if (!sql) throw new Error(`Expected a migration in ${guide}.`);
+    await writeFile(path.join(migrations, file), sql);
+  }
   await writeFile(
     path.join(workspace, 'package.json'),
     JSON.stringify({ type: 'module', webstir: { mode: 'api' } }),
@@ -36,21 +54,9 @@ beforeAll(async () => {
   await writeFile(
     path.join(workspace, 'src/backend/module.ts'),
     `
-    import { getDatabase } from './database.ts';
     import { createNotesRoutes } from './notes.ts';
     import { createProjectRoutes } from './projects.ts';
-    let seeded = false;
-    function getSeededDatabase() {
-    const db = getDatabase();
-    if (!seeded) {
-    db.exec("CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, title TEXT NOT NULL)");
-    db.query('INSERT OR IGNORE INTO projects (id, owner_id, title) VALUES (?, ?, ?)').run('existing', 'alpha', 'Before migration');
-    db.query('INSERT OR IGNORE INTO projects (id, owner_id, title) VALUES (?, ?, ?)').run('private', 'beta', 'Other owner');
-    seeded = true;
-    }
-    return db;
-    }
-    const routes = [...createNotesRoutes(getSeededDatabase), ...createProjectRoutes(getSeededDatabase)];
+    const routes = [...createNotesRoutes(), ...createProjectRoutes()];
     export const module = { manifest: { contractVersion: '1.0.0', name: '@recipe/test', version: '1.0.0', kind: 'backend', capabilities: ['http'], routes: routes.map(route => route.definition) }, routes };
   `,
   );
@@ -69,6 +75,11 @@ beforeAll(async () => {
     }));
   `,
   );
+  // The server reads migrations from the built backend.
+  const built = await runWebstir(['build', '--workspace', workspace], {
+    env: { ...runtimeEnv(), WEBSTIR_BACKEND_TYPECHECK: 'skip' },
+  });
+  if (built.exitCode !== 0) throw new Error(built.stderr);
   origin = `http://127.0.0.1:${await freePort()}`;
   await start();
   browser = await chromium.launch({ headless: true });
@@ -81,7 +92,7 @@ afterAll(async () => {
   if (workspace) await rm(workspace, { recursive: true, force: true });
 });
 
-test('build and inspect leave storage untouched; requests use the app-root database', async () => {
+test('build and inspect leave the database alone; the server uses the app-root database', async () => {
   const caller = await mkdtemp(path.join(os.tmpdir(), 'webstir-recipe-caller-'));
   const configured = path.join(caller, 'explicit.sqlite');
   const defaultDatabase = path.join(workspace, 'data/app.sqlite');
@@ -89,30 +100,24 @@ test('build and inspect leave storage untouched; requests use the app-root datab
     for (const command of ['build', 'backend-inspect']) {
       const result = await runWebstir([command, '--workspace', workspace], {
         cwd: caller,
-        // This proof covers module-import side effects; the recipe types are checked
-        // in the generated consumer app with @types/bun installed.
         env: {
           ...runtimeEnv(),
           WEBSTIR_BACKEND_TYPECHECK: 'skip',
-          ...(command === 'build' ? { APP_DATABASE_PATH: configured } : {}),
+          DATABASE_URL: `file:${configured}`,
         },
       });
       expect(result.stderr).toBe('');
       expect(result.exitCode).toBe(0);
       expect(existsSync(configured)).toBe(false);
-      expect(existsSync(defaultDatabase)).toBe(false);
     }
-    expect((await fetch(`${origin}/api/projects`)).status).toBe(401);
-    expect(existsSync(defaultDatabase)).toBe(false);
-    expect((await fetch(`${origin}/api/notes`)).status).toBe(200);
+    // The server started from the app's own directory: its migrations made the default database.
     expect(existsSync(defaultDatabase)).toBe(true);
-    expect(existsSync(path.join(caller, 'data/app.sqlite'))).toBe(false);
+    expect((await fetch(`${origin}/api/notes`)).status).toBe(200);
     server.kill();
     await server.exited;
     await start(configured, caller);
-    expect(existsSync(configured)).toBe(false);
-    expect((await fetch(`${origin}/api/notes`)).status).toBe(200);
     expect(existsSync(configured)).toBe(true);
+    expect((await fetch(`${origin}/api/notes`)).status).toBe(200);
     server.kill();
     await server.exited;
     await start(undefined, caller);
@@ -271,7 +276,7 @@ async function clickAndNavigate(page: Page, name: string) {
 
 function runtimeEnv() {
   const env = { ...process.env };
-  delete env.APP_DATABASE_PATH;
+  delete env.DATABASE_URL;
   return env;
 }
 
@@ -281,7 +286,7 @@ async function start(databasePath?: string, cwd = workspace) {
     env: {
       ...runtimeEnv(),
       PORT: new URL(origin).port,
-      ...(databasePath ? { APP_DATABASE_PATH: databasePath } : {}),
+      ...(databasePath ? { DATABASE_URL: `file:${databasePath}` } : {}),
     },
     stdout: 'pipe',
     stderr: 'pipe',

@@ -364,14 +364,11 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
 
   const migrations = result.data.migrations;
   lines.push('data-migrations:');
-  lines.push(`  runner: ${migrations.runnerPresent ? 'present' : 'missing'}`);
   lines.push(
     `  directory: ${migrations.migrationsDirectoryPresent ? 'present' : 'missing'} (${migrations.migrationsDirectory})`,
   );
   lines.push(`  files: ${migrations.migrationFilesCount}`);
-  lines.push(`  example: ${migrations.exampleMigrationPresent ? 'present' : 'missing'}`);
-  lines.push(`  table-env: ${migrations.tableEnvKey}`);
-  lines.push(`  configured-table: ${migrations.configuredTable}`);
+  lines.push(`  table: ${migrations.table}`);
 
   return lines.join('\n');
 }

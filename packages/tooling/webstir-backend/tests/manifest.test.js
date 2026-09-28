@@ -346,91 +346,26 @@ test('manifest loader falls back to module exports from the compiled index entry
   );
 });
 
-test('scaffold assets expose core backend templates', async () => {
+test('scaffold assets are the app-owned backend files; the batteries live in the package', async () => {
   const assets = await backendProvider.getScaffoldAssets();
-  const targetSet = new Set(assets.map((asset) => asset.targetPath));
-
-  const requiredTargets = [
-    path.join('src', 'backend', 'tsconfig.json'),
-    path.join('src', 'backend', 'index.ts'),
-    path.join('src', 'backend', 'module.ts'),
-    path.join('src', 'backend', 'auth', 'adapter.ts'),
-    path.join('src', 'backend', 'observability', 'logger.ts'),
-    path.join('src', 'backend', 'observability', 'metrics.ts'),
-    path.join('src', 'backend', 'session', 'store.ts'),
-    path.join('src', 'backend', 'session', 'sqlite.ts'),
-    path.join('src', 'backend', 'functions', 'hello', 'index.ts'),
-    path.join('src', 'backend', 'jobs', 'nightly', 'index.ts'),
-    path.join('src', 'backend', 'jobs', 'runtime.ts'),
-    path.join('src', 'backend', 'jobs', 'scheduler.ts'),
-    path.join('src', 'backend', 'db', 'connection.ts'),
-    path.join('src', 'backend', 'db', 'migrate.ts'),
-    path.join('src', 'backend', 'db', 'migrations', '0001-example.ts'),
-    path.join('src', 'backend', 'db', 'types.d.ts'),
-    path.join('.env.example'),
-  ];
-
-  for (const target of requiredTargets) {
-    assert.ok(targetSet.has(target), `expected scaffold assets to include ${target}`);
-  }
-
-  const removedTargets = [
-    path.join('src', 'backend', 'server', 'bun.ts'),
-    path.join('src', 'backend', 'runtime', 'request-hooks.ts'),
-    path.join('src', 'backend', 'runtime', 'session.ts'),
-    path.join('src', 'backend', 'runtime', 'forms.ts'),
-    path.join('src', 'backend', 'runtime', 'views.ts'),
-    path.join('src', 'backend', 'runtime', 'core.ts'),
-    path.join('src', 'backend', 'runtime', 'fastify.ts'),
-    path.join('src', 'backend', 'server', 'fastify.ts'),
-  ];
-
-  for (const target of removedTargets) {
-    assert.ok(!targetSet.has(target), `expected scaffold assets to omit ${target}`);
-  }
-  const sessionStoreAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'session', 'store.ts'),
+  assert.deepEqual(
+    assets.map((asset) => asset.targetPath).sort(),
+    [
+      path.join('src', 'backend', 'functions', 'hello', 'index.ts'),
+      path.join('src', 'backend', 'index.ts'),
+      path.join('src', 'backend', 'jobs', 'nightly', 'index.ts'),
+      path.join('src', 'backend', 'module.ts'),
+      path.join('src', 'backend', 'tsconfig.json'),
+    ].sort(),
   );
-  assert.ok(sessionStoreAsset, 'expected scaffold assets to include the session store helper');
-
-  const sessionStoreSource = await fs.readFile(sessionStoreAsset.sourcePath, 'utf8');
-  assert.match(sessionStoreSource, /createSessionStoreFromEnv/);
-  assert.match(sessionStoreSource, /@webstir-io\/webstir-backend\/runtime\/session/);
-  assert.match(sessionStoreSource, /SESSION_STORE_DRIVER/);
-
-  const sqliteSessionStoreAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'session', 'sqlite.ts'),
+  const index = assets.find(
+    (asset) => asset.targetPath === path.join('src', 'backend', 'index.ts'),
   );
-  assert.ok(
-    sqliteSessionStoreAsset,
-    'expected scaffold assets to include the durable sqlite session store helper',
-  );
-
-  const sqliteSessionStoreSource = await fs.readFile(sqliteSessionStoreAsset.sourcePath, 'utf8');
-  assert.match(sqliteSessionStoreSource, /createSqliteSessionStore/);
-
-  const schedulerAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'jobs', 'scheduler.ts'),
-  );
-  assert.ok(schedulerAsset, 'expected scaffold assets to include the job scheduler');
-
-  const schedulerSource = await fs.readFile(schedulerAsset.sourcePath, 'utf8');
-  assert.match(schedulerSource, /^#!\/usr\/bin\/env bun/m);
-  assert.match(schedulerSource, /bun build\/backend\/jobs\/scheduler\.js --job <name>/);
-  assert.match(schedulerSource, /Bun\.cron\.parse/);
+  const source = await fs.readFile(index.sourcePath, 'utf8');
   assert.match(
-    schedulerSource,
-    /--json\s+Print registered job metadata as JSON for external schedulers/,
+    source,
+    /createDefaultBunBackendBootstrap\(\{ importMetaUrl: import\.meta\.url \}\)/,
   );
-
-  const migrateAsset = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'db', 'migrate.ts'),
-  );
-  assert.ok(migrateAsset, 'expected scaffold assets to include the database migration runner');
-
-  const migrateSource = await fs.readFile(migrateAsset.sourcePath, 'utf8');
-  assert.match(migrateSource, /^#!\/usr\/bin\/env bun/m);
-  assert.match(migrateSource, /bun src\/backend\/db\/migrate\.ts \[--list\]/);
 });
 
 test('views.json lists only views the module renders, not package page routes', async () => {

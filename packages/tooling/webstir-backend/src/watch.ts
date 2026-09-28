@@ -14,6 +14,7 @@ import {
   shouldTypeCheck,
 } from './build/pipeline.js';
 import { discoverEntryPoints } from './build/entries.js';
+import { syncMigrations } from './build/migrations.js';
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
 import { normalizeMode, resolveWorkspacePaths, resolveWorkspaceRoot } from './workspace.js';
@@ -283,6 +284,7 @@ async function performWatchBuild(options: PerformWatchBuildOptions): Promise<Wat
   );
 
   if (buildResult.succeeded) {
+    await syncMigrations(options.sourceRoot, options.buildRoot);
     const cacheReporter = createCacheReporter({
       workspaceRoot: options.workspaceRoot,
       buildRoot: options.buildRoot,
