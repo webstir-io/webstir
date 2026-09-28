@@ -5,8 +5,8 @@ import path from 'node:path';
 import { chromium, type Browser } from 'playwright';
 
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
-import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { runWebstirOrThrow } from '../test-support/cli.ts';
 import { getFreePort } from '../test-support/watch.ts';
 
 type VisitWindow = Window & { clientNavVisits: number };
@@ -18,11 +18,13 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
   let browser: Browser | undefined;
 
   try {
-    await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
-    runCli(workspace, ['enable', 'client-nav']);
+    await step('install', () =>
+      materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' }),
+    );
+    await step('enable client-nav', () => runCli(workspace, ['enable', 'client-nav']));
     await writeLifecyclePage(workspace, 'home', '<a href="/second/">Second</a>');
     await writeLifecyclePage(workspace, 'second', '<a href="/">Home</a>');
-    runCli(workspace, ['publish']);
+    await step('publish', () => runCli(workspace, ['publish']));
 
     const distRoot = path.join(workspace, 'dist', 'frontend');
     expect(existsSync(path.join(distRoot, 'index.html'))).toBe(true);
@@ -32,7 +34,9 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
     server = serveStatic(distRoot, port);
     const origin = `http://127.0.0.1:${port}`;
 
-    browser = await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'] });
+    browser = await step('launch chromium', () =>
+      chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'], timeout: 60_000 }),
+    );
     const page = await browser.newPage();
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
@@ -43,7 +47,7 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
       });
     });
 
-    await page.goto(`${origin}/`);
+    await step('open home', () => page.goto(`${origin}/`));
     await page.waitForFunction(() => document.querySelector('main')?.dataset.setup === 'home');
     const initialScript = await page.evaluate(
       () => document.querySelector('script[data-webstir-page]')?.getAttribute('src') ?? '',
@@ -121,25 +125,21 @@ async function writeLifecyclePage(workspace: string, name: string, link: string)
   );
 }
 
-function runCli(workspace: string, args: string[]): void {
-  const result = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      ...args,
-      '--workspace',
-      workspace,
-    ],
-    cwd: repoRoot,
+/** Names each setup step and its time, so a step that hangs in CI shows which one it was. */
+async function step<T>(label: string, run: () => T | Promise<T>): Promise<T> {
+  const started = performance.now();
+  console.error(`[ssg-publish-client-nav] ${label}: started`);
+  const result = await run();
+  console.error(
+    `[ssg-publish-client-nav] ${label}: done in ${Math.round(performance.now() - started)}ms`,
+  );
+  return result;
+}
+
+async function runCli(workspace: string, args: string[]): Promise<void> {
+  await runWebstirOrThrow([...args, '--workspace', workspace], {
     env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `webstir ${args.join(' ')} failed with exit code ${result.exitCode}.\nstdout:\n${result.stdout.toString()}\n\nstderr:\n${result.stderr.toString()}`,
-    );
-  }
 }
 
 function serveStatic(root: string, port: number): ReturnType<typeof Bun.serve> {

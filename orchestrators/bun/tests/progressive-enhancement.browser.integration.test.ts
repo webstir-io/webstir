@@ -1,3 +1,4 @@
+import { runWebstir } from '../test-support/cli.ts';
 import { assertPreparedPage } from '../test-support/prepared-page-browser.ts';
 import { assertPageLifecycle } from '../test-support/page-lifecycle-browser.ts';
 import { expect, test } from 'bun:test';
@@ -1521,25 +1522,12 @@ async function startPublishSession(
   } = {},
 ): Promise<RuntimeSession> {
   await materializeRepoLocalWorkspaceDependencies(workspace);
-  const publishResult = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      'publish',
-      '--workspace',
-      workspace,
-    ],
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      WEBSTIR_BACKEND_TYPECHECK: 'skip',
-    },
-    stdout: 'pipe',
-    stderr: 'pipe',
+  const publishResult = await runWebstir(['publish', '--workspace', workspace], {
+    env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
   });
 
-  const publishStdout = decodeOutput(publishResult.stdout);
-  const publishStderr = decodeOutput(publishResult.stderr);
+  const publishStdout = publishResult.stdout;
+  const publishStderr = publishResult.stderr;
   if (publishResult.exitCode !== 0) {
     throw new Error(
       `Publish failed with exit code ${publishResult.exitCode}.\nstdout:\n${publishStdout}\n\nstderr:\n${publishStderr}`,
@@ -1606,10 +1594,6 @@ async function startPublishSession(
       );
     },
   };
-}
-
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
 }
 
 async function fetchText(port: number, requestPath: string): Promise<string> {

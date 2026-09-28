@@ -4,8 +4,8 @@ import path from 'node:path';
 import { chromium, type Browser, type Page } from 'playwright';
 
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
-import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { runWebstirOrThrow } from '../test-support/cli.ts';
 import { getFreePort } from '../test-support/watch.ts';
 
 // A page with a data.ts renders in the browser from the same template a server would use: its
@@ -21,11 +21,11 @@ for (const clientNav of [false, true]) {
     try {
       await addDependency(workspace, 'zod', '^3.23.8');
       await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
-      if (clientNav) runCli(workspace, ['enable', 'client-nav']);
+      if (clientNav) await runCli(workspace, ['enable', 'client-nav']);
       await writeFruitPage(workspace);
       await writeBrokenPage(workspace);
       await writeHomeLink(workspace);
-      runCli(workspace, ['publish']);
+      await runCli(workspace, ['publish']);
 
       const distRoot = path.join(workspace, 'dist', 'frontend');
       const firstLoad = await readFile(path.join(distRoot, 'fruit', 'index.html'), 'utf8');
@@ -245,25 +245,10 @@ async function addDependency(workspace: string, name: string, version: string): 
   await writeFile(file, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
-function runCli(workspace: string, args: string[]): void {
-  const result = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      ...args,
-      '--workspace',
-      workspace,
-    ],
-    cwd: repoRoot,
+async function runCli(workspace: string, args: string[]): Promise<void> {
+  await runWebstirOrThrow([...args, '--workspace', workspace], {
     env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `webstir ${args.join(' ')} failed with exit code ${result.exitCode}.\nstdout:\n${result.stdout.toString()}\n\nstderr:\n${result.stderr.toString()}`,
-    );
-  }
 }
 
 function serveStatic(root: string, port: number): ReturnType<typeof Bun.serve> {

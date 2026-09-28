@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { cp, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 
 import { monorepoRoot } from './paths.ts';
@@ -81,15 +81,16 @@ export async function materializeRepoLocalWorkspaceDependencies(
   }
 
   await writeFile(packageJsonPath, `${JSON.stringify(normalized.packageJson, null, 2)}\n`, 'utf8');
-  const install = spawnSync(resolveRuntimeCommand(), ['install'], {
-    cwd: workspaceRoot,
-    env: process.env,
-    stdio: options.installStdio ?? 'inherit',
+  const status = await new Promise<number | null>((resolve, reject) => {
+    const install = spawn(resolveRuntimeCommand(), ['install'], {
+      cwd: workspaceRoot,
+      env: process.env,
+      stdio: options.installStdio ?? 'inherit',
+    });
+    install.on('error', reject);
+    install.on('close', resolve);
   });
-  if (install.error) {
-    throw install.error;
-  }
-  if (install.status !== 0) {
+  if (status !== 0) {
     throw new Error(`Failed to install repo-local workspace dependencies for ${workspaceRoot}.`);
   }
 }
