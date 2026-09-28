@@ -183,3 +183,36 @@ test('the batteries on ctx are shared: writing onto one fails instead of leaking
     );
   }
 });
+
+test('a SQLite transaction waits for another process writing to the file, instead of failing', async () => {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-db-'));
+  const file = path.join(workspaceRoot, 'app.sqlite');
+  const db = await openDatabase(`file:${file}`, { workspaceRoot });
+  try {
+    await db.exec('CREATE TABLE counter (id INTEGER PRIMARY KEY, value INTEGER NOT NULL)');
+    await db.execute('INSERT INTO counter (id, value) VALUES (1, 0)');
+    let writer;
+    await db.transaction(async (tx) => {
+      const { value } = await tx.get('SELECT value FROM counter WHERE id = 1');
+      // Another process adds one while this transaction has read but not yet written.
+      writer = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `const { Database } = require('bun:sqlite');
+           const other = new Database(${JSON.stringify(file)});
+           other.exec('PRAGMA busy_timeout = 5000');
+           other.run('UPDATE counter SET value = value + 1 WHERE id = 1');`,
+        ],
+        { stderr: 'pipe' },
+      );
+      await Bun.sleep(300);
+      await tx.execute('UPDATE counter SET value = ? WHERE id = 1', [value + 10]);
+    });
+    assert.equal(await writer.exited, 0, await new Response(writer.stderr).text());
+    assert.deepEqual(await db.get('SELECT value FROM counter WHERE id = 1'), { value: 11 });
+  } finally {
+    await db.close();
+    await fs.rm(workspaceRoot, { recursive: true, force: true });
+  }
+});

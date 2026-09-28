@@ -5,6 +5,7 @@ import { isProduction } from '../app/app-root.js';
 import { email as appEmail, hasEmailDelivery, type EmailMessage } from '../email/index.js';
 import { processFormSubmission, type FormIssue, type FormValues } from '../runtime/forms.js';
 import { renewSession } from '../runtime/session-metadata.js';
+import { redirect } from '../runtime/view-control.js';
 import { signInDatabase } from './database.js';
 import { CODE_MINUTES, consumeCode, consumeToken, createChallenge } from './challenges.js';
 import {
@@ -22,6 +23,12 @@ export interface SignInOptions {
   canSignIn?(email: string): boolean | Promise<boolean>;
   /** The email with the code and the link; Webstir's plain one by default. */
   email?(message: SignInEmail): Pick<EmailMessage, 'subject' | 'text' | 'html'>;
+  /**
+   * `'app'` when the app's own migrations make the `users` table, with at least `id`, `email`,
+   * `session_version` and `created_at`. By default Webstir makes it before the app's migrations,
+   * so they can reference `users (id)`.
+   */
+  usersTable?: 'webstir' | 'app';
 }
 
 export interface SignInEmail {
@@ -42,12 +49,15 @@ interface ViewContext {
   readonly url: URL;
   readonly session: Record<string, unknown> | null;
   readonly user?: SessionUser | null;
-  readonly forms: { read(formId: string): { errors: Record<string, string> } };
+  readonly forms: {
+    read(formId: string): { values?: Record<string, unknown>; errors: Record<string, string> };
+  };
 }
 
 interface HandlerResult {
   status?: number;
   redirect?: { location: string };
+  flash?: { level: 'info'; message: string }[];
   rerender?: {
     view: string;
     form: { id: string; values: FormValues; issues: FormIssue[] };
@@ -61,6 +71,8 @@ const SIGN_IN_PATH = '/sign-in/';
 interface Pending {
   readonly email: string;
   readonly returnTo: string;
+  /** Back at the email step to use another address, with this one filled in. */
+  readonly changing?: boolean;
 }
 
 const signInData = z.object({
@@ -97,11 +109,17 @@ export function signIn(options: SignInOptions = {}): SignInModule {
       data: signInData,
       load(ctx: ViewContext): z.infer<typeof signInData> {
         const pending = readPending(ctx.session);
-        const returnTo = safeReturnTo(ctx.url.searchParams.get('returnTo') ?? pending?.returnTo);
-        const errors = ctx.forms.read(FORM_ID).errors;
+        const form = ctx.forms.read(FORM_ID);
+        // A form sent back, such as a link that has expired, keeps where the visitor was headed.
+        const returnTo = safeReturnTo(
+          ctx.url.searchParams.get('returnTo') ?? form.values?.returnTo ?? pending?.returnTo,
+        );
+        // Someone already signed in goes on to where they were headed.
+        if (ctx.user) redirect(returnTo);
+        const errors = form.errors;
         return {
-          asking: !pending,
-          checking: Boolean(pending),
+          asking: !pending || Boolean(pending.changing),
+          checking: Boolean(pending && !pending.changing),
           email: pending?.email ?? '',
           returnTo,
           error: errors.code ?? errors.email ?? errors.form ?? '',
@@ -139,14 +157,16 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         const pending = readPending(ctx.session);
 
         if (intent === 'change') {
-          ctx.session = withPending(ctx.session, undefined);
+          ctx.session = withPending(ctx.session, pending && { ...pending, changing: true });
           return seeOther(SIGN_IN_PATH);
         }
         if (intent === 'code') {
-          if (!pending) return seeOther(SIGN_IN_PATH);
-          const code = String(values.code ?? '').replace(/\D/g, '');
+          if (!pending || pending.changing) return seeOther(SIGN_IN_PATH);
+          const code = readSignInCode(values.code);
           const db = await signInDatabase();
-          if (code.length !== 6 || !(await consumeCode(db, pending.email, code, secret()))) {
+          // Who may sign in is asked again: someone turned away since the code was sent is refused.
+          const allowed = Boolean(code) && (await mayStillSignIn(options, pending.email));
+          if (!code || !allowed || !(await consumeCode(db, pending.email, code, secret()))) {
             return failed(
               values,
               'code',
@@ -163,7 +183,20 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         const returnTo = safeReturnTo(values.returnTo ?? pending?.returnTo);
         await sendChallenge(ctx.request, address, returnTo, options);
         ctx.session = withPending(ctx.session, { email: address, returnTo });
-        return seeOther(SIGN_IN_PATH);
+        if (intent !== 'resend') return seeOther(SIGN_IN_PATH);
+        const where =
+          !isProduction() && !hasEmailDelivery()
+            ? ' It is in the terminal and .webstir/email.log.'
+            : '';
+        return {
+          ...seeOther(SIGN_IN_PATH),
+          flash: [
+            {
+              level: 'info',
+              message: `If ${address} can sign in, a new code is on its way.${where}`,
+            },
+          ],
+        };
       },
     },
     {
@@ -180,7 +213,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         if (!submitted.ok) return submitted.result;
         const db = await signInDatabase();
         const address = await consumeToken(db, String(submitted.values.token ?? ''), secret());
-        if (!address) {
+        if (!address || !(await mayStillSignIn(options, address))) {
           return failed(
             submitted.values,
             'form',
@@ -244,6 +277,19 @@ export function withSignIn<T extends Record<string, unknown>>(
   } as unknown as T & { signIn: SignInOptions };
 }
 
+/**
+ * The six digits of a code, typed with spaces or dashes, or pasted with the email's words around
+ * it; undefined when there are not six.
+ */
+export function readSignInCode(value: unknown): string | undefined {
+  const text = typeof value === 'string' ? value : '';
+  const run = /(?:^|\D)(\d{6})(?!\d)/.exec(text);
+  if (run) return run[1];
+  const spaced = /(?:^|\D)((?:\d[\s-]*){5}\d)(?![\s-]*\d)/.exec(text);
+  const digits = spaced?.[1]?.replace(/\D/g, '');
+  return digits?.length === 6 ? digits : undefined;
+}
+
 /** A same-origin path to return to after signing in; never another site, and never sign-in itself. */
 export function safeReturnTo(value: unknown): string {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -261,6 +307,10 @@ export function safeReturnTo(value: unknown): string {
   } catch {
     return '/';
   }
+}
+
+async function mayStillSignIn(options: SignInOptions, address: string): Promise<boolean> {
+  return (await options.canSignIn?.(address)) ?? true;
 }
 
 async function sendChallenge(
@@ -321,7 +371,11 @@ function seeOther(location: string): HandlerResult {
 function readPending(session: Record<string, unknown> | null): Pending | undefined {
   const value = session?.[PENDING_KEY] as Partial<Pending> | undefined;
   return value && typeof value.email === 'string'
-    ? { email: value.email, returnTo: safeReturnTo(value.returnTo) }
+    ? {
+        email: value.email,
+        returnTo: safeReturnTo(value.returnTo),
+        ...(value.changing === true ? { changing: true } : {}),
+      }
     : undefined;
 }
 

@@ -32,7 +32,7 @@ await ctx.db.transaction(async (tx) => {
 | `file:./data/app.sqlite` | SQLite, relative to the app |
 | `postgres://user:password@host/database` | Postgres |
 
-SQLite opens with WAL, foreign keys and a 5-second busy timeout. It suits most apps, in production too, on a disk that persists across deploys (see [Docker Deployment](./docker.md)).
+SQLite opens with WAL, foreign keys and a 5-second busy timeout. A transaction takes the write lock when it begins, so a script writing to the same file waits for it instead of failing. It suits most apps, in production too, on a disk that persists across deploys (see [Docker Deployment](./docker.md)).
 
 ## Change the schema with migrations
 

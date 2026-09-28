@@ -177,9 +177,15 @@ test('a full app with batteries: emailed sign-in, a guarded page, durable sessio
     expect(confirmed.status).toBe(303);
     expect(await (await grace.request('/notes/')).text()).toContain('grace@example.com');
 
-    // Asking again within the minute gets the same answer, and no email.
-    const again = await (await grace.request('/sign-in/')).text();
-    const repeat = await grace.request('/sign-in/', {
+    // Signed in, sign-in goes straight on to where she was headed.
+    const signedInAsking = await grace.request('/sign-in/?returnTo=%2Fnotes%2F');
+    expect(signedInAsking.status).toBe(303);
+    expect(signedInAsking.headers.get('location')).toBe('/notes/');
+
+    // Asking again within the minute, from another browser, gets the same answer, and no email.
+    const graceElsewhere = createBrowser(origin);
+    const again = await (await graceElsewhere.request('/sign-in/')).text();
+    const repeat = await graceElsewhere.request('/sign-in/', {
       method: 'POST',
       form: { intent: 'request', email: 'grace@example.com', _csrf: csrfTokenFrom(again) },
     });

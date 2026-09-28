@@ -17,6 +17,7 @@
 
             <div data-if="checking">
                 <p>If <strong data-text="email"></strong> can sign in, a code is on its way. It works for 5 minutes.</p>
+                <p role="status" data-each="flash as note" data-text="note.message"></p>
                 <p data-if="development">In development the email is not sent: the code is in the terminal and in <code>.webstir/email.log</code>.</p>
                 <form method="post" action="/sign-in/">
                     <input type="hidden" name="intent" value="code" />
