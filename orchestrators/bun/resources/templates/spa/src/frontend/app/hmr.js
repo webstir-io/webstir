@@ -3,6 +3,15 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
 } else if (typeof EventSource === 'undefined') {
     console.warn('[webstir-hmr] EventSource API unavailable; falling back to full reloads.');
 } else {
+    const reloadMarkerKey = 'webstir-hmr-last-reload';
+    if (typeof sessionStorage !== 'undefined') {
+        const marker = sessionStorage.getItem(reloadMarkerKey);
+        if (marker) {
+            console.info(`[webstir-hmr] Last update required full reload.${marker}`);
+            sessionStorage.removeItem(reloadMarkerKey);
+        }
+    }
+
     const eventSource = getOrCreateEventSource();
     const updateQueue = [];
     let applyingUpdate = false;
@@ -315,6 +324,12 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             `[webstir-hmr] Falling back to full reload for ${changedFile}. ` +
             `Reason: ${reason ?? 'unknown'}.${fallbackReasons}`
         );
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem(
+                reloadMarkerKey,
+                ` Reason: ${reason ?? 'unknown'}.${fallbackReasons}`
+            );
+        }
 
         setStatus('hmr-fallback', 'Hot update fallback – reloading…');
         notifyFallback(reason, payload, details);

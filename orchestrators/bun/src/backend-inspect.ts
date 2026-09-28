@@ -46,9 +46,9 @@ export async function runBackendInspect(
   options: RunBackendInspectOptions,
 ): Promise<BackendInspectResult> {
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
-  if (workspace.mode !== 'api' && workspace.mode !== 'full') {
+  if (!workspace.layers.server) {
     throw new Error(
-      `backend-inspect only supports api and full workspaces. Received mode "${workspace.mode}".`,
+      `backend-inspect needs a server, and ${workspace.name} has none (src/backend/index.ts).`,
     );
   }
 

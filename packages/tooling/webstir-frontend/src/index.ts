@@ -15,7 +15,6 @@ export { renderSsgViews } from './modes/ssg/index.js';
 export type { SsgRenderedPage } from './modes/ssg/index.js';
 export {
   RenderTemplateError,
-  assertNoSpaBindings,
   compileRenderProgram,
   findPageDataModule,
   formatRenderIssues,

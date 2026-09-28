@@ -1,6 +1,6 @@
 import { createRenderedViewMatcher } from '@webstir-io/webstir-backend';
 import { existsSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { cp, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 import { checkWorkspacePageRoutes } from './page-route-checks.ts';
@@ -218,26 +218,16 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
   let hotUpdate: HotUpdatePayload | null = null;
   const changedPath = getSingleWorkspaceWatchEventPath(event);
   await options.exclusive(async () => {
-    if (event.type !== 'change') {
-      // A full build empties the output first, so a rejected one puts the last output back.
-      await withOutputKept(buildRoot, async () => {
+    // A rebuild the checks reject leaves the last accepted output served: a full build empties
+    // the output first, and a rebuild may already have written the page it rejects.
+    await withOutputKept(buildRoot, async () => {
+      if (event.type === 'change') {
+        await operations.runRebuild({ workspaceRoot, changedFile: event.path });
+      } else {
         await operations.runBuild({ workspaceRoot });
-        await options.afterBuild?.();
-      });
-      return;
-    }
-    // A rebuild the checks reject leaves the last accepted programs for the backend to render.
-    const accepted = options.afterBuild ? await readPrograms(buildRoot) : undefined;
-    await operations.runRebuild({
-      workspaceRoot,
-      changedFile: event.path,
-    });
-    try {
+      }
       await options.afterBuild?.();
-    } catch (error) {
-      if (accepted) await restorePrograms(buildRoot, accepted);
-      throw error;
-    }
+    });
   });
 
   if (changedPath) {
@@ -285,30 +275,6 @@ export async function withOutputKept(buildRoot: string, build: () => Promise<voi
     throw error;
   }
   await rm(kept, { recursive: true, force: true });
-}
-
-async function readPrograms(buildRoot: string): Promise<Map<string, string>> {
-  const programs = new Map<string, string>();
-  const files = await readdir(buildRoot, { recursive: true }).catch(() => [] as string[]);
-  for (const relative of files) {
-    if (relative.endsWith('.program.json')) {
-      programs.set(relative, await readFile(path.join(buildRoot, relative), 'utf8'));
-    }
-  }
-  return programs;
-}
-
-async function restorePrograms(
-  buildRoot: string,
-  accepted: ReadonlyMap<string, string>,
-): Promise<void> {
-  for (const relative of (await readPrograms(buildRoot)).keys()) {
-    if (!accepted.has(relative)) await rm(path.join(buildRoot, relative), { force: true });
-  }
-  for (const [relative, source] of accepted) {
-    await mkdir(path.dirname(path.join(buildRoot, relative)), { recursive: true });
-    await writeFile(path.join(buildRoot, relative), source, 'utf8');
-  }
 }
 
 export function mergeWorkspaceWatchEvents(

@@ -22,6 +22,9 @@ async function loadProviderOrSkip(t) {
 
 async function createWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-workspace-'));
+  // A server app, so its pages publish in the server layout these tests check.
+  await fs.mkdir(path.join(root, 'src', 'backend'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'backend', 'index.ts'), 'export {};\n', 'utf8');
   const appDir = path.join(root, 'src', 'frontend', 'app');
   const pageDir = path.join(root, 'src', 'frontend', 'pages', 'home');
   await fs.mkdir(appDir, { recursive: true });
@@ -56,9 +59,7 @@ async function createWorkspaceWithExternalStylesheets() {
       {
         name: 'webstir-project',
         version: '1.0.0',
-        webstir: {
-          mode: 'ssg',
-        },
+        webstir: {},
       },
       null,
       2,
@@ -108,7 +109,6 @@ async function createWorkspaceWithClientNav() {
     name: 'webstir-project',
     version: '1.0.0',
     webstir: {
-      mode: 'ssg',
       enable: {
         clientNav: true,
       },
@@ -375,7 +375,6 @@ test('enable.clientNav without feature module fails fast', async (t) => {
     name: 'webstir-project',
     version: '1.0.0',
     webstir: {
-      mode: 'ssg',
       enable: {
         clientNav: true,
       },

@@ -95,7 +95,7 @@ test('CLI backend-inspect reports routes and jobs for an API workspace', async (
     expect(inspectResult.exitCode).toBe(0);
     expect(inspectResult.stderr).toBe('');
     expect(inspectResult.stdout).toContain('[webstir] backend-inspect complete');
-    expect(inspectResult.stdout).toContain('mode: api');
+    expect(inspectResult.stdout).toContain('layers: server');
     expect(inspectResult.stdout).toContain('module: webstir-demo-api@1.0.0');
     expect(inspectResult.stdout).toContain('routes: 2');
     expect(inspectResult.stdout).toContain('GET /api/accounts (accounts)');
@@ -120,7 +120,7 @@ test('CLI backend-inspect rejects frontend-only workspaces', async () => {
     ]);
 
     expect(inspectResult.exitCode).toBe(1);
-    expect(inspectResult.stderr).toContain('backend-inspect only supports api and full workspaces');
+    expect(inspectResult.stderr).toContain('backend-inspect needs a server');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
@@ -158,7 +158,7 @@ test('CLI backend-inspect emits machine-readable JSON', async () => {
     };
 
     expect(parsed.command).toBe('backend-inspect');
-    expect(parsed.workspace.mode).toBe('api');
+    expect(parsed.workspace.layers).toEqual({ pages: false, server: true });
     expect(parsed.workspace.root).toBe(copiedWorkspace.workspaceRoot);
     expect(parsed.buildRoot).toContain(
       path.join(copiedWorkspace.workspaceRoot, 'build', 'backend'),

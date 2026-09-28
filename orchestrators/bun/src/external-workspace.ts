@@ -81,17 +81,27 @@ export async function materializeRepoLocalWorkspaceDependencies(
   }
 
   await writeFile(packageJsonPath, `${JSON.stringify(normalized.packageJson, null, 2)}\n`, 'utf8');
+  let output = '';
   const status = await new Promise<number | null>((resolve, reject) => {
     const install = spawn(resolveRuntimeCommand(), ['install'], {
       cwd: workspaceRoot,
       env: process.env,
       stdio: options.installStdio ?? 'inherit',
     });
+    // Piped output is read as it comes, so a full pipe never stalls the install.
+    install.stdout?.on('data', (chunk) => {
+      output += chunk;
+    });
+    install.stderr?.on('data', (chunk) => {
+      output += chunk;
+    });
     install.on('error', reject);
     install.on('close', resolve);
   });
   if (status !== 0) {
-    throw new Error(`Failed to install repo-local workspace dependencies for ${workspaceRoot}.`);
+    throw new Error(
+      `Failed to install repo-local workspace dependencies for ${workspaceRoot}.${output ? `\n${output}` : ''}`,
+    );
   }
 }
 

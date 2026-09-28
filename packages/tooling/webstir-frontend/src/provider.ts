@@ -1,3 +1,4 @@
+import { checkUnrenderedBindings } from './render/unrendered-bindings.js';
 import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -19,7 +20,7 @@ import type { FrontendConfig } from './types.js';
 import { emptyDir, readJson } from './utils/fs.js';
 import { scanGlob } from './utils/glob.js';
 import { assertNoSsgRoutes, publishSsgSite } from './modes/ssg/index.js';
-import { checkSpaTemplates } from './operations.js';
+import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import { validatePublishedHtml } from './html/publishValidation.js';
 
 interface PackageJson {
@@ -45,29 +46,29 @@ function resolveWorkspacePaths(workspaceRoot: string): ResolvedModuleWorkspace {
 async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResult> {
   const config = await prepareWorkspaceConfig(options.workspaceRoot);
   const mode = normalizeMode(options.env?.WEBSTIR_MODULE_MODE);
-  const workspaceMode = await readWorkspaceMode(options.workspaceRoot);
-  const frontendMode = normalizeFrontendMode(options.env?.WEBSTIR_FRONTEND_MODE);
-  const shouldRunSsgPublish =
-    mode === 'publish' &&
-    (frontendMode === 'ssg' || (frontendMode === undefined && workspaceMode.mode === 'ssg'));
+  const workspace = await readWorkspaceFacts(options.workspaceRoot);
+  // Pages without a server publish as files any static host serves.
+  const shouldRunSsgPublish = mode === 'publish' && workspace.static;
   const publishConfig = shouldRunSsgPublish ? applySsgPublishLayout(config) : config;
 
   if (shouldRunSsgPublish) {
     await assertNoSsgRoutes(config.paths.workspace);
-  } else if (workspaceMode.mode?.toLowerCase() === 'spa') {
-    await checkSpaTemplates(options.workspaceRoot);
   }
   if (!options.incremental) {
     await emptyOutputRoot(publishConfig, mode);
   }
   await runPipeline(publishConfig, mode, {
     changedFile: undefined,
-    enable: workspaceMode.enable,
+    enable: workspace.enable,
     env: {
       ...process.env,
       ...options.env,
     },
   });
+
+  if (mode === 'build') {
+    await checkUnrenderedBindings(options.workspaceRoot, config.paths.build.pages);
+  }
 
   if (shouldRunSsgPublish) {
     await publishSsgSite(publishConfig);
@@ -77,7 +78,7 @@ async function buildModule(options: ModuleBuildOptions): Promise<ModuleBuildResu
   }
 
   const artifacts = await collectArtifacts(config);
-  const manifest = createManifest(config, artifacts, workspaceMode.mode, workspaceMode.isSsg);
+  const manifest = createManifest(config, artifacts, workspace.isSsg);
 
   return {
     artifacts,
@@ -141,7 +142,6 @@ async function collectArtifacts(config: FrontendConfig): Promise<ModuleArtifact[
 
 interface WorkspaceEnableFlags {
   readonly clientNav?: boolean;
-  readonly backend?: boolean;
   readonly search?: boolean;
 }
 
@@ -157,18 +157,10 @@ interface WorkspacePackageJson {
   };
 }
 
-function createManifest(
-  config: FrontendConfig,
-  assets: readonly ModuleArtifact[],
-  workspaceMode?: string,
-  isSsgWorkspace?: boolean,
-) {
+function createManifest(config: FrontendConfig, assets: readonly ModuleArtifact[], isSsg: boolean) {
   const entryPoints: string[] = [];
   const staticAssets: string[] = [];
   const diagnostics: ModuleDiagnostic[] = [];
-
-  const normalizedMode = workspaceMode?.toLowerCase();
-  const isSsg = isSsgWorkspace || normalizedMode === 'ssg';
 
   for (const asset of assets) {
     const relativePath = path.relative(config.paths.build.frontend, asset.path);
@@ -200,30 +192,20 @@ function createManifest(
   };
 }
 
-async function readWorkspaceMode(
+async function readWorkspaceFacts(
   workspaceRoot: string,
-): Promise<{ mode?: string; isSsg: boolean; enable?: WorkspaceEnableFlags }> {
+): Promise<{ static: boolean; isSsg: boolean; enable?: WorkspaceEnableFlags }> {
   const pkgPath = path.join(workspaceRoot, 'package.json');
   const pkg = await readJson<WorkspacePackageJson>(pkgPath);
-  const mode = pkg?.webstir?.mode;
-  const normalizedMode = typeof mode === 'string' ? mode.toLowerCase() : undefined;
   const views = pkg?.webstir?.moduleManifest?.views;
   const hasSsgView =
     Array.isArray(views) && views.some((view) => view.renderMode?.toLowerCase() === 'ssg');
+  const isStatic = isStaticApp(readWorkspaceLayers(workspaceRoot));
   return {
-    mode,
-    isSsg: normalizedMode === 'ssg' || hasSsgView,
+    static: isStatic,
+    isSsg: isStatic || hasSsgView,
     enable: pkg?.webstir?.enable,
   };
-}
-
-function normalizeFrontendMode(value: unknown): 'bundle' | 'ssg' | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const normalized = value.trim().toLowerCase();
-  return normalized === 'ssg' ? 'ssg' : normalized === 'bundle' ? 'bundle' : undefined;
 }
 
 export const frontendProvider: ModuleProvider = {

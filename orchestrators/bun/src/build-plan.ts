@@ -1,12 +1,11 @@
-import type { BuildTargetKind, WorkspaceMode } from './types.ts';
+import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
-const BUILD_PLANS = {
-  spa: ['frontend'],
-  ssg: ['frontend'],
-  api: ['backend'],
-  full: ['frontend', 'backend'],
-} as const satisfies Record<WorkspaceMode, readonly BuildTargetKind[]>;
-
-export function createBuildPlan(mode: WorkspaceMode): readonly BuildTargetKind[] {
-  return BUILD_PLANS[mode];
+/** Pages build the frontend; a server, or functions and jobs without one, build the backend. */
+export function createBuildPlan(
+  workspace: Pick<WorkspaceDescriptor, 'layers' | 'backendEntries'>,
+): readonly BuildTargetKind[] {
+  return [
+    ...(workspace.layers.pages ? (['frontend'] as const) : []),
+    ...(workspace.backendEntries ? (['backend'] as const) : []),
+  ];
 }

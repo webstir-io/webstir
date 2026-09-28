@@ -41,9 +41,9 @@ interface CliIo {
 }
 
 const HELP_TEXT = `Usage:
-  webstir init <mode> <directory>
+  webstir init <starter> <directory>
   webstir init <directory>
-  webstir add-page <name> --workspace <path>
+  webstir add-page <name> --workspace <path> [--no-script]
   webstir add-test <name-or-path> --workspace <path>
   webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--interaction <navigation|mutation>] [--session <optional|required>] [--session-write] [--form-urlencoded] [--csrf] [--fragment-target <target>] [--fragment-selector <selector>] [--fragment-mode <replace|append|prepend>]
   webstir add-job <name> --workspace <path> [--schedule <expression>]
@@ -58,10 +58,10 @@ const HELP_TEXT = `Usage:
   webstir test --workspace <path> [--runtime <frontend|backend|all>]
   webstir smoke [--workspace <path>]
   webstir build --workspace <path>
-  webstir publish --workspace <path> [--frontend-mode <bundle|ssg>]
+  webstir publish --workspace <path>
   webstir enable <feature> [feature-args...] --workspace <path>
   webstir repair --workspace <path> [--dry-run] [--restore-scaffold]
-  webstir refresh <mode> --workspace <path>
+  webstir refresh <starter> --workspace <path>
   webstir watch --workspace <path> [--host <host>] [--port <port>]
 
 Commands:
@@ -89,8 +89,7 @@ Commands:
 Options:
   -w, --workspace <path>   Workspace root to operate on.
   --host <host>            Dev host or bind address (default: 127.0.0.1).
-  --port <port>            Dev port (SPA default: 8088, API default: 4321).
-  --frontend-mode <mode>   Frontend publish mode for publish (defaults to bundle; bundle or ssg).
+  --port <port>            Dev port (8088 for pages, 4321 for a server alone).
   --dry-run                Report repair changes without writing files.
   --restore-scaffold       With repair: also re-create missing scaffold files for the mode.
   --json                   Emit machine-readable JSON for supported commands.
@@ -174,8 +173,8 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     return 1;
   }
 
-  if (options.frontendMode && command !== 'publish') {
-    io.stderr.write(`Only publish accepts --frontend-mode.\n\n${HELP_TEXT}`);
+  if (options.rawArgs.includes('--no-script') && command !== 'add-page') {
+    io.stderr.write(`Only add-page accepts --no-script.\n\n${HELP_TEXT}`);
     return 1;
   }
 
@@ -265,6 +264,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       const result = await runAddPageCommand({
         workspaceRoot: requireWorkspaceRoot(),
         args: options.positionals,
+        noScript: options.rawArgs.includes('--no-script'),
       });
       io.stdout.write(
         `${formatAddSummary('[webstir] add-page complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
@@ -511,7 +511,6 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       const { runPublish } = await import('./publish.ts');
       const result = await runPublish({
         workspaceRoot: requireWorkspaceRoot(),
-        env: options.frontendMode ? { WEBSTIR_FRONTEND_MODE: options.frontendMode } : undefined,
       });
       io.stdout.write(`${formatPublishSummary(result)}\n`);
       return 0;
@@ -587,7 +586,6 @@ interface ParsedCommandOptions {
   readonly workspaceRoot?: string;
   readonly host?: string;
   readonly port?: number;
-  readonly frontendMode?: 'bundle' | 'ssg';
   readonly dryRun: boolean;
   readonly restoreScaffold?: boolean;
   readonly json: boolean;
@@ -605,7 +603,6 @@ function parseCommandOptions(
   let workspaceRoot: string | undefined;
   let host: string | undefined;
   let port: number | undefined;
-  let frontendMode: 'bundle' | 'ssg' | undefined;
   let dryRun = false;
   let restoreScaffold = false;
   let json = false;
@@ -626,7 +623,6 @@ function parseCommandOptions(
           workspaceRoot,
           host,
           port,
-          frontendMode,
           dryRun,
           json,
           verbose,
@@ -639,85 +635,6 @@ function parseCommandOptions(
 
       workspaceRoot = next;
       index += 1;
-      continue;
-    }
-
-    if (arg === '--frontend-mode') {
-      const next = args[index + 1];
-      if (!next || next.startsWith('-')) {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          frontendMode,
-          dryRun,
-          json,
-          verbose,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: 'Missing value for --frontend-mode.',
-        };
-      }
-
-      const normalizedMode = next.toLowerCase();
-      if (normalizedMode !== 'bundle' && normalizedMode !== 'ssg') {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          frontendMode,
-          dryRun,
-          json,
-          verbose,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: `Invalid --frontend-mode value "${next}". Expected bundle or ssg.`,
-        };
-      }
-
-      frontendMode = normalizedMode;
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith('--frontend-mode=')) {
-      const rawMode = arg.slice('--frontend-mode='.length);
-      if (rawMode.length === 0) {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          frontendMode,
-          dryRun,
-          json,
-          verbose,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: 'Missing value for --frontend-mode.',
-        };
-      }
-
-      const normalizedMode = rawMode.toLowerCase();
-      if (normalizedMode !== 'bundle' && normalizedMode !== 'ssg') {
-        return {
-          workspaceRoot,
-          host,
-          port,
-          frontendMode,
-          dryRun,
-          json,
-          verbose,
-          positionals,
-          rawArgs: args,
-          help: false,
-          error: `Invalid --frontend-mode value "${rawMode}". Expected bundle or ssg.`,
-        };
-      }
-
-      frontendMode = normalizedMode;
       continue;
     }
 
@@ -820,6 +737,11 @@ function parseCommandOptions(
       continue;
     }
 
+    // add-page reads it from the raw arguments.
+    if (arg === '--no-script') {
+      continue;
+    }
+
     if (arg === '--restore-scaffold') {
       restoreScaffold = true;
       continue;
@@ -847,7 +769,6 @@ function parseCommandOptions(
     workspaceRoot,
     host,
     port,
-    frontendMode,
     dryRun,
     restoreScaffold,
     json,

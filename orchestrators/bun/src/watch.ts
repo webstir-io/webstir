@@ -48,29 +48,15 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
   try {
     await materializeRepoLocalWorkspaceDependencies(options.workspaceRoot);
 
-    switch (workspace.mode) {
-      case 'spa':
-        await runFrontendWatch(workspace, options, io);
-        return;
-      case 'ssg':
-        await runFrontendWatch(workspace, options, io);
-        return;
-      case 'api':
-        await runApiWatch(workspace, options, io);
-        return;
-      case 'full':
-        await runFullWatch(workspace, options, io);
-        return;
-      default:
-        throwUnsupportedWatchMode(workspace);
+    const { pages, server } = workspace.layers;
+    if (pages && server) {
+      await runFullWatch(workspace, options, io);
+    } else if (server || !pages) {
+      await runApiWatch(workspace, options, io);
+    } else {
+      await runFrontendWatch(workspace, options, io);
     }
   } finally {
     await watchLock.release();
   }
-}
-
-function throwUnsupportedWatchMode(workspace: WorkspaceDescriptor): never {
-  throw new Error(
-    `Watch currently supports spa, ssg, api, and full workspaces only. "${workspace.name}" is ${workspace.mode}.`,
-  );
 }

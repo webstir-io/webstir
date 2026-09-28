@@ -1,6 +1,6 @@
 # Add Page
 
-Scaffold a new frontend page with `index.html|css` and, for standard pages, `index.ts` under `src/frontend/pages/<name>/`.
+Scaffold a new frontend page with `index.html|css` and, unless you pass `--no-script`, `index.ts` under `src/frontend/pages/<name>/`.
 
 ## Purpose
 - Create a new routed page quickly with the expected files.
@@ -10,22 +10,24 @@ Scaffold a new frontend page with `index.html|css` and, for standard pages, `ind
 - Adding a new top-level page in the app.
 
 ## CLI
-- `webstir add-page <name> --workspace <path>`
+- `webstir add-page <name> --workspace <path> [--no-script]`
 
 ## Notes
 - Frontend only: this command scaffolds files under `src/frontend/pages/` and does not touch backend or shared code.
-- In the default `full` workflow, document pages live here while form handlers, redirects, and auth stay in `src/backend/module.ts`.
+- In an app with a server, document pages live here while form handlers, redirects, and auth stay in `src/backend/module.ts`.
 - Internals: the CLI calls the canonical `@webstir-io/webstir-frontend` scaffold helper so generated files stay in sync with the framework templates.
-- SSG default: when `webstir.mode` is `ssg`, scaffolds a JS-free page by default (no `index.ts` and no module script tag); add `index.ts` later if you want JS sprinkles.
+- `--no-script` scaffolds a JS-free page (no `index.ts` and no module script tag); add `index.ts` later with `webstir enable scripts <page>` if the page needs JavaScript.
+- An app without pages has nowhere to put one: run `webstir enable frontend` first.
 - Standard page source lives in `index.ts`, but the HTML module script must reference `index.js`. Build and publish resolve that browser-safe name to the compiled or fingerprinted bundle; do not point HTML directly at `index.ts`.
 
 ## Inputs
 - `<name>`: one portable page-directory name, without path separators. Empty names, `.`/`..`, control characters, and platform-reserved names or characters are rejected. If the page already exists, the workflow fails.
+- `--no-script`: scaffold the page without `index.ts`.
 
 ## Steps
 1. Validate `<name>` and resolve `src/frontend/pages/<name>/`.
 2. Call the `@webstir-io/webstir-frontend` helper to create page files from the canonical scaffold.
-3. Pick the standard or SSG page shape based on the workspace mode.
+3. Pick the standard page shape, or the JS-free shape with `--no-script`.
 
 ## Outputs
 - New page folder and files under `src/frontend/pages/<name>/`.

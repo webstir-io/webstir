@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { RenderTemplateError, frontendProvider } from '../dist/index.js';
+import { RenderTemplateError, frontendProvider, validateRenderPrograms } from '../dist/index.js';
 
 const APP_HTML = [
   '<!DOCTYPE html>',
@@ -42,8 +42,13 @@ async function createWorkspace(mode, pages) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), `webstir-${mode}-render-`));
   await fs.writeFile(
     path.join(root, 'package.json'),
-    JSON.stringify({ name: 'blog', version: '1.0.0', type: 'module', webstir: { mode } }, null, 2),
+    JSON.stringify({ name: 'blog', version: '1.0.0', type: 'module' }, null, 2),
   );
+  // The app's layers come from its files: a full app has a server.
+  if (mode === 'full') {
+    await fs.mkdir(path.join(root, 'src', 'backend'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src', 'backend', 'index.ts'), 'export {};\n');
+  }
   await fs.mkdir(path.join(root, 'src', 'frontend', 'app'), { recursive: true });
   await fs.writeFile(path.join(root, 'src', 'frontend', 'app', 'app.html'), APP_HTML);
   for (const [name, html] of Object.entries(pages)) {
@@ -197,36 +202,36 @@ test('SSG publish fails on a template with bindings that no view renders', async
   }
 });
 
-test('an SPA fails on bindings, with the file and line, and builds POST forms without them', async () => {
+test('a page with bindings that nothing renders fails, with the file and line, and a POST form without bindings passes', async () => {
   const root = await createWorkspace('spa', {
     home: '<main><h1>Home</h1></main>',
     post: POST_HTML,
   });
-  try {
-    await assert.rejects(
-      frontendProvider.build({
-        workspaceRoot: root,
-        env: { WEBSTIR_MODULE_MODE: 'build' },
-        incremental: false,
-      }),
-      (error) => {
-        assert.ok(error instanceof RenderTemplateError);
-        assert.match(
-          error.message,
-          /src\/frontend\/pages\/post\/index.html:1: page 'post' has bindings, but an SPA has no server to render them/,
-        );
-        return true;
-      },
-    );
-    await fs.writeFile(
-      path.join(root, 'src', 'frontend', 'pages', 'post', 'index.html'),
-      '<main><form method="post" action="https://forms.example/subscribe"><button>Subscribe</button></form></main>',
-    );
+  const check = async () => {
     await frontendProvider.build({
       workspaceRoot: root,
       env: { WEBSTIR_MODULE_MODE: 'build' },
       incremental: false,
     });
+    await validateRenderPrograms({
+      workspaceRoot: root,
+      pagesRoot: path.join(root, 'build', 'frontend', 'pages'),
+    });
+  };
+  try {
+    await assert.rejects(check(), (error) => {
+      assert.ok(error instanceof RenderTemplateError);
+      assert.match(
+        error.message,
+        /src\/frontend\/pages\/post\/index.html:1: page 'post' has bindings, but nothing renders it/,
+      );
+      return true;
+    });
+    await fs.writeFile(
+      path.join(root, 'src', 'frontend', 'pages', 'post', 'index.html'),
+      '<main><form method="post" action="https://forms.example/subscribe"><button>Subscribe</button></form></main>',
+    );
+    await check();
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

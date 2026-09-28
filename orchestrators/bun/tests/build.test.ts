@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 
 import { runBuild } from '../src/build.ts';
 import { runPublish } from '../src/publish.ts';
@@ -45,6 +46,18 @@ function createFakeProvider(
   };
 }
 
+/** An app's layers are its files: pages are src/frontend, a server is src/backend/index.ts. */
+async function writeLayers(
+  workspace: string,
+  layers: { readonly pages: boolean; readonly server: boolean },
+): Promise<void> {
+  if (layers.pages) await mkdir(path.join(workspace, 'src', 'frontend'), { recursive: true });
+  if (layers.server) {
+    await mkdir(path.join(workspace, 'src', 'backend'), { recursive: true });
+    await writeFile(path.join(workspace, 'src', 'backend', 'index.ts'), 'export {};\n');
+  }
+}
+
 test('runBuild composes frontend and backend providers for full workspaces', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-build-'));
   await writeFile(
@@ -52,14 +65,12 @@ test('runBuild composes frontend and backend providers for full workspaces', asy
     JSON.stringify(
       {
         name: 'full-workspace',
-        webstir: {
-          mode: 'full',
-        },
       },
       null,
       2,
     ),
   );
+  await writeLayers(workspace, { pages: true, server: true });
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
   const providers: Record<BuildTargetKind, BuildProvider> = {
@@ -78,7 +89,7 @@ test('runBuild composes frontend and backend providers for full workspaces', asy
   });
 
   expect(result.mode).toBe('build');
-  expect(result.workspace.mode).toBe('full');
+  expect(result.workspace.layers).toEqual({ pages: true, server: true });
   expect(result.targets.map((target) => target.kind)).toEqual(['frontend', 'backend']);
   expect(calls.map((call) => call.kind)).toEqual(['frontend', 'backend']);
   expect(calls.every((call) => call.env.WEBSTIR_MODULE_MODE === 'build')).toBe(true);
@@ -95,23 +106,18 @@ test('runPublish prebuilds frontend targets before publish and reports dist outp
     JSON.stringify(
       {
         name: 'spa-workspace',
-        webstir: {
-          mode: 'spa',
-        },
       },
       null,
       2,
     ),
   );
+  await writeLayers(workspace, { pages: true, server: false });
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
   const frontend = createFakeProvider('frontend', calls);
 
   const result = await runPublish({
     workspaceRoot: workspace,
-    env: {
-      WEBSTIR_FRONTEND_MODE: 'ssg',
-    },
     loadProvider: async () => frontend,
   });
 
@@ -121,7 +127,6 @@ test('runPublish prebuilds frontend targets before publish and reports dist outp
   expect(result.targets[0]?.outputRoot).toBe(path.join(workspace, 'dist', 'frontend'));
   expect(calls).toHaveLength(2);
   expect(calls.map((call) => call.env.WEBSTIR_MODULE_MODE)).toEqual(['build', 'publish']);
-  expect(calls.every((call) => call.env.WEBSTIR_FRONTEND_MODE === 'ssg')).toBe(true);
 });
 
 test('runBuild fails when a provider reports fatal diagnostics', async () => {
@@ -131,14 +136,12 @@ test('runBuild fails when a provider reports fatal diagnostics', async () => {
     JSON.stringify(
       {
         name: 'spa-workspace',
-        webstir: {
-          mode: 'spa',
-        },
       },
       null,
       2,
     ),
   );
+  await writeLayers(workspace, { pages: true, server: false });
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
 
@@ -163,14 +166,12 @@ test('runBuild refuses while watch owns the workspace', async () => {
     JSON.stringify(
       {
         name: 'spa-workspace',
-        webstir: {
-          mode: 'spa',
-        },
       },
       null,
       2,
     ),
   );
+  await writeLayers(workspace, { pages: true, server: false });
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
   const lock = await acquireWorkspaceWatchLock(workspace);
@@ -195,14 +196,12 @@ test('runPublish fails when the frontend prebuild reports fatal diagnostics', as
     JSON.stringify(
       {
         name: 'spa-workspace',
-        webstir: {
-          mode: 'spa',
-        },
       },
       null,
       2,
     ),
   );
+  await writeLayers(workspace, { pages: true, server: false });
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
 
@@ -228,14 +227,12 @@ test('runPublish refuses while watch owns the workspace', async () => {
     JSON.stringify(
       {
         name: 'spa-workspace',
-        webstir: {
-          mode: 'spa',
-        },
       },
       null,
       2,
     ),
   );
+  await writeLayers(workspace, { pages: true, server: false });
 
   const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
   const lock = await acquireWorkspaceWatchLock(workspace);
@@ -250,5 +247,36 @@ test('runPublish refuses while watch owns the workspace', async () => {
     expect(calls).toHaveLength(0);
   } finally {
     await lock.release();
+  }
+});
+
+test('runPublish removes the published output of a layer the app no longer has', async () => {
+  for (const layers of [
+    { pages: false, server: true },
+    { pages: true, server: false },
+  ]) {
+    const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-publish-retired-'));
+    await writeFile(path.join(workspace, 'package.json'), JSON.stringify({ name: 'app' }));
+    await writeLayers(workspace, layers);
+    // What an earlier publish, with both layers, left behind.
+    await mkdir(path.join(workspace, 'dist', 'frontend'), { recursive: true });
+    await writeFile(path.join(workspace, 'dist', 'frontend', 'index.html'), '<main>old</main>');
+    await mkdir(path.join(workspace, 'build', 'backend'), { recursive: true });
+    await writeFile(path.join(workspace, 'build', 'backend', 'index.js'), 'export {};');
+
+    const calls: Array<{ kind: BuildTargetKind; env: Record<string, string | undefined> }> = [];
+    await runPublish({
+      workspaceRoot: workspace,
+      loadProvider: async (kind) => createFakeProvider(kind, calls),
+    });
+
+    expect({ layers, pages: existsSync(path.join(workspace, 'dist', 'frontend')) }).toEqual({
+      layers,
+      pages: layers.pages,
+    });
+    expect({
+      layers,
+      server: existsSync(path.join(workspace, 'build', 'backend', 'index.js')),
+    }).toEqual({ layers, server: layers.server });
   }
 });

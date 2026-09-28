@@ -75,13 +75,43 @@ test('CLI add-page scaffolds a SPA page end to end', async () => {
   }
 });
 
-test('CLI add-page scaffolds an SSG page without a page script', async () => {
+test('CLI add-page refuses an app without pages, and --no-script adds no view', async () => {
+  const apiCopy = await copyDemoWorkspace('api', 'webstir-add-page-server-only-');
+  const fullCopy = await copyDemoWorkspace('full', 'webstir-add-page-no-script-');
+  try {
+    const refused = await runCli(['add-page', 'about', '--workspace', apiCopy.workspaceRoot]);
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain('run `webstir enable frontend` first');
+    expect(existsSync(path.join(apiCopy.workspaceRoot, 'src', 'frontend'))).toBe(false);
+
+    const packageJsonPath = path.join(fullCopy.workspaceRoot, 'package.json');
+    const packageJson = await readFile(packageJsonPath, 'utf8');
+    const added = await runCli([
+      'add-page',
+      'about',
+      '--no-script',
+      '--workspace',
+      fullCopy.workspaceRoot,
+    ]);
+    expect(added.exitCode).toBe(0);
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+    const page = path.join(fullCopy.workspaceRoot, 'src', 'frontend', 'pages', 'about');
+    expect(existsSync(path.join(page, 'index.html'))).toBe(true);
+    expect(existsSync(path.join(page, 'index.ts'))).toBe(false);
+  } finally {
+    await removeDemoWorkspace(apiCopy);
+    await removeDemoWorkspace(fullCopy);
+  }
+});
+
+test('CLI add-page --no-script scaffolds a page without a page script', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-add-ssg-base-');
 
   try {
     const result = await runCli([
       'add-page',
       'guides',
+      '--no-script',
       '--workspace',
       copiedWorkspace.workspaceRoot,
     ]);

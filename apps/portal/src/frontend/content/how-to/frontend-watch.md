@@ -26,4 +26,4 @@ Guidance for running and troubleshooting the current frontend watch workflow.
 ## Fallbacks
 - Clearing `build/frontend` and `dist/frontend` is safe; the next build or watch cycle will repopulate outputs.
 - Frontend-only validation can use `bunx webstir-frontend build` or `bunx webstir-frontend rebuild` directly.
-- Backend-backed validation in `full` mode should still use `webstir watch` so the `/api` proxy and runtime restarts stay in the loop.
+- Backend-backed validation in an app with a server should still use `webstir watch` so the `/api` proxy and runtime restarts stay in the loop.

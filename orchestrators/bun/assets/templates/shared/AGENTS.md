@@ -1,7 +1,8 @@
 # Building this Webstir app
 
-Read this app's `package.json` before changing it. `webstir.mode` identifies the
-workspace mode; only use the frontend/backend paths that exist in this app.
+Read this app's `package.json` before changing it. The app's files say what it
+is: `src/frontend` for pages, `src/backend/index.ts` for a server. Only use the
+frontend/backend paths that exist in this app.
 
 ## Commands and installed guides
 

@@ -8,7 +8,6 @@ export { mayContainBindings } from './bindings.js';
 export { compileRenderProgram, programNeedsRuntime } from './compile.js';
 export { RenderTemplateError, formatRenderIssues, type RenderIssue } from './issues.js';
 export { prepareTemplateSource, type TemplateSourceOptions } from './source.js';
-export { assertNoSpaBindings } from './spa.js';
 export { findPageDataModule } from './browser.js';
 export { validateRenderProgram, validateRenderPrograms } from './validate.js';
 

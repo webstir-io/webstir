@@ -85,7 +85,7 @@ export async function runSmoke(options: RunSmokeOptions = {}): Promise<SmokeResu
       detail: formatDoctorDetail(doctorResult),
     });
 
-    if (workspace.mode === 'api' || workspace.mode === 'full') {
+    if (workspace.layers.server) {
       const backendInspect = await runBackendInspect({
         workspaceRoot: workspace.root,
         env,

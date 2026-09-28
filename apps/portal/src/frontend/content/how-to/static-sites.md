@@ -1,13 +1,13 @@
 # Static Sites
 
-Build and deploy a static frontend using an `ssg` workspace or the lower-level frontend package CLI.
+Build and deploy a static site: an app with pages (`src/frontend`) and no server (`src/backend/index.ts`). Such an app publishes as files any static host serves.
 
 See also: [CSS Playbook](./css-playbook.md) for the minimal, convention-first styling approach used by the SSG starter.
 
 ## Supported Paths
 
-- Top-level Bun CLI: scaffold an `ssg` workspace, or override a publish run with `webstir publish --workspace <path> --frontend-mode ssg`.
-- Lower-level package CLI: run `webstir-frontend publish --workspace <path> --mode ssg` when you are working directly with the frontend package.
+- Top-level Bun CLI: `webstir publish --workspace <path>` on an app without a server.
+- Lower-level package CLI: `webstir-frontend publish --workspace <path>` when you are working directly with the frontend package. It reads the same layers.
 
 ## Recommended Flow
 
@@ -21,27 +21,23 @@ webstir publish --workspace "$PWD"
 What happens:
 
 - The frontend provider writes optimized assets to `dist/frontend/**`.
-- SSG publish creates static-friendly aliases:
-  - `dist/frontend/pages/<page>/index.html`
+- Publish writes the static layout:
   - `dist/frontend/<page>/index.html`
-  - `dist/frontend/index.html` when `pages/home/index.html` exists
-- Publish injects the same optimized HTML/CSS/JS output used by the `ssg` demo workspaces.
+  - `dist/frontend/index.html` for the `home` page
 
 ## Advanced Package-Level Flow
 
 If you are testing the frontend package directly:
 
 ```bash
-bunx webstir-frontend publish --workspace "$PWD" --mode ssg
+bunx webstir-frontend publish --workspace "$PWD"
 ```
 
-Use this path when you need package-level control without going through the top-level orchestrator.
-
-If you are using the top-level CLI against a non-`ssg` workspace, the equivalent override is `webstir publish --workspace "$PWD" --frontend-mode ssg`.
+Use this path when you need package-level control without going through the top-level orchestrator. It accepts and ignores the `--mode` option older deploy scripts pass.
 
 ## Pages Rendered from Data
 
-A page template can bind data with `data-text`, `data-attr-*`, `data-if`, `data-each`, and `data-include`, the same template language full workspaces render on each request. In an `ssg` workspace the rendering happens once, at publish: a view in `src/backend/module.ts` names the page, the addresses to publish, a zod schema for its data, and a loader.
+A page template can bind data with `data-text`, `data-attr-*`, `data-if`, `data-each`, and `data-include`, the same template language a server renders on each request. Without a server the rendering happens once, at publish: a view in `src/backend/module.ts` names the page, the addresses to publish, a zod schema for its data, and a loader.
 
 ```ts
 import { z } from 'zod';
@@ -80,7 +76,7 @@ What happens:
 - POST forms render without a CSRF field, because a static site has no session. Point them at a service that accepts them.
 - `webstir watch` serves the same pages, rendered after each change to a template or to the module.
 
-An `spa` workspace has no server and no build-time data, so a template with bindings fails its build. Use `full` for pages rendered per request, or `ssg` for pages rendered at publish.
+A page renders where its data comes from: at publish, from a view, or in the browser, from a `data.ts` beside the page. A page with bindings that no view names and that has no `data.ts` fails build, watch, and publish with the file and line. An app with a server renders its views per request instead.
 
 ## Static Paths from Module Metadata
 
@@ -91,7 +87,6 @@ Example:
 ```jsonc
 {
   "webstir": {
-    "mode": "ssg",
     "moduleManifest": {
       "views": [
         { "name": "HomeView", "path": "/" },
@@ -105,8 +100,36 @@ Example:
 Notes:
 
 - `routes` metadata is for backend APIs, not SSG page generation.
-- In `ssg` workspaces, omitted `renderMode` values default to `ssg`.
+- In apps without a server, omitted `renderMode` values default to `ssg`.
 - `staticPaths` is optional for simple views and useful when you want extra aliases such as `/about/team`.
+
+## Pages at Addresses Known Only at Runtime
+
+A view that names a `page` shows that page at its path pattern, as a page route:
+
+```jsonc
+{
+  "webstir": {
+    "moduleManifest": {
+      "views": [
+        { "name": "item", "path": "/items/:id", "page": "items" },
+        { "name": "featured", "path": "/featured", "page": "items" }
+      ]
+    }
+  }
+}
+```
+
+The page's script reads the address (`url` in `load` and `setup`), for example to fetch item 42 for `/items/42`.
+
+A static host only serves files, so publish writes what each host needs:
+
+- A pattern without parameters (`/featured`) gets the page's HTML as a file at that address.
+- A pattern with parameters (`/items/:id`) can't have a file per address, so publish writes two fallbacks:
+  - a `_redirects` rewrite, which Netlify and Cloudflare Pages serve with a 200. The app's own `_redirects` rules come first.
+  - a `404.html` that loads the routed page in its place, keeping the address, and loads the app's `404` page (or a plain "Not found") for any other address. It has no scripts of its own, so the page it loads runs as on a direct visit. GitHub Pages serves it on its own. S3 + CloudFront needs the error responses below.
+
+On a host without rewrites, a routed address answers with a 404 status while showing its page.
 
 ## GitHub Pages
 
@@ -138,4 +161,4 @@ Attach the generated `utils/cloudfront-rewrite-directory-index.js` as a CloudFro
 
 ### Error pages
 
-Add a `404` page to the workspace and point the distribution's custom error responses for 403 and 404 at `/404/index.html`. The 404 page is excluded from the sitemap automatically, and `webstir watch` serves it with a 404 status for any page address that does not exist, so you can see it locally.
+Add a `404` page to the workspace (publish writes it as `/404.html` too) and point the distribution's custom error responses for 403 and 404 at `/404.html`, with response code 404. That is also what shows a page at an address a view routes to (see above). The 404 page is excluded from the sitemap automatically, and `webstir watch` serves it with a 404 status for any page address that does not exist, so you can see it locally.

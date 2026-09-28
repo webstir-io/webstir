@@ -22,6 +22,9 @@ async function loadProviderOrSkip(t) {
 
 async function createWorkspace() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-frontend-css-'));
+  // A server app, so its pages publish in the server layout these tests check.
+  await fs.mkdir(path.join(root, 'src', 'backend'), { recursive: true });
+  await fs.writeFile(path.join(root, 'src', 'backend', 'index.ts'), 'export {};\n', 'utf8');
   const appDir = path.join(root, 'src', 'frontend', 'app');
   const stylesDir = path.join(appDir, 'styles');
   const pageDir = path.join(root, 'src', 'frontend', 'pages', 'home');
@@ -193,8 +196,12 @@ for (const [label, workspaceMode, expectedAssetUrl] of [
       await fs.mkdir(imagesDir, { recursive: true });
       await fs.writeFile(
         path.join(workspace, 'package.json'),
-        JSON.stringify({ name: 'css-assets', version: '1.0.0', webstir: { mode: workspaceMode } }),
+        JSON.stringify({ name: 'css-assets', version: '1.0.0' }),
       );
+      // Without a server the pages publish as a static site, at the site root.
+      if (workspaceMode === 'ssg') {
+        await fs.rm(path.join(workspace, 'src', 'backend'), { recursive: true, force: true });
+      }
       await fs.writeFile(
         path.join(imagesDir, 'shell.svg'),
         '<svg xmlns="http://www.w3.org/2000/svg"/>',

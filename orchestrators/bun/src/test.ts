@@ -12,6 +12,7 @@ import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
 import { compileTestModules } from './compile-tests.ts';
 import { materializeRepoLocalWorkspaceDependencies } from './external-workspace.ts';
+import { createBuildPlan } from './build-plan.ts';
 import { loadProvider } from './providers.ts';
 import { assertNoProviderErrorDiagnostics } from './provider-diagnostics.ts';
 import {
@@ -48,7 +49,7 @@ export async function runTest(options: RunTestOptions): Promise<TestCommandResul
   });
   const runtime = parseRuntimeFlag(options.rawArgs, options.env);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
-  const builtTargets = selectBuildTargets(workspace.mode, runtime);
+  const builtTargets = selectBuildTargets(workspace, runtime);
 
   for (const target of builtTargets) {
     const provider = await loadProvider(target);
@@ -185,34 +186,14 @@ function createEmptySummary(): RunnerSummary {
 }
 
 function selectBuildTargets(
-  mode: WorkspaceDescriptor['mode'],
+  workspace: WorkspaceDescriptor,
   runtime: RuntimeFilter,
 ): BuildTargetKind[] {
-  if (runtime === 'frontend') {
-    if (mode === 'spa' || mode === 'ssg' || mode === 'full') {
-      return ['frontend'];
-    }
-
-    return [];
+  const targets = createBuildPlan(workspace);
+  if (runtime === 'frontend' || runtime === 'backend') {
+    return targets.filter((target) => target === runtime);
   }
-
-  if (runtime === 'backend') {
-    if (mode === 'api' || mode === 'full') {
-      return ['backend'];
-    }
-
-    return [];
-  }
-
-  if (mode === 'spa' || mode === 'ssg') {
-    return ['frontend'];
-  }
-
-  if (mode === 'api') {
-    return ['backend'];
-  }
-
-  return ['frontend', 'backend'];
+  return [...targets];
 }
 
 function parseRuntimeFlag(

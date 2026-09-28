@@ -1,6 +1,6 @@
 # Backend Loop
 
-Build a backend-only flow that registers routes, touches the database helper, schedules a job, and inspects the manifest in an `api` workspace.
+Build a backend-only flow that registers routes, touches the database helper, schedules a job, and inspects the manifest in an app with a server and no pages (the `api` starter).
 
 ## 1. Scaffold an API workspace
 
@@ -131,7 +131,7 @@ webstir backend-inspect --workspace "$PWD"
 webstir publish --workspace "$PWD"
 ```
 
-In an `api` workspace, publish runs the backend-only plan.
+In an app with a server and no pages, publish runs the backend-only plan.
 
 ## Next
 

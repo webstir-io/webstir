@@ -3,13 +3,13 @@ import { mkdir, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
+import { getStarterScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import { monorepoRoot } from './paths.ts';
-import type { WorkspaceMode } from './types.ts';
+import type { Starter } from './types.ts';
 
 const PACKAGE_MANAGER = 'bun@1.3.11';
 
-const MODE_DESCRIPTIONS: Record<WorkspaceMode, string> = {
+const STARTER_DESCRIPTIONS: Record<Starter, string> = {
   ssg: 'Static site (SSG) workspace for Webstir.',
   spa: 'SPA frontend workspace for Webstir.',
   api: 'Backend API workspace for Webstir.',
@@ -24,7 +24,7 @@ export interface RunInitOptions {
 
 export interface InitResult {
   readonly workspaceRoot: string;
-  readonly mode: WorkspaceMode;
+  readonly starter: Starter;
   readonly packageName: string;
   readonly changes: readonly string[];
 }
@@ -48,11 +48,11 @@ export async function runInit(options: RunInitOptions): Promise<InitResult> {
     options.workspaceRoot,
     options.cwd ?? process.cwd(),
   );
-  return scaffoldWorkspace(request.mode, request.workspaceRoot, { force: false });
+  return scaffoldWorkspace(request.starter, request.workspaceRoot, { force: false });
 }
 
 export async function scaffoldWorkspace(
-  mode: WorkspaceMode,
+  starter: Starter,
   workspaceRoot: string,
   options: ScaffoldWorkspaceOptions,
 ): Promise<InitResult> {
@@ -74,7 +74,7 @@ export async function scaffoldWorkspace(
     changes.push(toWorkspaceRelative(workspaceRoot, targetPath));
   }
 
-  for (const asset of await getModeScaffoldAssets(mode)) {
+  for (const asset of await getStarterScaffoldAssets(starter)) {
     const targetPath = path.join(workspaceRoot, asset.targetPath);
     await copyAsset(asset.sourcePath, targetPath);
     changes.push(toWorkspaceRelative(workspaceRoot, targetPath));
@@ -83,17 +83,17 @@ export async function scaffoldWorkspace(
   const packageJsonPath = path.join(workspaceRoot, 'package.json');
   await Bun.write(
     packageJsonPath,
-    `${JSON.stringify(createPackageJson(mode, packageName, dependencySpecs, options.metadata), null, 2)}\n`,
+    `${JSON.stringify(createPackageJson(starter, packageName, dependencySpecs, options.metadata), null, 2)}\n`,
   );
   changes.push('package.json');
 
   const baseTsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
-  await Bun.write(baseTsconfigPath, `${JSON.stringify(createBaseTsconfig(mode), null, 2)}\n`);
+  await Bun.write(baseTsconfigPath, `${JSON.stringify(createBaseTsconfig(starter), null, 2)}\n`);
   changes.push('base.tsconfig.json');
 
   return {
     workspaceRoot,
-    mode,
+    starter,
     packageName,
     changes: uniqueSorted(changes),
   };
@@ -103,40 +103,40 @@ function parseInitRequest(
   args: readonly string[],
   workspaceOverride: string | undefined,
   cwd: string,
-): { readonly mode: WorkspaceMode; readonly workspaceRoot: string } {
+): { readonly starter: Starter; readonly workspaceRoot: string } {
   const [firstArg, secondArg] = args;
 
   if (workspaceOverride) {
     if (!firstArg) {
       throw new Error(
-        'Usage: webstir init <mode> --workspace <path> or webstir init <mode> <directory>.',
+        'Usage: webstir init <starter> --workspace <path> or webstir init <starter> <directory>.',
       );
     }
 
     return {
-      mode: parseWorkspaceMode(firstArg),
+      starter: parseStarter(firstArg),
       workspaceRoot: path.resolve(cwd, workspaceOverride),
     };
   }
 
   if (!firstArg) {
-    throw new Error('Usage: webstir init <mode> <directory> or webstir init <directory>.');
+    throw new Error('Usage: webstir init <starter> <directory> or webstir init <directory>.');
   }
 
   if (!secondArg) {
     return {
-      mode: 'full',
+      starter: 'full',
       workspaceRoot: path.resolve(cwd, firstArg),
     };
   }
 
   return {
-    mode: parseWorkspaceMode(firstArg),
+    starter: parseStarter(firstArg),
     workspaceRoot: path.resolve(cwd, secondArg),
   };
 }
 
-function parseWorkspaceMode(value: string): WorkspaceMode {
+function parseStarter(value: string): Starter {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === 'ssg' ||
@@ -151,7 +151,7 @@ function parseWorkspaceMode(value: string): WorkspaceMode {
     return 'full';
   }
 
-  throw new Error(`Unknown init mode "${value}". Expected ssg, spa, api, or full.`);
+  throw new Error(`Unknown init starter "${value}". Expected ssg, spa, api, or full.`);
 }
 
 async function isRepoWorkspacePath(workspaceRoot: string): Promise<boolean> {
@@ -198,7 +198,7 @@ async function readPackageVersion(packageJsonPath: string): Promise<string> {
 }
 
 function createPackageJson(
-  mode: WorkspaceMode,
+  starter: Starter,
   packageName: string,
   dependencySpecs: Record<string, string>,
   metadata: ScaffoldMetadata | undefined,
@@ -207,11 +207,11 @@ function createPackageJson(
     '@webstir-io/webstir-testing': dependencySpecs['@webstir-io/webstir-testing'],
   };
 
-  if (mode === 'ssg' || mode === 'spa' || mode === 'full') {
+  if (starter === 'ssg' || starter === 'spa' || starter === 'full') {
     dependencies['@webstir-io/webstir-frontend'] = dependencySpecs['@webstir-io/webstir-frontend'];
   }
 
-  if (mode === 'api' || mode === 'full') {
+  if (starter === 'api' || starter === 'full') {
     dependencies['@webstir-io/webstir-backend'] = dependencySpecs['@webstir-io/webstir-backend'];
   }
 
@@ -220,7 +220,7 @@ function createPackageJson(
     version: '1.0.0',
     private: true,
     type: 'module',
-    description: metadata?.description ?? MODE_DESCRIPTIONS[mode],
+    description: metadata?.description ?? STARTER_DESCRIPTIONS[starter],
     dependencies,
     devDependencies: {
       '@types/node': '^20.0.0',
@@ -237,21 +237,20 @@ function createPackageJson(
       'not dead',
     ],
     webstir: {
-      mode,
       moduleManifest: {},
-      ...(mode === 'spa' || mode === 'full' ? { enable: { clientNav: true } } : {}),
+      ...(starter === 'spa' || starter === 'full' ? { enable: { clientNav: true } } : {}),
     },
   };
 }
 
-function createBaseTsconfig(mode: WorkspaceMode): Record<string, unknown> {
+function createBaseTsconfig(starter: Starter): Record<string, unknown> {
   const references = [];
-  if (mode !== 'api') {
-    if (mode !== 'ssg' && mode !== 'spa') {
+  if (starter !== 'api') {
+    if (starter !== 'ssg' && starter !== 'spa') {
       references.push({ path: 'src/shared' });
       references.push({ path: 'src/frontend' });
       references.push({ path: 'src/backend' });
-    } else if (mode === 'spa') {
+    } else if (starter === 'spa') {
       references.push({ path: 'src/shared' });
       references.push({ path: 'src/frontend' });
     } else {

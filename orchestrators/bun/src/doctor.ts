@@ -113,7 +113,7 @@ export async function runDoctor(options: RunDoctorOptions): Promise<DoctorResult
   }
 
   let backend: DoctorBackendSummary | undefined;
-  if (workspace.mode === 'api' || workspace.mode === 'full') {
+  if (workspace.layers.server) {
     try {
       const inspectResult = await runBackendInspect({
         workspaceRoot: workspace.root,
@@ -144,7 +144,7 @@ export async function runDoctor(options: RunDoctorOptions): Promise<DoctorResult
     checks.push({
       id: 'backend-inspect',
       status: 'skip',
-      summary: `Skipped for ${workspace.mode} workspaces.`,
+      summary: 'Skipped: the app has no server.',
     });
   }
 

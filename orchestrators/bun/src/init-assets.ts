@@ -1,8 +1,11 @@
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 
+import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
+
 import { assetsRoot } from './paths.ts';
-import type { WorkspaceMode } from './types.ts';
+import type { Starter } from './types.ts';
 
 export interface ScaffoldAsset {
   readonly sourcePath: string;
@@ -31,19 +34,29 @@ export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
   ];
 }
 
-export async function getModeScaffoldAssets(
-  mode: WorkspaceMode,
+/**
+ * The starter whose templates fit an app, for restoring its scaffold: pages and a server are the
+ * full starter, no pages is api, and pages alone are ssg when they have content, else spa.
+ */
+export function starterFor(workspaceRoot: string, layers: WorkspaceLayers): Starter {
+  if (layers.pages && layers.server) return 'full';
+  if (!layers.pages) return 'api';
+  return existsSync(path.join(workspaceRoot, 'src', 'frontend', 'content')) ? 'ssg' : 'spa';
+}
+
+export async function getStarterScaffoldAssets(
+  starter: Starter,
 ): Promise<readonly ScaffoldAsset[]> {
-  switch (mode) {
+  switch (starter) {
     case 'ssg':
-      return collectModeAssets([
+      return collectStarterAssets([
         {
           sourceRoot: path.join(ssgTemplateRoot, 'src', 'frontend'),
           targetRoot: path.join('src', 'frontend'),
         },
       ]);
     case 'spa':
-      return collectModeAssets([
+      return collectStarterAssets([
         {
           sourceRoot: path.join(spaTemplateRoot, 'src', 'frontend'),
           targetRoot: path.join('src', 'frontend'),
@@ -54,7 +67,7 @@ export async function getModeScaffoldAssets(
         },
       ]);
     case 'api':
-      return collectModeAssets([
+      return collectStarterAssets([
         {
           sourceRoot: path.join(apiTemplateRoot, 'src', 'backend'),
           targetRoot: path.join('src', 'backend'),
@@ -65,7 +78,7 @@ export async function getModeScaffoldAssets(
         },
       ]);
     case 'full':
-      return collectModeAssets([
+      return collectStarterAssets([
         {
           sourceRoot: path.join(fullTemplateRoot, 'src', 'frontend'),
           targetRoot: path.join('src', 'frontend'),
@@ -82,7 +95,32 @@ export async function getModeScaffoldAssets(
   }
 }
 
-async function collectModeAssets(
+/** The one server scaffold, from `init` or `enable backend`: a thin entry and its tsconfig. */
+export async function getServerScaffoldAssets(): Promise<readonly ScaffoldAsset[]> {
+  return collectStarterAssets([
+    {
+      sourceRoot: path.join(apiTemplateRoot, 'src', 'backend'),
+      targetRoot: path.join('src', 'backend'),
+    },
+  ]);
+}
+
+/**
+ * The scaffold an app is held to: its pages' starter, and the one server scaffold when it has a
+ * server. A starter's other backend files, such as the full starter's demo module, are app code.
+ */
+export async function getAppScaffoldAssets(
+  workspaceRoot: string,
+  layers: WorkspaceLayers,
+): Promise<readonly ScaffoldAsset[]> {
+  const backendRoot = path.join('src', 'backend') + path.sep;
+  const starterAssets = (await getStarterScaffoldAssets(starterFor(workspaceRoot, layers))).filter(
+    (asset) => !asset.targetPath.startsWith(backendRoot),
+  );
+  return layers.server ? [...starterAssets, ...(await getServerScaffoldAssets())] : starterAssets;
+}
+
+async function collectStarterAssets(
   roots: readonly { sourceRoot: string; targetRoot: string }[],
 ): Promise<readonly ScaffoldAsset[]> {
   const assets: ScaffoldAsset[] = [];

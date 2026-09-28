@@ -11,7 +11,7 @@ import {
   type RefreshIdentity,
 } from './refresh-safety.ts';
 import { replaceRefreshWorkspace } from './refresh-transaction.ts';
-import type { WorkspaceMode } from './types.ts';
+import type { Starter } from './types.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 
 export interface RunRefreshOptions {
@@ -22,18 +22,18 @@ export interface RunRefreshOptions {
 
 export interface RefreshResult {
   readonly workspaceRoot: string;
-  readonly mode: WorkspaceMode;
+  readonly starter: Starter;
   readonly changes: readonly string[];
 }
 
 export async function runRefresh(options: RunRefreshOptions): Promise<RefreshResult> {
   const requestedWorkspaceRoot = path.resolve(options.cwd ?? process.cwd(), options.workspaceRoot);
-  const modeToken = options.args[0];
-  if (!modeToken) {
-    throw new Error('Usage: webstir refresh <mode> --workspace <path>.');
+  const starterToken = options.args[0];
+  if (!starterToken) {
+    throw new Error('Usage: webstir refresh <starter> --workspace <path>.');
   }
 
-  const mode = parseWorkspaceMode(modeToken);
+  const starter = parseStarter(starterToken);
   const workspaceRoot = await resolveExistingRefreshRoot(requestedWorkspaceRoot);
   const homeRoot = await realpath(os.userInfo().homedir);
   assertSafeRefreshRoot(workspaceRoot, homeRoot);
@@ -42,7 +42,7 @@ export async function runRefresh(options: RunRefreshOptions): Promise<RefreshRes
   const result = await replaceRefreshWorkspace({
     workspaceRoot,
     prepareReplacement: async (replacementWorkspaceRoot) =>
-      await scaffoldWorkspace(mode, replacementWorkspaceRoot, {
+      await scaffoldWorkspace(starter, replacementWorkspaceRoot, {
         force: false,
         metadata: snapshot.metadata,
         dependencyWorkspaceRoot: workspaceRoot,
@@ -53,7 +53,7 @@ export async function runRefresh(options: RunRefreshOptions): Promise<RefreshRes
 
   return {
     workspaceRoot,
-    mode: result.mode,
+    starter: result.starter,
     changes: result.changes,
   };
 }
@@ -139,7 +139,7 @@ async function verifyRefreshWorkspace(
   );
 }
 
-function parseWorkspaceMode(value: string): WorkspaceMode {
+function parseStarter(value: string): Starter {
   const normalized = value.trim().toLowerCase();
   if (
     normalized === 'ssg' ||
@@ -154,7 +154,7 @@ function parseWorkspaceMode(value: string): WorkspaceMode {
     return 'full';
   }
 
-  throw new Error(`Unknown refresh mode "${value}". Expected ssg, spa, api, or full.`);
+  throw new Error(`Unknown refresh starter "${value}". Expected ssg, spa, api, or full.`);
 }
 
 async function readWorkspaceManifestMetadata(

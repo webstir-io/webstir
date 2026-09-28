@@ -10,8 +10,10 @@ webstir publish --workspace /absolute/path/to/workspace
 
 ## Outputs
 
-- `dist/frontend/**` for optimized document assets when the workspace has a frontend surface
-- `build/backend/**` for compiled backend output when the workspace has a backend surface
+- `dist/frontend/**` for optimized document assets when the app has pages
+- `build/backend/**` for compiled backend output when the app has a server
+
+The app's layers decide the output shape. With a server, pages publish under `dist/frontend/pages/<page>/` and the server serves them. Without a server, the app publishes as a static site: `dist/frontend/<page>/index.html` and `dist/frontend/index.html`, with views rendered at publish (see [Static Sites](./static-sites.md)).
 
 ## Runtime Expectations
 
@@ -26,7 +28,7 @@ webstir publish --workspace /absolute/path/to/workspace
 
 For the main server-first lane:
 
-1. Start from a `full` workspace.
+1. Start from the `full` starter.
 2. Validate the baseline document and form flow with `watch` and `test`.
 3. Run `webstir publish --workspace "$PWD"`.
 4. Deploy the published workspace with the Bun Docker contract from [Docker Deployment](./docker.md).
@@ -42,9 +44,9 @@ bun run publish:dashboard
 
 Those two demos cover the shipped server-handled forms and dashboard refresh paths.
 
-For static-site output, scaffold an `ssg` workspace, or keep the current workspace mode and force SSG publish with `webstir publish --workspace /absolute/path/to/workspace --frontend-mode ssg`. The lower-level `webstir-frontend publish --mode ssg` package CLI still works directly when you need package-level control.
+For static-site output, publish an app with pages and no server. The lower-level `webstir-frontend publish` package CLI decides from the same layers.
 
-For published `api` and `full` workspaces, use the supported Bun Docker deployment contract described in [Docker Deployment](./docker.md). Webstir is still experimental overall, but that Bun path is the one deploy shape this repo currently supports and tests.
+For published apps with a server, use the supported Bun Docker deployment contract described in [Docker Deployment](./docker.md). Webstir is still experimental overall, but that Bun path is the one deploy shape this repo currently supports and tests.
 
 ## Related Docs
 

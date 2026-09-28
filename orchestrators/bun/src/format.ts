@@ -11,6 +11,7 @@ import type { BackendInspectResult } from './backend-inspect.ts';
 import type { SmokeResult } from './smoke.ts';
 import type { TestCommandResult } from './test.ts';
 import type { CommandExecutionResult } from './types.ts';
+import { describeLayers } from './workspace.ts';
 
 export function formatBuildSummary(result: CommandExecutionResult): string {
   return formatExecutionSummary(result);
@@ -35,6 +36,9 @@ export function formatEnableSummary(result: EnableResult): string {
       lines.push(`  - ${change}`);
     }
   }
+  for (const note of result.notes ?? []) {
+    lines.push(`note: ${note}`);
+  }
 
   return lines.join('\n');
 }
@@ -42,7 +46,7 @@ export function formatEnableSummary(result: EnableResult): string {
 export function formatInitSummary(result: InitResult): string {
   return formatWorkspaceMutationSummary(
     '[webstir] init complete',
-    result.mode,
+    result.starter,
     result.workspaceRoot,
     result.changes,
   );
@@ -51,7 +55,7 @@ export function formatInitSummary(result: InitResult): string {
 export function formatRefreshSummary(result: RefreshResult): string {
   return formatWorkspaceMutationSummary(
     '[webstir] refresh complete',
-    result.mode,
+    result.starter,
     result.workspaceRoot,
     result.changes,
   );
@@ -60,7 +64,7 @@ export function formatRefreshSummary(result: RefreshResult): string {
 export function formatRepairSummary(result: RepairResult): string {
   const lines = [
     '[webstir] repair complete',
-    `mode: ${result.mode}`,
+    `layers: ${describeLayers(result.layers)}`,
     `root: ${result.workspaceRoot}`,
     `dry-run: ${result.dryRun ? 'true' : 'false'}`,
     `restore-scaffold: ${result.restoreScaffold ? 'true' : 'false'}`,
@@ -96,7 +100,7 @@ export function formatRepairJson(result: RepairResult): string {
     {
       command: 'repair',
       workspaceRoot: result.workspaceRoot,
-      mode: result.mode,
+      layers: result.layers,
       dryRun: result.dryRun,
       restoreScaffold: result.restoreScaffold,
       changes: result.changes,
@@ -117,7 +121,7 @@ export function formatOperationsSummary(operations: readonly WebstirOperationDes
       operation.mutatesWorkspace ? 'mutates' : 'read-only',
       operation.supportsJson ? 'json' : 'text',
       operation.stableForMcp ? 'mcp-ready' : 'manual-only',
-      operation.workspaceModes ? `modes: ${operation.workspaceModes.join(', ')}` : undefined,
+      operation.requiresLayer ? `needs: ${operation.requiresLayer}` : undefined,
     ].filter(Boolean);
     lines.push(
       `  - ${operation.id}: ${operation.summary}${details.length > 0 ? ` (${details.join(', ')})` : ''}`,
@@ -142,7 +146,7 @@ export function formatDoctorSummary(result: DoctorResult): string {
   const lines = [
     '[webstir] doctor complete',
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
     `healthy: ${result.healthy ? 'true' : 'false'}`,
   ];
@@ -188,7 +192,7 @@ export function formatDoctorJson(result: DoctorResult): string {
       command: 'doctor',
       workspace: {
         name: result.workspace.name,
-        mode: result.workspace.mode,
+        layers: result.workspace.layers,
         root: result.workspace.root,
       },
       healthy: result.healthy,
@@ -207,7 +211,7 @@ export function formatFrontendInspectSummary(result: FrontendInspectResult): str
   const lines = [
     '[webstir] frontend-inspect complete',
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
     `app-shell: ${result.frontend.appShell.exists ? 'present' : 'missing'}`,
     `frontend-features: ${enabledFeatures.length > 0 ? enabledFeatures.join(', ') : 'none'}`,
@@ -238,7 +242,7 @@ export function formatFrontendInspectJson(result: FrontendInspectResult): string
       command: 'frontend-inspect',
       workspace: {
         name: result.workspace.name,
-        mode: result.workspace.mode,
+        layers: result.workspace.layers,
         root: result.workspace.root,
       },
       frontend: result.frontend,
@@ -252,7 +256,7 @@ export function formatInspectSummary(result: InspectResult): string {
   const lines = [
     '[webstir] inspect complete',
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
     `success: ${result.success ? 'true' : 'false'}`,
     `steps: ${result.steps.length}`,
@@ -271,7 +275,7 @@ export function formatInspectJson(result: InspectResult): string {
       command: 'inspect',
       workspace: {
         name: result.workspace.name,
-        mode: result.workspace.mode,
+        layers: result.workspace.layers,
         root: result.workspace.root,
       },
       success: result.success,
@@ -322,7 +326,7 @@ export function formatBackendInspectSummary(result: BackendInspectResult): strin
   const lines = [
     '[webstir] backend-inspect complete',
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
     `build: ${result.buildRoot}`,
     `module: ${result.manifest.name}@${result.manifest.version}`,
@@ -378,7 +382,7 @@ export function formatBackendInspectJson(result: BackendInspectResult): string {
       command: 'backend-inspect',
       workspace: {
         name: result.workspace.name,
-        mode: result.workspace.mode,
+        layers: result.workspace.layers,
         root: result.workspace.root,
       },
       buildRoot: result.buildRoot,
@@ -394,7 +398,7 @@ export function formatTestSummary(result: TestCommandResult): string {
   const lines = [
     '[webstir] test complete',
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
     `runtime: ${result.runtime}`,
     `build-targets: ${result.builtTargets.length > 0 ? result.builtTargets.join(', ') : 'none'}`,
@@ -424,7 +428,7 @@ export function formatSmokeSummary(result: SmokeResult): string {
   const lines = [
     '[webstir] smoke complete',
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
     `workspace-source: ${result.usedTempWorkspace ? 'temporary copy' : 'explicit workspace'}`,
   ];
@@ -474,7 +478,7 @@ function formatExecutionSummary(result: CommandExecutionResult): string {
   const lines = [
     `[webstir] ${result.mode} complete`,
     `workspace: ${result.workspace.name}`,
-    `mode: ${result.workspace.mode}`,
+    `layers: ${describeLayers(result.workspace.layers)}`,
     `root: ${result.workspace.root}`,
   ];
 
@@ -518,11 +522,11 @@ function firstLine(message: string): string {
 
 function formatWorkspaceMutationSummary(
   header: string,
-  mode: string,
+  starter: string,
   workspaceRoot: string,
   changes: readonly string[],
 ): string {
-  const lines = [header, `mode: ${mode}`, `root: ${workspaceRoot}`];
+  const lines = [header, `starter: ${starter}`, `root: ${workspaceRoot}`];
 
   if (changes.length === 0) {
     lines.push('changes: none');

@@ -43,11 +43,11 @@ export async function runInspect(options: RunInspectOptions): Promise<InspectRes
 
   let frontendFailed = false;
   let frontend: FrontendInspectResult['frontend'] | undefined;
-  if (doctor.workspace.mode === 'api') {
+  if (!doctor.workspace.layers.pages) {
     steps.push({
       id: 'frontend-inspect',
       status: 'skipped',
-      summary: 'Skipped for api workspaces.',
+      summary: 'Skipped: the app has no pages.',
     });
   } else {
     try {
@@ -73,7 +73,7 @@ export async function runInspect(options: RunInspectOptions): Promise<InspectRes
 
   let backendFailed = false;
   let backend: BackendInspectResult | undefined;
-  if (doctor.workspace.mode === 'api' || doctor.workspace.mode === 'full') {
+  if (doctor.workspace.layers.server) {
     try {
       backend = await runBackendInspect({
         workspaceRoot: options.workspaceRoot,
@@ -97,7 +97,7 @@ export async function runInspect(options: RunInspectOptions): Promise<InspectRes
     steps.push({
       id: 'backend-inspect',
       status: 'skipped',
-      summary: `Skipped for ${doctor.workspace.mode} workspaces.`,
+      summary: 'Skipped: the app has no server.',
     });
   }
 

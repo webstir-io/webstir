@@ -5,7 +5,7 @@ Development and runtime servers used by Webstir.
 ## Overview
 - Dev Web Server: Bun-hosted static server that serves built frontend assets, publishes watch status over SSE, and applies clean URLs with dev caching.
 - Backend Runtime: runs the compiled backend entry (`build/backend/index.js`) and is restarted after successful backend rebuilds.
-- Proxy: in `full` mode, the dev server proxies `/api/*` to the backend runtime.
+- Proxy: in an app with pages and a server, the dev server proxies `/api/*` to the backend runtime.
 
 See also: [Engine](engine.md) and [Services](services.md).
 
@@ -14,7 +14,7 @@ See also: [Engine](engine.md) and [Services](services.md).
 - Clean URLs: `/about` serves `/pages/about/index.html`; `/` serves `/pages/home/index.html`.
 - Live reload: SSE endpoint notifies connected browsers after frontend rebuilds.
 - Caching: static assets cache with short TTL in dev; HTML not cached.
-- Logs: prints the frontend URL, and in `full` mode also prints the backend origin.
+- Logs: prints the frontend URL, and in an app with a server also prints the backend origin.
 
 ## Backend Runtime
 - Entry: `build/backend/index.js` produced by the backend compile step.

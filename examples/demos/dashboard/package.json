@@ -24,7 +24,6 @@
     "not dead"
   ],
   "webstir": {
-    "mode": "full",
     "moduleManifest": {},
     "enable": {
       "clientNav": true

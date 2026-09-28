@@ -31,6 +31,22 @@ test('deploy cli prints usage', () => {
   assert.match(new TextDecoder().decode(result.stdout), /Usage: webstir-backend-deploy/);
 });
 
+test('published deploy refuses an app recorded with pages whose frontend output is missing', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-deploy-missing-pages-');
+  await buildRuntimeWorkspace(workspace, 'full');
+  // What publish records, in an image that left out dist/.
+  await fs.writeFile(
+    path.join(workspace, 'build', 'published-layers.json'),
+    JSON.stringify({ pages: true, server: true }),
+    'utf8',
+  );
+
+  await assert.rejects(
+    startPublishedWorkspaceServer({ workspaceRoot: workspace, port: 0 }),
+    /published frontend output/,
+  );
+});
+
 test.skipIf(!tcpListenAvailable)(
   'published deploy serves frontend assets and proxies backend routes for full workspaces',
   async () => {
@@ -244,9 +260,7 @@ async function buildRuntimeWorkspace(workspace, mode) {
         name: `@demo/${mode}-deploy`,
         version: '0.1.0',
         type: 'module',
-        webstir: {
-          mode,
-        },
+        webstir: {},
       },
       null,
       2,
@@ -268,6 +282,8 @@ async function buildRuntimeWorkspace(workspace, mode) {
     },
     incremental: false,
   });
+  // A deploy image carries only the published output (see the Docker .dockerignore), not src/.
+  await fs.rm(path.join(workspace, 'src'), { recursive: true, force: true });
 }
 
 function createModuleSource(mode) {

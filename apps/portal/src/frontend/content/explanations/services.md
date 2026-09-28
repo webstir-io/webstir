@@ -6,14 +6,14 @@ The active implementation no longer uses the older `DevService` / `WatchService`
 
 ## Active Pieces
 
-- `DevServer`: serves `build/frontend/**`, emits SSE status/reload events, and proxies `/api/*` in `full` mode
+- `DevServer`: serves `build/frontend/**`, emits SSE status/reload events, and proxies `/api/*` when the app has pages and a server
 - `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload triggers
-- `document-watch.ts`: runs the frontend watch session for `spa`, `ssg` and `full`
+- `document-watch.ts`: runs the frontend watch session for every app with pages
 - `BackendRuntimeSupervisor`: starts and restarts `build/backend/index.js` after successful backend builds
 
 ## Responsibilities Split
 
-- Orchestrator commands decide which helpers are needed for the workspace mode.
+- Orchestrator commands decide which helpers are needed from the app's layers.
 - The frontend package owns incremental frontend build logic and HMR decisions.
 - The Bun orchestrator owns process supervision, HTTP serving, and proxying.
 

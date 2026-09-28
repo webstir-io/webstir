@@ -40,7 +40,7 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir-backend] build:start');
     expect(result.stdout).toContain('[webstir] smoke complete');
-    expect(result.stdout).toContain('mode: full');
+    expect(result.stdout).toContain('layers: pages + server');
     expect(result.stdout).toContain('workspace-source: explicit workspace');
     expect(result.stdout).toContain('phases: 5');
     expect(result.stdout).toContain('  - build: frontend:');
@@ -59,7 +59,7 @@ test('CLI smoke defaults to a temporary full workspace built from Bun-owned temp
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain('[webstir-backend] build:start');
   expect(result.stdout).toContain('[webstir] smoke complete');
-  expect(result.stdout).toContain('mode: full');
+  expect(result.stdout).toContain('layers: pages + server');
   expect(result.stdout).toContain('workspace-source: temporary copy');
   expect(result.stdout).toContain('source: built-in full template');
   expect(result.stdout).toContain('phases: 5');

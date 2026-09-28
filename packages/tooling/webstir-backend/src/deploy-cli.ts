@@ -28,7 +28,7 @@ async function main(argv: readonly string[]): Promise<void> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
   process.stdout.write(
-    `[webstir-backend-deploy] serving ${server.mode} workspace at ${server.origin}\n`,
+    `[webstir-backend-deploy] serving ${server.layers.pages ? 'pages and server' : 'server'} at ${server.origin}\n`,
   );
 
   await new Promise<void>(() => {

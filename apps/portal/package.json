@@ -11,7 +11,7 @@
   },
   "scripts": {
     "start": "bun run build:runtime && bun ../../packages/tooling/webstir-frontend/src/cli.ts build --workspace \"$PWD\"",
-    "build": "bun run build:runtime && bun ../../packages/tooling/webstir-frontend/src/cli.ts build --workspace \"$PWD\" && bun ../../packages/tooling/webstir-frontend/src/cli.ts publish --workspace \"$PWD\" --mode ssg",
+    "build": "bun run build:runtime && bun ../../packages/tooling/webstir-frontend/src/cli.ts build --workspace \"$PWD\" && bun ../../packages/tooling/webstir-frontend/src/cli.ts publish --workspace \"$PWD\"",
     "publish": "bun run build",
     "build:runtime": "bun run --filter @webstir-io/module-contract build && bun run --filter @webstir-io/webstir-frontend build"
   },
@@ -22,7 +22,6 @@
     "typescript": "catalog:"
   },
   "webstir": {
-    "mode": "ssg",
     "siteUrl": "https://webstir.dev",
     "trailingSlash": false,
     "enable": {

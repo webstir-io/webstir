@@ -34,7 +34,7 @@ publish_site() {
 
   echo "[gh-pages] Running Bun build and publish fallback..."
   bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"
-  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg
+  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR"
 }
 
 echo "[gh-pages] Publishing static site..."
@@ -151,7 +151,7 @@ publish_site() {
 
   echo "[s3-cloudfront] Running Bun build and publish fallback..."
   bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" build -w "$ROOT_DIR"
-  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR" -m ssg
+  bun "$ROOT_DIR/node_modules/@webstir-io/webstir-frontend/dist/cli.js" publish -w "$ROOT_DIR"
 }
 
 echo "[s3-cloudfront] Publishing static site..."
@@ -260,6 +260,11 @@ export function renderS3CloudFrontFunction(): string {
 //        runtime: cloudfront.FunctionRuntime.JS_2_0,
 //        code: cloudfront.FunctionCode.fromFile({ filePath: 'utils/cloudfront-rewrite-directory-index.js' }),
 //      }) with functionAssociations: [{ function, eventType: cloudfront.FunctionEventType.VIEWER_REQUEST }].
+//
+// Addresses a view routes to a page, such as /items/:id, have no file of their own. Set the
+// distribution's error responses for 403 and 404 to /404.html (response code 404): Webstir's
+// 404.html loads the routed page there, and shows the not-found page otherwise.
+// CDK: errorResponses: [403, 404].map((httpStatus) => ({ httpStatus, responsePagePath: '/404.html', responseHttpStatus: 404 })).
 function handler(event) {
   var request = event.request;
   var uri = request.uri;

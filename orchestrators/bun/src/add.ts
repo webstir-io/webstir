@@ -1,3 +1,4 @@
+import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
@@ -11,6 +12,8 @@ import { assertNoExistingSymlinkComponents, normalizeScaffoldSegment } from './s
 export interface RunAddPageOptions {
   readonly workspaceRoot: string;
   readonly args: readonly string[];
+  /** Scaffold the page without an index.ts, for a page that needs no JavaScript. */
+  readonly noScript?: boolean;
 }
 
 export interface RunAddTestOptions {
@@ -48,6 +51,11 @@ export async function runAddPageCommand(options: RunAddPageOptions): Promise<Add
     throw new Error('Usage: webstir add-page <name> --workspace <path>.');
   }
   const pageName = normalizeScaffoldSegment(rawPageName, 'page');
+  if (!readWorkspaceLayers(options.workspaceRoot).pages) {
+    throw new Error(
+      'add-page needs an app with pages (src/frontend); run `webstir enable frontend` first.',
+    );
+  }
 
   const pageRoot = path.join(options.workspaceRoot, 'src', 'frontend', 'pages', pageName);
   const packageJsonPath = path.join(options.workspaceRoot, 'package.json');
@@ -77,6 +85,7 @@ export async function runAddPageCommand(options: RunAddPageOptions): Promise<Add
   await runAddPage({
     workspaceRoot: options.workspaceRoot,
     pageName,
+    noScript: options.noScript,
   });
 
   const changes = await collectChangedFiles(options.workspaceRoot, trackedPaths, before);

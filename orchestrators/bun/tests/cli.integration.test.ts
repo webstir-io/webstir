@@ -72,77 +72,8 @@ test('CLI builds the spa demo workspace end to end', async () => {
   ).toBe(true);
 });
 
-test('CLI publishes the spa demo workspace end to end', async () => {
+test('CLI publishes the spa demo, pages without a server, as a static site', async () => {
   const result = await runCliInCopiedWorkspace('publish', 'spa');
-
-  expect(result.exitCode).toBe(0);
-  expect(result.stderr).toBe('');
-  expect(result.stdout).toContain('[webstir] publish complete');
-  expect(existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'pages', 'home'))).toBe(
-    true,
-  );
-});
-
-test('CLI rejects missing frontend publish mode values', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-spa-frontend-mode-missing-');
-
-  try {
-    const result = runCli([
-      'publish',
-      '--workspace',
-      copiedWorkspace.workspaceRoot,
-      '--frontend-mode',
-    ]);
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Missing value for --frontend-mode.');
-  } finally {
-    await removeDemoWorkspace(copiedWorkspace);
-  }
-});
-
-test('CLI rejects unsupported frontend publish mode values', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-spa-frontend-mode-invalid-');
-
-  try {
-    const result = runCli([
-      'publish',
-      '--workspace',
-      copiedWorkspace.workspaceRoot,
-      '--frontend-mode',
-      'static',
-    ]);
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(
-      'Invalid --frontend-mode value "static". Expected bundle or ssg.',
-    );
-  } finally {
-    await removeDemoWorkspace(copiedWorkspace);
-  }
-});
-
-test('CLI rejects frontend publish mode on non-publish commands', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-spa-frontend-mode-build-');
-
-  try {
-    const result = runCli([
-      'build',
-      '--workspace',
-      copiedWorkspace.workspaceRoot,
-      '--frontend-mode',
-      'ssg',
-    ]);
-
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Only publish accepts --frontend-mode.');
-  } finally {
-    await removeDemoWorkspace(copiedWorkspace);
-  }
-});
-
-test('CLI publishes the spa demo workspace in ssg mode when frontend mode is overridden', async () => {
-  const result = await runCliInCopiedWorkspace('publish', 'spa', {}, ['--frontend-mode', 'ssg']);
 
   expect(result.exitCode).toBe(0);
   expect(result.stderr).toBe('');
@@ -153,6 +84,26 @@ test('CLI publishes the spa demo workspace in ssg mode when frontend mode is ove
   expect(
     existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'home', 'manifest.json')),
   ).toBe(true);
+  expect(existsSync(path.join(result.copiedWorkspace, 'dist', 'frontend', 'pages'))).toBe(false);
+});
+
+test('CLI rejects the removed --frontend-mode flag', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-spa-frontend-mode-removed-');
+
+  try {
+    const result = runCli([
+      'publish',
+      '--workspace',
+      copiedWorkspace.workspaceRoot,
+      '--frontend-mode',
+      'ssg',
+    ]);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Unknown option "--frontend-mode".');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
 });
 
 test('CLI publishes the api demo workspace end to end', async () => {

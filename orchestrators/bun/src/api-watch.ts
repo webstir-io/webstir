@@ -6,6 +6,7 @@ import { BackendRuntimeSupervisor } from './backend-runtime.ts';
 import { createWorkspaceRuntimeEnv } from './runtime.ts';
 import { createStopSignal } from './stop-signal.ts';
 import type { WorkspaceDescriptor } from './types.ts';
+import { describeLayers } from './workspace.ts';
 import type { WatchIo, WatchOptions } from './watch.ts';
 
 export interface ApiWatchSession {
@@ -21,7 +22,7 @@ export async function runApiWatch(
   const session = await startApiWatchSession(workspace, options, io);
 
   io.stdout.write(
-    `[webstir] watch starting\nworkspace: ${workspace.name}\nmode: ${workspace.mode}\nurl: ${session.origin}\n`,
+    `[webstir] watch starting\nworkspace: ${workspace.name}\nlayers: ${describeLayers(workspace.layers)}\nurl: ${session.origin}\n`,
   );
 
   const stopSignal = createStopSignal();

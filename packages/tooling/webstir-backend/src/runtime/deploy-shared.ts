@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import net from 'node:net';
 import path from 'node:path';
 import { access, readFile } from 'node:fs/promises';
@@ -12,7 +14,8 @@ export interface PublishedWorkspaceServerOptions {
 
 export interface PublishedWorkspaceServer {
   readonly origin: string;
-  readonly mode: PublishedWorkspaceMode;
+  /** What the published app is made of; it always has a server. */
+  readonly layers: WorkspaceLayers;
   stop(): Promise<void>;
 }
 
@@ -24,8 +27,6 @@ export interface DeploymentIo {
     write(message: string): void;
   };
 }
-
-export type PublishedWorkspaceMode = 'api' | 'full';
 
 export interface BunServerLike {
   readonly port: number;
@@ -45,24 +46,30 @@ export interface BunLike {
 
 export const DEFAULT_PUBLIC_PORT = 8080;
 
-export async function readPublishedWorkspaceMode(
-  workspaceRoot: string,
-): Promise<PublishedWorkspaceMode> {
-  const packageJsonPath = path.join(workspaceRoot, 'package.json');
-  const source = await readFile(packageJsonPath, 'utf8');
-  const packageJson = JSON.parse(source) as {
-    webstir?: {
-      mode?: string;
-    };
+/**
+ * The published app's layers, as publish recorded them in build/published-layers.json, since a
+ * deploy image carries only the published output (no src/). Output published before that record
+ * existed is read from its files: a server is build/backend/index.js, pages are dist/frontend.
+ */
+export function readPublishedLayers(workspaceRoot: string): WorkspaceLayers {
+  const recordPath = path.join(workspaceRoot, 'build', 'published-layers.json');
+  const record = existsSync(recordPath)
+    ? (JSON.parse(readFileSync(recordPath, 'utf8')) as Partial<WorkspaceLayers>)
+    : undefined;
+  const layers = {
+    pages: record
+      ? record.pages === true
+      : existsSync(path.join(workspaceRoot, 'dist', 'frontend')),
+    server: record
+      ? record.server === true
+      : existsSync(path.join(workspaceRoot, 'build', 'backend', 'index.js')),
   };
-  const mode = packageJson.webstir?.mode;
-  if (mode === 'api' || mode === 'full') {
-    return mode;
+  if (!layers.server) {
+    throw new Error(
+      `Published deploy runs the app's server, and ${workspaceRoot} has none (build/backend/index.js); run webstir publish first.`,
+    );
   }
-
-  throw new Error(
-    `Published deploy only supports api and full workspaces. Received ${JSON.stringify(mode)} in ${packageJsonPath}.`,
-  );
+  return layers;
 }
 
 export async function assertExists(targetPath: string, label: string): Promise<void> {

@@ -19,10 +19,8 @@ export async function runFrontendInspect(
   options: RunFrontendInspectOptions,
 ): Promise<FrontendInspectResult> {
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
-  if (workspace.mode === 'api') {
-    throw new Error(
-      `frontend-inspect only supports spa, ssg, and full workspaces. Received mode "${workspace.mode}".`,
-    );
+  if (!workspace.layers.pages) {
+    throw new Error(`frontend-inspect needs pages, and ${workspace.name} has none (src/frontend).`);
   }
 
   return {

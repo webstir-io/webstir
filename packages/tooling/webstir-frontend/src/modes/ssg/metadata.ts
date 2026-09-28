@@ -1,3 +1,4 @@
+import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import path from 'node:path';
 import { readJson, writeJson } from '../../utils/fs.js';
 import type { WorkspaceModuleView, WorkspacePackageJson } from '../../config/workspaceManifest.js';
@@ -10,9 +11,8 @@ export interface SsgViewMetadataOptions {
 export async function ensureSsgViewMetadataForPage(options: SsgViewMetadataOptions): Promise<void> {
   const pkgPath = path.join(options.workspaceRoot, 'package.json');
   const pkg = (await readJson<WorkspacePackageJson>(pkgPath)) ?? {};
-  const workspaceMode = pkg.webstir?.mode;
-  const isSsgWorkspace = typeof workspaceMode === 'string' && workspaceMode.toLowerCase() === 'ssg';
-  if (isSsgWorkspace) {
+  // A static app's views render at publish already.
+  if (isStaticApp(readWorkspaceLayers(options.workspaceRoot))) {
     return;
   }
 

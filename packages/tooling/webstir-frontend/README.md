@@ -9,7 +9,7 @@ HTML-first frontend delivery for Webstir workspaces. This package builds page do
 - Watch-mode rebuilds used by the Bun orchestrator
 - Shared app-shell assets such as navigation, refresh, and client enhancement hooks
 - Runtime helpers for boundary-style mount/unmount lifecycles and cleanup scopes
-- SSG as a supported mode, without making static-only delivery the center of the product story
+- Static-site publish for apps without a server, without making static-only delivery the center of the product story
 
 Requires Bun **1.3.11** or newer.
 
@@ -35,7 +35,7 @@ Webstir watch mode follows a narrow fallback policy:
 - CSS edits hot-swap in the browser.
 - Edits to a page's code (anything under `src/frontend/pages/<page>/` that compiles to JavaScript) show the current page again from the new code, in place, when client-nav is on: the old page's cleanup runs, then the new `load` and `setup`, while scroll, focus and the app shell stay. Without client-nav, the page reloads.
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
-- Current exception: in `ssg` workspaces, edits to the docs page (`src/frontend/pages/docs/`) or a `src/frontend/content/**/_sidebar.json` re-import the docs page's module, whose sidebar remounts itself, instead of refreshing the page. A module that registered handlers with `registerHotModule` has them run.
+- Current exception: in apps without a server, edits to the docs page (`src/frontend/pages/docs/`) or a `src/frontend/content/**/_sidebar.json` re-import the docs page's module, whose sidebar remounts itself, instead of refreshing the page. A module that registered handlers with `registerHotModule` has them run.
 - Any cleanup failure or declined boundary update falls back to reload.
 - A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only queues the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client drains the queue into its own registry, so production bundles carry no hot-update code.
 
@@ -159,9 +159,9 @@ Binary name: `webstir-frontend`. All commands require `--workspace`.
 | Command | Description | Useful options |
 | --- | --- | --- |
 | `build` | Runs the development-oriented pipeline. | `--changed-file <path>` to scope rebuilds. |
-| `publish` | Produces optimized frontend assets. | `--mode <bundle\|ssg>` |
+| `publish` | Produces optimized frontend assets; the app's layers decide the output shape. | None (`--mode` is accepted and ignored) |
 | `rebuild` | Incremental rebuild after a file change. | `--changed-file <path>` |
-| `add-page <name>` | Scaffolds `index.html`, `index.css`, and `index.ts`. | None |
+| `add-page <name>` | Scaffolds `index.html`, `index.css`, and `index.ts`. | `--mode ssg` to leave out `index.ts`; in an app with a server it also adds an `ssg` view for the page to `package.json` |
 
 ## Feature Flags
 
@@ -242,19 +242,21 @@ console.log(result.manifest.entryPoints);
 - `frontendProvider.build()` executes the pipeline and returns artifacts plus manifest data
 - `inspectFrontendWorkspace()` returns resolved config plus shallow workspace facts without building
 
-## SSG Mode
+## Static Sites
 
-SSG is a supported frontend output mode, not a separate product:
+An app with pages (`src/frontend/`) and no server (`src/backend/index.{ts,tsx,js,mjs}`) publishes as a static site, not a separate product:
 
 ```bash
-bunx webstir-frontend publish --workspace /absolute/path/to/workspace --mode ssg
+bunx webstir-frontend publish --workspace /absolute/path/to/workspace
 ```
 
 That run:
 
-- Builds normal publish assets under `dist/frontend/**`
-- Generates `index.html` aliases for document routes
+- Builds normal publish assets under `dist/frontend/**` in the static layout: `dist/frontend/<page>/index.html` and `dist/frontend/index.html` for the `home` page
+- Renders views at publish, with loaders from `src/backend/module.ts`
 - Uses `webstir.moduleManifest.views` metadata when present to emit extra static paths
+
+An app with a server publishes its pages under `dist/frontend/pages/<page>/` for the server to serve.
 
 ## Maintainer Workflow
 
