@@ -1,5 +1,12 @@
 # @webstir-io/webstir-backend
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [ff5d7f4]
+  - @webstir-io/module-contract@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
