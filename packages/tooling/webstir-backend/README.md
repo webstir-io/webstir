@@ -117,8 +117,8 @@ The default `src/backend/index.ts` entry provides these runtime guarantees:
 
 - Route auto-mounting: any `module.ts` routes are compiled, logged, and attached on startup with manifest summaries (name, version, route count, capabilities).
 - Health probes: `/api/health` (for the orchestrator), `/healthz` (generic health), and `/readyz` (status + manifest summary). The CLI still waits for `API server running` before proxying requests.
-- Structured logging: every request gets a `pino` child logger that carries `requestId`, method, path, and route metadata. Logs emit as JSON so downstream tooling can parse them easily.
-- Request context: handlers receive `params`, `query`, `body`, `env`, `logger`, `request`, `reply`, `requestId`, and `now()` helpers that align with the `RequestContext` shape from `@webstir-io/module-contract`.
+- Logging: every request logs `request.completed` with its `requestId`, method, path, status and latency; pass `createBaseLogger` for your own logger.
+- Request context: handlers receive `params`, `query`, `body`, `session`, `flash`, `user`, `db`, `jobs`, `email`, `files`, `auth`, `env`, `logger`, `request`, `requestId`, and `now()`.
 - Request IDs: each response sets `x-request-id` and the context/logger include the same identifier so you can correlate logs.
 - Failure safety: handler exceptions are caught and surfaced as `{ error: 'internal_error' }` without tearing down the process.
 - Progressive enhancement responses: handlers can return redirects (`303` by default) or targeted fragment payloads; the scaffold emits `Location` and `x-webstir-fragment-*` headers accordingly.
@@ -134,66 +134,20 @@ Stick with the default Bun entry while exploring the manifest helpers, or import
 - Fragment responses are never reused by the scaffold runtime. They always send `Cache-Control: no-store` plus `x-webstir-fragment-cache: bypass`, because fragment bodies come from live route execution and should reflect current session/auth/request state.
 - Process restarts clear the in-memory document cache. There is no separate persisted request-time HTML cache today; the existing `.webstir` cache files remain build/publish metadata, not response payload storage.
 
-### Secrets & auth adapters
+### Batteries
 
-The backend template now ships a lightweight auth adapter so you can secure routes without wiring a full identity provider on day one:
+A server app gets these from the package, with no setup; see the [docs](https://webstir.dev/docs/how-to/) for each.
 
-- **Environment-driven secrets** — populate `.env.local`/`.env` with one JWT verification input: `AUTH_JWT_SECRET` for shared-secret HS256, `AUTH_JWT_PUBLIC_KEY` or `AUTH_JWT_PUBLIC_KEY_FILE` for RSA public-key verification, or `AUTH_JWKS_URL` for remote JWKS discovery. Optional `AUTH_JWT_ISSUER` / `AUTH_JWT_AUDIENCE` claims and comma/space-delimited `AUTH_SERVICE_TOKENS` still apply. An example lives in `templates/backend/.env.example`.
-- **Bearer verification (HS256 + RS256)** — incoming `Authorization: Bearer <token>` headers validate against HS256 shared secrets, inline/file-backed RSA public keys, or RSA keys discovered from JWKS. Unsupported algorithms, malformed compact segments, bad signatures, wrong issuer/audience, invalid numeric-date claims, and invalid `nbf`/`exp` windows fail closed. On success, `ctx.auth` includes `userId`, `email`, `scopes`, `roles`, and the raw claims payload.
-- **Service tokens** — internal callers can present `X-Service-Token` or `X-API-Key` values that match `AUTH_SERVICE_TOKENS`. Successful matches yield a `ctx.auth` context with the `service` scope so you can distinguish automated jobs from end users. If an invalid bearer token and a valid service token are both present, the service token is still accepted and bearer diagnostics stay redacted.
-- **Route ergonomics** — the module template now demonstrates gating access on `ctx.auth` and sets the `auth` capability in the manifest so downstream tooling knows the module expects identity context.
-- **Session & request-body defaults** — set `SESSION_SECRET` for stable session cookies. In development, the scaffold still falls back to a per-process random secret when unset; in production, `SESSION_SECRET` is now required and startup fails fast when it is missing. Request bodies are capped by `REQUEST_BODY_MAX_BYTES` (default `1048576`) in the supported Bun server template.
-- **Durable session storage (optional)** — the scaffold now defaults to SQLite-backed sessions in production when `SESSION_STORE_DRIVER` is unset, while keeping in-memory storage as the development default. You can still opt into SQLite explicitly with `SESSION_STORE_DRIVER=sqlite` or just configure `SESSION_STORE_URL`; set `SESSION_STORE_DRIVER=memory` only when you intentionally want the non-durable path. `SESSION_STORE_URL` defaults to `file:./data/sessions.sqlite` when the SQLite store is active and resolves from the workspace root, so launch directory changes do not redirect session state into the wrong folder.
-- **Session/form safety rules** — stale or tampered session cookies clear on commit, CSRF tokens are single-use after successful verification, and malformed SQLite session rows fail with a session-row diagnostic. Ordinary session updates keep the same session id; clearing a session and starting a new one creates a new id.
-- **Session requirements & flash outcomes** — routes declaring `session: { mode: 'required' }` (top-level or under `form`) reject requests without an existing session with `401` and a `session_required` error before the handler runs, without creating a session (route flash declarations do not fire for a rejected request); identity remains `ctx.auth`. A `session` declaration written to `package.json` by `webstir add-route` is reconciled with the matching inline route by method and path: it fills in what `module.ts` leaves unset, and a conflicting `session.mode` (measured against the inline route's effective mode, top-level `session` first and then `form.session`) resolves to `required` with a warning at build, inspect, and startup. Route-level `flash.publish` with `when: 'success'` treats any result that carries `errors` as a failure, including the `303` redirects that `processFormSubmission` returns for validation, auth, and CSRF failures, and fragment responses never queue flash messages because they render their own confirmation in place.
-- Install `pino` in your workspace (`bun add pino`) before running the scaffold; the template server imports it directly.
-
-This adapter is still intentionally scoped, but it now supports the two most common integration paths: shared-secret HS256 for local/simple deployments and RSA/JWKS verification for third-party IdPs. The scaffold populates `ctx.auth` for every route once one of those verification inputs is configured.
-
-### Observability & metrics
-
-- **Structured logs** — set `LOG_LEVEL` (default `info`) and optionally `LOG_SERVICE_NAME`. Every request emits a `request.completed` entry with status code and latency, plus rich metadata (`requestId`, method, route).
-- **Metrics** — enable with `METRICS_ENABLED=on` (default) and tune the rolling window via `METRICS_WINDOW` (number of recent durations to keep). The server tracks totals, error counts, average latency, and p95 latency.
-- **Endpoints** — `/metrics` returns the snapshot JSON; `/readyz` now includes the same metrics summary alongside manifest info so orchestrators and dashboards can consume a single payload.
-
-Install `pino` (and optionally `pino-pretty` for local formatting) in any workspace that uses the backend template; no other setup is required.
-
-### Jobs & scheduling
-
-- Define jobs via `webstir add-job <name> [--schedule "<cron|@macro|rate(...)>"] [--description "..."] [--priority <number|label>]`. The CLI creates `src/backend/jobs/<name>/index.ts` and records metadata in `webstir.moduleManifest.jobs` in `package.json`.
-- The template provides a zero-config job loader (`src/backend/jobs/runtime.ts`) and a lightweight scheduler/runner (`build/backend/jobs/scheduler.js`). Use it to explore your jobs without wiring a full queue:
-
-```bash
-bun add pino                    # already needed for the server
-bun src/backend/jobs/scheduler.ts --list
-bun src/backend/jobs/scheduler.ts --json
-bun build/backend/jobs/scheduler.js --job nightly
-bun build/backend/jobs/scheduler.js --watch        # runs cron expressions, cron nicknames, @reboot, or rate(...) jobs
-```
-
-- `/readyz` surfaces manifest job counts, and `bun build/backend/jobs/<name>/index.js` remains the quickest way to execute a single job in isolation.
-- Cron expressions recorded in the manifest are left untouched so you can plug them into your real scheduler (Temporal, Quartz, Cloud Scheduler, etc.). On Bun `1.3.11+`, the built-in watcher now uses `Bun.cron.parse(...)` for real cron expressions and nicknames such as `0 0 * * *`, `*/15 * * * *`, `@daily`, or `@monthly`, while still preserving `rate(n units)` and `@reboot` for local development loops. Cron-based schedules wait for the next matching wall-clock time; use `--job <name>` or `--all` when you want an immediate run.
-- Local watch mode skips overlapping runs for the same job and disposes scheduled timers on `SIGINT`/`SIGTERM`. Use an external scheduler or queue when you need distributed locking, retries, or durable job state.
-
-### Database & migrations
-
-- `DATABASE_URL` defaults to `file:./data/dev.sqlite`. Point it at Postgres (`postgres://...`) or another SQLite file as needed. Override the tracking table via `DATABASE_MIGRATIONS_TABLE` (defaults to `_webstir_migrations`).
-- `src/backend/db/connection.ts` exposes a tiny helper backed by `Bun.SQL`, so the same Bun-native client now handles SQLite (`file:./data/dev.sqlite`, `sqlite:./data/dev.sqlite`, `:memory:`) and Postgres (`postgres://...`) without a separate `pg` install.
-- `src/backend/session/store.ts` now owns the runtime session-store choice. Development still defaults to the in-memory store for stateless/local flows, while production defaults to SQLite unless you pin `SESSION_STORE_DRIVER=memory`. You can also persist sessions explicitly in SQLite via `src/backend/session/sqlite.ts` by setting `SESSION_STORE_DRIVER=sqlite` or just configuring `SESSION_STORE_URL`. The SQLite adapter creates its table lazily and runs on Bun without any extra SQLite package install.
-- Drop SQL/TypeScript migrations under `src/backend/db/migrations/*.ts`, exporting `id`, `up`, and optional `down`.
-- Run migrations with:
-
-```bash
-bun src/backend/db/migrate.ts --list
-bun src/backend/db/migrate.ts --status
-bun src/backend/db/migrate.ts               # apply pending migrations
-bun src/backend/db/migrate.ts --down --steps 1
-```
-
-- The runner logs each migration, records history in the validated `DATABASE_MIGRATIONS_TABLE`, and works the same way once compiled (`bun build/backend/db/migrate.js ...`).
-- Each migration runs in a transaction with its history update. A failed `up()` rolls back and is not recorded; a failed `down()` keeps the record so it can be retried. Avoid opening nested transactions inside migration files.
-- For repeatable tests, point `DATABASE_URL` at a throwaway SQLite file and use `--down` without `--steps` to run every available `down()` migration before recreating test state. App seed data should live in explicit app-owned scripts or migrations rather than an implicit runner hook.
-- When you pass migration parameters, use `?` placeholders in your scaffold code. The helper keeps that style working across SQLite and Postgres.
+- **Database** — `ctx.db` (or `import { db } from '@webstir-io/webstir-backend/db'`): `query`, `get`, `execute` and `transaction`, with `?` placeholders, on SQLite (`DATABASE_URL` unset or `file:...`, default `data/app.sqlite`) or Postgres (`postgres://...`). It opens on first use; SQLite gets WAL, foreign keys and a busy timeout.
+- **Migrations** — `src/backend/migrations/*.sql`, or `.ts` exporting `up(db)`, apply once each, in order and in a transaction, when the server starts (`webstir add-migration`, `webstir migrate [--status]`). A failing migration stops the server with its file and error. They are recorded in `webstir_migrations`.
+- **Sessions** — kept in the database, so they survive restarts. A custom `sessionStore` may answer with promises; `createInMemorySessionStore()` is for tests. `SESSION_SECRET` is required in production.
+- **Jobs** — `src/backend/jobs/<name>/index.ts` exporting `run(payload, context)`. Scheduled jobs (`webstir.moduleManifest.jobs[].schedule`: cron, `@daily`, `@reboot`, `rate(5 minutes)`) and queued jobs (`ctx.jobs.enqueue(name, payload, { delaySeconds, maxAttempts })`, retried with backoff, kept as failed after the last try) run in the server process. `WEBSTIR_JOBS=off` turns them off in a process. `webstir jobs [run <name>]`.
+- **Email** — `ctx.email.send({ to, subject, text, html })` over SMTP (`EMAIL_URL`, `EMAIL_FROM`), printed and kept in `.webstir/email.log` in development, or through `setEmailTransport(fn)`.
+- **Files** — `ctx.files.put/get/url/delete` on local disk (`STORAGE_URL=file:./data/files`, the default, with signed links the server serves) or S3 (`s3://bucket/prefix`, presigned links).
+- **Sign-in** — `src/backend/sign-in.ts` (written by `webstir enable sign-in`) turns on email-code sign-in: `ctx.user`, `auth: 'required'` on routes and views, sign-out everywhere. See `@webstir-io/webstir-backend/sign-in`.
+- **Bearer auth** — for an API with its own identity provider, pass `resolveRequestAuth: (request) => resolveBearerAuth(request)` from `@webstir-io/webstir-backend/auth/bearer`: HS256 (`AUTH_JWT_SECRET`), RS256 (`AUTH_JWT_PUBLIC_KEY[_FILE]` or `AUTH_JWKS_URL`), `AUTH_JWT_ISSUER`/`AUTH_JWT_AUDIENCE`, and service tokens (`AUTH_SERVICE_TOKENS`). It fails closed; the result is `ctx.auth`.
+- **Metrics** — `/metrics` reports request counts, errors and latency over the last `METRICS_WINDOW` requests (200); `METRICS_ENABLED=off` turns it off.
+- **Session and form safety** — stale or tampered session cookies clear on commit; CSRF tokens are single-use; `session: { mode: 'required' }` rejects a request without a session with `401 session_required` before the handler runs.
 
 ### Module Manifest Integration
 
@@ -261,13 +215,13 @@ const routeSpecs = fromTsRestRouter<RequestContext>({
   createRoute: ({ keyPath }) => ({
     handler: async (ctx) => {
       if (keyPath.at(-1) === 'detail') {
-        const row = await ctx.db.accounts.findById(ctx.params.id);
+        const row = await ctx.db.get('SELECT id, email FROM accounts WHERE id = ?', [ctx.params.id]);
         return row
           ? { status: 200, body: row }
           : { status: 404, errors: [{ code: 'not_found', message: 'Account not found' }] };
       }
 
-      const rows = await ctx.db.accounts.list();
+      const rows = await ctx.db.query('SELECT id, email FROM accounts');
       return { status: 200, body: { data: rows } };
     }
   })
@@ -334,9 +288,9 @@ This keeps your manifest co-located with runtime code while the provider handles
 
 ### Environment Management
 
-- `src/backend/env.ts` loads `.env.local` (if present) followed by `.env`, merges values into `process.env`, and exposes a typed `loadEnv()` helper.
-- A `.env.example` file is scaffolded at the workspace root—copy it to `.env`/`.env.local`, fill in secrets (e.g., `API_BASE_URL`, `DATABASE_URL`, `JWT_SECRET`), and adjust `loadEnv()` to require the variables your backend needs.
-- The default Bun scaffold calls `loadEnv()` before binding, so the same config is available inside route handlers. Use `ctx.env.require('JWT_SECRET')` to fetch validated values.
+- The server loads `.env.local`, then `.env`, from the app's root; a variable already set wins. `loadAppEnv()` builds the server's settings from them, and is the default `loadEnv`.
+- `webstir init` writes `.env.example` with every setting; see the [environment reference](https://webstir.dev/docs/reference/env/).
+- `prepareApp(workspaceRoot)` points the batteries at an app from a script or CLI command outside its server.
 
 ### Multiple Entry Points
 The provider discovers these entries automatically (all optional):
@@ -448,7 +402,7 @@ If you use `getScaffoldAssets()` programmatically, these templates are included 
 
 ### Dev runner readiness
 
-- The backend template listens on `process.env.PORT` (default `4000`) and logs `API server running` when ready.
+- The server listens on `process.env.PORT` (default `4321`) and logs `API server running` when ready.
 - The orchestrator's dev server waits for that readiness line and proxies `/api/*` to your Node server.
 - Health probes: `/api/health` (orchestrator compatibility) mirrors `/healthz`, while `/readyz` exposes the readiness state plus the current manifest summary for external monitors.
 - If you replace the default runtime locally, keep the same behavior: listen on `process.env.PORT`, expose the same endpoints, and print `API server running` once the server is listening.

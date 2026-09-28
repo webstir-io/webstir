@@ -7,6 +7,7 @@ export async function discoverEntryPoints(sourceRoot: string): Promise<string[]>
     'index.{ts,tsx,js,mjs}',
     'functions/*/index.{ts,tsx,js,mjs}',
     'jobs/*/index.{ts,tsx,js,mjs}',
+    'migrations/*.{ts,mts,js,mjs}',
   ];
   const entries = new Set<string>();
   for (const pattern of patterns) {

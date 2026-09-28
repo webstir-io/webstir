@@ -37,7 +37,7 @@ After writing the manifest entry, implement the handler in `src/backend/module.t
 ```
 
 - Preserve the exported module and its `manifest.routes: routes.map((route) => route.definition)` mapping. The default `full` starter has a deliberately narrow local `RouteContext` type for its demo; use the public backend runtime types when your feature needs more context.
-- Persistence and authentication require application wiring. The [coding-agent tutorial](../tutorials/build-with-an-agent.md) describes the complete persisted-form recipe and its package availability.
+- A handler has the app's batteries on `ctx`: `ctx.db` ([database](./database.md)), `ctx.jobs` ([jobs](./add-job.md)), `ctx.email` ([email](./email.md)), `ctx.files` ([files](./files.md)), and `ctx.user` when the app has [sign-in](./sign-in.md). `auth: 'required'` on the definition sends signed-out visitors to sign in.
 - The backend provider auto-loads `build/backend/module.js`, logs the manifest summary, and mounts every exported route. No manual registration is required when you edit `src/backend/module.ts`.
 
 ## Verify the manifest

@@ -193,6 +193,35 @@ async function hydrateBackendScaffold(workspace) {
   }
 }
 
+// The scaffold's server with bearer auth turned on, as an API with its own identity provider does.
+const BEARER_AUTH_ENTRY = `import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createDefaultBunBackendBootstrap, startBunBackend } from '@webstir-io/webstir-backend';
+import { resolveBearerAuth } from '@webstir-io/webstir-backend/auth/bearer';
+
+export async function start() {
+  await startBunBackend(
+    createDefaultBunBackendBootstrap({
+      importMetaUrl: import.meta.url,
+      resolveRequestAuth: (request) => resolveBearerAuth(request),
+    }),
+  );
+}
+
+const entrypointPath = process.argv[1];
+if (entrypointPath && path.resolve(entrypointPath) === fileURLToPath(import.meta.url)) {
+  start().catch((err) => {
+    console.error(err);
+    process.exitCode = 1;
+  });
+}
+`;
+
+async function useBearerAuthEntry(workspace) {
+  await fs.writeFile(path.join(workspace, 'src', 'backend', 'index.ts'), BEARER_AUTH_ENTRY, 'utf8');
+}
+
 function getLocalBinPath() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const pkgRoot = path.resolve(here, '..');
@@ -252,6 +281,7 @@ async function createSymlinkIfMissing(source, target, type) {
 
 async function buildRuntimeWorkspace(workspace, mode) {
   await hydrateBackendScaffold(workspace);
+  await useBearerAuthEntry(workspace);
   await linkWorkspaceNodeModules(workspace);
   await fs.writeFile(
     path.join(workspace, 'package.json'),

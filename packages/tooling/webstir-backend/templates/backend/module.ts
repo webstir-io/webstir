@@ -30,7 +30,7 @@ interface RouteContext {
     level: 'info' | 'success' | 'warning' | 'error';
     createdAt: string;
   }[];
-  db: Record<string, unknown>;
+  locals: Record<string, unknown>;
   auth?: {
     userId?: string;
     email?: string;
@@ -197,7 +197,7 @@ const requestHooks: RequestHook[] = [
   {
     id: 'audit-hello',
     handler: async (ctx) => {
-      ctx.db.lastHelloRequestId = ctx.requestId;
+      ctx.locals.lastHelloRequestId = ctx.requestId;
       ctx.logger.info('hello route request received', {
         requestId: ctx.requestId,
         session: ctx.session,
@@ -221,7 +221,7 @@ export const module = {
     name: '@demo/backend',
     version: '0.1.0',
     kind: 'backend',
-    capabilities: ['http', 'auth', 'db'],
+    capabilities: ['http', 'auth'],
     requestHooks: [
       {
         id: 'audit-hello',

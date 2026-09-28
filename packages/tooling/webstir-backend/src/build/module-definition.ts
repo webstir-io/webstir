@@ -2,7 +2,11 @@ import path from 'node:path';
 
 import type { ModuleDiagnostic } from '@webstir-io/module-contract';
 
-import { discoverModuleDefinitionSource, ensureModuleDefinitionBuild } from './pipeline.js';
+import {
+  discoverModuleDefinitionSource,
+  discoverSignInSource,
+  ensureModuleDefinitionBuild,
+} from './pipeline.js';
 
 /**
  * Compiles only the workspace's module definition to `build/backend/module.js`, for tools that
@@ -14,7 +18,10 @@ export async function buildWorkspaceModuleDefinition(
   mode: 'build' | 'publish' = 'build',
 ): Promise<boolean> {
   const sourceRoot = path.join(workspaceRoot, 'src', 'backend');
-  if (!(await discoverModuleDefinitionSource(sourceRoot))) {
+  if (
+    !(await discoverModuleDefinitionSource(sourceRoot)) &&
+    !(await discoverSignInSource(sourceRoot))
+  ) {
     return false;
   }
   const diagnostics: ModuleDiagnostic[] = [];
@@ -36,5 +43,8 @@ export async function buildWorkspaceModuleDefinition(
 }
 
 export async function hasWorkspaceModuleDefinition(workspaceRoot: string): Promise<boolean> {
-  return Boolean(await discoverModuleDefinitionSource(path.join(workspaceRoot, 'src', 'backend')));
+  const sourceRoot = path.join(workspaceRoot, 'src', 'backend');
+  return Boolean(
+    (await discoverModuleDefinitionSource(sourceRoot)) ?? (await discoverSignInSource(sourceRoot)),
+  );
 }

@@ -114,6 +114,12 @@ async function materializeAssets(targetAssetsRoot) {
     }
   }
 
+  // Files a server app has beside its code, and the files `enable sign-in` writes.
+  for (const group of ['server', 'sign-in']) {
+    await cp(path.join(templateSourcesRoot, group), path.join(templatesRoot, group), {
+      recursive: true,
+    });
+  }
   await cp(deploymentSourcesRoot, deploymentRoot, { recursive: true });
   await cp(guideSourcesRoot, path.join(targetAssetsRoot, 'guides'), { recursive: true });
 }

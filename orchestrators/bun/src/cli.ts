@@ -48,6 +48,10 @@ const HELP_TEXT = `Usage:
   webstir add-test <name-or-path> --workspace <path>
   webstir add-route <name> --workspace <path> [--method <METHOD>] [--path <path>] [--interaction <navigation|mutation>] [--session <optional|required>] [--session-write] [--form-urlencoded] [--csrf] [--fragment-target <target>] [--fragment-selector <selector>] [--fragment-mode <replace|append|prepend>]
   webstir add-job <name> --workspace <path> [--schedule <expression>]
+  webstir add-migration <name> --workspace <path> [--ts]
+  webstir migrate --workspace <path> [--status]
+  webstir jobs --workspace <path>
+  webstir jobs run <name> --workspace <path> [--payload <json>]
   webstir operations
   webstir mcp
   webstir agent <inspect|validate|repair|scaffold-page|scaffold-route|scaffold-job> [...]
@@ -72,6 +76,9 @@ Commands:
   add-test   Scaffold a test file in an existing workspace.
   add-route  Scaffold a backend route in an existing workspace.
   add-job    Scaffold a backend job in an existing workspace.
+  add-migration  Write the next database migration in src/backend/migrations.
+  migrate    Apply the app's pending migrations, or list them with --status.
+  jobs       List the app's jobs and queue, or run one now.
   operations  List the stable Webstir framework operations.
   mcp        Run the Webstir MCP server over stdio.
   agent      Orchestrate stable Webstir operations for a narrow goal.
@@ -117,6 +124,9 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     command !== 'add-test' &&
     command !== 'add-route' &&
     command !== 'add-job' &&
+    command !== 'add-migration' &&
+    command !== 'migrate' &&
+    command !== 'jobs' &&
     command !== 'operations' &&
     command !== 'mcp' &&
     command !== 'agent' &&
@@ -142,7 +152,10 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       command === 'add-route' ||
       command === 'add-job' ||
       command === 'agent' ||
-      command === 'add-island',
+      command === 'add-island' ||
+      command === 'add-migration' ||
+      command === 'migrate' ||
+      command === 'jobs',
   });
   if (options.help) {
     io.stdout.write(HELP_TEXT);
@@ -351,6 +364,58 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       io.stdout.write(
         `${formatAddSummary('[webstir] add-job complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
       );
+      return 0;
+    }
+
+    if (command === 'add-migration' || command === 'migrate' || command === 'jobs') {
+      const allowed: Record<string, readonly string[]> = {
+        'add-migration': ['--ts'],
+        migrate: ['--status'],
+        jobs: ['--payload'],
+      };
+      const payloadAt = options.rawArgs.indexOf('--payload');
+      const unknown = options.rawArgs.filter(
+        (arg, index) =>
+          arg.startsWith('-') &&
+          !['--workspace', '-w', ...(allowed[command] ?? [])].includes(arg) &&
+          !(payloadAt !== -1 && index === payloadAt + 1),
+      );
+      if (unknown.length > 0) {
+        io.stderr.write(`Unknown option "${unknown[0]}".\n\n${HELP_TEXT}`);
+        return 1;
+      }
+      if (command === 'add-migration') {
+        const { runAddMigration } = await import('./add-migration.ts');
+        const result = await runAddMigration({
+          workspaceRoot: requireWorkspaceRoot(),
+          args: options.positionals,
+          rawArgs: options.rawArgs,
+        });
+        io.stdout.write(
+          `${formatAddSummary('[webstir] add-migration complete', result.target, result.workspaceRoot, result.changes, result.note)}\n`,
+        );
+        return 0;
+      }
+      if (command === 'migrate') {
+        const { formatMigrateResult, runMigrate } = await import('./migrate.ts');
+        const result = await withSuppressedStdout(() =>
+          runMigrate({
+            workspaceRoot: requireWorkspaceRoot(),
+            status: options.rawArgs.includes('--status'),
+          }),
+        );
+        io.stdout.write(`${formatMigrateResult(result)}\n`);
+        return 0;
+      }
+      const payloadIndex = options.rawArgs.indexOf('--payload');
+      const payload = payloadIndex === -1 ? undefined : options.rawArgs[payloadIndex + 1];
+      const { formatJobsResult, runJobsCommand } = await import('./jobs-command.ts');
+      const result = await runJobsCommand({
+        workspaceRoot: requireWorkspaceRoot(),
+        args: options.positionals.filter((arg) => arg !== payload),
+        payload,
+      });
+      io.stdout.write(`${formatJobsResult(result)}\n`);
       return 0;
     }
 

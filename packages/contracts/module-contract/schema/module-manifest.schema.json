@@ -146,6 +146,12 @@
                 },
                 "additionalProperties": false
               },
+              "auth": {
+                "type": "string",
+                "enum": [
+                  "required"
+                ]
+              },
               "flash": {
                 "type": "object",
                 "properties": {
@@ -478,6 +484,12 @@
                 "items": {
                   "type": "string"
                 }
+              },
+              "auth": {
+                "type": "string",
+                "enum": [
+                  "required"
+                ]
               },
               "params": {
                 "$ref": "#/definitions/module-manifest/properties/routes/items/properties/input/properties/params"

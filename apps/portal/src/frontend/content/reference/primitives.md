@@ -47,7 +47,7 @@ Use request-time views when the backend owns the HTML response and the page depe
 ## Auth-Gated Route
 
 - Canonical location: `src/backend/module.ts`
-- Default guard surface: `ctx.auth` for identity; `session: { mode: 'required' }` for session existence (the runtime returns `401 session_required` when no session exists)
+- Default guard surface: `auth: 'required'` with [sign-in](../how-to/sign-in.md), which gives `ctx.user`; `session: { mode: 'required' }` for session existence (the runtime returns `401 session_required` when no session exists); `ctx.auth` for an API's own identity provider through `resolveRequestAuth`
 - Proof references:
   - `examples/demos/auth-crud`
   - `apps/portal/src/frontend/content/tutorials/backend-loop.md`

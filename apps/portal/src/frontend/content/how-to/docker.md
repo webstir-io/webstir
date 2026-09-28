@@ -11,7 +11,7 @@ From the workspace root:
 ```bash
 webstir publish --workspace "$PWD"
 docker build -t my-webstir-app .
-docker run --rm -p 8080:8080 --env-file ./.env.production my-webstir-app
+docker run --rm -p 8080:8080 -v my-webstir-data:/app/data --env-file ./.env.production my-webstir-app
 ```
 
 ## Dockerfile
@@ -48,8 +48,10 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
   - `GET /healthz`
   - `GET /readyz`
   - `GET /metrics`
-- `/metrics` stays reachable on that port even when metrics are disabled; the default scaffold returns `{ "enabled": false }` instead of exposing rolling counters.
-- `SESSION_SECRET` is required in production for the default Bun backend scaffold.
+- `/metrics` reports request counts and timings; `METRICS_ENABLED=off` turns them off and it returns `{ "enabled": false }`.
+- `/app/data` holds the SQLite database and stored files by default: mount a volume there so they outlive the container, or point `DATABASE_URL` at Postgres and `STORAGE_URL` at S3.
+- Migrations apply when the container starts; one that fails stops it with its file and error.
+- `SESSION_SECRET` is required in production. With sign-in, so are `APP_URL`, `EMAIL_URL` and `EMAIL_FROM`. See [Environment](../reference/env.md).
 - Only published apps with a server are in contract for this deploy path; an app without one publishes as a static site.
 
 ## Canonical Source

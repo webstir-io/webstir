@@ -7,7 +7,8 @@
   "dependencies": {
     "@webstir-io/webstir-testing": "workspace:*",
     "@webstir-io/webstir-frontend": "workspace:*",
-    "@webstir-io/webstir-backend": "workspace:*"
+    "@webstir-io/webstir-backend": "workspace:*",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "20.19.21",

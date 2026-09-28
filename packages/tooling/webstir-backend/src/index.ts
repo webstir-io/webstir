@@ -8,6 +8,8 @@ export {
 } from './build/module-definition.js';
 export { getBackendScaffoldAssets } from './scaffold/assets.js';
 export { createDefaultBunBackendBootstrap, startBunBackend } from './runtime/bun.js';
+export { prepareApp } from './app/prepare.js';
+export { appUrl, loadAppEnv, loadEnvFiles, type AppEnv } from './app/env.js';
 export {
   CLIENT_ERROR_MAX_BYTES,
   CLIENT_ERRORS_PATH,

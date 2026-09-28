@@ -18,7 +18,12 @@ import {
   legacyFeaturePaths,
   type PackagedFeatureName,
 } from './feature-imports.ts';
-import { getServerScaffoldAssets, getStarterScaffoldAssets } from './init-assets.ts';
+import {
+  getServerRootAssets,
+  getServerScaffoldAssets,
+  getSignInAssets,
+  getStarterScaffoldAssets,
+} from './init-assets.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import {
   assertNoExistingSymlinkComponents,
@@ -34,6 +39,7 @@ type EnableFeature =
   | 'search'
   | 'content-nav'
   | 'backend'
+  | 'sign-in'
   | 'frontend'
   | 'github-pages'
   | 'gh-pages'
@@ -57,7 +63,7 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   const [featureToken, ...rest] = options.args;
   if (!featureToken) {
     throw new Error(
-      'Missing enable feature. Usage: webstir enable <scripts <page>|client-nav|search|content-nav|backend|frontend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
+      'Missing enable feature. Usage: webstir enable <scripts <page>|client-nav|search|content-nav|backend|sign-in|frontend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
     );
   }
 
@@ -92,6 +98,9 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
       break;
     case 'backend':
       await enableBackend(workspace.root, changes, notes);
+      break;
+    case 'sign-in':
+      await enableSignIn(workspace.root, changes, notes);
       break;
     case 'frontend':
       await enableFrontend(workspace.root, changes, notes);
@@ -141,6 +150,7 @@ function parseEnableFeature(value: string): EnableFeature {
     case 'search':
     case 'content-nav':
     case 'backend':
+    case 'sign-in':
     case 'frontend':
     case 'github-pages':
     case 'gh-pages':
@@ -149,7 +159,7 @@ function parseEnableFeature(value: string): EnableFeature {
       return normalized;
     default:
       throw new Error(
-        `Unknown feature "${value}". Expected scripts, client-nav, search, content-nav, backend, frontend, github-pages, gh-deploy, or s3-cloudfront.`,
+        `Unknown feature "${value}". Expected scripts, client-nav, search, content-nav, backend, sign-in, frontend, github-pages, gh-deploy, or s3-cloudfront.`,
       );
   }
 }
@@ -181,6 +191,8 @@ function getFixedEnableWriteTargets(
     case 'backend':
     case 'frontend':
       return [packageJsonPath, path.join(workspaceRoot, 'base.tsconfig.json')];
+    case 'sign-in':
+      return getSignInAssets().map((asset) => path.join(workspaceRoot, asset.targetPath));
     case 'github-pages':
     case 'gh-pages':
       return [
@@ -267,7 +279,70 @@ async function enableBackend(
     changes,
   );
   await ensureTsReference(workspaceRoot, 'src/backend', changes);
+  await ensureServerRootFiles(workspaceRoot, changes);
   if (!installed) notes.push(INSTALL_NOTE);
+}
+
+/**
+ * A server app's `.env.example`, and a `.gitignore` that keeps its data, dev secrets and `.env`
+ * out of git: written when missing, and an existing `.gitignore` gains the lines it lacks.
+ */
+async function ensureServerRootFiles(workspaceRoot: string, changes: string[]): Promise<void> {
+  for (const asset of getServerRootAssets()) {
+    const targetPath = path.join(workspaceRoot, asset.targetPath);
+    await assertNoExistingSymlinkComponents(workspaceRoot, targetPath, 'write server files');
+    if (!existsSync(targetPath)) {
+      await Bun.write(targetPath, Bun.file(asset.sourcePath));
+      changes.push(asset.targetPath);
+      continue;
+    }
+    if (asset.targetPath !== '.gitignore') continue;
+    const current = await readTextFile(targetPath);
+    const have = new Set(current.split(/\r?\n/).map((line) => line.trim()));
+    const missing = (await readTextFile(asset.sourcePath))
+      .split(/\r?\n/)
+      .filter((line) => line.trim() && !have.has(line.trim()));
+    if (missing.length === 0) continue;
+    await writeFile(targetPath, `${current.replace(/\n*$/, '\n')}${missing.join('\n')}\n`);
+    changes.push('.gitignore');
+  }
+}
+
+/**
+ * Email-code sign-in: the app's choices in src/backend/sign-in.ts, and its sign-in and confirm
+ * pages, which are the app's own HTML to style. The server adds the rest when sign-in.ts exists.
+ */
+async function enableSignIn(
+  workspaceRoot: string,
+  changes: string[],
+  notes: string[],
+): Promise<void> {
+  const layers = readWorkspaceLayers(workspaceRoot);
+  if (!layers.server || !layers.pages) {
+    throw new Error(
+      'Sign-in needs pages and a server; run `webstir enable backend` or `webstir enable frontend` first.',
+    );
+  }
+  const assets = await preflightScaffoldAssets(
+    workspaceRoot,
+    getSignInAssets(),
+    'write sign-in files',
+  );
+  const existing = assets.filter((asset) => existsSync(asset.targetPath));
+  if (existing.length > 0) {
+    throw new Error(
+      `Sign-in is already set up, or its files are taken: ${existing.map((asset) => asset.relativeTargetPath).join(', ')}.`,
+    );
+  }
+  for (const asset of assets) {
+    await mkdir(path.dirname(asset.targetPath), { recursive: true });
+    await Bun.write(asset.targetPath, Bun.file(asset.sourcePath));
+    changes.push(asset.relativeTargetPath);
+  }
+  await ensureServerRootFiles(workspaceRoot, changes);
+  notes.push(
+    "Sign-in is at /sign-in/. Add auth: 'required' to a route or view to send signed-out visitors there; ctx.user is who is signed in.",
+  );
 }
 
 const INSTALL_NOTE = 'package.json gained a dependency; run `bun install` before building.';

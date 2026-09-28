@@ -11,6 +11,9 @@ export interface WebstirOperationDescriptor {
     | 'add-test'
     | 'add-route'
     | 'add-job'
+    | 'add-migration'
+    | 'migrate'
+    | 'jobs'
     | 'frontend-inspect'
     | 'backend-inspect'
     | 'build'
@@ -119,6 +122,33 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: true,
     supportsJson: false,
     stableForMcp: true,
+    requiresLayer: 'server',
+  },
+  {
+    id: 'add-migration',
+    summary: 'Write the next database migration in src/backend/migrations.',
+    requiresWorkspace: true,
+    mutatesWorkspace: true,
+    supportsJson: false,
+    stableForMcp: false,
+    requiresLayer: 'server',
+  },
+  {
+    id: 'migrate',
+    summary: "Apply the app's pending database migrations, or list them with --status.",
+    requiresWorkspace: true,
+    mutatesWorkspace: true,
+    supportsJson: false,
+    stableForMcp: false,
+    requiresLayer: 'server',
+  },
+  {
+    id: 'jobs',
+    summary: "List the app's jobs and queue, or run one job now.",
+    requiresWorkspace: true,
+    mutatesWorkspace: false,
+    supportsJson: false,
+    stableForMcp: false,
     requiresLayer: 'server',
   },
   {

@@ -12,7 +12,7 @@
     "declaration": true,
     "declarationMap": false,
     "sourceMap": false,
-    "types": ["node"],
+    "types": ["bun", "node"],
     "resolveJsonModule": true
   },
   "include": ["src/**/*"],

@@ -13,6 +13,7 @@ import type { ModuleDiagnostic } from '@webstir-io/module-contract';
 
 import type { BackendBuildMode } from '../workspace.js';
 import { discoverEntryPoints } from './entries.js';
+import { syncMigrations } from './migrations.js';
 
 export interface BackendBuildPipelineOptions {
   readonly sourceRoot: string;
@@ -73,7 +74,7 @@ export async function runBackendBuildPipeline(
   if (entryPoints.length === 0) {
     diagnostics.push({
       severity: 'warn',
-      message: `No backend entry points found under ${sourceRoot} (expected index.* or functions/*/index.* or jobs/*/index.*).`,
+      message: `No backend entry points found under ${sourceRoot} (expected index.*, functions/*/index.*, jobs/*/index.* or migrations/*).`,
     });
   }
 
@@ -105,6 +106,7 @@ export async function runBackendBuildPipeline(
           entryPoints,
         });
   console.info(`[webstir-backend] ${mode}:${bundler} done`);
+  await syncMigrations(sourceRoot, buildRoot);
 
   await ensureModuleDefinitionBuild({
     sourceRoot,
@@ -317,16 +319,29 @@ export interface EnsureModuleDefinitionBuildOptions {
   readonly diagnostics: ModuleDiagnostic[];
 }
 
+/** `src/backend/sign-in.ts`: the app has sign-in, with the choices that file makes. */
+export async function discoverSignInSource(sourceRoot: string): Promise<string | undefined> {
+  const matches = await glob('sign-in.{ts,tsx,js,mjs}', {
+    cwd: sourceRoot,
+    absolute: true,
+    nodir: true,
+    dot: false,
+  });
+  return matches[0];
+}
+
 export async function ensureModuleDefinitionBuild(
   options: EnsureModuleDefinitionBuildOptions,
 ): Promise<void> {
   const moduleSource = await discoverModuleDefinitionSource(options.sourceRoot);
-  if (!moduleSource) {
+  const signInSource = await discoverSignInSource(options.sourceRoot);
+  if (!moduleSource && !signInSource) {
     return;
   }
 
   await buildModuleDefinition({
     sourceFile: moduleSource,
+    signInSource,
     sourceRoot: options.sourceRoot,
     buildRoot: options.buildRoot,
     tsconfigPath: options.tsconfigPath,
@@ -337,7 +352,8 @@ export async function ensureModuleDefinitionBuild(
 }
 
 interface ModuleDefinitionBuildOptions {
-  readonly sourceFile: string;
+  readonly sourceFile?: string;
+  readonly signInSource?: string;
   readonly sourceRoot: string;
   readonly buildRoot: string;
   readonly tsconfigPath: string;
@@ -347,7 +363,8 @@ interface ModuleDefinitionBuildOptions {
 }
 
 async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Promise<void> {
-  const { sourceFile, buildRoot, tsconfigPath, mode, env, diagnostics } = options;
+  const { sourceFile, signInSource, sourceRoot, buildRoot, tsconfigPath, mode, env, diagnostics } =
+    options;
 
   const isProduction = mode === 'publish';
   const nodeEnv = env?.NODE_ENV ?? (isProduction ? 'production' : 'development');
@@ -358,7 +375,17 @@ async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Pro
 
   try {
     await esbuild({
-      entryPoints: [sourceFile],
+      // With sign-in, module.js is the app's module with sign-in's views and routes added.
+      ...(signInSource
+        ? {
+            stdin: {
+              contents: signInModuleEntry(sourceFile, signInSource),
+              resolveDir: sourceRoot,
+              sourcefile: 'webstir-module.ts',
+              loader: 'ts' as const,
+            },
+          }
+        : { entryPoints: [sourceFile as string] }),
       bundle: true,
       packages: 'external',
       platform: 'node',
@@ -384,6 +411,18 @@ async function buildModuleDefinition(options: ModuleDefinitionBuildOptions): Pro
       diagnostics.push({ severity: 'error', message: String(error) });
     }
   }
+}
+
+function signInModuleEntry(moduleSource: string | undefined, signInSource: string): string {
+  return [
+    moduleSource ? `import * as app from ${JSON.stringify(moduleSource)};` : 'const app = {};',
+    `import * as signInFile from ${JSON.stringify(signInSource)};`,
+    "import { withSignIn } from '@webstir-io/webstir-backend/sign-in';",
+    'const appModule = app.module ?? app.moduleDefinition ?? app.default ?? app.backendModule;',
+    'const options = signInFile.default ?? signInFile.signIn ?? {};',
+    'export const module = withSignIn(appModule, options);',
+    '',
+  ].join('\n');
 }
 
 interface SupportFileBuildOptions {

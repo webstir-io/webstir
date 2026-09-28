@@ -15,6 +15,7 @@ Supported features:
 - `search` — enable site search UI + behavior (feature modules + CSS)
 - `content-nav` — enable docs content navigation (sidebar, breadcrumb, h2 TOC)
 - `backend` — add a server (the backend scaffold) to an app that has none
+- `sign-in` — add email-code sign-in to an app with pages and a server
 - `frontend` — add pages (an app shell and a home page) to an app that has none
 - `github-pages [basePath]` — scaffold a Bun-based GitHub Pages deploy script and set the publish base path
 - `gh-deploy [basePath]` — `github-pages` plus a GitHub Actions workflow
@@ -58,6 +59,12 @@ An app that still has the copies an older version wrote under `src/frontend/app/
 - Adds the backend package dependency; run `bun install` afterwards.
 - Removes a leftover `webstir.mode` or `webstir.enable.backend` from `package.json`.
 - Ensures `base.tsconfig.json` includes a `references` entry for `src/backend`.
+- Writes `.env.example` when missing, and a `.gitignore` that keeps `data/`, `.webstir/` and `.env` out of git; an existing `.gitignore` gains the lines it lacks.
+
+### sign-in
+- Writes `src/backend/sign-in.ts` (who may sign in, and the email's text) and the `sign-in` and `sign-in-confirm` pages.
+- Needs pages and a server, and refuses when sign-in is already set up.
+- See [Add Sign-In](./sign-in.md).
 
 ### frontend
 - In an app without pages, writes an app shell and a home page under `src/frontend/**` (from the `spa` starter), with client-nav on.

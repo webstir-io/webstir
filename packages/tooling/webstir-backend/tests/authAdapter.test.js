@@ -1,28 +1,11 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { build as esbuild } from 'esbuild';
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const adapterTemplate = path.join(packageRoot, 'templates', 'backend', 'auth', 'adapter.ts');
-
+// The package's bearer auth, under the name the tests call it by.
 async function importAuthAdapter() {
-  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-auth-adapter-'));
-  const outfile = path.join(workspace, 'adapter.mjs');
-  await esbuild({
-    entryPoints: [adapterTemplate],
-    outfile,
-    bundle: true,
-    format: 'esm',
-    platform: 'node',
-    target: 'node20',
-    logLevel: 'silent',
-  });
-  return await import(`${pathToFileURL(outfile).href}?t=${Date.now()}-${Math.random()}`);
+  const { resolveBearerAuth } = await import('../dist/auth/bearer.js');
+  return { resolveRequestAuth: resolveBearerAuth };
 }
 
 function defaultSecrets(overrides = {}) {

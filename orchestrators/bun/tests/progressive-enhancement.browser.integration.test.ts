@@ -43,15 +43,19 @@ test('browser auth and CRUD flows work in watch mode', async () => {
   const workspace = await copyDemoWorkspace('webstir-auth-crud-watch-', 'auth-crud');
 
   try {
-    await runWatchBrowserScenarioWithRetry(workspace, exerciseAuthCrudBrowserScenario, {
-      readinessChecks: [
-        {
-          requestPath: '/api/demo/auth-crud',
-          expectedText: 'id="auth-sign-in-form"',
-        },
-      ],
-      scenarioTimeoutMs: 45_000,
-    });
+    await runWatchBrowserScenarioWithRetry(
+      workspace,
+      (origin, progress) => exerciseAuthCrudBrowserScenario(origin, workspace, progress),
+      {
+        readinessChecks: [
+          {
+            requestPath: '/sign-in/',
+            expectedText: 'Send me a code',
+          },
+        ],
+        scenarioTimeoutMs: 45_000,
+      },
+    );
   } finally {
     await rm(path.dirname(workspace), { recursive: true, force: true });
   }
@@ -65,12 +69,12 @@ test('browser auth and CRUD flows work in publish mode', async () => {
     session = await startPublishSession(workspace, {
       readinessChecks: [
         {
-          requestPath: '/api/demo/auth-crud',
-          expectedText: 'id="auth-sign-in-form"',
+          requestPath: '/sign-in/',
+          expectedText: 'Send me a code',
         },
       ],
     });
-    await exerciseAuthCrudPublishScenario(session.origin);
+    await exerciseAuthCrudPublishScenario(session.origin, workspace);
   } catch (error) {
     throw appendLogs(error, session?.getLogs() ?? {});
   } finally {
@@ -867,8 +871,45 @@ async function assertNativeRedirectFlow(page: Page, origin: string): Promise<voi
   );
 }
 
+/** The emails the demo's dev transport kept in .webstir/email.log, oldest first. */
+async function readDevEmails(
+  workspace: string,
+): Promise<{ to: string; subject: string; text: string }[]> {
+  try {
+    const log = await readFile(path.join(workspace, '.webstir', 'email.log'), 'utf8');
+    return log
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+  } catch {
+    return [];
+  }
+}
+
+/** The sign-in code most recently emailed to this address. */
+async function readSignInCode(workspace: string, to: string): Promise<string> {
+  let code = '';
+  await waitFor(async () => {
+    const mail = (await readDevEmails(workspace))
+      .filter((message) => message.to === to && message.subject.startsWith('Your sign-in code'))
+      .at(-1);
+    code = /code is (\d{6})/.exec(mail?.text ?? '')?.[1] ?? '';
+    expect(code).not.toBe('');
+  }, 10_000);
+  return code;
+}
+
+async function signInInBrowser(page: Page, workspace: string, email: string): Promise<void> {
+  await page.locator('#email').fill(email);
+  await page.locator('button:has-text("Send me a code")').click();
+  await page.locator('#code').waitFor({ state: 'visible' });
+  await page.locator('#code').fill(await readSignInCode(workspace, email));
+  await page.locator('form:has(#code) button').click();
+}
+
 async function exerciseAuthCrudBrowserScenario(
   origin: string,
+  workspace: string,
   progress?: ScenarioProgress,
 ): Promise<void> {
   const browser = await launchBrowser();
@@ -880,13 +921,12 @@ async function exerciseAuthCrudBrowserScenario(
     const enhancedPage = await enhancedContext.newPage();
 
     try {
-      setScenarioStep(progress, 'load enhanced auth-crud page');
-      await enhancedPage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
-      await enhancedPage.locator('#auth-email').waitFor({ state: 'visible' });
+      setScenarioStep(progress, 'signed-out visitor is sent to sign in');
+      await enhancedPage.goto(`${origin}/projects/`, { waitUntil: 'domcontentloaded' });
+      await enhancedPage.waitForURL(/\/sign-in\/\?returnTo=%2Fprojects%2F/);
 
-      setScenarioStep(progress, 'sign in enhanced auth-crud session');
-      await enhancedPage.locator('#auth-email').fill('casey.browser@example.com');
-      await enhancedPage.locator('#auth-sign-in').click();
+      setScenarioStep(progress, 'sign in with the emailed code');
+      await signInInBrowser(enhancedPage, workspace, 'casey.browser@example.com');
       await enhancedPage.waitForFunction(
         () =>
           document
@@ -899,31 +939,37 @@ async function exerciseAuthCrudBrowserScenario(
       await enhancedPage.locator('#project-notes').fill('This should fail first.');
       await enhancedPage.locator('#project-create-submit').click();
       await enhancedPage.locator('text=Project title is required.').waitFor({ state: 'visible' });
+      expect(await enhancedPage.locator('#project-notes').inputValue()).toBe(
+        'This should fail first.',
+      );
 
-      setScenarioStep(progress, 'create enhanced auth-crud project');
+      setScenarioStep(progress, 'create project');
       await enhancedPage.locator('#project-title').fill('Browser launch checklist');
       await enhancedPage.locator('#project-status').selectOption('active');
-      await enhancedPage
-        .locator('#project-notes')
-        .fill('Created through the enhanced fragment path.');
+      await enhancedPage.locator('#project-notes').fill('Created in the browser.');
       await enhancedPage.locator('#project-create-submit').click();
       await enhancedPage.waitForFunction(
         () =>
-          document.body.textContent?.includes('Created project "Browser launch checklist".') ??
-          false,
+          document
+            .querySelector('#flash-region')
+            ?.textContent?.includes('Created project "Browser launch checklist".') ?? false,
       );
+
+      setScenarioStep(progress, 'queued job emails the owner');
+      await waitFor(async () => {
+        const subjects = (await readDevEmails(workspace)).map((message) => message.subject);
+        expect(subjects).toContain('Project created: Browser launch checklist');
+      }, 10_000);
 
       const projectRow = enhancedPage.locator('[data-project-row="true"]').first();
       const projectId = await projectRow.getAttribute('data-project-id');
       if (!projectId) {
         throw new Error('Expected a created project row.');
       }
+      expect(await projectRow.locator('select[name="status"]').inputValue()).toBe('active');
 
-      setScenarioStep(progress, 'update enhanced auth-crud project');
+      setScenarioStep(progress, 'update project');
       await projectRow.locator('input[name="title"]').fill('Browser launch checklist updated');
-      await projectRow
-        .locator('textarea[name="notes"]')
-        .fill('Updated through the enhanced fragment path.');
       await enhancedPage
         .locator(`#project-edit-form-${projectId}`)
         .evaluate((form: HTMLFormElement) => form.requestSubmit());
@@ -934,14 +980,14 @@ async function exerciseAuthCrudBrowserScenario(
         projectId,
       );
 
-      setScenarioStep(progress, 'reload enhanced auth-crud page');
+      setScenarioStep(progress, 'reload keeps the session and the data');
       await enhancedPage.reload({ waitUntil: 'domcontentloaded' });
       await enhancedPage.locator(`[data-project-id="${projectId}"]`).waitFor({ state: 'visible' });
       expect(await enhancedPage.locator(`[data-project-id="${projectId}"] h4`).textContent()).toBe(
         'Browser launch checklist updated',
       );
 
-      setScenarioStep(progress, 'delete enhanced auth-crud project');
+      setScenarioStep(progress, 'delete project');
       await enhancedPage
         .locator(`#project-delete-form-${projectId}`)
         .evaluate((form: HTMLFormElement) => form.requestSubmit());
@@ -963,59 +1009,27 @@ async function exerciseAuthCrudBrowserScenario(
     const baselinePage = await baselineContext.newPage();
 
     try {
-      setScenarioStep(progress, 'load baseline auth-crud page');
-      await baselinePage.goto(`${origin}/api/demo/auth-crud`, { waitUntil: 'domcontentloaded' });
-      setScenarioStep(progress, 'verify baseline auth redirect');
-      await baselinePage.locator('#project-title').fill('Native blocked project');
-      await baselinePage.locator('#project-notes').fill('Expect an auth redirect.');
-      await baselinePage
-        .locator('#project-create-form')
-        .evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(
-        () =>
-          window.location.pathname === '/api/demo/auth-crud' &&
-          document.body.textContent?.includes('Sign in required to manage projects.'),
-      );
-      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
-      expect(await baselinePage.locator('body').textContent()).toContain(
-        'Sign in required to manage projects.',
+      setScenarioStep(progress, 'baseline: sign in without JavaScript');
+      await baselinePage.goto(`${origin}/projects/`, { waitUntil: 'domcontentloaded' });
+      expect(new URL(baselinePage.url()).pathname).toBe('/sign-in/');
+      await signInInBrowser(baselinePage, workspace, 'native@example.com');
+      await baselinePage.waitForURL(`${origin}/projects/`);
+      expect(await baselinePage.locator('#session-user').textContent()).toContain(
+        'native@example.com',
       );
 
-      setScenarioStep(progress, 'sign in baseline auth-crud session');
-      await baselinePage.locator('#auth-email').fill('native@example.com');
-      await baselinePage
-        .locator('#auth-sign-in-form')
-        .evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(
-        () =>
-          window.location.pathname === '/api/demo/auth-crud' &&
-          document.body.textContent?.includes('Signed in as native@example.com.'),
-      );
-      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
-      expect(await baselinePage.locator('body').textContent()).toContain(
-        'Signed in as native@example.com.',
-      );
-
-      setScenarioStep(progress, 'create baseline auth-crud project');
+      setScenarioStep(progress, 'baseline: create project');
       await baselinePage.locator('#project-title').fill('Native create project');
       await baselinePage.locator('#project-status').selectOption('active');
-      await baselinePage
-        .locator('#project-notes')
-        .fill('Created through the no-JavaScript redirect path.');
-      await baselinePage
-        .locator('#project-create-form')
-        .evaluate((form: HTMLFormElement) => form.requestSubmit());
-      await baselinePage.waitForFunction(
-        () =>
-          window.location.pathname === '/api/demo/auth-crud' &&
-          document.body.textContent?.includes('Created project "Native create project".'),
+      await baselinePage.locator('#project-create-submit').click();
+      await baselinePage.waitForFunction(() =>
+        document.body.textContent?.includes('Created project "Native create project".'),
       );
-      expect(new URL(baselinePage.url()).pathname).toBe('/api/demo/auth-crud');
-      expect(await baselinePage.locator('body').textContent()).toContain(
-        'Created project "Native create project".',
+      expect(new URL(baselinePage.url()).pathname).toBe('/projects/');
+      // Each user sees only their own projects.
+      expect(await baselinePage.locator('body').textContent()).not.toContain(
+        'Browser launch checklist',
       );
-
-      expect(await baselinePage.locator('body').textContent()).toContain('Native create project');
     } finally {
       await baselineContext.close().catch(() => undefined);
     }
@@ -1024,137 +1038,86 @@ async function exerciseAuthCrudBrowserScenario(
   }
 }
 
-async function exerciseAuthCrudPublishScenario(origin: string): Promise<void> {
-  const initial = await requestHtmlDocument(origin, '/api/demo/auth-crud');
-  const signInCsrf = extractFormInputValue(initial.html, 'auth-sign-in-form', '_csrf');
-  const signInResponse = await requestWithCookie(
-    origin,
-    '/api/demo/auth-crud/session/sign-in',
-    initial.cookie,
-    {
+async function exerciseAuthCrudPublishScenario(origin: string, workspace: string): Promise<void> {
+  const signedOut = await requestWithCookie(origin, '/projects/', undefined, {
+    redirect: 'manual',
+  });
+  expect(signedOut.status).toBe(303);
+  expect(signedOut.headers.get('location')).toBe('/sign-in/?returnTo=%2Fprojects%2F');
+
+  const asking = await requestHtmlDocument(origin, '/sign-in/?returnTo=%2Fprojects%2F');
+  const post = (pathname: string, cookie: string, form: Record<string, string>) =>
+    requestWithCookie(origin, pathname, cookie, {
       method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: `_csrf=${encodeURIComponent(signInCsrf)}&email=${encodeURIComponent('casey.browser@example.com')}`,
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(form).toString(),
       redirect: 'manual',
-    },
-  );
+    });
+  const csrf = (html: string) => /name="_csrf" value="([^"]+)"/.exec(html)?.[1] ?? '';
 
-  expect(signInResponse.status).toBe(303);
-  expect(signInResponse.headers.get('location')).toBe('/api/demo/auth-crud');
+  const requested = await post('/sign-in/', asking.cookie, {
+    intent: 'request',
+    email: 'casey.browser@example.com',
+    returnTo: '/projects/',
+    _csrf: csrf(asking.html),
+  });
+  expect(requested.status).toBe(303);
+  let cookie = coalesceCookie(requested.headers.get('set-cookie'), asking.cookie);
+  const checking = await requestHtmlDocument(origin, '/sign-in/', cookie);
+  const signedIn = await post('/sign-in/', checking.cookie, {
+    intent: 'code',
+    code: await readSignInCode(workspace, 'casey.browser@example.com'),
+    _csrf: csrf(checking.html),
+  });
+  expect(signedIn.status).toBe(303);
+  expect(signedIn.headers.get('location')).toBe('/projects/');
+  cookie = coalesceCookie(signedIn.headers.get('set-cookie'), checking.cookie);
 
-  const signedInCookie = coalesceCookie(signInResponse.headers.get('set-cookie'), initial.cookie);
-  const signedIn = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedInCookie);
-  expect(signedIn.html).toContain('Signed in as <strong>casey.browser@example.com</strong>.');
+  const projects = await requestHtmlDocument(origin, '/projects/', cookie);
+  expect(projects.html).toContain('Signed in as <strong>casey.browser@example.com</strong>.');
 
-  const invalidCreateCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
-  const invalidCreateResponse = await requestWithCookie(
-    origin,
-    '/api/demo/auth-crud/projects/create',
-    signedIn.cookie,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'x-webstir-client-nav': '1',
-      },
-      body: `_csrf=${encodeURIComponent(invalidCreateCsrf)}&title=&status=active&notes=${encodeURIComponent('This should fail first.')}`,
-    },
-  );
-  const invalidCreateHtml = await invalidCreateResponse.text();
+  const invalid = await post('/projects/', projects.cookie, {
+    title: '',
+    status: 'active',
+    notes: 'This should fail first.',
+    _csrf: csrf(projects.html),
+  });
+  expect(invalid.status).toBe(422);
+  const invalidHtml = await invalid.text();
+  expect(invalidHtml).toContain('Project title is required.');
+  expect(invalidHtml).toContain('This should fail first.');
 
-  expect(invalidCreateResponse.status).toBe(422);
-  expect(invalidCreateResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
-  expect(invalidCreateHtml).toContain('Project title is required.');
+  const created = await post('/projects/', projects.cookie, {
+    title: 'Browser launch checklist',
+    status: 'active',
+    notes: 'Created through the publish redirect path.',
+    _csrf: csrf(invalidHtml),
+  });
+  expect(created.status).toBe(303);
+  expect(created.headers.get('location')).toBe('/projects/');
 
-  const createCsrf = extractFormInputValue(signedIn.html, 'project-create-form', '_csrf');
-  const createResponse = await requestWithCookie(
-    origin,
-    '/api/demo/auth-crud/projects/create',
-    signedIn.cookie,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-      },
-      body: [
-        `_csrf=${encodeURIComponent(createCsrf)}`,
-        `title=${encodeURIComponent('Browser launch checklist')}`,
-        'status=active',
-        `notes=${encodeURIComponent('Created through the publish redirect path.')}`,
-      ].join('&'),
-      redirect: 'manual',
-    },
-  );
-
-  expect(createResponse.status).toBe(303);
-  expect(createResponse.headers.get('location')).toBe('/api/demo/auth-crud');
-
-  const afterCreate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
-  expect(afterCreate.html).toContain('Created project &quot;Browser launch checklist&quot;.');
-  expect(afterCreate.html).toContain('Browser launch checklist');
-
+  const afterCreate = await requestHtmlDocument(origin, '/projects/', projects.cookie);
+  expect(afterCreate.html).toContain('Created project "Browser launch checklist".');
   const projectId = extractFirstEntityId(afterCreate.html, 'project');
-  const updateCsrf = extractFormInputValue(
-    afterCreate.html,
-    `project-edit-form-${projectId}`,
-    '_csrf',
-  );
-  const updateResponse = await requestWithCookie(
-    origin,
-    '/api/demo/auth-crud/projects/update',
-    signedIn.cookie,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'x-webstir-client-nav': '1',
-      },
-      body: [
-        `_csrf=${encodeURIComponent(updateCsrf)}`,
-        `projectId=${encodeURIComponent(projectId)}`,
-        `title=${encodeURIComponent('Operations cleanup updated')}`,
-        'status=archived',
-        `notes=${encodeURIComponent('Persist this edit across the next document request.')}`,
-      ].join('&'),
-    },
-  );
-  const updateHtml = await updateResponse.text();
 
-  expect(updateResponse.status).toBe(200);
-  expect(updateResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
-  expect(updateHtml).toContain('Operations cleanup updated');
-
-  const afterUpdate = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  const updated = await post(`/projects/${projectId}`, afterCreate.cookie, {
+    title: 'Operations cleanup updated',
+    status: 'archived',
+    notes: 'Persist this edit.',
+    _csrf: csrf(afterCreate.html),
+  });
+  expect(updated.status).toBe(303);
+  const afterUpdate = await requestHtmlDocument(origin, '/projects/', afterCreate.cookie);
   expect(afterUpdate.html).toContain('Operations cleanup updated');
+  expect(afterUpdate.html).toContain('<option value="archived" selected>');
 
-  const deleteCsrf = extractFormInputValue(
-    afterUpdate.html,
-    `project-delete-form-${projectId}`,
-    '_csrf',
-  );
-  const deleteResponse = await requestWithCookie(
-    origin,
-    '/api/demo/auth-crud/projects/delete',
-    signedIn.cookie,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'x-webstir-client-nav': '1',
-      },
-      body: `_csrf=${encodeURIComponent(deleteCsrf)}&projectId=${encodeURIComponent(projectId)}`,
-    },
-  );
-  const deleteHtml = await deleteResponse.text();
-
-  expect(deleteResponse.status).toBe(200);
-  expect(deleteResponse.headers.get('x-webstir-fragment-target')).toBe('backoffice-shell');
-  expect(deleteHtml.includes(`project-edit-form-${projectId}`)).toBe(false);
-
-  const afterDelete = await requestHtmlDocument(origin, '/api/demo/auth-crud', signedIn.cookie);
+  const deleted = await post(`/projects/${projectId}/delete`, afterUpdate.cookie, {
+    _csrf: csrf(afterUpdate.html),
+  });
+  expect(deleted.status).toBe(303);
+  const afterDelete = await requestHtmlDocument(origin, '/projects/', afterUpdate.cookie);
   expect(afterDelete.html.includes(`project-edit-form-${projectId}`)).toBe(false);
+  expect(afterDelete.html).toContain('Deleted project "Operations cleanup updated".');
 }
 
 async function exerciseDashboardBrowserScenario(

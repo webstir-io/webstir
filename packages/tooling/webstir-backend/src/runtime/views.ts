@@ -35,6 +35,8 @@ export interface ViewDefinitionLike {
   path?: string;
   page?: string;
   renderMode?: 'ssg' | 'ssr' | 'spa';
+  /** `required`: only a signed-in user sees the page. */
+  auth?: 'required';
 }
 
 export interface ViewFlashMessage {
@@ -79,6 +81,12 @@ export interface SSRContextLike {
   readonly requestId?: string;
   readonly now: () => Date;
   readonly forms: FormStateReaderLike;
+  /** The signed-in user, when the app has sign-in; null when nobody is signed in. */
+  readonly user?: { readonly id: string; readonly email: string } | null;
+  readonly db?: unknown;
+  readonly jobs?: unknown;
+  readonly email?: unknown;
+  readonly files?: unknown;
 }
 
 export interface ModuleViewLike {
@@ -155,6 +163,8 @@ export async function renderRequestTimeView(options: {
   flash?: readonly ViewFlashMessage[];
   csrfToken?: () => string;
   forms?: FormStateReaderLike;
+  /** More for the loader's context: the app's batteries and its user. */
+  services?: Record<string, unknown>;
 }): Promise<RenderedRequestTimeView> {
   const {
     workspaceRoot,
@@ -178,6 +188,7 @@ export async function renderRequestTimeView(options: {
 
   const viewData = view.load
     ? await view.load({
+        ...options.services,
         url,
         params,
         cookies,

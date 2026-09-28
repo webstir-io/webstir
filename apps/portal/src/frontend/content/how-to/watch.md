@@ -26,7 +26,7 @@ The old `--frontend-runtime` flag has been removed. Watch follows the app's laye
 
 Use the proof apps as the baseline:
 
-- `bun run watch:auth-crud` to validate sign-in, validation recovery, redirect-after-post, and CRUD flows
+- `bun run watch:auth-crud` to validate email-code sign-in (the code is in the terminal), validation recovery, redirect-after-post, and CRUD flows on the batteries
 - `bun run watch:dashboard` to validate shell and panel fragment refreshes
 
 ## Readiness

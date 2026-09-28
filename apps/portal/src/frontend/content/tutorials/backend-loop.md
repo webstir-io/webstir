@@ -1,140 +1,122 @@
 # Backend Loop
 
-Build a backend-only flow that registers routes, touches the database helper, schedules a job, and inspects the manifest in an app with a server and no pages (the `api` starter).
+Build a small API with a server and no pages (the `api` starter): a table made by a migration, routes that read and write it, a job the routes queue, and a job on a schedule.
 
-## 1. Scaffold an API workspace
+## 1. Scaffold the app
 
 ```bash
 webstir init api my-backend
 cd my-backend
 bun install
-cp .env.example .env
 ```
 
-`api` mode is the current backend-only path. It skips the frontend build plan instead of relying on a `--server-only` flag.
+The app has `src/backend/index.ts` (the server), `.env.example` (its settings, all optional in development) and a `.gitignore` that keeps `data/` and `.webstir/` out of git.
 
-## 2. Run the backend watch loop
+## 2. Run it
 
 ```bash
 webstir watch --workspace "$PWD"
 ```
 
-- The API workspace starts the backend build watcher and runtime only.
-- The runtime restarts whenever files under `src/backend/**` change.
+The server restarts whenever a file under `src/backend/` changes.
 
-## 3. Add a manifest-backed route
+## 3. Make a table
 
 ```bash
-webstir add-route accounts \
-  --workspace "$PWD" \
-  --method GET \
-  --path /api/accounts \
-  --summary "List accounts" \
-  --description "Returns the signed-in user's accounts" \
-  --tags accounts,api
+webstir add-migration create-notes --workspace "$PWD"
 ```
 
-Update `src/backend/module.ts` with the handler. The scaffold already exports a `module` object with `routes` and `jobs`; extend it as shown:
+Write the table in `src/backend/migrations/0001-create-notes.sql`:
+
+```sql
+CREATE TABLE notes (
+  id TEXT PRIMARY KEY,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+```
+
+When the server restarts, it applies the migration: SQLite at `data/app.sqlite` is created, and the table in it.
+
+## 4. Read and write it
+
+Add `src/backend/module.ts`:
 
 ```ts
-import { createDatabaseClient } from './db/connection';
+const listNotes = {
+  definition: { name: 'listNotes', method: 'GET', path: '/api/notes' },
+  handler: async (ctx) => ({
+    body: { notes: await ctx.db.query('SELECT id, body FROM notes ORDER BY created_at DESC') },
+  }),
+};
 
-const routes = [
-  {
-    definition: {
-      name: 'listAccounts',
-      method: 'GET',
-      path: '/api/accounts',
-      summary: 'Return account metadata',
-      description: 'Demonstrates auth + db helpers'
-    },
-    handler: async (ctx: RouteContext) => {
-      if (!ctx.auth?.userId) {
-        return { status: 401, errors: [{ code: 'auth', message: 'Sign in required' }] };
-      }
+const addNote = {
+  definition: { name: 'addNote', method: 'POST', path: '/api/notes' },
+  handler: async (ctx) => {
+    const body = String((ctx.body as { body?: unknown })?.body ?? '');
+    const id = crypto.randomUUID();
+    await ctx.db.execute('INSERT INTO notes (id, body, created_at) VALUES (?, ?, ?)', [id, body, new Date()]);
+    await ctx.jobs.enqueue('index-note', { id });
+    return { status: 201, body: { id } };
+  },
+};
 
-      const db = await createDatabaseClient();
-      const accounts = await db.query('select id, email from accounts where owner_id = ?', [ctx.auth.userId]);
-      await db.close();
-
-      return { status: 200, body: { accounts, greetedAt: ctx.now().toISOString() } };
-    }
-  }
-];
+const routes = [listNotes, addNote];
 
 export const module = {
   manifest: {
     contractVersion: '1.0.0',
-    name: '@demo/backend',
+    name: 'my-backend',
     version: '0.1.0',
     kind: 'backend',
-    capabilities: ['http', 'auth', 'db'],
-    routes: routes.map((route) => route.definition)
+    routes: routes.map((route) => route.definition),
   },
-  routes
+  routes,
 };
 ```
 
-- `RouteContext` exposes `params`, `query`, `body`, `auth`, `env`, `logger`, `requestId`, and `now()`.
-- The backend provider loads `build/backend/module.js`, logs the manifest summary, and mounts exported routes automatically.
-
-## 4. Connect to the database helper
-
-- The scaffold ships with `src/backend/db/connection.ts`, which uses `Bun.SQL` for both SQLite and Postgres based on `DATABASE_URL`.
-- SQLite works out of the box with `file:./data/dev.sqlite`, `sqlite:./data/dev.sqlite`, or `:memory:`.
-- Postgres uses the same helper with a `postgres://...` URL, so you do not need to add a separate `pg` client just to use the scaffolded connection layer.
-
-## 5. Schedule a job
-
 ```bash
-webstir add-job nightly \
-  --workspace "$PWD" \
-  --schedule "0 0 * * *" \
-  --description "Nightly account sync" \
-  --priority 5
+curl -X POST localhost:4321/api/notes -H 'content-type: application/json' -d '{"body":"hello"}'
+curl localhost:4321/api/notes
 ```
 
-Implement the job in `src/backend/jobs/nightly/index.ts`:
+## 5. Add the jobs
+
+The route queues `index-note`; make it, and a nightly clean-up:
+
+```bash
+webstir add-job index-note --workspace "$PWD"
+webstir add-job prune --workspace "$PWD" --schedule "0 3 * * *"
+```
 
 ```ts
-import { createDatabaseClient } from '../../db/connection';
+// src/backend/jobs/index-note/index.ts
+import { db } from '@webstir-io/webstir-backend/db';
 
-export async function run() {
-  const db = await createDatabaseClient();
-  await db.execute('update accounts set synced_at = datetime("now")');
-  await db.close();
-  console.info('[nightly] accounts synced');
+export async function run(payload: { id: string }) {
+  const note = await db.get('SELECT body FROM notes WHERE id = ?', [payload.id]);
+  console.info('[index-note]', note);
 }
 ```
 
-Test it quickly:
+Both run inside the server: `index-note` from the queue, retried if it throws, and `prune` at 3 a.m. See them, or run one now:
 
 ```bash
-bun build/backend/jobs/scheduler.js --job nightly
-bun build/backend/jobs/scheduler.js --watch
+webstir jobs --workspace "$PWD"
+webstir jobs run prune --workspace "$PWD"
 ```
 
-- The local scheduler now understands real cron expressions and cron nicknames on Bun `1.3.11+`, so schedules such as `0 0 * * *`, `*/15 * * * *`, `@daily`, `@monthly`, `rate(15 minutes)`, and `@reboot` all work in the built-in watch loop while still being preserved exactly in the manifest for your production scheduler.
-
-## 6. Inspect the manifest
+## 6. Inspect and publish
 
 ```bash
-webstir build --workspace "$PWD"
 webstir backend-inspect --workspace "$PWD"
-```
-
-`backend-inspect` rebuilds the backend and prints the current capabilities, routes, and jobs. Use it when you want a manifest summary without starting the watch loop.
-
-## 7. Publish the backend workspace
-
-```bash
 webstir publish --workspace "$PWD"
 ```
 
-In an app with a server and no pages, publish runs the backend-only plan.
+`backend-inspect` prints the routes, jobs and migrations. In production, set `SESSION_SECRET` and keep `data/` on a disk that persists (see [Environment](../reference/env.md)).
 
 ## Next
 
-- How-to: [Add a Backend Route](../how-to/add-route.md)
-- How-to: [Add a Backend Job](../how-to/add-job.md)
-- Reference: [CLI](../reference/cli.md)
+- [Use the Database](../how-to/database.md)
+- [Run Jobs](../how-to/add-job.md)
+- [Add Sign-In](../how-to/sign-in.md)

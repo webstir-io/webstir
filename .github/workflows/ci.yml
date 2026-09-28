@@ -23,6 +23,19 @@ jobs:
   required:
     name: Required Gate
     runs-on: ubuntu-latest
+    services:
+      # The backend's database tests run on Postgres as well as SQLite.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -46,3 +59,5 @@ jobs:
 
       - name: Run required repo gate
         run: bun run check:required
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres

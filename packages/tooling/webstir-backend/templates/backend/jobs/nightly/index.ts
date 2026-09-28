@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Example job entry (scheduled by your orchestrator)
-// Update `webstir.moduleManifest.jobs` in package.json to point to this job with a schedule, e.g.:
-// { "name": "nightly", "schedule": "0 0 * * *", "description": "Nightly maintenance" }
+// A job. The server runs it on the schedule package.json gives it in `webstir.moduleManifest.jobs`,
+// e.g. { "name": "nightly", "schedule": "0 0 * * *" }, or when code queues it with
+// `jobs.enqueue('nightly', payload)`; `webstir jobs run nightly` runs it now.
 
 export async function run(): Promise<void> {
   // Do some nightly maintenance work here

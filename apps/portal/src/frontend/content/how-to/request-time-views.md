@@ -67,7 +67,7 @@ export const module = createModule({
 ## Notes
 
 - Request-time views are separate from fragment responses. Views return whole document HTML; fragments only replace a target region.
-- Keep auth-gated document routes in the same `src/backend/module.ts` path. Route-level `session: { mode: 'required' }` makes the runtime reject requests that have no session; identity checks still belong in the handler or a request hook via `ctx.auth`. Views stay in the `views` manifest surface.
+- A view that only a signed-in user may see says `auth: 'required'` in its definition: a signed-out visitor is sent to sign in and back. Its loader gets `ctx.user`, `ctx.db` and the other batteries. See [Add Sign-In](./sign-in.md).
 - Use pages under `src/frontend/pages/**` for static document structure and route-backed views when the backend must load request-time data.
 
 ## Related Docs

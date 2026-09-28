@@ -28,6 +28,12 @@
             "type": "string"
           }
         },
+        "auth": {
+          "type": "string",
+          "enum": [
+            "required"
+          ]
+        },
         "params": {
           "type": "object",
           "properties": {

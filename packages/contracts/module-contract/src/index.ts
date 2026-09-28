@@ -474,6 +474,8 @@ export const routeDefinitionSchema = z.object({
   interaction: routeInteractionKindSchema.optional(),
   requestHooks: z.array(requestHookReferenceSchema).optional(),
   session: routeSessionSchema.optional(),
+  /** `required`: only a signed-in user reaches the route; others are sent to sign in. */
+  auth: z.enum(['required']).optional(),
   flash: routeFlashSchema.optional(),
   form: routeFormSchema.optional(),
   fragment: routeFragmentSchema.optional(),
@@ -632,6 +634,8 @@ export const viewDefinitionSchema = z.object({
   summary: z.string().optional(),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  /** `required`: only a signed-in user sees the page; others are sent to sign in. */
+  auth: z.enum(['required']).optional(),
   params: schemaReferenceSchema.optional(),
   data: schemaReferenceSchema.optional(),
   renderMode: z.enum(['ssg', 'ssr', 'spa']).optional(),

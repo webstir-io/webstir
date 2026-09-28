@@ -30,17 +30,17 @@ const accountRoute = {
   flash: { consume: ['signed-in'] },
 };
 
-test('prepareSessionState honors an injected in-memory store boundary', () => {
+test('prepareSessionState honors an injected in-memory store boundary', async () => {
   const store = createInMemorySessionStore();
   resetInMemorySessionStore();
 
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
       data: { email: 'ada@example.com' },
@@ -53,7 +53,7 @@ test('prepareSessionState honors an injected in-memory store boundary', () => {
   });
   const cookieHeader = extractCookieHeader(createdCommit.setCookie);
 
-  const globalRead = prepareSessionState({
+  const globalRead = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -61,7 +61,7 @@ test('prepareSessionState honors an injected in-memory store boundary', () => {
   assert.equal(globalRead.session, null);
   assert.deepEqual(globalRead.flash, []);
 
-  const scopedRead = prepareSessionState({
+  const scopedRead = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -74,16 +74,16 @@ test('prepareSessionState honors an injected in-memory store boundary', () => {
   );
 });
 
-test('prepareSessionState clears expired records and stale or tampered cookies on commit', () => {
+test('prepareSessionState clears expired records and stale or tampered cookies on commit', async () => {
   const store = createInMemorySessionStore();
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
     now: () => new Date('2026-01-01T00:00:00.000Z'),
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -103,7 +103,7 @@ test('prepareSessionState clears expired records and stale or tampered cookies o
     expiresAt: '2025-12-31T23:59:59.000Z',
   });
 
-  const expired = prepareSessionState({
+  const expired = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -112,21 +112,21 @@ test('prepareSessionState clears expired records and stale or tampered cookies o
   });
   assert.equal(expired.session, null);
   assert.equal(store.get(sessionId), undefined);
-  const expiredCommit = expired.commit({
+  const expiredCommit = await expired.commit({
     session: expired.session,
     route: accountRoute,
     result: { status: 200 },
   });
   assert.match(String(expiredCommit.setCookie), /^webstir_session=;.*Max-Age=0/);
 
-  const tampered = prepareSessionState({
+  const tampered = await prepareSessionState({
     cookies: cookieHeader.replace(/\.[^.;]+/, '.invalid-signature'),
     route: accountRoute,
     config,
     store,
   });
   assert.equal(tampered.session, null);
-  const tamperedCommit = tampered.commit({
+  const tamperedCommit = await tampered.commit({
     session: tampered.session,
     route: accountRoute,
     result: { status: 200 },
@@ -134,16 +134,16 @@ test('prepareSessionState clears expired records and stale or tampered cookies o
   assert.match(String(tamperedCommit.setCookie), /^webstir_session=;.*Max-Age=0/);
 });
 
-test('resetInMemorySessionStore clears an injected in-memory store', () => {
+test('resetInMemorySessionStore clears an injected in-memory store', async () => {
   const store = createInMemorySessionStore();
 
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -157,7 +157,7 @@ test('resetInMemorySessionStore clears an injected in-memory store', () => {
 
   resetInMemorySessionStore(store);
 
-  const afterReset = prepareSessionState({
+  const afterReset = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -167,15 +167,15 @@ test('resetInMemorySessionStore clears an injected in-memory store', () => {
   assert.deepEqual(afterReset.flash, []);
 });
 
-test('prepareSessionState preserves session ids for updates and rotates after clearing', () => {
+test('prepareSessionState preserves session ids for updates and rotates after clearing', async () => {
   const store = createInMemorySessionStore();
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -188,13 +188,13 @@ test('prepareSessionState preserves session ids for updates and rotates after cl
   const firstCookie = extractCookieHeader(createdCommit.setCookie);
   const firstId = extractSessionId(firstCookie, config.cookieName);
 
-  const read = prepareSessionState({
+  const read = await prepareSessionState({
     cookies: firstCookie,
     route: accountRoute,
     config,
     store,
   });
-  const updatedCommit = read.commit({
+  const updatedCommit = await read.commit({
     session: {
       ...read.session,
       theme: 'dark',
@@ -205,13 +205,13 @@ test('prepareSessionState preserves session ids for updates and rotates after cl
   assert.equal(updatedCommit.setCookie, undefined);
   assert.ok(store.get(firstId), 'expected ordinary session updates to keep the current id');
 
-  const cleared = prepareSessionState({
+  const cleared = await prepareSessionState({
     cookies: firstCookie,
     route: accountRoute,
     config,
     store,
   });
-  const clearedCommit = cleared.commit({
+  const clearedCommit = await cleared.commit({
     session: null,
     route: accountRoute,
     result: { status: 303, redirect: { location: '/signed-out' } },
@@ -219,13 +219,13 @@ test('prepareSessionState preserves session ids for updates and rotates after cl
   assert.match(String(clearedCommit.setCookie), /^webstir_session=;.*Max-Age=0/);
   assert.equal(store.get(firstId), undefined);
 
-  const recreated = prepareSessionState({
+  const recreated = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const recreatedCommit = recreated.commit({
+  const recreatedCommit = await recreated.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -239,10 +239,10 @@ test('prepareSessionState preserves session ids for updates and rotates after cl
   assert.notEqual(nextId, firstId);
 });
 
-test('a renewed session moves to a new id with a fresh lifetime and drops the old record', () => {
+test('a renewed session moves to a new id with a fresh lifetime and drops the old record', async () => {
   const store = createInMemorySessionStore();
   let now = new Date('2026-09-01T00:00:00Z');
-  const anonymous = prepareSessionState({
+  const anonymous = await prepareSessionState({
     cookies: '',
     route: accountRoute,
     config,
@@ -254,7 +254,7 @@ test('a renewed session moves to a new id with a fresh lifetime and drops the ol
     formId: 'signIn',
     csrf: true,
   });
-  const anonymousCommit = anonymous.commit({
+  const anonymousCommit = await anonymous.commit({
     session: withToken,
     route: accountRoute,
     result: { status: 200 },
@@ -263,14 +263,14 @@ test('a renewed session moves to a new id with a fresh lifetime and drops the ol
   const anonymousId = extractSessionId(anonymousCookie, config.cookieName);
 
   now = new Date('2026-09-01T00:00:30Z');
-  const signIn = prepareSessionState({
+  const signIn = await prepareSessionState({
     cookies: anonymousCookie,
     route: loginRoute,
     config,
     store,
     now: () => now,
   });
-  const signedIn = signIn.commit({
+  const signedIn = await signIn.commit({
     session: renewSession({ userId: 'ada@example.com' }),
     route: loginRoute,
     result: { status: 303, redirect: { location: '/' } },
@@ -289,7 +289,7 @@ test('a renewed session moves to a new id with a fresh lifetime and drops the ol
   assert.equal(Object.getOwnPropertySymbols(record.value).length, 0);
 });
 
-test('processFormSubmission consumes valid csrf tokens so replay fails with retry state', () => {
+test('processFormSubmission consumes valid csrf tokens so replay fails with retry state', async () => {
   const route = {
     path: '/account/settings',
     form: { csrf: true },
@@ -352,15 +352,15 @@ test('processFormSubmission consumes valid csrf tokens so replay fails with retr
   assert.notEqual(retryPage.csrfToken, page.csrfToken);
 });
 
-test('prepareSessionState migrates legacy embedded form runtime without leaking the old payload key', () => {
+test('prepareSessionState migrates legacy embedded form runtime without leaking the old payload key', async () => {
   const store = createInMemorySessionStore();
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -405,7 +405,7 @@ test('prepareSessionState migrates legacy embedded form runtime without leaking 
     flash: [],
   });
 
-  const read = prepareSessionState({
+  const read = await prepareSessionState({
     cookies: cookieHeader,
     config,
     store,
@@ -434,15 +434,15 @@ test('prepareSessionState migrates legacy embedded form runtime without leaking 
   assert.equal(Object.hasOwn(page.session, '__webstir_form_runtime'), false);
 });
 
-test('prepareSessionState keeps session metadata accessible without persisting it inside the app payload', () => {
+test('prepareSessionState keeps session metadata accessible without persisting it inside the app payload', async () => {
   const store = createInMemorySessionStore();
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -462,7 +462,7 @@ test('prepareSessionState keeps session metadata accessible without persisting i
   assert.equal(Object.hasOwn(stored.value, 'expiresAt'), false);
   assert.equal(stored.id, sessionId);
 
-  const read = prepareSessionState({
+  const read = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -477,15 +477,15 @@ test('prepareSessionState keeps session metadata accessible without persisting i
   assert.equal(Object.keys(read.session ?? {}).includes('expiresAt'), false);
 });
 
-test('prepareSessionState stores flash in runtime metadata while preserving legacy top-level flash reads', () => {
+test('prepareSessionState stores flash in runtime metadata while preserving legacy top-level flash reads', async () => {
   const store = createInMemorySessionStore();
-  const created = prepareSessionState({
+  const created = await prepareSessionState({
     cookies: '',
     route: loginRoute,
     config,
     store,
   });
-  const createdCommit = created.commit({
+  const createdCommit = await created.commit({
     session: {
       userId: 'ada@example.com',
     },
@@ -512,7 +512,7 @@ test('prepareSessionState stores flash in runtime metadata while preserving lega
     runtime: undefined,
   });
 
-  const read = prepareSessionState({
+  const read = await prepareSessionState({
     cookies: cookieHeader,
     route: accountRoute,
     config,
@@ -539,3 +539,21 @@ function extractSessionId(cookieHeader, cookieName) {
   assert.notEqual(separatorIndex, -1, 'expected signed session cookie');
   return decodeURIComponent(encodedValue.slice(0, separatorIndex));
 }
+
+test('a store whose methods answer with promises works like one that answers at once', async () => {
+  const records = new Map();
+  const later = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 1));
+  const store = {
+    get: (id) => later(records.get(id)),
+    set: (record) => later(void records.set(record.id, structuredClone(record))),
+    delete: (id) => later(void records.delete(id)),
+  };
+  const created = await prepareSessionState({ cookies: '', config, store });
+  const commit = await created.commit({ session: { userId: 'ada' } });
+  assert.equal(records.size, 1);
+  const cookie = commit.setCookie.split(';')[0];
+  const read = await prepareSessionState({ cookies: cookie, config, store });
+  assert.equal(read.session.userId, 'ada');
+  await read.commit({ session: null });
+  assert.equal(records.size, 0);
+});

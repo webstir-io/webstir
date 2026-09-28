@@ -1,0 +1,55 @@
+<head>
+    <title>Projects</title>
+    <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+    <main>
+        <section class="projects">
+            <header class="projects-header">
+                <h1>Projects</h1>
+                <p id="session-user">Signed in as <strong data-text="email"></strong>.</p>
+                <form method="post" action="/sign-out/">
+                    <button type="submit" id="sign-out">Sign out</button>
+                </form>
+            </header>
+
+            <div id="flash-region">
+                <p data-each="flash as note" data-attr-class="note.level" data-text="note.message"></p>
+            </div>
+
+            <form id="project-create-form" method="post" action="/projects/">
+                <h2>New project</h2>
+                <p class="error" role="alert" data-if="create.error" data-text="create.error"></p>
+                <label for="project-title">Title</label>
+                <input id="project-title" name="title" data-attr-value="create.title" />
+                <label for="project-status">Status</label>
+                <select id="project-status" name="status">
+                    <option value="draft">Draft</option>
+                    <option value="active">Active</option>
+                    <option value="archived">Archived</option>
+                </select>
+                <label for="project-notes">Notes</label>
+                <textarea id="project-notes" name="notes" data-text="create.notes"></textarea>
+                <button id="project-create-submit" type="submit">Create project</button>
+            </form>
+
+            <p data-if="empty">No projects yet.</p>
+            <article class="project" data-project-row="true" data-each="projects as project" data-attr-data-project-id="project.id">
+                <h4 data-text="project.title"></h4>
+                <form method="post" data-attr-id="project.editForm" data-attr-action="project.updateAction">
+                    <input name="title" data-attr-value="project.title" />
+                    <select name="status">
+                        <option value="draft" data-attr-selected="project.draft">Draft</option>
+                        <option value="active" data-attr-selected="project.active">Active</option>
+                        <option value="archived" data-attr-selected="project.archived">Archived</option>
+                    </select>
+                    <textarea name="notes" data-text="project.notes"></textarea>
+                    <button type="submit">Save</button>
+                </form>
+                <form method="post" data-attr-id="project.deleteForm" data-attr-action="project.deleteAction">
+                    <button type="submit">Delete</button>
+                </form>
+            </article>
+        </section>
+    </main>
+</body>

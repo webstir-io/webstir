@@ -50,12 +50,9 @@ export interface DoctorBackendDataSummary {
 }
 
 export interface DoctorBackendMigrationSummary {
-  readonly runnerPresent: boolean;
   readonly migrationsDirectoryPresent: boolean;
   readonly migrationFilesCount: number;
-  readonly exampleMigrationPresent: boolean;
-  readonly tableEnvKey: string;
-  readonly configuredTable: string;
+  readonly table: string;
 }
 
 export interface DoctorResult {
@@ -174,12 +171,9 @@ function summarizeBackendInspect(result: BackendInspectResult): DoctorBackendSum
     jobs: result.manifest.jobs?.length ?? 0,
     data: {
       migrations: {
-        runnerPresent: result.data.migrations.runnerPresent,
         migrationsDirectoryPresent: result.data.migrations.migrationsDirectoryPresent,
         migrationFilesCount: result.data.migrations.migrationFilesCount,
-        exampleMigrationPresent: result.data.migrations.exampleMigrationPresent,
-        tableEnvKey: result.data.migrations.tableEnvKey,
-        configuredTable: result.data.migrations.configuredTable,
+        table: result.data.migrations.table,
       },
     },
   };

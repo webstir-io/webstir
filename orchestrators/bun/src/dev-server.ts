@@ -436,6 +436,12 @@ function createProxyRequestInit(
   targetUrl: URL,
 ): RequestInit & { duplex?: 'half' } {
   const headers = new Headers(request.headers);
+  // The backend sees the address the browser used, unless a proxy in front already said it.
+  const incoming = new URL(request.url);
+  if (!headers.has('x-forwarded-host')) headers.set('x-forwarded-host', incoming.host);
+  if (!headers.has('x-forwarded-proto')) {
+    headers.set('x-forwarded-proto', incoming.protocol.replace(/:$/, ''));
+  }
   headers.set('host', targetUrl.host);
   headers.set('connection', 'close');
 

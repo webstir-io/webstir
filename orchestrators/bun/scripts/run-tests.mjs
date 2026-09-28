@@ -17,6 +17,7 @@ const browserTestFiles = [
   'tests/ssg-publish-client-nav.browser.integration.test.ts',
   'tests/browser-rendered-pages.browser.integration.test.ts',
   'tests/full-watch.integration.test.ts',
+  'tests/sign-in.browser.integration.test.ts',
 ];
 
 function buildIsolatedTestStep(label, files) {

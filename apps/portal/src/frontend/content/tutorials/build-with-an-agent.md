@@ -30,7 +30,7 @@ Use a request with visible behavior and a clear finish line. Supply your actual 
 
 > Add a single-user notes page at /api/notes. Support creating, editing, and deleting notes, with a required title and persistence across server restarts. Keep the forms working without JavaScript. Reuse the installed notes recipe when available, preserve the existing pages, and add application tests for valid and invalid submissions. Use the app's installed Webstir CLI to build and test, then verify the user flow in a browser. Report what you changed and any checks you could not complete.
 
-The notes recipe creates its own SQLite helper. The default `full` scaffold does not include an ORM or a production authentication system. For private multi-user data, use a verified identity provider and enforce ownership in the application; the starter session demo is not an authentication implementation.
+A server app has a database (`ctx.db`), migrations in `src/backend/migrations/`, durable sessions, jobs and email. For private multi-user data, add [sign-in](../how-to/sign-in.md) with `webstir enable sign-in`, require it with `auth: 'required'`, and scope queries to `ctx.user.id`.
 
 ## Change the app
 
