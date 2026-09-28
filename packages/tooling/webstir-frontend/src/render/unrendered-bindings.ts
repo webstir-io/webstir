@@ -5,7 +5,11 @@ import { isStaticApp, readWorkspaceLayers } from '@webstir-io/module-contract/wo
 
 import { validateRenderPrograms } from './validate.js';
 
-const MODULE_SOURCES = ['module.ts', 'module.tsx', 'module.js', 'module.mjs'];
+// Where the backend looks for view loaders: module.* or module/index.*.
+const MODULE_SOURCES = ['ts', 'tsx', 'js', 'mjs'].flatMap((extension) => [
+  `module.${extension}`,
+  `module/index.${extension}`,
+]);
 
 /**
  * A build of an app with no server and no view loaders already knows everything that could render

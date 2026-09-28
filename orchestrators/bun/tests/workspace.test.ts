@@ -41,13 +41,13 @@ test('an app is its files: layers, build plan and static output follow from them
       plan: ['frontend', 'backend'],
       static: false,
     },
-    // A backend of functions or jobs alone is still built and run.
+    // Functions or jobs are not an HTTP server: the pages still publish as a static site.
     {
-      files: ['src/backend/jobs/nightly/index.ts'],
-      pages: false,
-      server: true,
-      plan: ['backend'],
-      static: false,
+      files: ['src/frontend/', 'src/backend/jobs/nightly/index.ts'],
+      pages: true,
+      server: false,
+      plan: ['frontend'],
+      static: true,
     },
     // A leftover mode never overrides the files.
     {
