@@ -1,10 +1,9 @@
 import { listIslands, readIslandsManifest } from './islandsBuilder.js';
-import { RenderTemplateError } from '../render/issues.js';
 import {
   checkIslandElements,
   DEV_ISLANDS_LOADER,
   injectIslandsLoader,
-  ISLANDS_LOADER_ATTRIBUTE,
+  publishIslandsLoader,
 } from '../islands/html.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -95,9 +94,11 @@ async function buildHtml(context: BuilderContext): Promise<void> {
 
   const rawTemplateHtml = await readFile(appTemplatePath);
   validateAppTemplate(rawTemplateHtml, appTemplatePath);
+  const islands = new Set((await listIslands(config)).map((island) => island.name));
   const renderSource: TemplateSourceOptions = {
     workspaceRoot: config.paths.workspace,
     partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+    checkElements: (html, file) => checkIslandElements(html, file, islands),
   };
   const templateHtml = await withInlineScripts(
     context,
@@ -109,15 +110,6 @@ async function buildHtml(context: BuilderContext): Promise<void> {
   const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
   const pages = await getPageDirectories(config.paths.src.pages);
   await ensureDir(config.paths.build.frontend);
-  const islands = new Set((await listIslands(config)).map((island) => island.name));
-  const workspaceFile = (file: string) =>
-    path.relative(config.paths.workspace, file).split(path.sep).join('/');
-  const shellIslandIssues = checkIslandElements(
-    rawTemplateHtml,
-    workspaceFile(appTemplatePath),
-    islands,
-  );
-  if (shellIslandIssues.length > 0) throw new RenderTemplateError(shellIslandIssues);
 
   for (const page of pages) {
     if (targetPage && page.name !== targetPage) {
@@ -137,8 +129,6 @@ async function buildHtml(context: BuilderContext): Promise<void> {
       const sourceHtmlPath = path.join(page.directory, relativeHtml);
       const rawFragment = await readFile(sourceHtmlPath);
       validatePageFragment(rawFragment, sourceHtmlPath);
-      const islandIssues = checkIslandElements(rawFragment, workspaceFile(sourceHtmlPath), islands);
-      if (islandIssues.length > 0) throw new RenderTemplateError(islandIssues);
       const isPageIndex = relativeHtml === `${FILES.index}${EXTENSIONS.html}`;
       if (!isPageIndex && mayContainBindings(rawFragment)) {
         throw new Error(
@@ -249,19 +239,14 @@ async function publishHtml(context: BuilderContext): Promise<void> {
     for (const relativeHtml of htmlFiles) {
       const sourcePath = path.join(page.directory, relativeHtml);
       const html = await readFile(sourcePath);
-      const rewritten = await rewriteForPublish(
-        context,
-        html,
-        page.name,
-        manifest,
-        page.directory,
-        shared,
-        {
+      const rewritten = publishIslandsLoader(
+        await rewriteForPublish(context, html, page.name, manifest, page.directory, shared, {
           pagesUrlPrefix,
           buildPagesUrlPrefix,
           useRootIndex,
           knownPages,
-        },
+        }),
+        islandsLoader,
       );
       const outputPath = path.join(distDir, relativeHtml);
       await ensureDir(path.dirname(outputPath));
@@ -278,10 +263,7 @@ async function publishHtml(context: BuilderContext): Promise<void> {
           targetDir: path.dirname(outputPath),
         });
       }
-      await writeFile(
-        outputPath,
-        stripSourceStamps(publishIslandsLoader(rewritten, islandsLoader)),
-      );
+      await writeFile(outputPath, stripSourceStamps(rewritten));
       await handlePrecompression(context, outputPath);
     }
   }
@@ -789,15 +771,4 @@ function resolveAssetPath(src: string, pageDirectory: string, buildRoot: string)
   }
 
   return path.join(pageDirectory, normalized);
-}
-
-/** Points a page's islands loader at the published, fingerprinted one. */
-function publishIslandsLoader(html: string, loader: string | undefined): string {
-  if (!html.includes(ISLANDS_LOADER_ATTRIBUTE)) return html;
-  if (!loader) {
-    throw new Error(
-      '[webstir-frontend] a page uses islands, but the published site has no islands loader.',
-    );
-  }
-  return html.split(`src="${DEV_ISLANDS_LOADER}"`).join(`src="${loader}"`);
 }

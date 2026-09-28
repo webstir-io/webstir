@@ -5,6 +5,7 @@
  * leaves and mounts those of the page it shows; without client-nav, a page's islands mount once.
  */
 
+import type { IslandAddresses } from '../builders/islandsBuilder.js';
 import { ISLANDS, islandControls, type IslandControls } from '../runtime/islands.js';
 
 /** What an island's bundle exports: mount into the element, and return how to unmount. */
@@ -20,7 +21,9 @@ interface MountedIsland {
   cleanup?: () => void | Promise<void>;
 }
 
-export function startIslands(manifest: Readonly<Record<string, string>>): IslandControls {
+const STYLES_ATTRIBUTE = 'data-webstir-island-styles';
+
+export function startIslands(addresses: IslandAddresses): IslandControls {
   const existing = islandControls();
   if (existing) return existing;
 
@@ -31,20 +34,44 @@ export function startIslands(manifest: Readonly<Record<string, string>>): Island
     '',
   );
 
-  const moduleUrl = (name: string): string | undefined => {
-    const url = manifest[name];
+  const address = (url: string | undefined): string | undefined => {
     if (!url) return undefined;
     return version ? `${base}${url}?webstir-version=${version}` : `${base}${url}`;
   };
 
+  // An island's stylesheet, loaded before it mounts; a remount from new code replaces it.
+  const loadedStyles = new Map<string, Promise<void>>();
+  const loadStyles = (name: string): Promise<void> => {
+    const href = address(addresses.styles[name]);
+    if (!href) return Promise.resolve();
+    const pending = loadedStyles.get(href);
+    if (pending) return pending;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = href;
+    link.setAttribute(STYLES_ATTRIBUTE, name);
+    const loaded = new Promise<void>((resolve) => {
+      link.addEventListener('load', () => resolve(), { once: true });
+      link.addEventListener('error', () => resolve(), { once: true });
+    });
+    const previous = document.head.querySelector(`link[${STYLES_ATTRIBUTE}="${CSS.escape(name)}"]`);
+    if (previous) previous.replaceWith(link);
+    else document.head.append(link);
+    loadedStyles.set(href, loaded);
+    return loaded;
+  };
+
   const mount = async (element: HTMLElement, island: MountedIsland): Promise<void> => {
-    const url = moduleUrl(island.name);
+    const url = address(addresses.modules[island.name]);
     if (!url) {
       console.error(`[webstir] island "${island.name}" is not in this build.`);
       return;
     }
     try {
-      const module = (await import(url)) as { default: IslandMount };
+      const [module] = await Promise.all([
+        import(url) as Promise<{ default: IslandMount }>,
+        loadStyles(island.name),
+      ]);
       if (island.controller.signal.aborted) return;
       const props = readProps(element);
       const cleanup = await module.default(element, props, { signal: island.controller.signal });

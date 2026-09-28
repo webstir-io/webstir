@@ -99,6 +99,12 @@ export async function runAddIsland(options: RunAddIslandOptions): Promise<AddIsl
     unknown
   >;
   const library = flags[0] ? LIBRARY_FLAGS[flags[0]]! : detectLibrary(packageJson);
+  const jsx = appJsxLibrary(packageJson);
+  if (EXTENSIONS[library] === '.tsx' && jsx && jsx !== library) {
+    throw new Error(
+      `The app's JSX islands use ${jsx}, and all of an app's JSX islands share one library; add island "${name}" with --${jsx}, --svelte, --vue, or no flag for a plain island.`,
+    );
+  }
 
   const islandsRoot = path.join(root, 'src', 'frontend', 'islands');
   const existing = ISLAND_EXTENSIONS.find((extension) =>
@@ -128,6 +134,20 @@ export async function runAddIsland(options: RunAddIslandOptions): Promise<AddIsl
     changes,
     note: added ? `${usage}. package.json gained dependencies; run \`bun install\`.` : `${usage}.`,
   };
+}
+
+/** The library the app's JSX islands use: the one webstir.islands.jsx names, else the one it has. */
+function appJsxLibrary(packageJson: Record<string, unknown>): IslandLibrary | undefined {
+  const chosen = (packageJson.webstir as { islands?: { jsx?: string } } | undefined)?.islands?.jsx;
+  const dependencies = {
+    ...(packageJson.devDependencies as Record<string, string> | undefined),
+    ...(packageJson.dependencies as Record<string, string> | undefined),
+  };
+  return DETECTION_ORDER.find(
+    ([dependency, library]) =>
+      EXTENSIONS[library] === '.tsx' &&
+      (chosen ? chosen === dependency : dependency in dependencies),
+  )?.[1];
 }
 
 function detectLibrary(packageJson: Record<string, unknown>): IslandLibrary {

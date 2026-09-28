@@ -616,6 +616,14 @@ test('CLI add-island uses the library the app has, and refuses what it cannot sc
       expect({ args, exitCode: refused.exitCode }).toEqual({ args, exitCode: 1 });
       expect(refused.stderr).toContain(message);
     }
+
+    // An app's JSX islands share one library.
+    packageJson.dependencies.react = '^19.3.0';
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+    const second = await runCli(['add-island', 'chart', '--preact', '--workspace', root]);
+    expect(second.exitCode).toBe(1);
+    expect(second.stderr).toContain("The app's JSX islands use react");
+    expect(existsSync(path.join(root, 'src', 'frontend', 'islands', 'chart.tsx'))).toBe(false);
   } finally {
     await removeDemoWorkspace(copy);
     await removeDemoWorkspace(apiCopy);

@@ -19,7 +19,9 @@ An island is a file in `src/frontend/islands/`, named for the island:
 | `name.vue` | Vue 3 | the component |
 | `name.ts`, `name.js` | none | `mount(element, props, { signal })`, which may return a cleanup function |
 
-An app with more than one JSX library names the one its JSX islands use in `package.json`: `"webstir": { "islands": { "jsx": "preact" } }`.
+An app's JSX islands, and the components they import, all use one library. An app that depends on more than one names it in `package.json`: `"webstir": { "islands": { "jsx": "preact" } }`. `add-island` refuses a second JSX library; use Svelte, Vue or a plain island alongside it instead.
+
+An island can import CSS; the stylesheet loads before the island mounts. Svelte and Vue islands carry their own `<style>` blocks.
 
 ## Place it in a page
 
@@ -31,7 +33,7 @@ An app with more than one JSX library names the one its JSX islands use in `pack
 
 - **`data-island`** names the island.
 - **The element's content** shows until the island mounts, and is what visitors without JavaScript see. The island replaces it.
-- **`data-props`** is a binding: it names a value in the page's data, which becomes the component's props. It works wherever the page renders: a view's `load`, a view rendered at publish, or the page's own `data.ts` and `load`. The build checks the path like any other binding.
+- **`data-props`** is a binding: it names a value in the page's data, which becomes the component's props. It works wherever the page renders: a view's `load`, a view rendered at publish, or the page's own `data.ts` and `load`. The build checks the path like any other binding. The value must be JSON data; an object is the props, and any other value arrives as `{ value }`.
 - **`data-load`** says when the island loads:
   - `load`: as soon as the page is ready.
   - `idle` (the default): when the browser is idle.
@@ -43,12 +45,12 @@ An app with more than one JSX library names the one its JSX islands use in `pack
 - **Only pages with islands load island code,** and each island's library ships once however many islands use it.
 - **With client-nav,** a page's islands unmount when the visitor leaves the page, so their cleanup runs, and the next page's islands mount. Islands in the app shell mount once and stay.
 - **A browser-rendered page's `render(data)`** mounts its islands again with the new props.
-- **In `webstir watch`,** editing an island mounts it again from the new code, where it is; the rest of the page stays as it is.
+- **In `webstir watch`,** editing an island, or a stylesheet beside it, mounts it again from the new code, where it is; the rest of the page stays as it is.
 
 ## What the build checks
 
-The build fails with the file and line when:
-- an island's name has no file
+The build checks islands wherever they are placed (pages, the app shell, partials and Markdown pages) and fails with the file and line when:
+- an island's name has no file, or two files have the same name
 - `data-props` names a value the page's data doesn't have
 - `data-load` isn't one of the strategies, or `media` has no `data-media`
 - an island's library, or its compiler, isn't installed

@@ -15,6 +15,14 @@ import { resolvePageAssetUrl, resolvePagesUrlPrefix } from '../utils/pagePaths.j
 import { ensureDocsShellCriticalCss } from '../html/criticalCss.js';
 import { inlineSourceScriptsInHtml } from '../html/inlineScripts.js';
 import type { FrontendContentConfig } from '../types.js';
+import {
+  checkIslandElements,
+  DEV_ISLANDS_LOADER,
+  injectIslandsLoader,
+  publishIslandsLoader,
+} from '../islands/html.js';
+import { listIslands, readIslandsManifest } from './islandsBuilder.js';
+import { RenderTemplateError } from '../render/issues.js';
 
 interface ContentFrontmatter {
   title?: string;
@@ -124,6 +132,7 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
   }
 
   const templateHtml = await readContentTemplate(context, appTemplatePath, false);
+  const islands = new Set((await listIslands(config)).map((island) => island.name));
 
   const buildPagesUrlPrefix = resolvePagesUrlPrefix(
     config.paths.build.frontend,
@@ -138,6 +147,7 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
     const markdown = await readFile(sourcePath);
     const { frontmatter, content } = extractFrontmatter(markdown);
     const htmlBody = (await renderMarkdownDoc(content, relative, config.content)).html;
+    checkContentIslands(htmlBody, sourcePath, context, islands);
 
     const segments = resolveContentSegments(relative, config.content);
     const pagePath = path.join(...segments);
@@ -155,7 +165,10 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
       href,
       config.content,
     );
-    const mergedWithOptIn = injectGlobalOptInScripts(mergedHtml, context.enable);
+    const mergedWithOptIn = injectGlobalOptInScripts(
+      injectIslandsLoader(mergedHtml, DEV_ISLANDS_LOADER),
+      context.enable,
+    );
 
     // Write to build (folder index)
     const targetDir = path.join(config.paths.build.pages, pagePath);
@@ -185,6 +198,7 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
   }
 
   const templateHtml = await readContentTemplate(context, appTemplatePath, true);
+  const islandsLoader = (await readIslandsManifest(config.paths.dist.frontend))?.loader;
 
   const pagesUrlPrefix = resolvePagesUrlPrefix(config.paths.dist.frontend, config.paths.dist.pages);
   const buildPagesUrlPrefix = resolvePagesUrlPrefix(
@@ -236,7 +250,10 @@ async function publishContentPages(context: BuilderContext): Promise<void> {
       href,
       config.content,
     );
-    const mergedWithOptIn = injectGlobalOptInScripts(mergedHtml, context.enable);
+    const mergedWithOptIn = injectGlobalOptInScripts(
+      publishIslandsLoader(injectIslandsLoader(mergedHtml, DEV_ISLANDS_LOADER), islandsLoader),
+      context.enable,
+    );
     const rewritten = await rewriteContentForPublish(mergedWithOptIn, shared, contentManifest, {
       pagesUrlPrefix,
       buildPagesUrlPrefix,
@@ -1689,4 +1706,16 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** Islands in a Markdown page's HTML are checked like a page template's, against its source file. */
+function checkContentIslands(
+  html: string,
+  sourcePath: string,
+  context: BuilderContext,
+  islands: ReadonlySet<string>,
+): void {
+  const file = path.relative(context.config.paths.workspace, sourcePath).split(path.sep).join('/');
+  const issues = checkIslandElements(html, file, islands);
+  if (issues.length > 0) throw new RenderTemplateError(issues);
 }

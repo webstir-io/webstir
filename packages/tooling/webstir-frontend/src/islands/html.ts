@@ -5,7 +5,7 @@ import type { RenderIssue } from '../render/issues.js';
 
 export const ISLAND_LOAD_STRATEGIES = ['load', 'idle', 'visible', 'media'] as const;
 export const ISLANDS_LOADER_ATTRIBUTE = 'data-webstir-islands';
-export const DEV_ISLANDS_LOADER = '/app/islands/loader.js';
+export const DEV_ISLANDS_LOADER = '/app/islands/runtime/loader.js';
 
 /**
  * Checks each `data-island` element in a template: it names an island the app has, and its
@@ -53,4 +53,15 @@ export function injectIslandsLoader(html: string, loader: string): string {
   if (!/\sdata-island\s*=/.test(html) || html.includes(ISLANDS_LOADER_ATTRIBUTE)) return html;
   const tag = `<script type="module" src="${loader}" ${ISLANDS_LOADER_ATTRIBUTE}></script>`;
   return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : `${tag}${html}`;
+}
+
+/** Points a page's islands loader at the published, fingerprinted one. */
+export function publishIslandsLoader(html: string, loader: string | undefined): string {
+  if (!html.includes(ISLANDS_LOADER_ATTRIBUTE)) return html;
+  if (!loader) {
+    throw new Error(
+      '[webstir-frontend] a page uses islands, but the published site has no islands loader.',
+    );
+  }
+  return html.split(`src="${DEV_ISLANDS_LOADER}"`).join(`src="${loader}"`);
 }

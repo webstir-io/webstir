@@ -71,6 +71,8 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
         // Templates too: a browser-rendered page's bundle carries its compiled template.
         extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx', '.html', '.svelte', '.vue'],
       },
+      // A stylesheet an island imports builds with the islands.
+      { directory: islandsSourceRoot(config), extensions: ['.css'] },
     ])
   ) {
     return;

@@ -2,7 +2,6 @@ import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { realpathSync } from 'node:fs';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { build as esbuild, type Plugin } from 'esbuild';
 
@@ -26,8 +25,13 @@ export interface Island {
 export interface IslandsManifest {
   /** The loader's address, which pages with islands load. */
   readonly loader: string;
-  /** Island name to its bundle's address. */
-  readonly islands: Readonly<Record<string, string>>;
+  /** Island name to its bundle's address, and to its stylesheet's when it imports CSS. */
+  readonly islands: IslandAddresses;
+}
+
+export interface IslandAddresses {
+  readonly modules: Readonly<Record<string, string>>;
+  readonly styles: Readonly<Record<string, string>>;
 }
 
 export const ISLANDS_FOLDER = 'islands';
@@ -35,6 +39,8 @@ export const ISLANDS_FOLDER = 'islands';
 const ISLANDS_OUTPUT = path.join('app', ISLANDS_FOLDER);
 const ISLANDS_URL = `/app/${ISLANDS_FOLDER}`;
 const MANIFEST_FILE = 'islands.json';
+/** The loader sits in its own folder, so no island's bundle (`<name>.js`) can take its name. */
+const LOADER_FOLDER = 'runtime';
 const runtimeEntry = fileURLToPath(new URL('../islands/runtime.js', import.meta.url));
 
 export function islandsSourceRoot(config: FrontendConfig): string {
@@ -67,6 +73,12 @@ export async function listIslands(config: FrontendConfig): Promise<readonly Isla
           : extension === '.tsx' || extension === '.jsx'
             ? requireJsx(jsx, entry.name)
             : 'plain';
+    const other = islands.find((island) => island.name === name);
+    if (other) {
+      throw new Error(
+        `[webstir-frontend] src/frontend/islands/${path.basename(other.file)} and ${entry.name} are both the island "${name}"; rename one.`,
+      );
+    }
     islands.push({ name, file: path.join(root, entry.name), library });
   }
   return islands.sort((left, right) => left.name.localeCompare(right.name));
@@ -125,35 +137,50 @@ export async function buildIslands(config: FrontendConfig, isProduction: boolean
     ],
   });
 
-  const addresses: Record<string, string> = {};
+  const modules: Record<string, string> = {};
+  const styles: Record<string, string> = {};
   for (const [output, meta] of Object.entries(result.metafile.outputs)) {
     if (!meta.entryPoint) continue;
     // Each island's wrapper is named for it; paths in the metafile may be resolved differently.
     const name = path.basename(meta.entryPoint, '.ts');
     if (name in entryPoints) {
-      // Entry bundles sit at the top of the islands folder ([name] or [name]-[hash]).
-      addresses[name] = `${ISLANDS_URL}/${path.basename(output)}`;
+      // Entry bundles, and the CSS they import, sit at the top of the islands folder.
+      modules[name] = `${ISLANDS_URL}/${path.basename(output)}`;
+      if (meta.cssBundle) styles[name] = `${ISLANDS_URL}/${path.basename(meta.cssBundle)}`;
     }
   }
+  const addresses: IslandAddresses = { modules, styles };
 
-  const loaderSource = `import { startIslands } from ${JSON.stringify(runtimeEntry)};\nstartIslands(${JSON.stringify(addresses)});\n`;
-  const loaderName = isProduction
-    ? `loader-${createHash('sha256').update(loaderSource).digest('hex').slice(0, 8)}.js`
-    : 'loader.js';
-  await esbuild({
-    stdin: { contents: loaderSource, resolveDir: wrapperRoot, loader: 'ts' },
+  // The loader's own folder keeps its sources and output apart from any island's.
+  const loaderSourceRoot = path.join(wrapperRoot, LOADER_FOLDER);
+  await ensureDir(loaderSourceRoot);
+  const loaderEntry = path.join(loaderSourceRoot, 'loader.ts');
+  await writeFile(
+    loaderEntry,
+    `import { startIslands } from ${JSON.stringify(runtimeEntry)};\nstartIslands(${JSON.stringify(addresses)});\n`,
+  );
+  const loaderResult = await esbuild({
+    entryPoints: [loaderEntry],
     bundle: true,
     format: 'esm',
     target: 'es2020',
     platform: 'browser',
-    outfile: path.join(outputRoot, loaderName),
+    outdir: path.join(outputRoot, LOADER_FOLDER),
+    // Hashed from the bundled output, so a new runtime gets a new name.
+    entryNames: isProduction ? 'loader-[hash]' : 'loader',
     minify: isProduction,
+    metafile: true,
     logLevel: 'silent',
   });
+  const loaderOutput = Object.keys(loaderResult.metafile.outputs).find((output) =>
+    output.endsWith('.js'),
+  );
+  if (!loaderOutput) throw new Error('[webstir-frontend] the islands loader did not build.');
+  const loaderName = path.posix.join(LOADER_FOLDER, path.basename(loaderOutput));
 
   if (isProduction && config.features.precompression) {
     for (const entry of await readdir(outputRoot, { recursive: true, withFileTypes: true })) {
-      if (entry.isFile() && entry.name.endsWith('.js')) {
+      if (entry.isFile() && /\.(js|css)$/.test(entry.name)) {
         await createCompressedVariants(path.join(entry.parentPath, entry.name));
       }
     }
@@ -286,8 +313,8 @@ function islandFile(islands: readonly Island[], library: IslandLibrary): string 
 interface SvelteCompiler {
   compile(
     source: string,
-    options: { filename: string; generate: 'client'; css: 'injected' },
-  ): { js: { code: string } };
+    options: { filename: string; generate: 'client'; css: 'external' },
+  ): { js: { code: string }; css: { code: string } | null };
 }
 
 interface VueBlock {
@@ -309,14 +336,15 @@ interface VueCompiler {
   };
   compileScript(
     descriptor: unknown,
-    options: { id: string; inlineTemplate: boolean },
+    options: { id: string; inlineTemplate: boolean; genDefaultAs: string },
   ): { content: string; lang?: string };
-  rewriteDefault(code: string, name: string): string;
   compileTemplate(options: { source: string; filename: string; id: string; scoped: boolean }): {
     code: string;
+    errors: readonly (string | Error)[];
   };
   compileStyle(options: { source: string; filename: string; id: string; scoped?: boolean }): {
     code: string;
+    errors: readonly Error[];
   };
 }
 
@@ -340,9 +368,13 @@ function svelteIslands(workspaceRoot: string, islands: readonly Island[]): Plugi
         const result = compile(await readFile(args.path, 'utf8'), {
           filename: args.path,
           generate: 'client',
-          css: 'injected',
+          css: 'external',
         });
-        return { contents: result.js.code, loader: 'js', resolveDir: path.dirname(args.path) };
+        return {
+          contents: `${result.js.code}\n${replaceStyles(args.path, result.css ? [result.css.code] : [])}`,
+          loader: 'js',
+          resolveDir: path.dirname(args.path),
+        };
       });
     },
   };
@@ -368,9 +400,10 @@ function vueIslands(workspaceRoot: string, islands: readonly Island[]): Plugin {
           const script = sfc.compileScript(descriptor, {
             id,
             inlineTemplate: Boolean(descriptor.scriptSetup),
+            genDefaultAs: '__component',
           });
           lang = script.lang === 'ts' || script.lang === 'tsx' ? 'ts' : 'js';
-          lines.push(sfc.rewriteDefault(script.content, '__component'));
+          lines.push(script.content);
         } else {
           lines.push('const __component = {};');
         }
@@ -381,21 +414,22 @@ function vueIslands(workspaceRoot: string, islands: readonly Island[]): Plugin {
             id,
             scoped,
           });
+          throwCompilerErrors(args.path, template.errors);
           lines.push(template.code.replace('export function render', 'function render'));
           lines.push('__component.render = render;');
         }
         if (scoped) lines.push(`__component.__scopeId = 'data-v-${id}';`);
-        for (const style of descriptor.styles) {
+        const styles = descriptor.styles.map((style) => {
           const css = sfc.compileStyle({
             source: style.content,
             filename: args.path,
             id: `data-v-${id}`,
             scoped: style.scoped,
-          }).code;
-          lines.push(
-            `{ const style = document.createElement('style'); style.textContent = ${JSON.stringify(css)}; document.head.append(style); }`,
-          );
-        }
+          });
+          throwCompilerErrors(args.path, css.errors);
+          return css.code;
+        });
+        lines.push(replaceStyles(args.path, styles));
         lines.push('export default __component;');
         return {
           contents: lines.join('\n'),
@@ -407,18 +441,38 @@ function vueIslands(workspaceRoot: string, islands: readonly Island[]): Plugin {
   };
 }
 
+/**
+ * A component's styles, as one set per source file: a new build of the file replaces the styles the
+ * previous one added, so a rule deleted in watch is gone after the island mounts again.
+ */
+function replaceStyles(file: string, styles: readonly string[]): string {
+  const owner = createHash('sha256').update(file).digest('hex').slice(0, 8);
+  return `for (const style of document.head.querySelectorAll('style[data-webstir-island-style="${owner}"]')) style.remove();
+for (const css of ${JSON.stringify(styles)}) {
+  const style = document.createElement('style');
+  style.setAttribute('data-webstir-island-style', '${owner}');
+  style.textContent = css;
+  document.head.append(style);
+}
+`;
+}
+
+/** Compiler diagnostics fail the build, naming the file, instead of shipping incomplete output. */
+function throwCompilerErrors(file: string, errors: readonly (string | Error)[]): void {
+  if (errors.length === 0) return;
+  const messages = errors.map((error) => (typeof error === 'string' ? error : error.message));
+  throw new Error(`[webstir-frontend] ${file}: ${messages.join('; ')}`);
+}
+
 function solidIslands(workspaceRoot: string, islands: readonly Island[]): Plugin {
-  const solid = islands.filter((island) => island.library === 'solid-js');
   return {
     name: 'webstir-solid-islands',
     setup(build) {
-      if (solid.length === 0) return;
-      // Real paths on both sides: the bundler may see a file through a different path (/var and
-      // /private/var on macOS, say).
-      const files = new Set(solid.map((island) => realpathSync(island.file)));
+      if (!islands.some((island) => island.library === 'solid-js')) return;
+      // An app's JSX is all one library's: an island's own components compile as Solid too.
       build.onLoad({ filter: /\.(tsx|jsx)$/ }, async (args) => {
-        if (!files.has(realpathSync(args.path))) return undefined;
-        const label = `src/frontend/islands/${path.basename(args.path)}`;
+        if (args.path.split(path.sep).includes('node_modules')) return undefined;
+        const label = path.relative(workspaceRoot, args.path).split(path.sep).join('/');
         const babel = await importFromApp<BabelCore>(workspaceRoot, '@babel/core', label);
         const require = createRequire(path.join(workspaceRoot, 'package.json'));
         const preset = (name: string) => {

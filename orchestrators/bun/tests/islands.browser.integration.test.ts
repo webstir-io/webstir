@@ -25,11 +25,13 @@ const unmounted = (name: string) =>
 
 const ISLANDS = {
   'react-counter.tsx': `import { useEffect } from 'react';
+import './react-counter.css';
 export default function Counter({ start }: { start: number }) {
   useEffect(() => () => { ${unmounted('react')}; }, []);
-  return <span data-lib="react">react:{start}</span>;
+  return <span data-lib="react" className="react-counter">react:{start}</span>;
 }
 `,
+  'react-counter.css': '.react-counter { color: rgb(1, 2, 3); }\n',
   'react-badge.tsx': `export default function Badge() {
   return <b data-lib="react-badge">badge</b>;
 }
@@ -40,17 +42,24 @@ export default function Counter({ start }: { start: number }) {
   onDestroy(() => { (window.__unmounted ??= []).push('svelte'); });
 </script>
 <span data-lib="svelte">svelte:{start}</span>
+<style>span { font-weight: 700; }</style>
 `,
-  'vue-counter.vue': `<script setup>
+  'vue-counter.vue': `<script setup lang="ts">
 import { onUnmounted } from 'vue';
-const props = defineProps({ start: Number });
-onUnmounted(() => { (window.__unmounted ??= []).push('vue'); });
+const props = defineProps<{ start: number }>();
+onUnmounted(() => { ((window as any).__unmounted ??= []).push('vue'); });
 </script>
 <template><span data-lib="vue">vue:{{ props.start }}</span></template>
+<style scoped>span { font-style: italic; }</style>
 `,
   'plain-counter.ts': `export function mount(element: HTMLElement, props: { start: number }) {
   element.innerHTML = '<span data-lib="plain">plain:' + props.start + '</span>';
   return () => { ${unmounted('plain')}; };
+}
+`,
+  'shell-clock.ts': `export function mount(element: HTMLElement) {
+  element.innerHTML = '<span data-lib="shell">shell</span>';
+  return () => { ${unmounted('shell')}; };
 }
 `,
 };
@@ -60,6 +69,7 @@ test('islands from React, Svelte, Vue and plain code mount with page data, share
     {
       dependencies: { react: '^19.3.0', 'react-dom': '^19.3.0', svelte: '^5.57.1', vue: '^3.5.43' },
       islands: ISLANDS,
+      shell: '<div data-island="shell-clock" data-load="load"></div>',
       page: [
         '<head><title>Islands</title><script type="module" src="index.js"></script></head>',
         '<body><main>',
@@ -86,17 +96,43 @@ test('islands from React, Svelte, Vue and plain code mount with page data, share
         await page.waitForSelector(`[data-lib="${lib}"]:text("${lib}:7")`, { timeout: 15_000 });
       }
       await page.waitForSelector('[data-lib="react-badge"]');
+      await page.waitForSelector('[data-lib="shell"]');
       expect(await page.locator('[data-island] i').count()).toBe(0);
+      // CSS an island imports loads with it; Svelte's and Vue's own styles apply.
+      expect(
+        await page.evaluate(() => {
+          const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
+          return [
+            style('[data-lib="react"]').color,
+            style('[data-lib="svelte"]').fontWeight,
+            style('[data-lib="vue"]').fontStyle,
+          ];
+        }),
+      ).toEqual(['rgb(1, 2, 3)', '700', 'italic']);
+      // A new build of a component replaces its styles rather than adding to them.
+      const styleCount = () =>
+        page.evaluate(() => document.querySelectorAll('style[data-webstir-island-style]').length);
+      const before = await styleCount();
+      expect(before).toBe(2);
+      await page.evaluate(async () => {
+        const manifest = await (await fetch('/app/islands/islands.json')).json();
+        for (const name of ['svelte-counter', 'vue-counter']) {
+          await import(`${manifest.islands.modules[name]}?again`);
+        }
+      });
+      expect(await styleCount()).toBe(before);
 
       await page.evaluate(() => {
         (window as UnmountLog).__unmounted = [];
       });
       await page.click('main a[href="/"]');
-      await page.waitForFunction(() => !document.querySelector('[data-island]'));
+      await page.waitForFunction(() => !document.querySelector('main [data-island]'));
       await page.waitForFunction(() => ((window as UnmountLog).__unmounted ?? []).length === 4);
       expect(
         await page.evaluate(() => [...((window as UnmountLog).__unmounted ?? [])].sort()),
       ).toEqual(['plain', 'react', 'svelte', 'vue']);
+      // An island in the app shell stays across navigations.
+      expect(await page.locator('[data-lib="shell"]').count()).toBe(1);
     },
   );
 }, 300_000);
@@ -132,7 +168,7 @@ test('an island loads when its strategy says: idle, when visible, when a media q
   );
 }, 300_000);
 
-for (const { library, dependencies, file, source } of [
+for (const { library, dependencies, file, source, files } of [
   {
     library: 'preact',
     dependencies: { preact: '^10.29.8' },
@@ -154,11 +190,17 @@ export default function Hello() {
     },
     file: 'hello.tsx',
     source: `import { onCleanup } from 'solid-js';
+import Label from '../components/label';
 export default function Hello() {
   onCleanup(() => { ${unmounted('solid')}; });
-  return <span data-lib="solid">solid</span>;
+  return <span data-lib="solid"><Label text="solid" /></span>;
 }
 `,
+    files: {
+      // A component the island imports compiles as Solid too.
+      'src/frontend/components/label.tsx':
+        'export default function Label(props: { text: string }) {\n  return <b>{props.text}</b>;\n}\n',
+    },
   },
 ]) {
   test(`a ${library} island mounts and unmounts on navigation`, async () => {
@@ -166,11 +208,14 @@ export default function Hello() {
       {
         dependencies,
         islands: { [file]: source },
+        files,
         page: '<head><title>Islands</title></head><body><main><div data-island="hello" data-load="load"><i>wait</i></div><a href="/">Home</a></main></body>',
       },
       async ({ page, origin }) => {
         await page.goto(`${origin}/islands/`);
-        await page.waitForSelector(`[data-lib="${library}"]`, { timeout: 15_000 });
+        await page.waitForSelector(`[data-lib="${library}"]:has-text("${library}")`, {
+          timeout: 15_000,
+        });
         await page.click('main a[href="/"]');
         await page.waitForFunction(
           (lib) => ((window as UnmountLog).__unmounted ?? []).includes(lib),
@@ -186,6 +231,8 @@ async function withIslandsApp(
     readonly dependencies?: Record<string, string>;
     readonly islands: Record<string, string>;
     readonly page: string;
+    readonly shell?: string;
+    readonly files?: Record<string, string>;
   },
   run: (context: { root: string; page: Page; origin: string }) => Promise<void>,
 ): Promise<void> {
@@ -203,6 +250,15 @@ async function withIslandsApp(
     await mkdir(islandsDir, { recursive: true });
     for (const [file, source] of Object.entries(app.islands)) {
       await writeFile(path.join(islandsDir, file), source, 'utf8');
+    }
+    for (const [file, source] of Object.entries(app.files ?? {})) {
+      await mkdir(path.dirname(path.join(root, file)), { recursive: true });
+      await writeFile(path.join(root, file), source, 'utf8');
+    }
+    if (app.shell) {
+      const shellPath = path.join(root, 'src', 'frontend', 'app', 'app.html');
+      const shell = await readFile(shellPath, 'utf8');
+      await writeFile(shellPath, shell.replace('<main>', `${app.shell}\n    <main>`), 'utf8');
     }
     const pageDir = path.join(root, 'src', 'frontend', 'pages', 'islands');
     await mkdir(pageDir, { recursive: true });
