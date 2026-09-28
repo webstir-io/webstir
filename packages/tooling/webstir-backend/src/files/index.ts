@@ -86,7 +86,11 @@ const INLINE_TYPES =
 /** A download's name: plain ASCII for old clients, and the real name encoded (RFC 6266). */
 function attachment(name: string): string {
   const plain = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
-  return `attachment; filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+  const encoded = encodeURIComponent(name).replace(
+    /[!'()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${plain}"; filename*=UTF-8''${encoded}`;
 }
 
 async function localFile(store: Extract<Store, { kind: 'local' }>, key: string): Promise<Blob> {
@@ -191,7 +195,7 @@ const TYPES_FOLDER = path.join('.webstir', 'types');
 /** A key is a relative path of plain segments: `avatars/42.png`, never `../x`, `/x` or `.webstir/...`. */
 function checkKey(key: string): void {
   const segments = key.split('/');
-  if (segments[0] === '.webstir') {
+  if (segments[0]?.toLowerCase() === '.webstir') {
     throw new Error(`"${key}" is not a file key; .webstir/ is where Webstir keeps file types.`);
   }
   const plain = segments.every(

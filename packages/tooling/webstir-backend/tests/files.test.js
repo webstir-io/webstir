@@ -184,16 +184,24 @@ test('local files keep their media type, and anything that could run script is a
 
 test('downloads keep names in any script, and type records stay inside the storage folder', async () => {
   await withApp({}, async (root) => {
-    for (const key of ['reports/报告.zip', 'reports/two words "quoted".bin']) {
+    for (const key of [
+      'reports/报告.zip',
+      'reports/two words "quoted".bin',
+      "reports/Ada's (final)*.zip",
+    ]) {
       await files.put(key, 'x', { contentType: 'application/zip' });
       const served = await serveLocalFile(new URL(await files.url(key), 'http://app.test'));
       assert.equal(served.status, 200, key);
       const disposition = served.headers.get('content-disposition') ?? '';
       assert.match(disposition, /^attachment; filename="[\x20-\x7e]*"; filename\*=UTF-8''/, key);
-      assert.ok(disposition.includes(encodeURIComponent(key.split('/').at(-1))), key);
+      const encoded = /filename\*=UTF-8''(.*)$/.exec(disposition)?.[1] ?? '';
+      assert.match(encoded, /^[A-Za-z0-9!#$&+.^_`|~%-]+$/, key);
+      assert.equal(decodeURIComponent(encoded), key.split('/').at(-1), key);
     }
     const entries = await fs.readdir(path.join(root, 'data'));
     assert.deepEqual(entries, ['files']);
-    await assert.rejects(files.put('.webstir/types/x', 'x'), /is not a file key/);
+    for (const key of ['.webstir/types/x', '.WEBSTIR/types/x', '.Webstir/x']) {
+      await assert.rejects(files.put(key, 'x'), /is not a file key/, key);
+    }
   });
 });
