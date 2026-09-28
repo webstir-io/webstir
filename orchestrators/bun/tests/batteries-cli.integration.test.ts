@@ -150,13 +150,15 @@ test('migrate leaves the users table to an app whose migrations make it', async 
     expect(refused.stderr).toContain('table users already exists');
 
     await rm(path.join(root, 'data'), { recursive: true, force: true });
+    // Said in the app's settings, read from its .env as the server reads them.
     await writeFile(
       signIn,
       (await readFile(signIn, 'utf8')).replace(
         'const signIn: SignInOptions = {',
-        "const signIn: SignInOptions = {\n  usersTable: 'app',",
+        "const signIn: SignInOptions = {\n  usersTable: process.env.USERS_TABLE === 'app' ? 'app' : 'webstir',",
       ),
     );
+    await writeFile(path.join(root, '.env'), 'USERS_TABLE=app\n');
     const applied = await runWebstir(['migrate', '--workspace', root], { env });
     expect(applied.exitCode).toBe(0);
     expect(applied.stdout).toContain('[webstir] applied\n  0001-users');

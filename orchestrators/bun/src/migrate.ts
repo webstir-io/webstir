@@ -17,10 +17,15 @@ async function readSignInOptions(
   workspaceRoot: string,
 ): Promise<{ usersTable?: 'webstir' | 'app' }> {
   const built = path.join(workspaceRoot, 'build', 'backend', 'module.js');
-  const loaded = (await import(pathToFileURL(built).href)) as {
-    module?: { signIn?: { usersTable?: 'webstir' | 'app' } };
-  };
-  return loaded.module?.signIn ?? {};
+  try {
+    const loaded = (await import(pathToFileURL(built).href)) as {
+      module?: { signIn?: { usersTable?: 'webstir' | 'app' } };
+    };
+    return loaded.module?.signIn ?? {};
+  } catch {
+    // A module that cannot load here leaves Webstir's defaults, as before it was read.
+    return {};
+  }
 }
 
 export interface MigrateResult {
@@ -34,6 +39,9 @@ export async function runMigrate(options: {
   readonly workspaceRoot: string;
   readonly status: boolean;
 }): Promise<MigrateResult> {
+  // The app's settings first: the build evaluates its module, and sign-in's choices may read them.
+  const { prepareApp } = await import('@webstir-io/webstir-backend');
+  prepareApp(options.workspaceRoot);
   await buildBackendForCommand(options.workspaceRoot, 'migrate');
   const { appMigrationStatus, migrateAppDatabase } = await import('@webstir-io/webstir-backend/db');
   // With sign-in, its tables come first, as the server makes them, unless the app makes `users`.
