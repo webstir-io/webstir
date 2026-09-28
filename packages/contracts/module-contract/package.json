@@ -16,6 +16,11 @@
       "import": "./dist/client-nav.js",
       "default": "./dist/client-nav.js"
     },
+    "./render": {
+      "types": "./dist/render-execute.d.ts",
+      "import": "./dist/render-execute.js",
+      "default": "./dist/render-execute.js"
+    },
     "./ts-rest": {
       "types": "./dist/adapters/ts-rest.d.ts",
       "import": "./dist/adapters/ts-rest.js",

@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
+import { findPageDataModule } from '@webstir-io/webstir-frontend';
 import { checkSpaTemplates } from './render-validation.ts';
 import { watch, type FSWatcher } from 'node:fs';
 
@@ -62,10 +63,12 @@ export async function startBunGeneratedFrontendWatch(
   assertPageRoutesCompatible(pageRoutes, pages);
   if (
     packageJson.webstir?.enable?.clientNav === true ||
-    (options.apiProxyOrigin !== undefined && (await hasRenderedViewRoutes(paths.workspaceRoot)))
+    (options.apiProxyOrigin !== undefined && (await hasRenderedViewRoutes(paths.workspaceRoot))) ||
+    (await hasBrowserRenderedPages(pages))
   ) {
-    // Client navigation needs independently importable page entries, and rendered views need
-    // compiled page programs. Bun's HTML bundler provides neither; use the document builder.
+    // Client navigation needs independently importable page entries, and rendered views and
+    // browser-rendered pages need compiled page programs. Bun's HTML bundler provides neither;
+    // use the document builder.
     return startBunSsgFrontendWatch(options);
   }
   const host = options.host ?? '127.0.0.1';
@@ -75,18 +78,25 @@ export async function startBunGeneratedFrontendWatch(
     notFoundRoutePath: resolveNotFoundRoutePath(pages),
   };
 
-  // An SPA edit that adds a binding is not regenerated, so watch keeps serving the last valid pages.
-  const canRegenerate = isSpa
-    ? async () => {
-        try {
-          await checkSpaTemplates(options.workspaceRoot);
-          return true;
-        } catch (error) {
-          console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
-          return false;
-        }
-      }
-    : undefined;
+  // An edit this pipeline can't serve is not regenerated, so watch keeps serving the last valid
+  // pages: an SPA binding nothing renders, or a page that now renders in the browser, which needs
+  // the document builder this watch chose against at startup.
+  const canRegenerate = async () => {
+    if (await hasBrowserRenderedPages(pages)) {
+      console.error(
+        '[webstir] A page now has a data.ts, so it renders in the browser; restart watch to serve it.',
+      );
+      return false;
+    }
+    if (!isSpa) return true;
+    try {
+      await checkSpaTemplates(options.workspaceRoot);
+      return true;
+    } catch (error) {
+      console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
   let servedAddress: ServedAddress | undefined;
   // The watchers are armed before the first page is generated or served, so an edit made as soon
   // as a page is served, or while the server is starting, is regenerated rather than missed.
@@ -426,4 +436,13 @@ function createSession(
       await exitPromise;
     },
   };
+}
+
+async function hasBrowserRenderedPages(
+  pages: readonly { readonly directory: string }[],
+): Promise<boolean> {
+  for (const page of pages) {
+    if (await findPageDataModule(page.directory)) return true;
+  }
+  return false;
 }

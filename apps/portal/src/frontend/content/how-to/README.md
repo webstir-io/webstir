@@ -9,6 +9,7 @@ Task-oriented docs for doing specific things.
 - [Test](./test.md)
 - [Publish](./publish.md)
 - [Static Sites (SSG Preview)](./static-sites.md)
+- [Render a Page in the Browser](./browser-rendering.md)
 - [Extend Pipelines with Hooks](./pipeline-hooks.md)
 - [Precompression](./precompression.md)
 - [Docker Deployment](./docker.md)

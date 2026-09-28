@@ -1,6 +1,10 @@
 import {
+  browserProgramOf,
   createPageLifecycle,
+  markClientNav,
   preparePage,
+  renderPageInto,
+  rerenderPage,
   type LoadablePage,
   type PreparedPage,
   type PageSetup,
@@ -51,6 +55,7 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
+  markClientNav();
   const initial = () => {
     const requestId = activeRequestId;
     void startPage(window.location.href)
@@ -167,6 +172,7 @@ async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   const script = document.querySelector<HTMLScriptElement>('script[data-webstir-page][src]');
   const root = document.querySelector('main');
   if (!root || (!prepared && !script)) return;
+  const firstLoad = !prepared;
   if (!prepared && script?.hasAttribute('data-webstir-load')) {
     activeController ??= new AbortController();
     const controller = activeController;
@@ -183,8 +189,17 @@ async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
   }
   const module = prepared?.module ?? ((await import(script!.src)) as { setup?: PageSetup });
   if (generation !== pageGeneration || !root.isConnected) return;
+  // A browser-rendered page: a navigation rendered it before the swap; the first load renders here.
+  const program = browserProgramOf(module);
+  if (program && prepared && firstLoad) renderPageInto(document, program, prepared.data);
   if (typeof module.setup === 'function')
-    pageSettled = pageLifecycle.start(module.setup, root, url, prepared?.data);
+    pageSettled = pageLifecycle.start(
+      module.setup,
+      root,
+      url,
+      prepared?.data,
+      program ? (data) => rerenderPage(program, data) : undefined,
+    );
 }
 
 let activeRequestId = 0;
@@ -472,6 +487,18 @@ async function renderDocumentResponse(
       if (signal.aborted || requestId !== activeRequestId) return;
       console.error(error);
       leave(options.url);
+      return;
+    }
+  }
+  // A browser-rendered page arrives as its first-load HTML; render its data before the swap.
+  const program = browserProgramOf(prepared?.module);
+  if (program && prepared) {
+    try {
+      renderPageInto(doc, program, prepared.data);
+    } catch (error) {
+      // Data the template can't render: a full load shows the page as a failing load would.
+      console.error(error);
+      if (requestId === activeRequestId) leave(options.url);
       return;
     }
   }

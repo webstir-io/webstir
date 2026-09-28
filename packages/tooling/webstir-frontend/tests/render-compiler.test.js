@@ -227,7 +227,7 @@ test('the clients page compiles through the provider build with partials and CSR
 test('the clients page validates against its view schema', async () => {
   const root = await createWorkspace();
   const program = await buildWorkspace(root);
-  assert.deepEqual(validateRenderProgram(program, clientsData, 'clientsPage'), []);
+  assert.deepEqual(validateRenderProgram(program, clientsData, 'view clientsPage'), []);
 
   await writeBackendModule(root, CLIENTS_SCHEMA_SOURCE);
   await validateRenderPrograms({
@@ -268,7 +268,7 @@ test('a misspelled path inside a partial reports the partial file', async () => 
   await fs.writeFile(partial, html.replace('nav.clients.current', 'nav.client.current'), 'utf8');
   const program = await buildWorkspace(root);
 
-  const issues = validateRenderProgram(program, clientsData, 'clientsPage');
+  const issues = validateRenderProgram(program, clientsData, 'view clientsPage');
   assert.equal(issues.length, 1);
   assert.deepEqual(issues[0].loc, { file: SIDEBAR_SOURCE, line: 13 });
   assert.match(issues[0].message, /`nav` has no `client`; it has `clients`, `proposals`/);
@@ -287,7 +287,7 @@ test('a page with bindings that no view renders is an error', async () => {
       workspaceRoot: root,
       pagesRoot: path.join(root, 'build', 'frontend', 'pages'),
     }),
-    /src\/frontend\/app\/partials\/sidebar\.html:9: page 'clients' has bindings, but no view renders it/,
+    /src\/frontend\/app\/partials\/sidebar\.html:9: page 'clients' has bindings, but nothing renders it/,
   );
 });
 
@@ -322,7 +322,7 @@ test('schema checks cover each, text, attributes and the framework flash', async
     sections: z.array(z.object({ items: z.array(z.string()) })),
     tags: z.set(z.string()),
   });
-  const messages = validateRenderProgram(program, schema, 'fixture').map(
+  const messages = validateRenderProgram(program, schema, 'view fixture').map(
     (issue) => `${issue.loc.line}: ${issue.message.replace(' (view fixture)', '')}`,
   );
   assert.deepEqual(messages, [
@@ -366,7 +366,9 @@ test('unions, optional and nullable wrappers resolve through every member', asyn
       )
       .optional(),
   });
-  const messages = validateRenderProgram(program, schema, 'fixture').map((issue) => issue.message);
+  const messages = validateRenderProgram(program, schema, 'view fixture').map(
+    (issue) => issue.message,
+  );
   assert.deepEqual(messages, [
     'data-text="block.table.title": `block.table` has no `title`; it has `columns` (view fixture)',
   ]);
@@ -604,7 +606,7 @@ test('a problem in a partial used twice is reported once', async () => {
     '<head></head><main><p data-each="items as item" data-include="row"></p><p data-each="items as item" data-include="row"></p></main>',
   );
   const schema = z.object({ items: z.array(z.object({ name: z.string() })) });
-  const issues = validateRenderProgram(program, schema, 'fixture');
+  const issues = validateRenderProgram(program, schema, 'view fixture');
   assert.equal(issues.length, 2);
   assert.equal(new RenderTemplateError(issues).issues.length, 1);
 });
