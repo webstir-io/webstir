@@ -41,13 +41,20 @@ test('an app is its files: layers, build plan and static output follow from them
       plan: ['frontend', 'backend'],
       static: false,
     },
-    // Functions or jobs are not an HTTP server: the pages still publish as a static site.
+    // Functions and jobs compile, but are not an HTTP server: the pages stay a static site.
     {
       files: ['src/frontend/', 'src/backend/jobs/nightly/index.ts'],
       pages: true,
       server: false,
-      plan: ['frontend'],
+      plan: ['frontend', 'backend'],
       static: true,
+    },
+    {
+      files: ['src/backend/functions/hello/index.ts'],
+      pages: false,
+      server: false,
+      plan: ['backend'],
+      static: false,
     },
     // A leftover mode never overrides the files.
     {
@@ -77,12 +84,13 @@ test('an app is its files: layers, build plan and static output follow from them
         }
       }
 
-      const { layers } = await readWorkspaceDescriptor(workspace);
+      const descriptor = await readWorkspaceDescriptor(workspace);
+      const { layers } = descriptor;
       expect({ files: entry.files, layers }).toEqual({
         files: entry.files,
         layers: { pages: entry.pages, server: entry.server },
       });
-      expect(createBuildPlan(layers)).toEqual(entry.plan);
+      expect(createBuildPlan(descriptor)).toEqual(entry.plan);
       expect(isStaticApp(layers)).toBe(entry.static);
     } finally {
       await rm(workspace, { recursive: true, force: true });

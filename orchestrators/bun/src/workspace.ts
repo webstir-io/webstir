@@ -1,7 +1,11 @@
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 
-import { readWorkspaceLayers, type WorkspaceLayers } from '@webstir-io/module-contract/workspace';
+import {
+  hasBackendEntries,
+  readWorkspaceLayers,
+  type WorkspaceLayers,
+} from '@webstir-io/module-contract/workspace';
 
 import type { WorkspaceDescriptor } from './types.ts';
 
@@ -36,7 +40,8 @@ export async function readWorkspaceDescriptor(workspacePath: string): Promise<Wo
   }
 
   const layers = readWorkspaceLayers(root);
-  if (!layers.pages && !layers.server) {
+  const backendEntries = hasBackendEntries(root);
+  if (!layers.pages && !backendEntries) {
     throw new Error(
       `${root} has no pages (src/frontend) and no server (src/backend/index.ts), so there is nothing to build.`,
     );
@@ -46,5 +51,6 @@ export async function readWorkspaceDescriptor(workspacePath: string): Promise<Wo
     root,
     name: typeof packageJson.name === 'string' ? packageJson.name : path.basename(root),
     layers,
+    backendEntries,
   };
 }

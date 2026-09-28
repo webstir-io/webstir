@@ -38,7 +38,7 @@ export async function runCommand(
     await buildWorkspaceModuleDefinition(workspace.root, mode);
   }
 
-  for (const kind of createBuildPlan(workspace.layers)) {
+  for (const kind of createBuildPlan(workspace)) {
     const provider = await providerLoader(kind);
     const resolvedWorkspace = await provider.resolveWorkspace({
       workspaceRoot: workspace.root,

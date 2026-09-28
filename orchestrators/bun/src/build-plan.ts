@@ -1,10 +1,11 @@
-import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
+import type { BuildTargetKind, WorkspaceDescriptor } from './types.ts';
 
-import type { BuildTargetKind } from './types.ts';
-
-export function createBuildPlan(layers: WorkspaceLayers): readonly BuildTargetKind[] {
+/** Pages build the frontend; a server, or functions and jobs without one, build the backend. */
+export function createBuildPlan(
+  workspace: Pick<WorkspaceDescriptor, 'layers' | 'backendEntries'>,
+): readonly BuildTargetKind[] {
   return [
-    ...(layers.pages ? (['frontend'] as const) : []),
-    ...(layers.server ? (['backend'] as const) : []),
+    ...(workspace.layers.pages ? (['frontend'] as const) : []),
+    ...(workspace.backendEntries ? (['backend'] as const) : []),
   ];
 }

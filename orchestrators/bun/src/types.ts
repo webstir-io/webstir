@@ -13,6 +13,8 @@ export interface WorkspaceDescriptor {
   readonly root: string;
   readonly name: string;
   readonly layers: WorkspaceLayers;
+  /** Backend code to compile: the server entry, or functions and jobs without one. */
+  readonly backendEntries: boolean;
 }
 
 export interface CommandTargetResult {

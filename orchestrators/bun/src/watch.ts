@@ -51,7 +51,7 @@ export async function runWatch(options: RunWatchOptions): Promise<void> {
     const { pages, server } = workspace.layers;
     if (pages && server) {
       await runFullWatch(workspace, options, io);
-    } else if (server) {
+    } else if (server || !pages) {
       await runApiWatch(workspace, options, io);
     } else {
       await runFrontendWatch(workspace, options, io);

@@ -36,11 +36,11 @@ export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
 
 /**
  * The starter whose templates fit an app, for restoring its scaffold: pages and a server are the
- * full starter, a server alone is api, and pages alone are ssg when they have content, else spa.
+ * full starter, no pages is api, and pages alone are ssg when they have content, else spa.
  */
 export function starterFor(workspaceRoot: string, layers: WorkspaceLayers): Starter {
   if (layers.pages && layers.server) return 'full';
-  if (layers.server) return 'api';
+  if (!layers.pages) return 'api';
   return existsSync(path.join(workspaceRoot, 'src', 'frontend', 'content')) ? 'ssg' : 'spa';
 }
 

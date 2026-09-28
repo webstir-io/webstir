@@ -49,7 +49,7 @@ export async function runTest(options: RunTestOptions): Promise<TestCommandResul
   });
   const runtime = parseRuntimeFlag(options.rawArgs, options.env);
   const workspace = await readWorkspaceDescriptor(options.workspaceRoot);
-  const builtTargets = selectBuildTargets(workspace.layers, runtime);
+  const builtTargets = selectBuildTargets(workspace, runtime);
 
   for (const target of builtTargets) {
     const provider = await loadProvider(target);
@@ -186,10 +186,10 @@ function createEmptySummary(): RunnerSummary {
 }
 
 function selectBuildTargets(
-  layers: WorkspaceDescriptor['layers'],
+  workspace: WorkspaceDescriptor,
   runtime: RuntimeFilter,
 ): BuildTargetKind[] {
-  const targets = createBuildPlan(layers);
+  const targets = createBuildPlan(workspace);
   if (runtime === 'frontend' || runtime === 'backend') {
     return targets.filter((target) => target === runtime);
   }
