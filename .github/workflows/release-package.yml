@@ -73,12 +73,21 @@ jobs:
             exit 1
           fi
       - run: bun ci
-      - uses: changesets/action/version@v2
+      - id: version
+        uses: changesets/action/version@v2
         with:
           script: bun run version-packages
           commit-message: Version packages
           pr-title: Version packages
           github-token: ${{ secrets.RELEASE_PR_TOKEN }}
+      # Every change with a changeset ships: the release pull request merges itself once its
+      # required checks pass, and its merge publishes.
+      - name: Merge the release pull request once CI passes
+        if: steps.version.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PR_TOKEN }}
+          PR_NUMBER: ${{ steps.version.outputs.pr-number }}
+        run: gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --squash
 
   pack:
     if: needs.select-mode.outputs.mode == 'publish'

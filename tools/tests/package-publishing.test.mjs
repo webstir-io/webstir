@@ -113,3 +113,24 @@ test('the release workflow grants id-token to the publish job alone', () => {
   assert.deepEqual(withIdToken, ['publish']);
   assert.match(workflow, /^permissions: \{\}$/m);
 });
+
+// Every change with a changeset ships: the version job sets the release pull request it just
+// opened or updated to squash auto-merge, using that pull request's number and the release token.
+test('the release workflow auto-merges the Version packages pull request', () => {
+  const workflow = Bun.YAML.parse(
+    readFileSync(path.join(repoRoot, '.github/workflows/release-package.yml'), 'utf8'),
+  );
+  const steps = workflow.jobs.version.steps;
+  const version = steps.find((step) => step.uses?.startsWith('changesets/action/version@'));
+  assert.ok(version, 'the version job runs changesets/action/version');
+  assert.equal(version.id, 'version');
+  assert.equal(version.with['github-token'], '${{ secrets.RELEASE_PR_TOKEN }}');
+
+  const merge = steps[steps.indexOf(version) + 1];
+  assert.ok(merge, 'a step follows the version step');
+  assert.equal(merge.if, "steps.version.outputs.pr-number != ''");
+  assert.equal(merge.env.PR_NUMBER, '${{ steps.version.outputs.pr-number }}');
+  assert.equal(merge.env.GH_TOKEN, '${{ secrets.RELEASE_PR_TOKEN }}');
+  assert.match(merge.run, /^gh pr merge "\$PR_NUMBER" .*--auto/);
+  assert.match(merge.run, /--squash/);
+});
