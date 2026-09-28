@@ -556,17 +556,36 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
     }),
   );
   // A refused post (a re-rendered form) is posted again natively, so its own response, errors
-  // included, is what the browser shows under the policy it sets.
-  const refusedPosts: string[] = [];
+  // included, is what the browser shows under the policy it sets; unless the form changed while
+  // the first post was in flight, when its address loads instead of sending the new values.
+  const refusedRequests: string[] = [];
+  let holdRefused: Promise<void> | undefined;
   await page.route(`${origin}/client-nav-form-refused`, async (route) => {
-    refusedPosts.push(route.request().postData() ?? '');
+    const request = route.request();
+    refusedRequests.push(`${request.method()} ${request.postData() ?? ''}`);
+    if (request.method() !== 'POST') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        body: html(
+          'Refused Form',
+          '',
+          '<h1 id="refused-form-heading">Refused Form</h1>' +
+            '<form method="post" action="/client-nav-form-refused">' +
+            '<input name="email" value="not-an-email">' +
+            '<button id="refused-again-submit">Send</button></form>',
+        ),
+      });
+      return;
+    }
+    await holdRefused;
     await route.fulfill({
       status: 422,
       headers: { 'content-type': 'text/html; charset=utf-8' },
       body: html(
         'Refused',
         '<meta name="referrer" content="no-referrer">',
-        `<h1 id="refused-heading">Refused ${refusedPosts.length}</h1>` +
+        '<h1 id="refused-heading">Refused</h1>' +
           '<form method="post" action="/client-nav-redirect">' +
           '<button id="redirect-form-submit">Send</button></form>',
       ),
@@ -687,12 +706,29 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(await sameDocument()).toBe(false);
 
   await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
-  await markDocument();
+  let releaseRefused = () => {};
+  holdRefused = new Promise<void>((resolve) => {
+    releaseRefused = resolve;
+  });
+  const firstPost = page.waitForRequest(`${origin}/client-nav-form-refused`);
   await page.locator('#refused-form-submit').click({ noWaitAfter: true });
+  await firstPost;
+  await page.locator('input[name="email"]').fill('changed@example.com');
+  releaseRefused();
+  await page.locator('#refused-form-heading').waitFor({ state: 'visible' });
+  expect(refusedRequests).toEqual(['POST email=not-an-email', 'GET ']);
+  holdRefused = undefined;
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await markDocument();
+  await page.locator('#refused-again-submit').click({ noWaitAfter: true });
   await page.locator('#refused-heading').waitFor({ state: 'visible' });
   expect(await sameDocument()).toBe(false);
-  expect(await page.locator('#refused-heading').textContent()).toBe('Refused 2');
-  expect(refusedPosts.every((body) => body.includes('email=not-an-email'))).toBe(true);
+  // The native repost carries the same submission id.
+  expect(refusedRequests.slice(2)).toEqual([
+    'POST email=not-an-email',
+    expect.stringMatching(/^POST email=not-an-email&_webstir_submission=[\w-]+$/),
+  ]);
   expect(await probeReferer()).toBe('');
 
   await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
@@ -700,6 +736,48 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.locator('#destination-heading').waitFor({ state: 'visible' });
   expect(new URL(page.url()).hash).toBe('#section');
   expect(referers.get('/client-nav-destination')).toEqual(['']);
+
+  // Back onto an entry that now redirects, from a page that sets a policy: the destination
+  // replaces that entry, as a browser following the redirect would, so Forward still works.
+  let bounce = false;
+  await page.route(`${origin}/client-nav-bounce`, (route) =>
+    bounce
+      ? route.fulfill({
+          status: 204,
+          headers: { 'x-webstir-location': '/client-nav-bounced' },
+        })
+      : route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+          body: html(
+            'Bounce',
+            '<meta name="referrer" content="no-referrer">',
+            `<h1 id="bounce-heading">Bounce</h1>${link('to-bounce-next', '/client-nav-bounce-next')}`,
+          ),
+        }),
+  );
+  await fixture(
+    '/client-nav-bounce-next',
+    html(
+      'Bounce Next',
+      '<meta name="referrer" content="no-referrer">',
+      '<h1 id="bounce-next-heading">Bounce Next</h1>',
+    ),
+  );
+  await fixture(
+    '/client-nav-bounced',
+    html('Bounced', '', '<h1 id="bounced-heading">Bounced</h1>'),
+  );
+  await page.goto(`${origin}/client-nav-bounce`, { waitUntil: 'load' });
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await markDocument();
+  await go('to-bounce-next', 'bounce-next-heading');
+  expect(await sameDocument()).toBe(true);
+  bounce = true;
+  await page.goBack({ waitUntil: 'commit' });
+  await page.locator('#bounced-heading').waitFor({ state: 'visible' });
+  await page.goForward({ waitUntil: 'commit' });
+  await page.waitForURL(`${origin}/client-nav-bounce-next`);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });

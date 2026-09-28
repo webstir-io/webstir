@@ -398,9 +398,10 @@ async function submitFormRequest(
       // A refused post (a re-rendered form) holds errors, values and messages only its own
       // response carries, so it is posted again natively, which re-runs only the refused check;
       // an accepted one is not run twice, so its address loads instead.
-      loadInFull: response.ok
-        ? () => leave(url)
-        : () => submitFormNatively(form, submitter, submission.submissionId),
+      loadInFull:
+        !response.ok && isUnchangedSubmission(form, submitter, submission.snapshot)
+          ? () => submitFormNatively(form, submitter, submission.submissionId)
+          : () => leave(url),
     });
     return;
   }
@@ -452,7 +453,7 @@ async function renderDocumentResponse(
     current: { committed: documentReferrerPolicy, metas: readReferrerMetas(document) },
   });
   if (referrer.kind === 'load') {
-    (options.loadInFull ?? (() => leave(options.url)))();
+    (options.loadInFull ?? (() => leave(options.url, options.history)))();
     return;
   }
 
@@ -703,10 +704,12 @@ async function followLocation(
   });
   if (next.kind === 'refuse') {
     console.error(`client-nav: refused to follow a redirect to ${next.location}`);
-  } else if (next.kind === 'load' || pageSetsReferrerPolicy()) {
+  } else if (next.kind === 'load') {
+    leave(next.url);
+  } else if (pageSetsReferrerPolicy()) {
     // Fetching the destination to compare its policy would spend what it shows once, such as a
     // flash message, on a response that is then thrown away for a full load.
-    leave(next.url);
+    leave(next.url, next.history);
   } else {
     await renderUrl(next.url, { history: next.history, hops: hops + 1 });
   }
@@ -719,11 +722,31 @@ function pageSetsReferrerPolicy(): boolean {
   return onScreenReferrerPolicy(current, null) !== null;
 }
 
-/** Replaces this document with a full load. */
-function leave(url: string): void {
+/**
+ * Replaces this document with a full load. One that stands for Back, Forward or a redirect that
+ * replaces its entry replaces the history entry too.
+ */
+function leave(url: string, history: HistoryMode = 'push'): void {
   leaving = true;
   setBusy(false);
-  window.location.href = url;
+  if (history === 'push') window.location.href = url;
+  else window.location.replace(url);
+}
+
+// Whether the form would still send what it sent: a native repost must not carry values the user
+// changed while the first post was in flight.
+function isUnchangedSubmission(
+  form: HTMLFormElement,
+  submitter: HTMLButtonElement | HTMLInputElement | null,
+  snapshot: FormSubmissionSnapshot,
+): boolean {
+  if (!form.isConnected) return false;
+  const now = snapshotFormSubmission(
+    resolveFormAction(form, submitter),
+    resolveFormEnctype(form, submitter),
+    createFormData(form, submitter),
+  );
+  return isSameFormSubmission(now, snapshot);
 }
 
 /**
