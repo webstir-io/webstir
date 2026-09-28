@@ -67,25 +67,31 @@ export function webstirMigrations(tables: WebstirTables): Migration[] {
 }
 
 /**
- * Sessions live in `webstir_session_records`. Webstir 0.7.0 kept them in `webstir_sessions`: they
- * are copied across, and that table is left for a 0.7.0 server still running on the database. A
+ * Sessions live in `webstir_session_records`, except in a database Webstir 0.7.0 used: its
+ * `webstir_sessions` stays the one table, shared with a 0.7.0 server still running on it. A
  * `webstir_sessions` of another shape is an app's own, from the old session template.
  */
 async function createSessionRecords(connection: DatabaseConnection): Promise<void> {
-  const [sessions, records] = await Promise.all([
-    tableColumns(connection, 'webstir_sessions'),
-    tableColumns(connection, 'webstir_session_records'),
-  ]);
+  if ((await sessionsTable(connection)) === 'webstir_sessions') return;
   await connection.exec(`CREATE TABLE IF NOT EXISTS webstir_session_records (
   id TEXT PRIMARY KEY,
   record TEXT NOT NULL,
   expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS webstir_session_records_expires_at ON webstir_session_records (expires_at);`);
-  if (records.length === 0 && sessions.sort().join() === 'expires_at,id,record') {
-    await connection.exec(`INSERT INTO webstir_session_records (id, record, expires_at)
-SELECT id, record, expires_at FROM webstir_sessions`);
-  }
+}
+
+/** The table sessions are kept in. */
+export async function sessionsTable(
+  connection: DatabaseConnection,
+): Promise<'webstir_session_records' | 'webstir_sessions'> {
+  const [records, sessions] = await Promise.all([
+    tableColumns(connection, 'webstir_session_records'),
+    tableColumns(connection, 'webstir_sessions'),
+  ]);
+  return records.length === 0 && sessions.sort().join() === 'expires_at,id,record'
+    ? 'webstir_sessions'
+    : 'webstir_session_records';
 }
 
 async function tableColumns(connection: DatabaseConnection, table: string): Promise<string[]> {

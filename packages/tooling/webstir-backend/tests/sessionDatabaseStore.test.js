@@ -23,11 +23,13 @@ async function tableNames(db) {
 const starts = [
   {
     name: 'a new database',
+    table: 'webstir_session_records',
     async prepare() {},
     async check() {},
   },
   {
     name: "an app's own webstir_sessions, from the old session template",
+    table: 'webstir_session_records',
     async prepare(db) {
       await db.exec(`CREATE TABLE webstir_sessions (
   id TEXT PRIMARY KEY, value TEXT NOT NULL, flash TEXT NOT NULL, runtime TEXT NOT NULL DEFAULT '{}',
@@ -45,7 +47,8 @@ const starts = [
     },
   },
   {
-    name: "Webstir 0.7.0's webstir_sessions, whose sessions carry over and stay for a 0.7.0 server",
+    name: "Webstir 0.7.0's webstir_sessions, which stays the one table, shared with a 0.7.0 server",
+    table: 'webstir_sessions',
     async prepare(db) {
       await db.exec(`CREATE TABLE webstir_migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL);
 CREATE TABLE webstir_sessions (id TEXT PRIMARY KEY, record TEXT NOT NULL, expires_at TEXT NOT NULL);
@@ -62,12 +65,9 @@ CREATE INDEX webstir_sessions_expires_at ON webstir_sessions (expires_at);`);
     },
     async check(db, store) {
       assert.deepEqual(await store.get('kept'), record('kept'));
-      assert.deepEqual(await db.query('SELECT id FROM webstir_sessions'), [{ id: 'kept' }]);
-      await db.execute('INSERT INTO webstir_sessions (id, record, expires_at) VALUES (?, ?, ?)', [
-        'from-0.7.0',
-        '{}',
-        '2999-01-01T00:00:00.000Z',
-      ]);
+      assert.ok(!(await tableNames(db)).includes('webstir_session_records'));
+      await store.delete('kept');
+      assert.deepEqual(await db.query('SELECT id FROM webstir_sessions'), []);
     },
   },
 ];
@@ -82,12 +82,14 @@ for (const target of databaseTargets) {
 
         await store.set(record('new'));
         assert.deepEqual(await store.get('new'), record('new'));
+        assert.deepEqual(await db.query(`SELECT id FROM ${start.table} WHERE id = ?`, ['new']), [
+          { id: 'new' },
+        ]);
         await store.set({ ...record('new'), value: { userId: 'grace' } });
         assert.deepEqual((await store.get('new'))?.value, { userId: 'grace' });
         await store.delete('new');
         assert.equal(await store.get('new'), undefined);
 
-        assert.ok((await tableNames(db)).includes('webstir_session_records'));
         await start.check(db, store);
       } finally {
         await db.close();
