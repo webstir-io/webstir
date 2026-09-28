@@ -2,6 +2,7 @@ import type { MigrationStatus } from '@webstir-io/webstir-backend/db';
 
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 import { buildBackendForCommand } from './backend-command.ts';
 
@@ -9,6 +10,17 @@ function hasSignIn(workspaceRoot: string): boolean {
   return ['ts', 'tsx', 'js', 'mjs'].some((extension) =>
     existsSync(path.join(workspaceRoot, 'src', 'backend', `sign-in.${extension}`)),
   );
+}
+
+/** Sign-in's choices, from the built module, where the server reads them too. */
+async function readSignInOptions(
+  workspaceRoot: string,
+): Promise<{ usersTable?: 'webstir' | 'app' }> {
+  const built = path.join(workspaceRoot, 'build', 'backend', 'module.js');
+  const loaded = (await import(pathToFileURL(built).href)) as {
+    module?: { signIn?: { usersTable?: 'webstir' | 'app' } };
+  };
+  return loaded.module?.signIn ?? {};
 }
 
 export interface MigrateResult {
@@ -23,11 +35,12 @@ export async function runMigrate(options: {
   readonly status: boolean;
 }): Promise<MigrateResult> {
   await buildBackendForCommand(options.workspaceRoot, 'migrate');
-  const { appMigrationStatus, declareWebstirTables, migrateAppDatabase } = await import(
-    '@webstir-io/webstir-backend/db'
-  );
-  // With sign-in, the app's migrations may build on its users table.
-  if (hasSignIn(options.workspaceRoot)) declareWebstirTables('sign-in');
+  const { appMigrationStatus, migrateAppDatabase } = await import('@webstir-io/webstir-backend/db');
+  // With sign-in, its tables come first, as the server makes them, unless the app makes `users`.
+  if (hasSignIn(options.workspaceRoot)) {
+    const { declareSignInTables } = await import('@webstir-io/webstir-backend/sign-in');
+    declareSignInTables(await readSignInOptions(options.workspaceRoot));
+  }
   if (options.status) {
     return { workspaceRoot: options.workspaceRoot, status: await appMigrationStatus() };
   }

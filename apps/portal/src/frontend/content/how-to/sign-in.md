@@ -26,7 +26,7 @@ const accountView = {
 
 ## How it works
 
-1. The visitor gives their address. If they may sign in, Webstir emails a 6-digit code and a link.
+1. The visitor gives their address. If they may sign in, Webstir emails a 6-digit code and a link. Someone already signed in, who still may, goes straight on.
 2. The code works for 5 minutes and 3 tries. It can be typed with spaces or dashes, or pasted with the email's words around it. A new request replaces the old code, and the page says one is on its way. An address gets at most one code a minute and five in fifteen minutes.
 3. The answer is the same whether or not the address may sign in, or asked too often, so the page tells nobody who has an account.
 4. The link opens a page that signs in with a button (a POST), so a mail scanner that follows links uses nothing up.
@@ -53,7 +53,12 @@ Webstir makes `users (id, email, session_version, created_at)` before the app's 
 const signIn: SignInOptions = { usersTable: 'app', canSignIn };
 ```
 
-Its table needs at least `id`, `email`, `session_version` (an integer that starts at 0 or 1) and `created_at`.
+Its table needs:
+
+- `id` as text: Webstir gives a new user a UUID.
+- `email`, unique, stored lowercase: Webstir looks addresses up lowercased.
+- `session_version`, an integer that starts at 0 or 1, and `created_at`.
+- A default, or room for NULL, in every other column, since a first sign-in inserts only these four. An invite-only app whose `canSignIn` turns unknown addresses away never has Webstir insert one.
 
 ## In production
 

@@ -260,8 +260,11 @@ test('a code is read however it was typed or pasted', () => {
   }
 });
 
-test('someone signed in who opens sign-in goes on to where they were headed', () => {
-  const view = signIn().views.find((candidate) => candidate.definition.name === 'sign-in');
+test('someone signed in who opens sign-in goes on to where they were headed, while they may', async () => {
+  const allowed = new Set(['ada@example.com']);
+  const view = signIn({ canSignIn: (email) => allowed.has(email) }).views.find(
+    (candidate) => candidate.definition.name === 'sign-in',
+  );
   const load = (user) =>
     view.load({
       url: new URL('http://127.0.0.1:4321/sign-in/?returnTo=%2Fnotes%2F'),
@@ -269,11 +272,14 @@ test('someone signed in who opens sign-in goes on to where they were headed', ()
       user,
       forms: { read: () => ({ errors: {} }) },
     });
-  assert.equal(load(null).asking, true);
-  assert.throws(
-    () => load({ id: 'user-1', email: 'ada@example.com' }),
+  assert.equal((await load(null)).asking, true);
+  await assert.rejects(
+    async () => load({ id: 'user-1', email: 'ada@example.com' }),
     (error) => error.location === '/notes/',
   );
+  // Turned away since, they get the form instead of being sent back to a page that sends them here.
+  allowed.delete('ada@example.com');
+  assert.equal((await load({ id: 'user-1', email: 'ada@example.com' })).asking, true);
 });
 
 test('a resent code says it is on its way', async () => {
@@ -297,7 +303,7 @@ test('a resent code says it is on its way', async () => {
       {
         level: 'info',
         message:
-          'If ada@example.com can sign in, a new code is on its way. It is in the terminal and .webstir/email.log.',
+          'If ada@example.com can sign in, a code is on its way. A new one can be sent once a minute. Codes are in the terminal and .webstir/email.log.',
       },
     ]);
   } finally {
@@ -386,7 +392,7 @@ test('a link that has expired sends the visitor back to sign in, still headed wh
     const view = module.views.find(
       (candidate) => candidate.definition.name === failed.rerender.view,
     );
-    const page = view.load({
+    const page = await view.load({
       url: new URL('http://127.0.0.1:4321/sign-in/confirm/'),
       session: {},
       user: null,
@@ -440,12 +446,12 @@ test('using a different email goes back to the email step with the address fille
 
     const asked = await post(null, { intent: 'request', email: 'ada@example.com' });
     assert.deepEqual(
-      [page(asked.session).checking, page(asked.session).email],
+      [(await page(asked.session)).checking, (await page(asked.session)).email],
       [true, 'ada@example.com'],
     );
     const changing = await post(asked.session, { intent: 'change' });
     assert.equal(changing.result.status, 303);
-    const emailStep = page(changing.session);
+    const emailStep = await page(changing.session);
     assert.deepEqual(
       [emailStep.asking, emailStep.checking, emailStep.email],
       [true, false, 'ada@example.com'],
@@ -456,7 +462,7 @@ test('using a different email goes back to the email step with the address fille
     // Asking again with another address moves on to its code.
     const other = await post(changing.session, { intent: 'request', email: 'grace@example.com' });
     assert.deepEqual(
-      [page(other.session).checking, page(other.session).email],
+      [(await page(other.session)).checking, (await page(other.session)).email],
       [true, 'grace@example.com'],
     );
   } finally {

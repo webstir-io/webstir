@@ -24,8 +24,9 @@ export interface SignInOptions {
   /** The email with the code and the link; Webstir's plain one by default. */
   email?(message: SignInEmail): Pick<EmailMessage, 'subject' | 'text' | 'html'>;
   /**
-   * `'app'` when the app's own migrations make the `users` table, with at least `id`, `email`,
-   * `session_version` and `created_at`. By default Webstir makes it before the app's migrations,
+   * `'app'` when the app's own migrations make the `users` table: a text `id`, a unique lowercase
+   * `email`, `session_version` and `created_at`, and a default for any other column, since a
+   * first sign-in inserts only those. By default Webstir makes it before the app's migrations,
    * so they can reference `users (id)`.
    */
   usersTable?: 'webstir' | 'app';
@@ -107,15 +108,16 @@ export function signIn(options: SignInOptions = {}): SignInModule {
     {
       definition: { name: 'sign-in', path: '/sign-in', page: 'sign-in' },
       data: signInData,
-      load(ctx: ViewContext): z.infer<typeof signInData> {
+      async load(ctx: ViewContext): Promise<z.infer<typeof signInData>> {
         const pending = readPending(ctx.session);
         const form = ctx.forms.read(FORM_ID);
         // A form sent back, such as a link that has expired, keeps where the visitor was headed.
         const returnTo = safeReturnTo(
           ctx.url.searchParams.get('returnTo') ?? form.values?.returnTo ?? pending?.returnTo,
         );
-        // Someone already signed in goes on to where they were headed.
-        if (ctx.user) redirect(returnTo);
+        // Someone already signed in goes on to where they were headed, while they still may sign
+        // in: an app that turned them away since would send them straight back here.
+        if (ctx.user && (await mayStillSignIn(options, ctx.user.email))) redirect(returnTo);
         const errors = form.errors;
         return {
           asking: !pending || Boolean(pending.changing),
@@ -186,14 +188,14 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         if (intent !== 'resend') return seeOther(SIGN_IN_PATH);
         const where =
           !isProduction() && !hasEmailDelivery()
-            ? ' It is in the terminal and .webstir/email.log.'
+            ? ' Codes are in the terminal and .webstir/email.log.'
             : '';
         return {
           ...seeOther(SIGN_IN_PATH),
           flash: [
             {
               level: 'info',
-              message: `If ${address} can sign in, a new code is on its way.${where}`,
+              message: `If ${address} can sign in, a code is on its way. A new one can be sent once a minute.${where}`,
             },
           ],
         };
