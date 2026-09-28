@@ -80,6 +80,6 @@ What happens:
 
 ## Rules
 
-- **Bindings live in `<main>` or `<title>`,** because that's what a browser render replaces. The build reports a binding anywhere else.
+- **Bindings live in `<main>` or `<title>`,** because that's what a browser render replaces, and `<title>` takes only `data-text`. The build reports a binding anywhere else, including on `<main>` itself or in the app shell.
 - **No POST forms.** A browser-rendered page has no session to carry the form's CSRF token. Render a page with forms on the server (a view), or post from the page script with `fetch`.
 - **A page renders in one place.** A page with a `data.ts` can't also be named by a backend view's `page`; the build asks you to keep one.

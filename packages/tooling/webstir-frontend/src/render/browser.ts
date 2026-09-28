@@ -9,7 +9,7 @@ import {
 import { BROWSER_PROGRAM_EXPORT } from '../runtime/browser-render.js';
 import { importCurrent } from '../utils/backendModule.js';
 import { ensureDir, pathExists, readFile, remove, writeFile } from '../utils/fs.js';
-import { hasBindingAttribute } from './bindings.js';
+import { hasBindingAttribute, isBindingAttribute as isBindingName } from './bindings.js';
 import { compileRenderProgram } from './compile.js';
 import { RenderTemplateError, type RenderIssue } from './issues.js';
 import { isSchemaLike, type SchemaLike } from './schema.js';
@@ -117,7 +117,7 @@ export async function compileBrowserPage(options: {
   ];
   if (programUsesCsrf(program)) {
     issues.push({
-      loc: { file: source, line: 1 },
+      loc: { file: source, line: postFormLine(html) },
       message: `page '${options.page}' renders in the browser, so it can't have a POST form; render it on the server with a view, or post from its script`,
     });
   }
@@ -171,7 +171,19 @@ function bindingsOutsideMain(html: string, source: string, page: string): Render
   const issues: RenderIssue[] = [];
   $('*').each((_, element) => {
     if (element.type !== 'tag' || !hasBindingAttribute(element.attribs)) return;
-    if (element.tagName === 'title' || $(element).parents('main').length > 0) return;
+    if (element.tagName === 'title') {
+      // The title is replaced as text; a structural binding would leave no title to replace.
+      if (
+        Object.keys(element.attribs).some((name) => name !== 'data-text' && isBindingName(name))
+      ) {
+        issues.push({
+          loc: { file: source, line: element.sourceCodeLocation?.startLine ?? 1 },
+          message: `page '${page}' renders in the browser, so its <title> can only bind data-text`,
+        });
+      }
+      return;
+    }
+    if ($(element).parents('main').length > 0) return;
     issues.push({
       loc: { file: source, line: element.sourceCodeLocation?.startLine ?? 1 },
       message:
@@ -230,7 +242,7 @@ export async function assertShellRendersAnywhere(options: {
   }
   if (programUsesCsrf(program)) {
     issues.push({
-      loc: { file: source, line: 1 },
+      loc: { file: source, line: postFormLine(html) },
       message: `page '${options.page}' renders in the browser, so the app shell can't have a POST form`,
     });
   }
@@ -244,6 +256,25 @@ function firstBindingLocation(
     if (typeof node !== 'string' && node.op !== 'csrf') return node.loc;
   }
   return undefined;
+}
+
+/** The line of the first form that posts, by its method or a submit control's formmethod. */
+function postFormLine(html: string): number {
+  const $ = load(html, { sourceCodeLocationInfo: true });
+  const posts = (value: string | undefined) => value?.trim().toLowerCase() === 'post';
+  const element = $('form, button[formmethod], input[formmethod]')
+    .toArray()
+    .find(
+      (candidate) =>
+        candidate.type === 'tag' &&
+        posts(
+          candidate.tagName === 'form' ? candidate.attribs.method : candidate.attribs.formmethod,
+        ),
+    );
+  return (
+    (element as { sourceCodeLocation?: { startLine: number } } | undefined)?.sourceCodeLocation
+      ?.startLine ?? 1
+  );
 }
 
 /** Build-only files; nothing under here is served. */

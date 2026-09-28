@@ -141,6 +141,14 @@ const refusals = [
       /src\/frontend\/pages\/items\/index\.html:2: page 'items' renders in the browser, which replaces only its <main> and <title>/,
   },
   {
+    name: 'a structural binding on <title>',
+    workspace: {
+      template: TEMPLATE.replace('<title>Items</title>', '<title data-if="title">Items</title>'),
+    },
+    error:
+      /index\.html:2: page 'items' renders in the browser, so its <title> can only bind data-text/,
+  },
+  {
     name: 'a binding on <main> itself',
     workspace: {
       template: TEMPLATE.replace('<body><main>', '<body><main data-attr-class="title">'),
@@ -162,10 +170,11 @@ const refusals = [
       mode: 'full',
       shell: SHELL.replace(
         '<body>',
-        '<body><form method="post" action="/sign-out/"><button>Out</button></form>',
+        '<body>\n<form method="POST" action="/sign-out/"><button>Out</button></form>',
       ),
     },
-    error: /page 'items' renders in the browser, so the app shell can't have a POST form/,
+    error:
+      /src\/frontend\/app\/app\.html:2: page 'items' renders in the browser, so the app shell can't have a POST form/,
   },
   {
     name: 'a data.ts without a page script',
@@ -182,7 +191,8 @@ const refusals = [
         '<form method="post" action="/items/"><button>Add</button></form></main>',
       ),
     },
-    error: /page 'items' renders in the browser, so it can't have a POST form/,
+    error:
+      /src\/frontend\/pages\/items\/index\.html:7: page 'items' renders in the browser, so it can't have a POST form/,
   })),
 ];
 
