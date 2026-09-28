@@ -1,5 +1,12 @@
 # @webstir-io/webstir-frontend
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [ce4b3a2]
+  - @webstir-io/module-contract@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes
