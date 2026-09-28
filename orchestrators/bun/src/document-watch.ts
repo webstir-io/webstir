@@ -1,4 +1,5 @@
 import { createRenderedViewMatcher } from '@webstir-io/webstir-backend';
+import { existsSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -259,15 +260,28 @@ async function runWatchEvent(options: RunWatchEventOptions): Promise<void> {
   await server.publishReload();
 }
 
-async function withOutputKept(buildRoot: string, build: () => Promise<void>): Promise<void> {
+/**
+ * Runs a build that may empty `buildRoot`, and puts the previous output back if it fails. The copy
+ * must be complete before the build starts, so a failed restore never replaces good output.
+ */
+export async function withOutputKept(buildRoot: string, build: () => Promise<void>): Promise<void> {
+  if (!existsSync(buildRoot)) {
+    await build();
+    return;
+  }
   const kept = `${buildRoot}.last`;
   await rm(kept, { recursive: true, force: true });
-  await cp(buildRoot, kept, { recursive: true }).catch(() => undefined);
+  try {
+    await cp(buildRoot, kept, { recursive: true });
+  } catch (error) {
+    await rm(kept, { recursive: true, force: true });
+    throw error;
+  }
   try {
     await build();
   } catch (error) {
     await rm(buildRoot, { recursive: true, force: true });
-    await rename(kept, buildRoot).catch(() => undefined);
+    await rename(kept, buildRoot);
     throw error;
   }
   await rm(kept, { recursive: true, force: true });

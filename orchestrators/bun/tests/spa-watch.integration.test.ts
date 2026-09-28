@@ -199,6 +199,50 @@ test('SPA watch loads the page in full when a refresh at a #fragment address can
   });
 }, 120_000);
 
+test('SPA watch lets a navigation through while a refreshed page is still setting up', async () => {
+  const scriptPath = (workspace: string) =>
+    path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.ts');
+  // A setup that finishes only when the page is left.
+  const setupFor = (version: string) =>
+    [
+      "import type { PageContext } from '@webstir-io/webstir-frontend/runtime';",
+      '',
+      'export async function setup({ root, signal }: PageContext): Promise<void> {',
+      `  root.dataset.version = '${version}';`,
+      "  await new Promise((resolve) => signal.addEventListener('abort', resolve));",
+      '}',
+      '',
+    ].join('\n');
+
+  await withSpaWatch('webstir-spa-watch-refresh-pending-', {
+    prepare: async (workspace) => {
+      await addPage(workspace, 'about');
+      await writeFile(scriptPath(workspace), setupFor('v1'), 'utf8');
+      const htmlPath = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
+      const html = await readFile(htmlPath, 'utf8');
+      await writeFile(
+        htmlPath,
+        html.replace(/<main>[\s\S]*<\/main>/, '<main><a href="/about">About</a></main>'),
+        'utf8',
+      );
+    },
+    run: async ({ workspace, port }) => {
+      const page = await openPage(port);
+      await page.waitForSelector('main[data-version="v1"]');
+
+      await writeFile(scriptPath(workspace), setupFor('v2'), 'utf8');
+      await page.waitForSelector('main[data-version="v2"]', { timeout: 20_000 });
+
+      await page.click('a[href="/about"]');
+      await page.waitForFunction(
+        () => document.querySelector('main')?.textContent?.includes('Content for the about page.'),
+        undefined,
+        { timeout: 10_000 },
+      );
+    },
+  });
+}, 120_000);
+
 test('SPA watch keeps the last output when a full rebuild is rejected', async () => {
   await withSpaWatch('webstir-spa-watch-rejected-build-', {
     run: async ({ workspace, fetchText, stderr }) => {

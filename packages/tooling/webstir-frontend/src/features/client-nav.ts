@@ -608,11 +608,13 @@ async function renderDocumentHtml(
   if (!prepared) await startPage(options.url);
   if (requestId !== activeRequestId) return;
   if (kept) {
-    // An async setup may still be building what the page scrolls through or focuses.
-    await pageSettled.catch(() => {});
-    if (requestId !== activeRequestId) return;
-    window.scrollTo({ left: kept.left, top: kept.top, behavior: 'instant' });
-    kept.restoreFocus();
+    // An async setup may still be building what the page scrolls through or focuses. This waits
+    // outside the commit queue, so a navigation that comes first is not held up and wins.
+    void pageSettled.then(() => {
+      if (requestId !== activeRequestId || leaving) return;
+      window.scrollTo({ left: kept.left, top: kept.top, behavior: 'instant' });
+      kept.restoreFocus();
+    });
   } else {
     // The page's own script may have rendered the #fragment's target, or focused something else.
     fragmentTarget(documentUrl.hash)?.scrollIntoView();
