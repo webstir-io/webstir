@@ -47,7 +47,6 @@ test('CLI watch serves the SPA demo and rebuilds after a source edit', async () 
       }
 
       const html = await response.text();
-      expect(html).toContain('data-bun-dev-server-script');
       expect(html).toContain('<main>');
       expect(html).toContain('Home');
     }, 20000);

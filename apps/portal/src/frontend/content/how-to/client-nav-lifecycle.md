@@ -208,10 +208,11 @@ Move page DOM queries, state, listeners, observers, timers, requests, and redire
 from module top level into setup. Remove that page's previous self-initialization
 and client-nav reinitialization handler to avoid double setup. Existing event-only
 pages can remain unchanged. Do not import the app entry from page entries: app
-initialization belongs to the shared app bundle. When client-nav is enabled, watch uses the existing document build pipeline so
-page entry exports remain independently importable; Bun HTML bundling combines
-script entries. Unenhanced SPA/full workspaces retain Bun HTML watch serving.
-This API does not automatically opt into hot remounts; use normal reloads unless you explicitly coordinate HMR.
+initialization belongs to the shared app bundle. In watch, an edit to a page's
+code shows the page again from the new code, in place: its cleanup runs, then the
+new `load` and `setup`, while scroll, focus and the app shell stay. So a page comes
+back in the state `load` and `setup` describe, not with values left in module
+variables.
 
 The website-style event rebind pattern remains valid. A portal that uses only
 module top-level initialization needs this migration before adopting client-nav;

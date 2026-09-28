@@ -37,6 +37,16 @@ export function renderPageInto(target: Document, program: RenderProgram, data: u
  * there (matched by id, then by name).
  */
 export function rerenderPage(program: RenderProgram, data: unknown): void {
+  const restoreFocus = captureFocus();
+  renderPageInto(document, program, data);
+  restoreFocus();
+}
+
+/**
+ * Remembers the focused control in `<main>` and returns a function that focuses the control in
+ * `<main>` that takes its place (matched by id, then by name), keeping the caret.
+ */
+export function captureFocus(): () => void {
   const active = document.activeElement;
   const main = document.querySelector('main');
   const within = active instanceof HTMLElement && main?.contains(active) ? active : null;
@@ -50,19 +60,19 @@ export function rerenderPage(program: RenderProgram, data: unknown): void {
       ? readSelection(within)
       : null;
 
-  renderPageInto(document, program, data);
-
-  if (!key) return;
-  const again = document.querySelector('main')?.querySelector<HTMLElement>(key);
-  if (!again) return;
-  again.focus({ preventScroll: true });
-  if (selection && (again instanceof HTMLInputElement || again instanceof HTMLTextAreaElement)) {
-    try {
-      again.setSelectionRange(selection.start, selection.end);
-    } catch {
-      // Input types without a selection (e.g. number) keep the default caret.
+  return () => {
+    if (!key) return;
+    const again = document.querySelector('main')?.querySelector<HTMLElement>(key);
+    if (!again) return;
+    again.focus({ preventScroll: true });
+    if (selection && (again instanceof HTMLInputElement || again instanceof HTMLTextAreaElement)) {
+      try {
+        again.setSelectionRange(selection.start, selection.end);
+      } catch {
+        // Input types without a selection (e.g. number) keep the default caret.
+      }
     }
-  }
+  };
 }
 
 function readSelection(
@@ -79,9 +89,18 @@ function readSelection(
 
 const CLIENT_NAV = Symbol.for('webstir.client-nav');
 
-/** Client-nav marks the page it runs in, so a browser page's own first-load boot stands aside. */
-export function markClientNav(): void {
-  (globalThis as Record<symbol, unknown>)[CLIENT_NAV] = true;
+/** What client-nav offers the rest of the page, such as the watch client. */
+export interface ClientNavControls {
+  /** Renders the current page again from fresh page code, where it is, keeping scroll and focus. */
+  readonly refreshPage: () => Promise<void>;
+}
+
+/**
+ * Client-nav marks the page it runs in, so a browser page's own first-load boot stands aside, and
+ * the watch client can find `refreshPage`.
+ */
+export function markClientNav(controls: ClientNavControls): void {
+  (globalThis as Record<symbol, unknown>)[CLIENT_NAV] = controls;
 }
 
 /**

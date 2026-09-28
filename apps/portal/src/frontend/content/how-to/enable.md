@@ -11,7 +11,6 @@ webstir enable scripts <page>
 
 Supported features:
 - `scripts <page>` — add `index.ts` to an existing page
-- `spa` — opt into SPA routing
 - `client-nav` — enable client-side navigation (feature module)
 - `search` — enable site search UI + behavior (feature modules + CSS)
 - `content-nav` — enable docs content navigation (sidebar, breadcrumb, h2 TOC)
@@ -20,18 +19,16 @@ Supported features:
 - `gh-deploy [basePath]` — `github-pages` plus a GitHub Actions workflow
 - `s3-cloudfront` — scaffold an S3 + CloudFront deploy script, the edge function that maps directory URLs to `index.html`, and a GitHub Actions workflow
 
+`webstir enable spa` is gone: the SPA router it installed was never called, and client-nav is how Webstir apps navigate. `webstir repair` lists router files an older app still has, and leaves deleting them to you.
+
 ## What `enable` Changes
 
 ### scripts `<page>`
 - Adds `src/frontend/pages/<page>/index.ts`.
 - Fails if the page does not exist or already has `index.ts`.
 
-### spa
-- Writes SPA/router scaffold under `src/frontend/app/**`.
-- Updates `package.json`:
-  - `webstir.enable.spa=true`
-
 ### client-nav
+- New `spa` and `full` apps start with client-nav on.
 - Imports client-nav from the frontend package in `src/frontend/app/app.ts`; no files are copied:
   - `import '@webstir-io/webstir-frontend/features/client-nav';`
 - Updates `package.json`:

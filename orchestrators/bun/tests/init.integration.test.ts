@@ -113,7 +113,11 @@ test('CLI init keeps workspace dependencies for repo-local workspaces', async ()
     expect(packageJson.dependencies['@webstir-io/webstir-frontend']).toBe('workspace:*');
     expect(packageJson.dependencies['@webstir-io/webstir-testing']).toBe('workspace:*');
     expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBeUndefined();
-    expect(existsSync(path.join(workspaceRoot, 'src', 'shared', 'router-types.ts'))).toBe(true);
+    expect(packageJson.webstir.enable).toEqual({ clientNav: true });
+    expect(
+      await readFile(path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts'), 'utf8'),
+    ).toContain("import '@webstir-io/webstir-frontend/features/client-nav';");
+    expect(existsSync(path.join(workspaceRoot, 'src', 'frontend', 'app', 'router.ts'))).toBe(false);
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }

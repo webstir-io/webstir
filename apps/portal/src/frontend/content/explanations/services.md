@@ -8,8 +8,7 @@ The active implementation no longer uses the older `DevService` / `WatchService`
 
 - `DevServer`: serves `build/frontend/**`, emits SSE status/reload events, and proxies `/api/*` in `full` mode
 - `WorkspaceWatcher`: watches `src/**` and `types/**`, batching changes and full reload triggers
-- `bun-generated-frontend-watch.ts`: runs the generated frontend host used by `spa` and `full`
-- `bun-ssg-watch.ts`: runs the SSG frontend watch session
+- `document-watch.ts`: runs the frontend watch session for `spa`, `ssg` and `full`
 - `BackendRuntimeSupervisor`: starts and restarts `build/backend/index.js` after successful backend builds
 
 ## Responsibilities Split

@@ -5,14 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import {
-  getSpaAssets,
   pageScriptTemplate,
   renderGithubPagesDeployScript,
   renderGithubPagesWorkflow,
   renderS3CloudFrontDeployScript,
   renderS3CloudFrontFunction,
   renderS3CloudFrontWorkflow,
-  type StaticFeatureAsset,
 } from './enable-assets.ts';
 import {
   adoptPackagedFeature,
@@ -31,7 +29,6 @@ import { readFrontendConfigDocument, type FrontendConfigDocument } from './front
 
 type EnableFeature =
   | 'scripts'
-  | 'spa'
   | 'client-nav'
   | 'search'
   | 'content-nav'
@@ -57,7 +54,7 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   const [featureToken, ...rest] = options.args;
   if (!featureToken) {
     throw new Error(
-      'Missing enable feature. Usage: webstir enable <scripts <page>|spa|client-nav|search|content-nav|backend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
+      'Missing enable feature. Usage: webstir enable <scripts <page>|client-nav|search|content-nav|backend|github-pages|gh-deploy|s3-cloudfront> --workspace <path>.',
     );
   }
 
@@ -72,10 +69,6 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
   switch (feature) {
     case 'scripts':
       await enableScripts(workspace.root, rest, changes);
-      break;
-    case 'spa':
-      await copyStaticAssets(workspace.root, getSpaAssets(), changes);
-      await updatePackageJson(workspace.root, { enableSpa: true }, changes);
       break;
     case 'client-nav':
       await enablePackagedFeature(workspace.root, 'client-nav', { enableClientNav: true }, changes);
@@ -129,9 +122,13 @@ export async function runEnable(options: RunEnableOptions): Promise<EnableResult
 
 function parseEnableFeature(value: string): EnableFeature {
   const normalized = value.trim().toLowerCase() as EnableFeature;
+  if ((normalized as string) === 'spa') {
+    throw new Error(
+      'The SPA router is gone: client-nav is how Webstir apps navigate. Run `webstir enable client-nav`.',
+    );
+  }
   switch (normalized) {
     case 'scripts':
-    case 'spa':
     case 'client-nav':
     case 'search':
     case 'content-nav':
@@ -143,7 +140,7 @@ function parseEnableFeature(value: string): EnableFeature {
       return normalized;
     default:
       throw new Error(
-        `Unknown feature "${value}". Expected scripts, spa, client-nav, search, content-nav, backend, github-pages, gh-deploy, or s3-cloudfront.`,
+        `Unknown feature "${value}". Expected scripts, client-nav, search, content-nav, backend, github-pages, gh-deploy, or s3-cloudfront.`,
       );
   }
 }
@@ -158,8 +155,6 @@ function getFixedEnableWriteTargets(
   switch (feature) {
     case 'scripts':
       return [];
-    case 'spa':
-      return [packageJsonPath];
     case 'client-nav':
       return [
         ...appEntryPaths(workspaceRoot),
@@ -231,31 +226,6 @@ async function enableScripts(
     throw error;
   }
   changes.push(relativeWorkspacePath(workspaceRoot, targetPath));
-}
-
-async function copyStaticAssets(
-  workspaceRoot: string,
-  assets: readonly StaticFeatureAsset[],
-  changes: string[],
-): Promise<void> {
-  const preparedAssets = await preflightScaffoldAssets(
-    workspaceRoot,
-    assets,
-    'write feature scaffold assets',
-  );
-  for (const prepared of preparedAssets) {
-    const { asset, sourcePath, targetPath } = prepared;
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    if (!asset.overwrite && existsSync(targetPath)) {
-      continue;
-    }
-
-    await Bun.write(targetPath, Bun.file(sourcePath));
-    if (asset.executable) {
-      await chmod(targetPath, 0o755);
-    }
-    changes.push(prepared.relativeTargetPath);
-  }
 }
 
 async function enableBackend(workspaceRoot: string, changes: string[]): Promise<void> {
@@ -375,7 +345,6 @@ async function ensureAppCssFeaturesLayer(workspaceRoot: string, changes: string[
 async function updatePackageJson(
   workspaceRoot: string,
   options: {
-    readonly enableSpa?: boolean;
     readonly enableClientNav?: boolean;
     readonly enableSearch?: boolean;
     readonly enableContentNav?: boolean;
@@ -396,9 +365,6 @@ async function updatePackageJson(
 
   if (options.mode) {
     webstir.mode = options.mode;
-  }
-  if (options.enableSpa !== undefined) {
-    enable.spa = options.enableSpa;
   }
   if (options.enableClientNav !== undefined) {
     enable.clientNav = options.enableClientNav;

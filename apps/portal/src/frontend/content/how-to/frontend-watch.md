@@ -3,10 +3,13 @@
 Guidance for running and troubleshooting the current frontend watch workflow.
 
 ## Overview
-- `webstir watch` runs the Bun dev server for frontend workspaces.
-- `spa` and `ssg` serve rebuilt frontend output directly from the workspace build directory.
-- `full` uses the same frontend host and proxies `/api/*` to the supervised backend runtime.
-- Hot updates apply when the changed asset can be targeted directly; otherwise the browser falls back to a full reload after rebuild.
+- `webstir watch` builds every frontend workspace with the same pipeline as `webstir build` and serves the result from the workspace build directory. `spa`, `ssg` and `full` differ only in what the server does around it.
+- `full` proxies `/api/*` to the supervised backend runtime and renders server views per request.
+- After a rebuild, the browser updates by what changed:
+  - **CSS** swaps in place.
+  - **A page script** (anything under `src/frontend/pages/<page>/` that compiles to JavaScript): with client-nav, the page is shown again from the new code, where it is. The old page's cleanup runs, the new code's `load` and `setup` run, and `<main>` is swapped. Scroll, focus, the app shell and anything outside `<main>` stay. Without client-nav, the page reloads.
+  - **Anything else** (HTML, the app shell, `app.ts`) reloads the page.
+- A rebuild that fails a build check (a binding in an SPA page, a browser page rule) keeps serving the last valid page and reports the error.
 
 ## CLI Commands
 - Default frontend loop: `webstir watch --workspace <absolute-path>`

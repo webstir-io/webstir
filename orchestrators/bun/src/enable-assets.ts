@@ -1,31 +1,3 @@
-import path from 'node:path';
-
-import { assetsRoot } from './paths.ts';
-
-const featuresRoot = path.join(assetsRoot, 'features');
-
-export interface StaticFeatureAsset {
-  readonly sourcePath: string;
-  readonly targetPath: string;
-  readonly executable?: boolean;
-  readonly overwrite?: boolean;
-}
-
-export function getSpaAssets(): readonly StaticFeatureAsset[] {
-  return [
-    {
-      sourcePath: path.join(featuresRoot, 'router', 'router.ts'),
-      targetPath: path.join('src', 'frontend', 'app', 'router.ts'),
-      overwrite: true,
-    },
-    {
-      sourcePath: path.join(featuresRoot, 'router', 'router-types.ts'),
-      targetPath: path.join('src', 'frontend', 'app', 'router-types.ts'),
-      overwrite: true,
-    },
-  ];
-}
-
 export const pageScriptTemplate = `// Client-side script for this page.
 // Add your interactive behavior here. This runs after the static HTML renders.
 

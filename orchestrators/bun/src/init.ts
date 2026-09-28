@@ -239,6 +239,7 @@ function createPackageJson(
     webstir: {
       mode,
       moduleManifest: {},
+      ...(mode === 'spa' || mode === 'full' ? { enable: { clientNav: true } } : {}),
     },
   };
 }

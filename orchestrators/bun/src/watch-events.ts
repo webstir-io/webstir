@@ -30,6 +30,11 @@ export interface HotUpdatePayload {
   readonly styles: readonly HotUpdateAsset[];
   readonly target?: HotUpdateTarget;
   readonly changedFile?: string;
+  /**
+   * A page's code changed: with client-nav, the watch client shows the current page again from
+   * the new code; without it, `requiresReload` reloads the page.
+   */
+  readonly pageRefresh?: boolean;
   readonly fallbackReasons?: readonly string[];
   readonly stats?: {
     readonly hotUpdates: number;

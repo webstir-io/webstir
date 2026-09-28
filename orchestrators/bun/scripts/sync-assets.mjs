@@ -80,10 +80,6 @@ const modeTemplates = [
   },
 ];
 
-const features = [
-  { source: path.join(packageRoot, 'resources', 'features', 'router'), target: 'router' },
-];
-
 async function main() {
   assertNoLegacyAssetReads();
   if (checkOnly) {
@@ -97,12 +93,10 @@ async function main() {
 
 async function materializeAssets(targetAssetsRoot) {
   const templatesRoot = path.join(targetAssetsRoot, 'templates');
-  const featuresRoot = path.join(targetAssetsRoot, 'features');
   const deploymentRoot = path.join(targetAssetsRoot, 'deployment');
 
   await rm(targetAssetsRoot, { recursive: true, force: true });
   await mkdir(templatesRoot, { recursive: true });
-  await mkdir(featuresRoot, { recursive: true });
   await mkdir(deploymentRoot, { recursive: true });
 
   for (const relativePath of rootAssets) {
@@ -118,12 +112,6 @@ async function materializeAssets(targetAssetsRoot) {
       await mkdir(path.dirname(targetPath), { recursive: true });
       await cp(root.source, targetPath, { recursive: true });
     }
-  }
-
-  for (const feature of features) {
-    const targetPath = path.join(featuresRoot, feature.target);
-    await mkdir(path.dirname(targetPath), { recursive: true });
-    await cp(feature.source, targetPath, { recursive: true });
   }
 
   await cp(deploymentSourcesRoot, deploymentRoot, { recursive: true });
@@ -216,7 +204,6 @@ function assertNoLegacyAssetReads() {
   const sources = [
     ...rootAssets.map((relativePath) => path.join(templateSourcesRoot, 'shared', relativePath)),
     ...modeTemplates.flatMap((template) => template.roots.map((root) => root.source)),
-    ...features.map((feature) => feature.source),
     deploymentSourcesRoot,
     guideSourcesRoot,
   ];

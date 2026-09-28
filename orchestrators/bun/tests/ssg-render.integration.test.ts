@@ -5,7 +5,7 @@ import { mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises';
 import { runBuild } from '../src/build.ts';
 import { runPublish } from '../src/publish.ts';
 import { packageRoot } from '../src/paths.ts';
-import { startBunSsgFrontendWatch } from '../src/bun-ssg-watch.ts';
+import { startDocumentWatch } from '../src/document-watch.ts';
 import { createSsgDevPages } from '../src/ssg-dev-pages.ts';
 import {
   copyDemoWorkspace,
@@ -115,7 +115,7 @@ test('watch does not start when an SSG view fails to render', async () => {
   );
   const pages = createSsgDevPages(workspace);
   await expect(
-    startBunSsgFrontendWatch({
+    startDocumentWatch({
       workspaceRoot: workspace,
       port: 0,
       afterBuild: () => pages.refresh(),

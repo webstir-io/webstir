@@ -338,17 +338,6 @@ function injectOptInScripts(
 
   rewritePageRelativeAssets(document, pageName);
 
-  if (enable?.spa) {
-    const existing = document(
-      `script[src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"]`,
-    );
-    if (existing.length === 0) {
-      document('head').append(
-        `<script type="module" src="/${FOLDERS.pages}/${pageName}/${FILES.index}${EXTENSIONS.js}"></script>`,
-      );
-    }
-  }
-
   const tsCandidate = path.join(pageDir, `${FILES.index}${EXTENSIONS.ts}`);
   const tsxCandidate = path.join(pageDir, `${FILES.index}.tsx`);
   const jsCandidate = path.join(pageDir, `${FILES.index}${EXTENSIONS.js}`);

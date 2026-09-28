@@ -1,7 +1,7 @@
 import { createServer } from 'node:net';
 
 import { startApiWatchSession } from './api-watch.ts';
-import { startBunGeneratedFrontendWatch } from './bun-generated-frontend-watch.ts';
+import { startDocumentWatch } from './document-watch.ts';
 import { validateRenderTemplates } from './render-validation.ts';
 import { createStopSignal } from './stop-signal.ts';
 import type { WorkspaceDescriptor } from './types.ts';
@@ -19,13 +19,14 @@ export async function runFullWatch(
   const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io, {
     beforeRestart: () => exclusive(validate),
   });
-  let frontendSession: Awaited<ReturnType<typeof startBunGeneratedFrontendWatch>> | undefined;
+  let frontendSession: Awaited<ReturnType<typeof startDocumentWatch>> | undefined;
 
   try {
-    frontendSession = await startBunGeneratedFrontendWatch({
+    frontendSession = await startDocumentWatch({
       workspaceRoot: workspace.root,
       host: options.host,
       port: options.port,
+      verbose: options.verbose,
       apiProxyOrigin: apiSession.origin,
       afterBuild: validate,
       exclusive,

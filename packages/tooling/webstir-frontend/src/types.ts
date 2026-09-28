@@ -16,7 +16,6 @@ export interface FrontendConfig {
 }
 
 export interface EnableFlags {
-  readonly spa?: boolean;
   readonly clientNav?: boolean;
   readonly backend?: boolean;
   readonly search?: boolean;
@@ -82,7 +81,6 @@ export interface AddPageCommandOptions extends FrontendCommandOptions {
 }
 
 export interface FrontendWorkspaceKnownEnableFlags {
-  readonly spa: boolean;
   readonly clientNav: boolean;
   readonly backend: boolean;
   readonly search: boolean;

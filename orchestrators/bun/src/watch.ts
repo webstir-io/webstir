@@ -19,7 +19,6 @@ export interface WatchOptions {
   readonly host?: string;
   readonly port?: number;
   readonly verbose?: boolean;
-  readonly hmrVerbose?: boolean;
   readonly env?: Record<string, string | undefined>;
 }
 

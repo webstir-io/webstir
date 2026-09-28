@@ -1,5 +1,6 @@
 import {
   browserProgramOf,
+  captureFocus,
   createPageLifecycle,
   markClientNav,
   preparePage,
@@ -55,7 +56,7 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
-  markClientNav();
+  markClientNav({ refreshPage });
   const initial = () => {
     const requestId = activeRequestId;
     void startPage(window.location.href)
@@ -148,6 +149,8 @@ export function enableClientNav(): void {
 }
 
 let enabled = false;
+// Set by refreshPage: page scripts load under this version, so the browser runs their new code.
+let pageVersion: string | null = null;
 let documentUrl = new URL(window.location.href);
 // The referrer policy the last client navigation kept (it never changes one); undefined for the
 // first load, whose Referrer-Policy header a script cannot read.
@@ -200,6 +203,23 @@ async function startPage(url: string, prepared?: PreparedPage): Promise<void> {
       prepared?.data,
       program ? (data) => rerenderPage(program, data) : undefined,
     );
+}
+
+/** Shows the current page again from fresh page code, keeping its place on screen. */
+function refreshPage(): Promise<void> {
+  pageVersion = Date.now().toString(36);
+  return renderUrl(window.location.href, { history: 'none', refresh: true });
+}
+
+function versionPageScripts(doc: Document, url: string): void {
+  if (!pageVersion) return;
+  for (const script of Array.from(
+    doc.querySelectorAll<HTMLScriptElement>('script[data-webstir-page][src]'),
+  )) {
+    const src = new URL(script.getAttribute('src')!, url);
+    src.searchParams.set('webstir-version', pageVersion);
+    script.setAttribute('src', src.href);
+  }
 }
 
 let activeRequestId = 0;
@@ -269,11 +289,15 @@ function stripBasePath(value: string): string {
 
 async function renderUrl(
   url: string,
-  { history, hops = 0 }: { history: HistoryMode; hops?: number },
+  {
+    history,
+    hops = 0,
+    refresh = false,
+  }: { history: HistoryMode; hops?: number; refresh?: boolean },
 ): Promise<void> {
   const { controller, requestId } = beginRequest();
   try {
-    await renderUrlRequest(url, { history, hops }, controller, requestId);
+    await renderUrlRequest(url, { history, hops, refresh }, controller, requestId);
   } finally {
     await finishRequest(requestId);
   }
@@ -281,7 +305,7 @@ async function renderUrl(
 
 async function renderUrlRequest(
   url: string,
-  { history, hops }: { history: HistoryMode; hops: number },
+  { history, hops, refresh }: { history: HistoryMode; hops: number; refresh: boolean },
   controller: AbortController,
   requestId: number,
 ): Promise<void> {
@@ -323,6 +347,7 @@ async function renderUrlRequest(
   await renderDocumentResponse(response, requestId, {
     history,
     url,
+    refresh,
   });
 }
 
@@ -451,6 +476,8 @@ async function renderDocumentResponse(
     readonly url: string;
     /** How to show the page in full when it cannot render in place; loads its address by default. */
     readonly loadInFull?: () => void;
+    /** The page on screen shown again, where it is: scroll and focus stay. */
+    readonly refresh?: boolean;
   },
 ): Promise<void> {
   let html: string;
@@ -474,6 +501,7 @@ async function renderDocumentResponse(
   }
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  versionPageScripts(doc, options.url);
   const script = doc.querySelector<HTMLScriptElement>(
     'script[data-webstir-page][data-webstir-load][src]',
   );
@@ -506,7 +534,12 @@ async function renderDocumentResponse(
     if (requestId !== activeRequestId) return;
     await renderDocumentHtml(
       doc,
-      { history: options.history, url: options.url, referrerPolicy: referrer.policy },
+      {
+        history: options.history,
+        url: options.url,
+        referrerPolicy: referrer.policy,
+        refresh: options.refresh ?? false,
+      },
       requestId,
       prepared,
     );
@@ -526,6 +559,7 @@ async function renderDocumentHtml(
     readonly history: HistoryMode;
     readonly url: string;
     readonly referrerPolicy: string | null;
+    readonly refresh: boolean;
   },
   requestId: number,
   prepared?: PreparedPage,
@@ -551,16 +585,19 @@ async function renderDocumentHtml(
   syncHeadMetadata(doc, options.url);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
+  const kept = options.refresh
+    ? { restoreFocus: captureFocus(), left: window.scrollX, top: window.scrollY }
+    : null;
   if (newMain && currentMain) {
     currentMain.replaceWith(newMain);
   }
-  const anchor = fragmentTarget(documentUrl.hash);
+  const anchor = kept ? null : fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();
-  } else {
+  } else if (!kept) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
-  focusAutofocus(document);
+  if (!kept) focusAutofocus(document);
 
   // Opted-in pages render prepared data before yielding to additional document scripts.
   if (prepared) await startPage(options.url, prepared);
@@ -570,8 +607,18 @@ async function renderDocumentHtml(
   if (requestId !== activeRequestId) return;
   if (!prepared) await startPage(options.url);
   if (requestId !== activeRequestId) return;
-  // The page's own script may have rendered the #fragment's target, or focused something else.
-  fragmentTarget(documentUrl.hash)?.scrollIntoView();
+  if (kept) {
+    // An async setup may still be building what the page scrolls through or focuses. This waits
+    // outside the commit queue, so a navigation that comes first is not held up and wins.
+    void pageSettled.then(() => {
+      if (requestId !== activeRequestId || leaving) return;
+      window.scrollTo({ left: kept.left, top: kept.top, behavior: 'instant' });
+      kept.restoreFocus();
+    });
+  } else {
+    // The page's own script may have rendered the #fragment's target, or focused something else.
+    fragmentTarget(documentUrl.hash)?.scrollIntoView();
+  }
   window.dispatchEvent(new CustomEvent('webstir:client-nav', { detail: { url: options.url } }));
 }
 
@@ -757,8 +804,23 @@ function pageSetsReferrerPolicy(): boolean {
 function leave(url: string, history: HistoryMode = 'push'): void {
   leaving = true;
   setBusy(false);
+  // Going to this document's own address with a #fragment only scrolls, so it reloads instead: a
+  // refresh or a Back that could not render in place still ends on a fresh load.
+  const target = new URL(url, window.location.href);
+  if (target.hash && withoutHash(target) === withoutHash(new URL(window.location.href))) {
+    if (target.href !== window.location.href) {
+      if (history === 'push') window.history.pushState({}, '', target.href);
+      else window.history.replaceState({}, '', target.href);
+    }
+    window.location.reload();
+    return;
+  }
   if (history === 'push') window.location.href = url;
   else window.location.replace(url);
+}
+
+function withoutHash(url: URL): string {
+  return url.href.slice(0, url.href.length - url.hash.length);
 }
 
 // Whether the form would still send what it sent: a native repost must not carry values the user

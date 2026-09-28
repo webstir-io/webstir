@@ -95,7 +95,6 @@ Options:
   --restore-scaffold       With repair: also re-create missing scaffold files for the mode.
   --json                   Emit machine-readable JSON for supported commands.
   -v, --verbose            Enable verbose frontend watch diagnostics.
-  --hmr-verbose            Enable detailed hot-update diagnostics.
   -h, --help               Show this help text.
 
 Installed app guidance:
@@ -194,7 +193,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
 
   try {
     if (command === 'init') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Init does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -221,7 +220,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return resolvedWorkspaceRoot;
     };
     if (command === 'operations') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Operations does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -244,7 +243,6 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
         options.host ||
         options.port !== undefined ||
         options.verbose ||
-        options.hmrVerbose ||
         options.positionals.length > 0 ||
         options.workspaceRoot ||
         options.json
@@ -258,7 +256,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return 0;
     }
     if (command === 'add-page') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Add-page does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -275,7 +273,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'add-test') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Add-test does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -292,7 +290,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'add-route') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Add-route does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -309,7 +307,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'add-job') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Add-job does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -326,7 +324,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'backend-inspect') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Backend-inspect does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -353,7 +351,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'frontend-inspect') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Frontend-inspect does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -374,7 +372,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'doctor') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Doctor does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -395,7 +393,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'inspect') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Inspect does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -418,7 +416,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'agent') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Agent does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -457,7 +455,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'test') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Test does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -472,7 +470,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'smoke') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Smoke does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -530,7 +528,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'repair') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Repair does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -550,7 +548,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     }
 
     if (command === 'refresh') {
-      if (options.host || options.port !== undefined || options.verbose || options.hmrVerbose) {
+      if (options.host || options.port !== undefined || options.verbose) {
         io.stderr.write(`Refresh does not accept watch options.\n\n${HELP_TEXT}`);
         return 1;
       }
@@ -575,7 +573,6 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       host: options.host,
       port: options.port,
       verbose: options.verbose,
-      hmrVerbose: options.hmrVerbose,
       io,
     });
     return 0;
@@ -595,7 +592,6 @@ interface ParsedCommandOptions {
   readonly restoreScaffold?: boolean;
   readonly json: boolean;
   readonly verbose: boolean;
-  readonly hmrVerbose: boolean;
   readonly positionals: readonly string[];
   readonly rawArgs: readonly string[];
   readonly help: boolean;
@@ -614,7 +610,6 @@ function parseCommandOptions(
   let restoreScaffold = false;
   let json = false;
   let verbose = false;
-  let hmrVerbose = false;
   const positionals: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -635,7 +630,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -659,7 +653,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -677,7 +670,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -701,7 +693,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -719,7 +710,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -741,7 +731,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -765,7 +754,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -788,7 +776,6 @@ function parseCommandOptions(
           dryRun,
           json,
           verbose,
-          hmrVerbose,
           positionals,
           rawArgs: args,
           help: false,
@@ -814,11 +801,6 @@ function parseCommandOptions(
       continue;
     }
 
-    if (arg === '--hmr-verbose') {
-      hmrVerbose = true;
-      continue;
-    }
-
     if (arg === '--help' || arg === '-h') {
       return {
         workspaceRoot,
@@ -827,7 +809,6 @@ function parseCommandOptions(
         dryRun,
         json,
         verbose,
-        hmrVerbose,
         positionals,
         rawArgs: args,
         help: true,
@@ -855,7 +836,6 @@ function parseCommandOptions(
       dryRun,
       json,
       verbose,
-      hmrVerbose,
       positionals,
       rawArgs: args,
       help: false,
@@ -872,7 +852,6 @@ function parseCommandOptions(
     restoreScaffold,
     json,
     verbose,
-    hmrVerbose,
     positionals,
     rawArgs: args,
     help: false,

@@ -5,11 +5,9 @@ import { existsSync } from 'node:fs';
 import { getBackendScaffoldAssets } from '@webstir-io/webstir-backend';
 import { getModeScaffoldAssets, getRootScaffoldAssets } from './init-assets.ts';
 import {
-  getSpaAssets,
   renderGithubPagesDeployScript,
   renderS3CloudFrontDeployScript,
   renderS3CloudFrontFunction,
-  type StaticFeatureAsset,
 } from './enable-assets.ts';
 import { adoptPackagedFeature, appEntryPaths, legacyFeaturePaths } from './feature-imports.ts';
 import {
@@ -27,9 +25,15 @@ interface RepairAsset extends ScaffoldAssetDescriptor {
   readonly executable?: boolean;
 }
 
-const SPA_MODE_OWNED_FEATURE_TARGETS = new Set([path.join('src', 'frontend', 'app', 'router.ts')]);
+// The SPA router Webstir scaffolded before client-nav became the navigation; nothing uses it.
+const RETIRED_ROUTER_FILES = [
+  'src/frontend/app/router.ts',
+  'src/frontend/app/router-types.ts',
+  'src/frontend/app/navigation.ts',
+  'src/shared/router-types.ts',
+];
+
 interface RepairEnableFlags {
-  spa?: boolean;
   clientNav?: boolean;
   search?: boolean;
   contentNav?: boolean;
@@ -78,9 +82,6 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     ...filterModeScaffoldAssets(await getModeScaffoldAssets(workspace.mode), enable),
   ];
 
-  if (enable.spa) {
-    appendFeatureAssets(assets, getSpaAssets(), SPA_MODE_OWNED_FEATURE_TARGETS);
-  }
   if (enable.backend) {
     assets.push(...(await getBackendScaffoldAssets()));
   }
@@ -120,6 +121,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     : undefined;
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
   await ensureHotModulePair(workspace.root, assets, changes, notes, dryRun);
+  noteRetiredRouter(workspace.root, notes);
 
   if (enable.search || enable.contentNav) {
     await ensureCssLayerIncludes(workspace.root, 'features', changes, dryRun);
@@ -221,19 +223,13 @@ function getFixedRepairWriteTargets(
   return targets;
 }
 
-function appendFeatureAssets(
-  assets: RepairAsset[],
-  featureAssets: readonly StaticFeatureAsset[],
-  knownModeOwnedTargets: ReadonlySet<string> = new Set(),
-): void {
-  const previouslyOwnedTargets = new Set(assets.map((asset) => asset.targetPath));
-  assets.push(
-    ...featureAssets.filter(
-      (asset) =>
-        !knownModeOwnedTargets.has(asset.targetPath) ||
-        !previouslyOwnedTargets.has(asset.targetPath),
-    ),
-  );
+function noteRetiredRouter(workspaceRoot: string, notes: string[]): void {
+  const present = RETIRED_ROUTER_FILES.filter((file) => existsSync(path.join(workspaceRoot, file)));
+  if (present.length > 0) {
+    notes.push(
+      `The SPA router is retired (client-nav is the navigation): delete ${present.join(', ')} once nothing in the app imports them.`,
+    );
+  }
 }
 
 function filterModeScaffoldAssets(

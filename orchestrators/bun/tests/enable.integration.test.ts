@@ -538,6 +538,22 @@ for (const scenario of clientNavCases) {
   });
 }
 
+test('CLI enable spa stops and points to client-nav without touching the workspace', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-enable-spa-removed-');
+  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
+  const packageJson = await readFile(packageJsonPath, 'utf8');
+
+  try {
+    const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['spa']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Run `webstir enable client-nav`');
+    expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
 test('CLI enables backend on the SPA demo workspace end to end', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-enable-spa-');
   const result = await runEnableInWorkspace(copiedWorkspace.workspaceRoot, ['backend']);
