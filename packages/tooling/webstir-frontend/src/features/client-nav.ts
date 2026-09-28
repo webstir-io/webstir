@@ -395,11 +395,12 @@ async function submitFormRequest(
     await renderDocumentResponse(response, requestId, {
       history: 'push',
       url,
-      // A refused post (a re-rendered form) holds errors, values and messages only its own
-      // response carries, so it is posted again natively, which re-runs only the refused check;
-      // an accepted one is not run twice, so its address loads instead.
+      // A re-rendered form (422, a check the action refused) holds errors, values and messages
+      // only its own response carries, so it is posted again natively, which re-runs only that
+      // check. Any other answer may follow a change the action made, so it is not run twice: its
+      // address loads instead.
       loadInFull:
-        !response.ok && isUnchangedSubmission(form, submitter, submission.snapshot)
+        response.status === 422 && isUnchangedSubmission(form, submitter, submission.snapshot)
           ? () => submitFormNatively(form, submitter, submission.submissionId)
           : () => leave(url),
     });

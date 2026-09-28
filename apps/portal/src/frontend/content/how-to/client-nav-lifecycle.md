@@ -109,10 +109,11 @@ client-nav avoids spending one on a page it then throws away:
 - A redirect followed from a page that sets a policy loads its destination in
   full without fetching it first, so a message the destination shows once (a
   flash) is still there.
-- A form answered with a page whose policy differs: a refused post (a re-rendered
-  form) is posted again natively, which re-runs only the refused check and shows
-  its errors and values at the form's action address, as a browser without
-  JavaScript would; an accepted post is not run twice, so its address loads.
+- A form answered with a page whose policy differs: a re-rendered form (`422`) is
+  posted again natively, if the form still holds what it sent, which re-runs only
+  the refused check and shows its errors and values at the form's action address,
+  as a browser without JavaScript would. Any other answer may follow a change the
+  action made, so it is not posted twice: its address loads.
 
 A page with another policy reached by a link, Back or Forward is fetched once to
 read its policy, then loaded; a message it would show once is spent on that

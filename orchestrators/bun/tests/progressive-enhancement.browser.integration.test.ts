@@ -560,6 +560,27 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   // the first post was in flight, when its address loads instead of sending the new values.
   const refusedRequests: string[] = [];
   let holdRefused: Promise<void> | undefined;
+  // Any other failure may follow a change the action made, so it is never posted twice.
+  const failedRequests: string[] = [];
+  await page.route(`${origin}/client-nav-form-failed`, async (route) => {
+    const request = route.request();
+    failedRequests.push(`${request.method()} ${request.postData() ?? ''}`);
+    await route.fulfill({
+      status: request.method() === 'POST' ? 500 : 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body:
+        request.method() === 'POST'
+          ? html('Failed', '<meta name="referrer" content="no-referrer">', '<h1>Failed</h1>')
+          : html(
+              'Failed Form',
+              '',
+              '<h1 id="failed-form-heading">Failed Form</h1>' +
+                '<form method="post" action="/client-nav-form-refused">' +
+                '<input name="email" value="not-an-email">' +
+                '<button id="refused-again-submit">Send</button></form>',
+            ),
+    });
+  });
   await page.route(`${origin}/client-nav-form-refused`, async (route) => {
     const request = route.request();
     refusedRequests.push(`${request.method()} ${request.postData() ?? ''}`);
@@ -571,9 +592,8 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
           'Refused Form',
           '',
           '<h1 id="refused-form-heading">Refused Form</h1>' +
-            '<form method="post" action="/client-nav-form-refused">' +
-            '<input name="email" value="not-an-email">' +
-            '<button id="refused-again-submit">Send</button></form>',
+            '<form method="post" action="/client-nav-form-failed">' +
+            '<button id="failed-form-submit">Send</button></form>',
         ),
       });
       return;
@@ -718,6 +738,11 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   await page.locator('#refused-form-heading').waitFor({ state: 'visible' });
   expect(refusedRequests).toEqual(['POST email=not-an-email', 'GET ']);
   holdRefused = undefined;
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await page.locator('#failed-form-submit').click({ noWaitAfter: true });
+  await page.locator('#failed-form-heading').waitFor({ state: 'visible' });
+  expect(failedRequests).toEqual(['POST ', 'GET ']);
 
   await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
   await markDocument();
