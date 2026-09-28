@@ -23,6 +23,7 @@ for (const clientNav of [false, true]) {
       await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
       if (clientNav) runCli(workspace, ['enable', 'client-nav']);
       await writeFruitPage(workspace);
+      await writeBrokenPage(workspace);
       await writeHomeLink(workspace);
       runCli(workspace, ['publish']);
 
@@ -96,6 +97,18 @@ for (const clientNav of [false, true]) {
         expect(
           await page.evaluate(() => (window as unknown as { documentId?: string }).documentId),
         ).toBe('home');
+
+        // Data the template can't render falls back to a normal page load instead of a dead link.
+        await page.goto(`${origin}/`);
+        await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+        await page.evaluate(() => {
+          (window as unknown as { documentId: string }).documentId = 'home';
+        });
+        await page.locator('main a[href="/broken/"]').click();
+        await page.waitForFunction(() => location.pathname === '/broken/');
+        await page.waitForFunction(
+          () => (window as unknown as { documentId?: string }).documentId === undefined,
+        );
       }
 
       expect(errors).toEqual([]);
@@ -198,7 +211,31 @@ async function writeFruitPage(workspace: string): Promise<void> {
 async function writeHomeLink(workspace: string): Promise<void> {
   const home = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
   const html = await readFile(home, 'utf8');
-  await writeFile(home, html.replace('</main>', '<p><a href="/fruit/">Fruit</a></p></main>'));
+  await writeFile(
+    home,
+    html.replace(
+      '</main>',
+      '<p><a href="/fruit/">Fruit</a> <a href="/broken/">Broken</a></p></main>',
+    ),
+  );
+}
+
+/** A page whose load returns data its template can't render (an object where text goes). */
+async function writeBrokenPage(workspace: string): Promise<void> {
+  const pageDir = path.join(workspace, 'src', 'frontend', 'pages', 'broken');
+  await mkdir(pageDir, { recursive: true });
+  await writeFile(
+    path.join(pageDir, 'index.html'),
+    '<head><title>Broken</title><script type="module" src="index.js"></script></head><body><main><p data-text="status">Loading</p></main></body>\n',
+  );
+  await writeFile(
+    path.join(pageDir, 'data.ts'),
+    "import { z } from 'zod';\nexport const data = z.object({ status: z.string() });\nexport const initial = { status: 'Loading' };\n",
+  );
+  await writeFile(
+    path.join(pageDir, 'index.ts'),
+    'export async function load() {\n  return { status: { not: "text" } };\n}\n',
+  );
 }
 
 async function addDependency(workspace: string, name: string, version: string): Promise<void> {

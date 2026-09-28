@@ -8,7 +8,7 @@ import {
 } from '@webstir-io/module-contract';
 import { BROWSER_PROGRAM_EXPORT } from '../runtime/browser-render.js';
 import { importCurrent } from '../utils/backendModule.js';
-import { ensureDir, pathExists, readFile, writeFile } from '../utils/fs.js';
+import { ensureDir, pathExists, readFile, remove, writeFile } from '../utils/fs.js';
 import { hasBindingAttribute } from './bindings.js';
 import { compileRenderProgram } from './compile.js';
 import { RenderTemplateError, type RenderIssue } from './issues.js';
@@ -40,12 +40,21 @@ export async function findPageDataModule(pageDirectory: string): Promise<string 
 }
 
 /** Imports a page's `data.ts` as the build sees it now, resolving packages from the workspace. */
+let dataLoads = 0;
+
 export async function loadPageDataModule(
   dataModule: string,
   options: { readonly workspaceRoot: string; readonly page: string },
 ): Promise<BrowserPageData> {
-  const outfile = path.join(scratchRoot(options.workspaceRoot), 'data', `${options.page}.mjs`);
-  await ensureDir(path.dirname(outfile));
+  // Its own directory each time: Bun's module resolver caches directory listings, so a file added
+  // to a directory it has already read (say, a second page's data.ts) would not be found.
+  const loadDir = path.join(
+    scratchRoot(options.workspaceRoot),
+    'data',
+    `${options.page.replaceAll('/', '__')}-${process.pid}-${++dataLoads}`,
+  );
+  const outfile = path.join(loadDir, 'data.mjs');
+  await ensureDir(loadDir);
   await esbuild({
     entryPoints: [dataModule],
     bundle: true,
@@ -55,7 +64,7 @@ export async function loadPageDataModule(
     outfile,
     logLevel: 'silent',
   });
-  const exports = await importCurrent(outfile);
+  const exports = await importCurrent(outfile).finally(() => remove(loadDir).catch(() => {}));
   const label = relativeLabel(options.workspaceRoot, dataModule);
   const fail = (message: string) =>
     new RenderTemplateError([{ loc: { file: label, line: 1 }, message: `${label} ${message}` }]);

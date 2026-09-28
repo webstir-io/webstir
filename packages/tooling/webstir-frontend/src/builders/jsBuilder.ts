@@ -77,11 +77,17 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
   const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
   const pages = await getPages(config.paths.src.pages);
 
+  // An HTML edit only changes the bundles of browser-rendered pages, which carry their template.
+  const htmlEdit = context.changedFile?.endsWith('.html') === true;
+
   await assertFeatureModulesPresent(config, context.enable);
-  await compileAppTypeScript(context, isProduction, bundler);
+  if (!htmlEdit) await compileAppTypeScript(context, isProduction, bundler);
 
   for (const page of pages) {
     if (targetPage && page.name !== targetPage) {
+      continue;
+    }
+    if (htmlEdit && !(await findPageDataModule(page.directory))) {
       continue;
     }
     const pageEntry = await resolveEntryPoint(page.directory);

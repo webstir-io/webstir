@@ -267,3 +267,28 @@ export const module = {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+// Several browser pages build in one run: each page's data.ts is loaded fresh.
+test('two browser-rendered pages build together', async () => {
+  const root = await createWorkspace();
+  try {
+    const second = path.join(root, 'src', 'frontend', 'pages', 'more');
+    await fs.mkdir(second, { recursive: true });
+    for (const name of ['index.html', 'index.ts', 'data.ts']) {
+      await fs.copyFile(
+        path.join(root, 'src', 'frontend', 'pages', 'items', name),
+        path.join(second, name),
+      );
+    }
+    await build(root);
+    for (const page of ['items', 'more']) {
+      const html = await fs.readFile(
+        path.join(root, 'build', 'frontend', 'pages', page, 'index.html'),
+        'utf8',
+      );
+      assert.match(html, /<h1>Items<\/h1>/, page);
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

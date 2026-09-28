@@ -492,7 +492,16 @@ async function renderDocumentResponse(
   }
   // A browser-rendered page arrives as its first-load HTML; render its data before the swap.
   const program = browserProgramOf(prepared?.module);
-  if (program && prepared) renderPageInto(doc, program, prepared.data);
+  if (program && prepared) {
+    try {
+      renderPageInto(doc, program, prepared.data);
+    } catch (error) {
+      // Data the template can't render: a full load shows the page as a failing load would.
+      console.error(error);
+      if (requestId === activeRequestId) leave(options.url);
+      return;
+    }
+  }
   const commit = commitQueue.then(async () => {
     if (requestId !== activeRequestId) return;
     await renderDocumentHtml(
