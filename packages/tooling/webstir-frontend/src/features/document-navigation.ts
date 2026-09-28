@@ -1,3 +1,5 @@
+import { ISLAND_STYLES_ATTRIBUTE } from '../runtime/islands.js';
+
 export interface NavigationDomRuntime {
   readonly dynamicAttr: string;
   readonly dynamicValue: string;
@@ -133,6 +135,10 @@ export async function syncHead(
   const existingStyles = new Map<string, HTMLLinkElement>();
   const staleStyles: HTMLLinkElement[] = [];
   for (const link of Array.from(head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'))) {
+    // Islands load their own stylesheets; the islands runtime keeps them.
+    if (link.hasAttribute(ISLAND_STYLES_ATTRIBUTE)) {
+      continue;
+    }
     const key = normalizeStylesheetKey(link.getAttribute('href'), window.location.href, runtime);
     if (!key) {
       link.remove();

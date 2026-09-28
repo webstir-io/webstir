@@ -1,6 +1,7 @@
 import {
   browserProgramOf,
   captureFocus,
+  islandControls,
   createPageLifecycle,
   markClientNav,
   preparePage,
@@ -569,6 +570,8 @@ async function renderDocumentHtml(
     return;
   }
   ++pageGeneration;
+  const outgoing = document.querySelector('main');
+  if (outgoing) await islandControls()?.unmountWithin(outgoing);
   await pageLifecycle.dispose();
   await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
@@ -607,6 +610,8 @@ async function renderDocumentHtml(
   if (requestId !== activeRequestId) return;
   if (!prepared) await startPage(options.url);
   if (requestId !== activeRequestId) return;
+  const shown = document.querySelector('main');
+  if (shown) islandControls()?.mountWithin(shown);
   if (kept) {
     // An async setup may still be building what the page scrolls through or focuses. This waits
     // outside the commit queue, so a navigation that comes first is not held up and wins.

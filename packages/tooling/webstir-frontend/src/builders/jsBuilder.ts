@@ -11,6 +11,7 @@ import {
   readSharedAssets,
 } from '../assets/assetManifest.js';
 import { createCompressedVariants } from '../assets/precompression.js';
+import { buildIslands, islandsSourceRoot } from './islandsBuilder.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
 import {
@@ -68,10 +69,18 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
       {
         directory: config.paths.src.frontend,
         // Templates too: a browser-rendered page's bundle carries its compiled template.
-        extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx', '.html'],
+        extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx', '.html', '.svelte', '.vue'],
       },
+      // A stylesheet an island imports builds with the islands.
+      { directory: islandsSourceRoot(config), extensions: ['.css'] },
     ])
   ) {
+    return;
+  }
+  // An island's edit rebuilds the islands alone.
+  const islandsRoot = islandsSourceRoot(config);
+  if (context.changedFile && path.resolve(context.changedFile).startsWith(islandsRoot + path.sep)) {
+    await buildIslands(config, isProduction);
     return;
   }
   const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
@@ -102,6 +111,8 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
       await buildForDevelopment(config, page.name, entryPoint, bundler);
     }
   }
+
+  if (!htmlEdit) await buildIslands(config, isProduction);
 
   // Always copy dev runtime scripts in dev builds to support HMR/refresh even when no page JS exists.
   if (!isProduction || context.enable?.clientNav || context.enable?.search) {

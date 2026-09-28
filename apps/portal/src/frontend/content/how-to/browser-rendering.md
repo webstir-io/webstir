@@ -83,3 +83,7 @@ What happens:
 - **Bindings live in `<main>` or `<title>`,** because that's what a browser render replaces, and `<title>` takes only `data-text`. The build reports a binding anywhere else, including on `<main>` itself or in the app shell.
 - **No POST forms.** A browser-rendered page has no session to carry the form's CSRF token. Render a page with forms on the server (a view), or post from the page script with `fetch`.
 - **A page renders in one place.** A page with a `data.ts` can't also be named by a backend view's `page`; the build asks you to keep one.
+
+## Components from other libraries
+
+A part of a browser-rendered page can be a React, Preact, Solid, Svelte or Vue component: an [island](./islands.md). `data-props` passes it a value from the page's data, and `render(data)` mounts it again with the new props.

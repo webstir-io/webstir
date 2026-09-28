@@ -1,3 +1,10 @@
+import { listIslands, readIslandsManifest } from './islandsBuilder.js';
+import {
+  checkIslandElements,
+  DEV_ISLANDS_LOADER,
+  injectIslandsLoader,
+  publishIslandsLoader,
+} from '../islands/html.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { load } from 'cheerio';
@@ -87,9 +94,11 @@ async function buildHtml(context: BuilderContext): Promise<void> {
 
   const rawTemplateHtml = await readFile(appTemplatePath);
   validateAppTemplate(rawTemplateHtml, appTemplatePath);
+  const islands = new Set((await listIslands(config)).map((island) => island.name));
   const renderSource: TemplateSourceOptions = {
     workspaceRoot: config.paths.workspace,
     partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+    checkElements: (html, file) => checkIslandElements(html, file, islands),
   };
   const templateHtml = await withInlineScripts(
     context,
@@ -136,7 +145,7 @@ async function buildHtml(context: BuilderContext): Promise<void> {
       const mergedHtml = mergeTemplates(templateHtml, fragment);
       const dataModule = isPageIndex ? await findPageDataModule(page.directory) : undefined;
       const mergedWithScripts = injectOptInScripts(
-        mergedHtml,
+        injectIslandsLoader(mergedHtml, DEV_ISLANDS_LOADER),
         context.enable,
         page.name,
         page.directory,
@@ -214,6 +223,7 @@ async function publishHtml(context: BuilderContext): Promise<void> {
   );
   const useRootIndex = pagesUrlPrefix.length === 0;
   const knownPages: ReadonlySet<string> = new Set(pages.map((page) => page.name));
+  const islandsLoader = (await readIslandsManifest(config.paths.dist.frontend))?.loader;
 
   for (const page of pages) {
     if (targetPage && page.name !== targetPage) {
@@ -229,19 +239,14 @@ async function publishHtml(context: BuilderContext): Promise<void> {
     for (const relativeHtml of htmlFiles) {
       const sourcePath = path.join(page.directory, relativeHtml);
       const html = await readFile(sourcePath);
-      const rewritten = await rewriteForPublish(
-        context,
-        html,
-        page.name,
-        manifest,
-        page.directory,
-        shared,
-        {
+      const rewritten = publishIslandsLoader(
+        await rewriteForPublish(context, html, page.name, manifest, page.directory, shared, {
           pagesUrlPrefix,
           buildPagesUrlPrefix,
           useRootIndex,
           knownPages,
-        },
+        }),
+        islandsLoader,
       );
       const outputPath = path.join(distDir, relativeHtml);
       await ensureDir(path.dirname(outputPath));

@@ -7,6 +7,7 @@ export interface WebstirOperationDescriptor {
     | 'repair'
     | 'enable'
     | 'add-page'
+    | 'add-island'
     | 'add-test'
     | 'add-route'
     | 'add-job'
@@ -83,6 +84,15 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     mutatesWorkspace: true,
     supportsJson: false,
     stableForMcp: true,
+    requiresLayer: 'pages',
+  },
+  {
+    id: 'add-island',
+    summary: 'Scaffold an island: a component from React, Preact, Solid, Svelte, Vue, or none.',
+    requiresWorkspace: true,
+    mutatesWorkspace: true,
+    supportsJson: false,
+    stableForMcp: false,
     requiresLayer: 'pages',
   },
   {

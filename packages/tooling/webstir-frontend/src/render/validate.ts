@@ -158,7 +158,8 @@ function walk(
         report(`\`${node.path.source}\` ${problem}`);
       }
     } else if (node.op === 'attr') {
-      const problem = checkAttribute(resolved.ok);
+      // An island's props may be any value that has JSON; a text attribute needs a scalar.
+      const problem = node.json ? undefined : checkAttribute(resolved.ok);
       if (problem) {
         report(`\`${node.path.source}\` ${problem}`);
       }
@@ -210,7 +211,9 @@ function bindingLabel(node: Exclude<RenderNode, string | { op: 'csrf' }>): strin
     case 'text':
       return `data-text="${node.path.source}"`;
     case 'attr':
-      return `data-attr-${node.name}="${node.path.source}"`;
+      return node.json
+        ? `data-props="${node.path.source}"`
+        : `data-attr-${node.name}="${node.path.source}"`;
     case 'if':
       return `data-if="${node.negate ? '!' : ''}${node.path.source}"`;
     case 'each':

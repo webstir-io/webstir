@@ -440,6 +440,16 @@ export function createHotUpdatePayload(options: {
     });
   }
 
+  if (relativeParts[0] === 'islands' && relativeParts.length === 2 && isIslandFile(changedFile)) {
+    return {
+      requiresReload: true,
+      modules: [],
+      styles: [],
+      islandRefresh: path.basename(changedFile, path.extname(changedFile)),
+      changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
+    };
+  }
+
   if (relativeParts[0] === 'pages' && relativeParts.length >= 3 && isJavaScriptFile(changedFile)) {
     return {
       requiresReload: true,
@@ -523,6 +533,11 @@ function isCssFile(filePath: string): boolean {
 function isJavaScriptFile(filePath: string): boolean {
   const extension = path.extname(filePath).toLowerCase();
   return extension === '.js' || extension === '.jsx' || extension === '.ts' || extension === '.tsx';
+}
+
+function isIslandFile(filePath: string): boolean {
+  const extension = path.extname(filePath).toLowerCase();
+  return isJavaScriptFile(filePath) || extension === '.svelte' || extension === '.vue';
 }
 
 function isWithinDirectory(filePath: string, directory: string): boolean {

@@ -1,6 +1,7 @@
 import { executeRenderProgram } from '@webstir-io/module-contract/render';
 import type { RenderProgram } from '@webstir-io/module-contract';
 import type { LoadablePage } from './page-load.js';
+import { islandControls } from './islands.js';
 
 /** The export a browser-rendered page's bundle carries its compiled template in. */
 export const BROWSER_PROGRAM_EXPORT = '__webstirRenderProgram';
@@ -24,7 +25,11 @@ export function renderPageInto(target: Document, program: RenderProgram, data: u
   const next = rendered.querySelector('main');
   const main = target.querySelector('main');
   if (next && main) {
+    // The islands inside <main> go with the content they sit in, and come back with the new data.
+    const islands = target === document ? islandControls() : undefined;
+    void islands?.unmountWithin(main);
     main.innerHTML = next.innerHTML;
+    islands?.mountWithin(main);
   }
   const title = rendered.querySelector('title');
   if (title) {

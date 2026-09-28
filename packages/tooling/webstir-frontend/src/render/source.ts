@@ -14,6 +14,8 @@ import { RenderTemplateError, type RenderIssue } from './issues.js';
 export interface TemplateSourceOptions {
   readonly workspaceRoot: string;
   readonly partialsRoot: string;
+  /** Checks each file the template is made of: the page or shell, and every partial it includes. */
+  readonly checkElements?: (html: string, file: string) => readonly RenderIssue[];
 }
 
 interface SourceEdit {
@@ -27,9 +29,6 @@ export async function prepareTemplateSource(
   filePath: string,
   options: TemplateSourceOptions,
 ): Promise<string> {
-  if (!mayContainBindings(html)) {
-    return html;
-  }
   const issues: RenderIssue[] = [];
   const result = await expandSource(html, filePath, options, [], true, issues);
   if (issues.length > 0) {
@@ -46,11 +45,14 @@ async function expandSource(
   isDocument: boolean,
   issues: RenderIssue[],
 ): Promise<string> {
+  const file = toWorkspacePath(options.workspaceRoot, filePath);
+  if (options.checkElements) {
+    issues.push(...options.checkElements(html, file));
+  }
   if (!mayContainBindings(html)) {
     return html;
   }
 
-  const file = toWorkspacePath(options.workspaceRoot, filePath);
   const document = load(html, { sourceCodeLocationInfo: true }, isDocument);
   const edits: SourceEdit[] = [];
   let skipUntil = -1;

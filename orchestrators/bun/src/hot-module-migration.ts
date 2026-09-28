@@ -43,13 +43,15 @@ const LEGACY_REGISTRY_BLOCK =
 
 // SHA-256 of the earlier hmr.js clients each scaffold shipped, SSG (with the reload marker) first,
 // then SPA/full: through 0.1.58, then 0.1.59 to 0.3, before page refresh through client-nav; then
-// the SPA/full client of 0.4, before every starter shared the SSG one.
+// the SPA/full client of 0.4, before every starter shared the SSG one; then the 0.5 client, before
+// islands refreshed in place.
 const LEGACY_CLIENT_HASHES = new Set([
   '95389ea63898e0058a63ab9edf75e81eba54ef0da0ecf5366ef96adb00cecac7',
   'a081b7640499da3ebf9d80035b85852cc33434c81bd6b164b54a171f51ad48c5',
   '79c3d9d93a5eb5b1033568ea738fdca20d6bef81687309de3e6488950492a4a3',
   '135e2745a1a60c8c231b8b09dd0fb19c8369a477de433ea62814d3d96054a5f9',
   '55393508b9a4f0e26b41d43cb750a9ada581d4604228dda22725dbc5a7310d1b',
+  'da32a377961351ebde2c4cbf92279090c39a765dce89e88019441b7e8bd49fd4',
 ]);
 
 export const HOT_MODULE_REGISTRATION = `// Pages can opt into hot module updates. During development the dev server's

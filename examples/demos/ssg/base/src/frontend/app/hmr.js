@@ -69,6 +69,14 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             return { success: false, reason: 'payload.invalid' };
         }
 
+        // An island's code changed: the islands loader mounts it again from the new code, in place.
+        const islands = window[Symbol.for('webstir.islands')];
+        if (payload.islandRefresh && typeof islands?.remount === 'function') {
+            await islands.remount(payload.islandRefresh);
+            console.info(`[webstir-hmr] Remounted island ${payload.islandRefresh}.`);
+            return { success: true };
+        }
+
         // A page's code changed: client-nav shows the page again from the new code, in place.
         const clientNav = window[Symbol.for('webstir.client-nav')];
         if (payload.pageRefresh && typeof clientNav?.refreshPage === 'function') {

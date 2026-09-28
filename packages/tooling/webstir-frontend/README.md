@@ -28,11 +28,16 @@ import { createCleanupScope, defineBoundary } from '@webstir-io/webstir-frontend
 - `listen()`, `scheduleTimeout()`, `scheduleInterval()`, `trackObserver()`, and `createAbortController()` wrap common side effects so cleanup stays attached to the boundary scope.
 - Boundary code should register DOM listeners, timers, observers, and similar side effects through the cleanup scope so remounts stay deterministic.
 
+## Islands
+
+A page can place components from React, Preact, Solid, Svelte or Vue, or plain `mount` code, with `data-island="<name>"`; they live in `src/frontend/islands/`. The build bundles them with shared chunks under `/app/islands/`, adds the islands loader only to pages that use them, and checks names, `data-load` strategies and `data-props` paths. See the [Islands guide](https://webstir.dev/docs/how-to/islands/).
+
 ## Hot Update Rules
 
 Webstir watch mode follows a narrow fallback policy:
 
 - CSS edits hot-swap in the browser.
+- Edits to an island (`src/frontend/islands/*`) mount that island again from the new code, where it is.
 - Edits to a page's code (anything under `src/frontend/pages/<page>/` that compiles to JavaScript) show the current page again from the new code, in place, when client-nav is on: the old page's cleanup runs, then the new `load` and `setup`, while scroll, focus and the app shell stay. Without client-nav, the page reloads.
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
 - Current exception: in apps without a server, edits to the docs page (`src/frontend/pages/docs/`) or a `src/frontend/content/**/_sidebar.json` re-import the docs page's module, whose sidebar remounts itself, instead of refreshing the page. A module that registered handlers with `registerHotModule` has them run.

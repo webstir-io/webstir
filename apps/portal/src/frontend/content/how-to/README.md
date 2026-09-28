@@ -10,6 +10,7 @@ Task-oriented docs for doing specific things.
 - [Publish](./publish.md)
 - [Static Sites (SSG Preview)](./static-sites.md)
 - [Render a Page in the Browser](./browser-rendering.md)
+- [Use Components from Another Library (Islands)](./islands.md)
 - [Extend Pipelines with Hooks](./pipeline-hooks.md)
 - [Precompression](./precompression.md)
 - [Docker Deployment](./docker.md)

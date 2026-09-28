@@ -112,6 +112,14 @@ function run(
       }
       case 'attr': {
         const value = read(node.path, data, scopes);
+        if (node.json) {
+          // An island's props: the value as JSON, escaped like any attribute.
+          if (value !== undefined) {
+            const json = toJson(value, node.loc, `data-props="${node.path.source}"`);
+            out.push(` ${node.name}="${escapeAttribute(json)}"`);
+          }
+          break;
+        }
         // ARIA states are the words "true" and "false", not an attribute's presence.
         if (typeof value === 'boolean' && ARIA_TRUE_FALSE.has(node.name.toLowerCase())) {
           out.push(` ${node.name}="${value}"`);
@@ -177,6 +185,19 @@ function toText(value: unknown, loc: RenderSourceLocation, label: string): strin
     return String(value);
   }
   throw new RenderProgramError(loc, `${label} needs a string or number, got ${describe(value)}`);
+}
+
+function toJson(value: unknown, loc: RenderSourceLocation, label: string): string {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch (error) {
+    throw new RenderProgramError(loc, `${label} needs JSON data: ${(error as Error).message}`);
+  }
+  if (json === undefined) {
+    throw new RenderProgramError(loc, `${label} needs JSON data, got ${describe(value)}`);
+  }
+  return json;
 }
 
 /** Every URL in the value is checked: `srcset` lists candidates, `ping` lists URLs. */

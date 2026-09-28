@@ -35,6 +35,11 @@ export interface HotUpdatePayload {
    * the new code; without it, `requiresReload` reloads the page.
    */
   readonly pageRefresh?: boolean;
+  /**
+   * An island's code changed: the islands loader mounts it again from the new code, where it is;
+   * without the loader, `requiresReload` reloads the page.
+   */
+  readonly islandRefresh?: string;
   readonly fallbackReasons?: readonly string[];
   readonly stats?: {
     readonly hotUpdates: number;

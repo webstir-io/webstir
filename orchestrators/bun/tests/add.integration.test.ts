@@ -543,3 +543,89 @@ test('CLI add-route records form and fragment metadata in the backend manifest',
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
+
+test('CLI add-island scaffolds an island in each library and adds what it needs', async () => {
+  const cases = [
+    { flag: '--react', file: 'chart.tsx', dependency: 'react-dom', jsx: 'react' },
+    { flag: '--preact', file: 'chart.tsx', dependency: 'preact', jsx: 'preact' },
+    { flag: '--solid', file: 'chart.tsx', dependency: 'solid-js', jsx: 'solid-js' },
+    { flag: '--svelte', file: 'chart.svelte', dependency: 'svelte', jsx: undefined },
+    { flag: '--vue', file: 'chart.vue', dependency: 'vue', jsx: undefined },
+    { flag: undefined, file: 'chart.ts', dependency: undefined, jsx: undefined },
+  ];
+  for (const entry of cases) {
+    const copy = await copyDemoWorkspace('spa', 'webstir-add-island-');
+    const root = copy.workspaceRoot;
+    try {
+      const result = await runCli([
+        'add-island',
+        'chart',
+        ...(entry.flag ? [entry.flag] : []),
+        '--workspace',
+        root,
+      ]);
+      expect({ flag: entry.flag, exitCode: result.exitCode, stderr: result.stderr }).toEqual({
+        flag: entry.flag,
+        exitCode: 0,
+        stderr: '',
+      });
+      expect(existsSync(path.join(root, 'src', 'frontend', 'islands', entry.file))).toBe(true);
+      expect(result.stdout).toContain('data-island="chart"');
+      const packageJson = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+      if (entry.dependency) {
+        expect(packageJson.dependencies[entry.dependency]).toBeString();
+        expect(result.stdout).toContain('run `bun install`');
+      }
+      const tsconfig = JSON.parse(
+        await readFile(path.join(root, 'src', 'frontend', 'tsconfig.json'), 'utf8'),
+      );
+      expect({ flag: entry.flag, jsx: tsconfig.compilerOptions.jsxImportSource }).toEqual({
+        flag: entry.flag,
+        jsx: entry.jsx,
+      });
+    } finally {
+      await removeDemoWorkspace(copy);
+    }
+  }
+});
+
+test('CLI add-island uses the library the app has, and refuses what it cannot scaffold', async () => {
+  const copy = await copyDemoWorkspace('spa', 'webstir-add-island-detect-');
+  const apiCopy = await copyDemoWorkspace('api', 'webstir-add-island-api-');
+  const root = copy.workspaceRoot;
+  try {
+    const packageJsonPath = path.join(root, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+    packageJson.dependencies.vue = '^3.5.43';
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+
+    const detected = await runCli(['add-island', 'editor', '--workspace', root]);
+    expect(detected.exitCode).toBe(0);
+    expect(existsSync(path.join(root, 'src', 'frontend', 'islands', 'editor.vue'))).toBe(true);
+
+    for (const [args, message] of [
+      [['add-island', 'editor', '--workspace', root], 'Island "editor" already exists'],
+      [['add-island', 'chart', '--react', '--vue', '--workspace', root], 'Pick one library'],
+      [['add-island', 'chart', '--angular', '--workspace', root], 'Unknown option "--angular"'],
+      [
+        ['add-island', 'chart', '--workspace', apiCopy.workspaceRoot],
+        'run `webstir enable frontend` first',
+      ],
+    ] as const) {
+      const refused = await runCli([...args]);
+      expect({ args, exitCode: refused.exitCode }).toEqual({ args, exitCode: 1 });
+      expect(refused.stderr).toContain(message);
+    }
+
+    // An app's JSX islands share one library.
+    packageJson.dependencies.react = '^19.3.0';
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+    const second = await runCli(['add-island', 'chart', '--preact', '--workspace', root]);
+    expect(second.exitCode).toBe(1);
+    expect(second.stderr).toContain("The app's JSX islands use react");
+    expect(existsSync(path.join(root, 'src', 'frontend', 'islands', 'chart.tsx'))).toBe(false);
+  } finally {
+    await removeDemoWorkspace(copy);
+    await removeDemoWorkspace(apiCopy);
+  }
+});

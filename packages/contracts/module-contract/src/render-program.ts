@@ -26,6 +26,8 @@ export type RenderNode =
       readonly op: 'attr';
       readonly name: string;
       readonly url: boolean;
+      /** Writes the value as JSON (an island's `data-props`) rather than as text. */
+      readonly json?: boolean;
       readonly path: RenderPath;
       readonly loc: RenderSourceLocation;
     }
@@ -53,6 +55,7 @@ export const renderNodeSchema: z.ZodType<RenderNode> = z.lazy(() =>
       op: z.literal('attr'),
       name: z.string().min(1),
       url: z.boolean(),
+      json: z.boolean().optional(),
       path: renderPathSchema,
       loc: renderSourceLocationSchema,
     }),
