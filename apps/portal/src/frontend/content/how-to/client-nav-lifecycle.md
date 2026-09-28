@@ -99,8 +99,24 @@ referrer meta has set it. So when the new page would get a different policy than
 the page on screen, client-nav loads its address in full and the browser applies
 the policy itself. A page's policy is its last valid `<meta name="referrer">`
 (anywhere, `<main>` included), else its `Referrer-Policy` header. Pages that set
-none, or the same one, stay client-side. This covers links, Back and Forward, and
-forms answered with a page (the form's result address is then loaded in full).
+none, or the same one, stay client-side, and keep that policy even after the meta
+that set it leaves with `<main>`. This covers links, Back and Forward, redirects
+and forms.
+
+Loading in full fetches the page again, and a response is only used once, so
+client-nav avoids spending one on a page it then throws away:
+
+- A redirect followed from a page that sets a policy loads its destination in
+  full without fetching it first, so a message the destination shows once (a
+  flash) is still there.
+- A form answered with a page whose policy differs: a refused post (a re-rendered
+  form) is posted again natively, which re-runs only the refused check and shows
+  its errors and values at the form's action address, as a browser without
+  JavaScript would; an accepted post is not run twice, so its address loads.
+
+A page with another policy reached by a link, Back or Forward is fetched once to
+read its policy, then loaded; a message it would show once is spent on that
+first fetch.
 
 A page that sets `no-referrer` to keep a token in its address out of `Referer`
 does so only while it is on screen: leaving it for a page without that policy is

@@ -5,7 +5,7 @@ import {
   resolveHeadMetadataSync,
   resolveMetadataHref,
 } from '../dist/features/head-metadata.js';
-import { needsFullLoadForReferrerPolicy } from '../dist/features/referrer-policy-change.js';
+import { resolveReferrerPolicyNavigation } from '../dist/features/referrer-policy-change.js';
 
 const meta = (attributes) => ({ tag: 'meta', attributes });
 const link = (attributes) => ({ tag: 'link', attributes });
@@ -343,6 +343,23 @@ test.each([
     [],
     true,
   ],
+  [
+    'the policy the last navigation kept, once its meta is gone',
+    null,
+    page(),
+    'unsafe-url',
+    [],
+    true,
+  ],
+  [
+    'a kept policy the incoming page shares',
+    null,
+    page(referrerMeta('unsafe-url')),
+    'unsafe-url',
+    [],
+    false,
+  ],
+  ['a meta added since over the kept policy', null, page(), null, ['origin'], true],
   // A referrer meta that cannot be read for certain: load in full.
   [
     'a name written with a character reference',
@@ -368,17 +385,30 @@ test.each([
     [],
     true,
   ],
-])(
-  'needsFullLoadForReferrerPolicy: %s',
-  (_label, header, html, currentHeader, currentMetas, expected) => {
-    expect(
-      needsFullLoadForReferrerPolicy({
-        incoming: { header, html },
-        current: { header: currentHeader, metas: currentMetas },
-      }),
-    ).toBe(expected);
-  },
-);
+])('resolveReferrerPolicyNavigation: %s', (_label, header, html, committed, metas, expected) => {
+  const result = resolveReferrerPolicyNavigation({
+    incoming: { header, html },
+    current: { committed, metas },
+  });
+  expect(result.kind === 'load').toBe(expected);
+});
+
+test.each([
+  ['none on either side', null, page(), null, [], null],
+  [
+    'the shared meta policy',
+    null,
+    page(referrerMeta('never')),
+    null,
+    ['no-referrer'],
+    'no-referrer',
+  ],
+  ['the shared header policy', 'Origin', page(), undefined, [], 'origin'],
+])('resolveReferrerPolicyNavigation keeps %s', (_label, header, html, committed, metas, policy) => {
+  expect(
+    resolveReferrerPolicyNavigation({ incoming: { header, html }, current: { committed, metas } }),
+  ).toEqual({ kind: 'render', policy });
+});
 
 test.each([
   [

@@ -514,17 +514,18 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       'Main Origin',
       '',
       '<meta name="referrer" content="origin"><h1 id="main-origin-heading">Main Origin</h1>' +
-        link('to-header-origin', '/client-nav-header-origin'),
+        link('to-head-origin', '/client-nav-head-origin'),
     ),
   );
+  // The same policy, set in <head> this time: it stays client-side, keeps the policy though the
+  // meta it came from leaves with <main>, and a page with none after it loads in full.
   await fixture(
-    '/client-nav-header-origin',
+    '/client-nav-head-origin',
     html(
-      'Header Origin',
-      '',
-      `<h1 id="header-origin-heading">Header Origin</h1>${link('to-plain', '/client-nav-plain')}`,
+      'Head Origin',
+      '<meta name="referrer" content="origin">',
+      `<h1 id="head-origin-heading">Head Origin</h1>${link('to-plain', '/client-nav-plain')}`,
     ),
-    { 'referrer-policy': 'origin' },
   );
   await fixture(
     '/client-nav-plain',
@@ -565,10 +566,24 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
       body: html(
         'Refused',
         '<meta name="referrer" content="no-referrer">',
-        `<h1 id="refused-heading">Refused ${refusedPosts.length}</h1>`,
+        `<h1 id="refused-heading">Refused ${refusedPosts.length}</h1>` +
+          '<form method="post" action="/client-nav-redirect">' +
+          '<button id="redirect-form-submit">Send</button></form>',
       ),
     });
   });
+  // A redirect from a page that sets a policy loads its destination in full without fetching it
+  // first, so what the destination shows once (a flash message) is not spent on a thrown-away copy.
+  await page.route(`${origin}/client-nav-redirect`, (route) =>
+    route.fulfill({
+      status: 204,
+      headers: { 'x-webstir-location': '/client-nav-destination#section' },
+    }),
+  );
+  await fixture(
+    '/client-nav-destination',
+    html('Destination', '', '<h1 id="destination-heading">Destination</h1><p id="section">s</p>'),
+  );
   await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
     route.fulfill({
       status: 200,
@@ -657,9 +672,9 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(await sameDocument()).toBe(false);
   expect(await probeReferer()).toBe(`${origin}/`);
 
-  // The same policy by header: client-side; then a page with none: a full load.
+  // The same policy in <head>: client-side; then a page with none: a full load.
   await markDocument();
-  await go('to-header-origin', 'header-origin-heading');
+  await go('to-head-origin', 'head-origin-heading');
   expect(await sameDocument()).toBe(true);
   expect(await probeReferer()).toBe(`${origin}/`);
   await go('to-plain', 'plain-heading');
@@ -679,6 +694,12 @@ async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promis
   expect(await page.locator('#refused-heading').textContent()).toBe('Refused 2');
   expect(refusedPosts.every((body) => body.includes('email=not-an-email'))).toBe(true);
   expect(await probeReferer()).toBe('');
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await page.locator('#redirect-form-submit').click({ noWaitAfter: true });
+  await page.locator('#destination-heading').waitFor({ state: 'visible' });
+  expect(new URL(page.url()).hash).toBe('#section');
+  expect(referers.get('/client-nav-destination')).toEqual(['']);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });

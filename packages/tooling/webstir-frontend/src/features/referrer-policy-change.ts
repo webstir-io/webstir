@@ -30,29 +30,51 @@ const META_TAG_LOOSE = /<meta\b[^>]*name\s*=\s*["']?referrer/gi;
 const ATTRIBUTE = /([^\s"'>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 
 /**
- * Whether a navigation must load in full because the incoming page would get a different referrer
- * policy than the page on screen. Client-nav never switches the policy in place: removing a
- * referrer meta does not undo its policy, and Chromium applies one in a document it only parses.
- * Each side's policy is its last valid referrer meta, else its Referrer-Policy header, else none;
- * pages that set none on either side, or the same one, stay client-side. The incoming page is read
- * from its response text, before it is parsed, and a referrer meta that cannot be read for certain
- * counts as a change. `current.header` is undefined for the first load, whose header a script cannot
- * read; it is taken to match the incoming page's, as a site-wide header would.
+ * The page on screen, for its referrer policy: `committed` is the policy the last client
+ * navigation kept (null for none), or undefined on the first load, whose Referrer-Policy header a
+ * script cannot read; `metas` are the contents of the referrer metas in the document now.
  */
-export function needsFullLoadForReferrerPolicy(options: {
+export interface OnScreenReferrerPolicy {
+  readonly committed: string | null | undefined;
+  readonly metas: readonly (string | null)[];
+}
+
+export type ReferrerPolicyNavigation =
+  | { readonly kind: 'render'; readonly policy: string | null }
+  | { readonly kind: 'load' };
+
+/**
+ * Whether a fetched page can render in place or must load in full because it would get a different
+ * referrer policy than the page on screen. Client-nav never switches the policy in place: removing
+ * a referrer meta does not undo its policy, and Chromium applies one in a document it only parses.
+ * A page's policy is its last valid referrer meta, else its Referrer-Policy header, else none; pages
+ * that set none on either side, or the same one, render in place, and the policy they share is
+ * returned for the page on screen to keep. The incoming page is read from its response text, before
+ * it is parsed, and a referrer meta that cannot be read for certain means a full load. The first
+ * load's header is taken to match the incoming page's, as a site-wide header would.
+ */
+export function resolveReferrerPolicyNavigation(options: {
   readonly incoming: { readonly header: string | null; readonly html: string };
-  readonly current: {
-    readonly header: string | null | undefined;
-    readonly metas: readonly (string | null)[];
-  };
-}): boolean {
+  readonly current: OnScreenReferrerPolicy;
+}): ReferrerPolicyNavigation {
   const incomingMetas = scanReferrerMetas(options.incoming.html);
-  if (incomingMetas === null) return true;
+  if (incomingMetas === null) return { kind: 'load' };
   const incoming = lastMetaPolicy(incomingMetas) ?? headerPolicy(options.incoming.header);
-  const currentHeader =
-    options.current.header === undefined ? options.incoming.header : options.current.header;
-  const current = lastMetaPolicy(options.current.metas) ?? headerPolicy(currentHeader);
-  return incoming !== current;
+  const current = onScreenReferrerPolicy(options.current, options.incoming.header);
+  return incoming === current ? { kind: 'render', policy: incoming } : { kind: 'load' };
+}
+
+/**
+ * The page on screen's policy: its last valid referrer meta, else the one the last client
+ * navigation kept, else, on the first load, the policy `assumedHeader` would set.
+ */
+export function onScreenReferrerPolicy(
+  current: OnScreenReferrerPolicy,
+  assumedHeader: string | null,
+): string | null {
+  const committed =
+    current.committed === undefined ? headerPolicy(assumedHeader) : current.committed;
+  return lastMetaPolicy(current.metas) ?? committed;
 }
 
 /** The content of each referrer meta in `doc`, in document order. */

@@ -31,7 +31,11 @@ import {
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 import { syncHeadMetadata } from './head-metadata.js';
-import { needsFullLoadForReferrerPolicy, readReferrerMetas } from './referrer-policy-change.js';
+import {
+  onScreenReferrerPolicy,
+  readReferrerMetas,
+  resolveReferrerPolicyNavigation,
+} from './referrer-policy-change.js';
 
 export {};
 
@@ -140,9 +144,9 @@ export function enableClientNav(): void {
 
 let enabled = false;
 let documentUrl = new URL(window.location.href);
-// The Referrer-Policy header of the page on screen; undefined for the first load, which a script
-// cannot read.
-let documentReferrerPolicyHeader: string | null | undefined;
+// The referrer policy the last client navigation kept (it never changes one); undefined for the
+// first load, whose Referrer-Policy header a script cannot read.
+let documentReferrerPolicy: string | null | undefined;
 const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
 let commitQueue = Promise.resolve();
@@ -443,13 +447,11 @@ async function renderDocumentResponse(
 
   // A page with another referrer policy loads in full, so the browser applies it; it is decided
   // from the response text, since parsing a referrer meta can apply it to the page on screen.
-  const referrerPolicyHeader = response.headers.get('referrer-policy');
-  if (
-    needsFullLoadForReferrerPolicy({
-      incoming: { header: referrerPolicyHeader, html },
-      current: { header: documentReferrerPolicyHeader, metas: readReferrerMetas(document) },
-    })
-  ) {
+  const referrer = resolveReferrerPolicyNavigation({
+    incoming: { header: response.headers.get('referrer-policy'), html },
+    current: { committed: documentReferrerPolicy, metas: readReferrerMetas(document) },
+  });
+  if (referrer.kind === 'load') {
     (options.loadInFull ?? (() => leave(options.url)))();
     return;
   }
@@ -475,7 +477,7 @@ async function renderDocumentResponse(
     if (requestId !== activeRequestId) return;
     await renderDocumentHtml(
       doc,
-      { history: options.history, url: options.url, referrerPolicyHeader },
+      { history: options.history, url: options.url, referrerPolicy: referrer.policy },
       requestId,
       prepared,
     );
@@ -494,7 +496,7 @@ async function renderDocumentHtml(
   options: {
     readonly history: HistoryMode;
     readonly url: string;
-    readonly referrerPolicyHeader: string | null;
+    readonly referrerPolicy: string | null;
   },
   requestId: number,
   prepared?: PreparedPage,
@@ -516,7 +518,7 @@ async function renderDocumentHtml(
     window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
-  documentReferrerPolicyHeader = options.referrerPolicyHeader;
+  documentReferrerPolicy = options.referrerPolicy;
   syncHeadMetadata(doc, options.url);
   const newMain = doc.querySelector('main');
   const currentMain = document.querySelector('main');
@@ -701,11 +703,20 @@ async function followLocation(
   });
   if (next.kind === 'refuse') {
     console.error(`client-nav: refused to follow a redirect to ${next.location}`);
-  } else if (next.kind === 'load') {
+  } else if (next.kind === 'load' || pageSetsReferrerPolicy()) {
+    // Fetching the destination to compare its policy would spend what it shows once, such as a
+    // flash message, on a response that is then thrown away for a full load.
     leave(next.url);
   } else {
     await renderUrl(next.url, { history: next.history, hops: hops + 1 });
   }
+}
+
+// Whether the page on screen sets a referrer policy that client-nav can see: a first load's header
+// cannot be read, so it counts only by its metas.
+function pageSetsReferrerPolicy(): boolean {
+  const current = { committed: documentReferrerPolicy, metas: readReferrerMetas(document) };
+  return onScreenReferrerPolicy(current, null) !== null;
 }
 
 /** Replaces this document with a full load. */
