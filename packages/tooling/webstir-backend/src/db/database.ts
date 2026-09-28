@@ -25,6 +25,8 @@ export interface Database {
 export interface DatabaseConnection extends Database {
   /** Runs a script of several statements without parameters, as a migration file holds. */
   exec(script: string): Promise<void>;
+  /** Whether the code calling this runs inside one of this connection's transactions. */
+  inTransaction(): boolean;
   close(): Promise<void>;
 }
 
@@ -165,6 +167,7 @@ export function createConnection(driver: DatabaseDriver): DatabaseConnection {
 
   return {
     ...database,
+    inTransaction: () => Boolean(scope.getStore()),
     exec: (script) => serial(() => current().exec(script)),
     close: () => serial(() => driver.close()),
   };

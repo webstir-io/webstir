@@ -125,3 +125,59 @@ test("s3:// keeps files in a bucket, under its prefix, through Bun's S3 client",
     server.stop(true);
   }
 });
+
+test('local files keep their media type, and anything that could run script is a sandboxed download', async () => {
+  await withApp({}, async () => {
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const cases = [
+      {
+        key: 'photos/1',
+        data: new Blob([png], { type: 'image/png' }),
+        type: 'image/png',
+        inline: true,
+      },
+      {
+        key: 'docs/2',
+        data: 'hello',
+        options: { contentType: 'text/plain' },
+        type: 'text/plain',
+        inline: true,
+      },
+      {
+        key: 'pages/evil.html',
+        data: '<script>alert(1)</script>',
+        type: 'text/html',
+        inline: false,
+      },
+      {
+        key: 'art/evil.svg',
+        data: '<svg onload="alert(1)"/>',
+        type: 'image/svg+xml',
+        inline: false,
+      },
+      { key: 'blobs/x', data: 'x', type: 'application/octet-stream', inline: false },
+    ];
+    for (const entry of cases) {
+      await files.put(entry.key, entry.data, entry.options);
+      assert.match(
+        (await files.get(entry.key)).type,
+        new RegExp(`^${entry.type.replace('+', '\\+')}`),
+        entry.key,
+      );
+      const served = await serveLocalFile(new URL(await files.url(entry.key), 'http://app.test'));
+      assert.match(
+        served.headers.get('content-type') ?? '',
+        new RegExp(`^${entry.type.replace('+', '\\+')}`),
+        entry.key,
+      );
+      assert.match(served.headers.get('content-security-policy') ?? '', /sandbox/, entry.key);
+      assert.equal(
+        (served.headers.get('content-disposition') ?? '').startsWith('attachment'),
+        !entry.inline,
+        entry.key,
+      );
+    }
+    await files.delete('photos/1');
+    assert.equal(await files.get('photos/1'), undefined);
+  });
+});

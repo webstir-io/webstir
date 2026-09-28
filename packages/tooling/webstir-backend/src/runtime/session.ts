@@ -184,10 +184,6 @@ export async function prepareSessionState<
       const renewed = isSessionRenewed(session);
       const kept = retainFlash ? readStoredFlash(initialRecord) : delivered.remaining;
 
-      if (initialRecord) {
-        await store.delete(initialRecord.id);
-      }
-
       const shouldPersist =
         normalized.session !== null ||
         publishFlash.length > 0 ||
@@ -196,6 +192,7 @@ export async function prepareSessionState<
         hasSessionRuntimeState(normalized.runtime);
 
       if (!shouldPersist) {
+        if (initialRecord) await store.delete(initialRecord.id);
         return {
           session: null,
           setCookie:
@@ -218,7 +215,12 @@ export async function prepareSessionState<
         now,
       });
 
+      // The new record goes in before an old one under another id comes out, and a record kept
+      // under its id is overwritten in place: a request reading meanwhile always finds a session.
       await store.set(record);
+      if (initialRecord && initialRecord.id !== record.id) {
+        await store.delete(initialRecord.id);
+      }
 
       return {
         session: attachSessionRuntimeState(

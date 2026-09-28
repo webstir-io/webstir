@@ -125,3 +125,44 @@ test('a scheduled job still running when its next run is due is skipped, not ove
     warnings.join('\n'),
   );
 });
+
+test('a job queued inside a transaction runs only once the transaction commits', async () => {
+  const { prepareApp } = await import('../dist/index.js');
+  const { closeAppDatabase, db } = await import('../dist/db/index.js');
+  const { jobs, startJobs } = await import('../dist/jobs/index.js');
+  const fs = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-jobs-tx-'));
+  const job = path.join(root, 'build', 'backend', 'jobs', 'record', 'index.js');
+  await fs.mkdir(path.dirname(job), { recursive: true });
+  await fs.writeFile(
+    job,
+    'export async function run(payload) { (globalThis.__ran ??= []).push(payload.n); }\n',
+  );
+  prepareApp(root);
+  globalThis.__ran = [];
+  const running = startJobs(quiet);
+  try {
+    // The first use of the queue, in a transaction that rolls back: its tables must outlast it.
+    await assert.rejects(
+      db.transaction(async () => {
+        await jobs.enqueue('record', { n: 1 });
+        await Bun.sleep(100);
+        throw new Error('undo');
+      }),
+      /undo/,
+    );
+    await db.transaction(async () => {
+      await jobs.enqueue('record', { n: 2 });
+    });
+    for (let waited = 0; globalThis.__ran.length === 0 && waited < 3000; waited += 20)
+      await Bun.sleep(20);
+    await Bun.sleep(100);
+    assert.deepEqual(globalThis.__ran, [2]);
+  } finally {
+    await running.stop();
+    await closeAppDatabase();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}, 20_000);

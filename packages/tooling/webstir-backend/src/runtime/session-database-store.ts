@@ -28,14 +28,11 @@ export function createDatabaseSessionStore<
     },
     async set(record) {
       const connection = await database();
-      await connection.transaction(async (tx) => {
-        await tx.execute('DELETE FROM webstir_sessions WHERE id = ?', [record.id]);
-        await tx.execute('INSERT INTO webstir_sessions (id, record, expires_at) VALUES (?, ?, ?)', [
-          record.id,
-          JSON.stringify(record),
-          record.expiresAt,
-        ]);
-      });
+      await connection.execute(
+        `INSERT INTO webstir_sessions (id, record, expires_at) VALUES (?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET record = excluded.record, expires_at = excluded.expires_at`,
+        [record.id, JSON.stringify(record), record.expiresAt],
+      );
       const now = Date.now();
       if (now - lastPurge > PURGE_EVERY_MS) {
         lastPurge = now;

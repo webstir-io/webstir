@@ -71,7 +71,7 @@ export async function claimJob(db: Database, now = new Date()): Promise<QueuedJo
     max_attempts: number;
   }>(
     `UPDATE webstir_jobs SET status = 'running', attempts = attempts + 1, updated_at = ?
-     WHERE id = (
+     WHERE status = 'queued' AND id = (
        SELECT id FROM webstir_jobs WHERE status = 'queued' AND run_at <= ?
        ORDER BY run_at, created_at LIMIT 1
      )

@@ -1,3 +1,5 @@
+import { AsyncResource } from 'node:async_hooks';
+
 import type { Database } from '../db/database.js';
 import { claimJob, completeJob, failJob, tidyJobs } from './queue.js';
 import type { JobContext } from './registry.js';
@@ -72,7 +74,9 @@ export function startWorker(options: {
     .then(tick);
 
   return {
-    wake: tick,
+    // Bound to where the worker started: code that queues a job inside a transaction wakes the
+    // worker outside it, so the job runs only once that transaction commits.
+    wake: AsyncResource.bind(tick),
     async stop() {
       stopped = true;
       clearTimeout(timer);

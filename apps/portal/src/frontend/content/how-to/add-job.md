@@ -54,4 +54,4 @@ webstir jobs run send-invoice --payload '{"invoiceId":"42"}' --workspace "$PWD"
 
 ## One machine
 
-Jobs run in the server process on one machine. With several servers, set `WEBSTIR_JOBS=off` on all but one, so only it runs jobs.
+Jobs run in the server process on one machine. With several servers, set `WEBSTIR_JOBS=off` on all but one, so only it runs jobs. A server that starts puts back in the queue any job left running, so during a rolling deploy a job the old server is still running can run again; that is one more reason to make jobs safe to run twice.

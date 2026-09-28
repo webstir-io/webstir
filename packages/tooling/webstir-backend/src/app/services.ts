@@ -12,4 +12,8 @@ export interface AppServices {
   readonly files: Files;
 }
 
-export const appServices: AppServices = { db, jobs, email, files };
+// One of each for every request, so each is frozen: an app that used to keep request values on
+// ctx.db gets an error to move them to ctx.locals, rather than sharing them between requests.
+for (const service of [db, jobs, email, files]) Object.freeze(service);
+
+export const appServices: AppServices = Object.freeze({ db, jobs, email, files });

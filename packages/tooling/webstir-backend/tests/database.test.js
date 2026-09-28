@@ -144,3 +144,42 @@ test('Postgres placeholders skip strings, identifiers and comments', () => {
     `SELECT '?', "a?" FROM t -- ?\nWHERE a = $1 /* ? */ AND b = $2`,
   );
 });
+
+test('a migration that uses the app database, instead of its argument, runs in the opening', async () => {
+  const { prepareApp } = await import('../dist/index.js');
+  const { appDatabase, closeAppDatabase } = await import('../dist/db/index.js');
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-db-migration-'));
+  const built = path.join(workspaceRoot, 'build', 'backend', 'migrations');
+  await fs.mkdir(built, { recursive: true });
+  const dbModule = new URL('../dist/db/index.js', import.meta.url).href;
+  await fs.writeFile(
+    path.join(built, '0001-seed.js'),
+    `import { db } from ${JSON.stringify(dbModule)};\nexport async function up() {\n  await db.execute('CREATE TABLE seeded (name TEXT)');\n  await db.execute('INSERT INTO seeded (name) VALUES (?)', ['Ada']);\n}\n`,
+  );
+  prepareApp(workspaceRoot);
+  try {
+    const opened = await Promise.race([
+      appDatabase(),
+      Bun.sleep(3000).then(() => {
+        throw new Error('the database never opened');
+      }),
+    ]);
+    assert.deepEqual(await opened.get('SELECT name FROM seeded'), { name: 'Ada' });
+  } finally {
+    await closeAppDatabase();
+    await fs.rm(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('the batteries on ctx are shared: writing onto one fails instead of leaking into other requests', async () => {
+  const { appServices } = await import('../dist/app/services.js');
+  for (const [name, service] of Object.entries(appServices)) {
+    assert.throws(
+      () => {
+        service.lastRequestId = 'r1';
+      },
+      TypeError,
+      name,
+    );
+  }
+});

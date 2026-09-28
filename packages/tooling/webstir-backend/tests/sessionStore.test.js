@@ -557,3 +557,26 @@ test('a store whose methods answer with promises works like one that answers at 
   await read.commit({ session: null });
   assert.equal(records.size, 0);
 });
+
+test('a session being saved stays readable: an update never removes it, even for a moment', async () => {
+  const records = new Map();
+  const later = (value) => new Promise((resolve) => setTimeout(() => resolve(value), 5));
+  const store = {
+    get: (id) => later(records.get(id)),
+    set: (record) => later(void records.set(record.id, structuredClone(record))),
+    delete: (id) => later(void records.delete(id)),
+  };
+  const created = await prepareSessionState({ cookies: '', config, store });
+  const cookie = (await created.commit({ session: { userId: 'ada' } })).setCookie.split(';')[0];
+
+  const writer = await prepareSessionState({ cookies: cookie, config, store });
+  const saving = writer.commit({ session: { ...writer.session, theme: 'dark' } });
+  const readers = await Promise.all(
+    Array.from({ length: 10 }, async (_, index) => {
+      await new Promise((resolve) => setTimeout(resolve, index));
+      return (await prepareSessionState({ cookies: cookie, config, store })).session?.userId;
+    }),
+  );
+  await saving;
+  assert.deepEqual(readers, Array(10).fill('ada'));
+});

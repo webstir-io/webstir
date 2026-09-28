@@ -14,7 +14,7 @@ import { appServices } from '../app/services.js';
 import { appDatabase, appDatabaseExists, declareWebstirTables } from '../db/app-database.js';
 import type { Database } from '../db/database.js';
 import { readAppMigrations } from '../db/migrations.js';
-import { hasEmailDelivery, type Email } from '../email/index.js';
+import { emailSetupProblem, type Email } from '../email/index.js';
 import { LOCAL_FILES_PATH, serveLocalFile, type Files } from '../files/index.js';
 import { startJobs, type Jobs } from '../jobs/index.js';
 import {
@@ -337,9 +337,8 @@ function checkSignInSetup(
     } catch (error) {
       return (error as Error).message;
     }
-    if (!hasEmailDelivery()) {
-      return "sign-in sends codes by email, but EMAIL_URL is not set; set it to your provider's SMTP URL.";
-    }
+    const email = emailSetupProblem();
+    if (email) return `sign-in sends codes by email, but ${email}`;
   }
   return undefined;
 }

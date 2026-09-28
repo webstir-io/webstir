@@ -78,16 +78,9 @@ export function startJobs(logger: JobLogger): { stop(): Promise<void> } {
       }
     },
   });
+  // The queue's tables are made when the database opens.
   const unsubscribe = onAppDatabaseOpen((connection) => {
-    void ensureWebstirTables(connection, 'jobs').then(
-      () => {
-        worker ??= startWorker({ db: connection, logger, run: runJob });
-      },
-      (error) =>
-        logger.error(
-          `[jobs] could not start the queue: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-    );
+    worker ??= startWorker({ db: connection, logger, run: runJob });
   });
   // Jobs queued before a restart still run.
   if (appDatabaseExists()) void appDatabase().catch(() => undefined);

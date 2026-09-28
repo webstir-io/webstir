@@ -19,55 +19,66 @@ interface ChallengeRow {
   attempts_remaining: number;
 }
 
+/** Thrown to undo a challenge made only to take the time a real one takes. */
+class Rehearsal extends Error {}
+
 /**
  * A code and a link token for this address, stored only as hashes, expiring in five minutes. It
- * replaces the address's open ones. Undefined when the address asked too often: once a minute, and
- * five times in fifteen minutes.
+ * replaces the address's open ones. Undefined when the address may not sign in (`allowed: false`)
+ * or asked too often: once a minute, and five times in fifteen minutes. Those do the same work and
+ * roll it back, so how long the answer takes says nothing about the address.
  */
 export async function createChallenge(
   db: Database,
   email: string,
   secret: string,
   now = new Date(),
+  options: { readonly allowed?: boolean } = {},
 ): Promise<Challenge | undefined> {
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const token = randomBytes(32).toString('base64url');
   const stamp = now.toISOString();
-  return db.transaction(async (tx) => {
-    const recent = await tx.query<{ created_at: string }>(
-      'SELECT created_at FROM webstir_sign_in_challenges WHERE email = ? AND created_at > ?',
-      [email, new Date(now.getTime() - 15 * 60_000).toISOString()],
-    );
-    const lastMinute = new Date(now.getTime() - 60_000).toISOString();
-    if (
-      recent.length >= PER_QUARTER_HOUR ||
-      recent.filter((row) => row.created_at > lastMinute).length >= PER_MINUTE
-    ) {
-      return undefined;
-    }
-    await tx.execute(
-      'UPDATE webstir_sign_in_challenges SET consumed_at = ? WHERE email = ? AND consumed_at IS NULL',
-      [stamp, email],
-    );
-    await tx.execute(
-      `INSERT INTO webstir_sign_in_challenges
-         (id, email, token_hash, code_hash, attempts_remaining, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        randomUUID(),
-        email,
-        hash(secret, `token\n${token}`),
-        hash(secret, `code\n${email}\n${code}`),
-        ATTEMPTS,
-        stamp,
-        new Date(now.getTime() + CODE_MINUTES * 60_000).toISOString(),
-      ],
-    );
-    return { code, token };
-  });
+  try {
+    return await db.transaction(async (tx) => {
+      const recent = await tx.query<{ created_at: string }>(
+        'SELECT created_at FROM webstir_sign_in_challenges WHERE email = ? AND created_at > ?',
+        [email, new Date(now.getTime() - 15 * 60_000).toISOString()],
+      );
+      const lastMinute = new Date(now.getTime() - 60_000).toISOString();
+      const limited =
+        recent.length >= PER_QUARTER_HOUR ||
+        recent.filter((row) => row.created_at > lastMinute).length >= PER_MINUTE;
+      await tx.execute(
+        'UPDATE webstir_sign_in_challenges SET consumed_at = ? WHERE email = ? AND consumed_at IS NULL',
+        [stamp, email],
+      );
+      await tx.execute(
+        `INSERT INTO webstir_sign_in_challenges
+           (id, email, token_hash, code_hash, attempts_remaining, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          randomUUID(),
+          email,
+          hash(secret, `token\n${token}`),
+          hash(secret, `code\n${email}\n${code}`),
+          ATTEMPTS,
+          stamp,
+          new Date(now.getTime() + CODE_MINUTES * 60_000).toISOString(),
+        ],
+      );
+      if (limited || options.allowed === false) throw new Rehearsal();
+      return { code, token };
+    });
+  } catch (error) {
+    if (error instanceof Rehearsal) return undefined;
+    throw error;
+  }
 }
 
-/** Whether the code is this address's current one; three wrong tries use it up. */
+/**
+ * Whether the code is this address's current one; three wrong tries use it up. Each outcome is one
+ * conditional update, so sign-ins at the same moment cannot both use a code, or lose a wrong try.
+ */
 export async function consumeCode(
   db: Database,
   email: string,
@@ -76,29 +87,34 @@ export async function consumeCode(
   now = new Date(),
 ): Promise<boolean> {
   const stamp = now.toISOString();
-  return db.transaction(async (tx) => {
-    const open = await tx.get<ChallengeRow>(
-      `SELECT id, email, code_hash, attempts_remaining FROM webstir_sign_in_challenges
-       WHERE email = ? AND consumed_at IS NULL AND expires_at > ?
-       ORDER BY created_at DESC LIMIT 1`,
-      [email, stamp],
+  const open = await db.get<ChallengeRow>(
+    `SELECT id, email, code_hash, attempts_remaining FROM webstir_sign_in_challenges
+     WHERE email = ? AND consumed_at IS NULL AND expires_at > ?
+     ORDER BY created_at DESC LIMIT 1`,
+    [email, stamp],
+  );
+  if (!open) return false;
+  if (!same(open.code_hash, hash(secret, `code\n${email}\n${code}`))) {
+    await db.execute(
+      `UPDATE webstir_sign_in_challenges
+       SET attempts_remaining = attempts_remaining - 1,
+           consumed_at = CASE WHEN attempts_remaining <= 1 THEN ? ELSE consumed_at END
+       WHERE id = ? AND consumed_at IS NULL`,
+      [stamp, open.id],
     );
-    const given = hash(secret, `code\n${email}\n${code}`);
-    if (!open) return false;
-    if (!same(open.code_hash, given)) {
-      const left = Number(open.attempts_remaining) - 1;
-      await tx.execute(
-        'UPDATE webstir_sign_in_challenges SET attempts_remaining = ?, consumed_at = ? WHERE id = ?',
-        [Math.max(0, left), left <= 0 ? stamp : null, open.id],
-      );
-      return false;
-    }
-    await consumeAll(tx, email, stamp);
-    return true;
-  });
+    return false;
+  }
+  const { changes } = await db.execute(
+    `UPDATE webstir_sign_in_challenges SET consumed_at = ?
+     WHERE id = ? AND consumed_at IS NULL AND attempts_remaining > 0 AND expires_at > ?`,
+    [stamp, open.id, stamp],
+  );
+  if (changes !== 1) return false;
+  await consumeAll(db, email, stamp);
+  return true;
 }
 
-/** The address a link token signs in, once. */
+/** The address a link token signs in, once: the update that uses it up is the check. */
 export async function consumeToken(
   db: Database,
   token: string,
@@ -106,22 +122,15 @@ export async function consumeToken(
   now = new Date(),
 ): Promise<string | undefined> {
   const stamp = now.toISOString();
-  return db.transaction(async (tx) => {
-    const open = await tx.get<ChallengeRow>(
-      `SELECT id, email, code_hash, attempts_remaining FROM webstir_sign_in_challenges
-       WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?`,
-      [hash(secret, `token\n${token}`), stamp],
-    );
-    if (!open) return undefined;
-    await consumeAll(tx, open.email, stamp);
-    return open.email;
-  });
-}
-
-/** Work shaped like making a challenge, for an address that gets none, so timing tells nothing. */
-export function spendLikeAChallenge(secret: string, email: string): void {
-  hash(secret, `token\n${randomBytes(32).toString('base64url')}`);
-  hash(secret, `code\n${email}\n000000`);
+  const used = await db.get<{ email: string }>(
+    `UPDATE webstir_sign_in_challenges SET consumed_at = ?
+     WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
+     RETURNING email`,
+    [stamp, hash(secret, `token\n${token}`), stamp],
+  );
+  if (!used) return undefined;
+  await consumeAll(db, used.email, stamp);
+  return used.email;
 }
 
 async function consumeAll(db: Database, email: string, stamp: string): Promise<void> {

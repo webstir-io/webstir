@@ -252,6 +252,15 @@ test('a server app refuses to start when its setup is wrong: a failing migration
   expect(noEmail.code).not.toBe(0);
   expect(noEmail.stderr).toContain('EMAIL_URL is not set');
 
+  const noSender = await run({
+    NODE_ENV: 'production',
+    SESSION_SECRET: 'a-long-random-secret-for-this-test-only',
+    APP_URL: 'https://example.com',
+    EMAIL_URL: 'smtp://127.0.0.1:1',
+  });
+  expect(noSender.code).not.toBe(0);
+  expect(noSender.stderr).toContain('EMAIL_FROM is not set');
+
   // A page that needs a signed-in user, in an app without sign-in.
   await rm(path.join(workspace, 'src', 'backend', 'sign-in.ts'));
   await rm(path.join(workspace, 'src', 'backend', 'migrations', '0002-broken.sql'));

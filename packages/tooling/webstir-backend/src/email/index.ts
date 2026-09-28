@@ -29,6 +29,17 @@ export function hasEmailDelivery(): boolean {
   return Boolean(customTransport || process.env.EMAIL_URL?.trim());
 }
 
+/** What production email still needs, named, or undefined when it can send. */
+export function emailSetupProblem(): string | undefined {
+  if (!hasEmailDelivery()) {
+    return "EMAIL_URL is not set, so email cannot be sent; set it to your provider's SMTP URL.";
+  }
+  if (!process.env.EMAIL_FROM?.trim()) {
+    return 'EMAIL_FROM is not set; set it to the address email comes from.';
+  }
+  return undefined;
+}
+
 export interface Email {
   send(message: EmailMessage): Promise<void>;
 }

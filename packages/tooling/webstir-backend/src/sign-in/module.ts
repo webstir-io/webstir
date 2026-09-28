@@ -6,13 +6,7 @@ import { email as appEmail, hasEmailDelivery, type EmailMessage } from '../email
 import { processFormSubmission, type FormIssue, type FormValues } from '../runtime/forms.js';
 import { renewSession } from '../runtime/session-metadata.js';
 import { signInDatabase } from './database.js';
-import {
-  CODE_MINUTES,
-  consumeCode,
-  consumeToken,
-  createChallenge,
-  spendLikeAChallenge,
-} from './challenges.js';
+import { CODE_MINUTES, consumeCode, consumeToken, createChallenge } from './challenges.js';
 import {
   findOrCreateUser,
   normalizeEmail,
@@ -259,8 +253,11 @@ export function safeReturnTo(value: unknown): string {
   try {
     const url = new URL(text, 'http://app.invalid');
     if (url.origin !== 'http://app.invalid') return '/';
+    // Checked again after normalizing: `/.//x` and `/a/..//x` become `//x`, another site.
+    const result = `${url.pathname}${url.search}${url.hash}`;
+    if (result.startsWith('//') || result.includes('\\')) return '/';
     if (/^\/sign-(?:in|out)(?:\/|$)/.test(url.pathname)) return '/';
-    return `${url.pathname}${url.search}${url.hash}`;
+    return result;
   } catch {
     return '/';
   }
@@ -272,16 +269,12 @@ async function sendChallenge(
   returnTo: string,
   options: SignInOptions,
 ): Promise<void> {
-  const key = secret();
   const allowed = (await options.canSignIn?.(address)) ?? true;
-  // The same answer whether or not the address may sign in, or asked too often.
-  const challenge = allowed
-    ? await createChallenge(await signInDatabase(), address, key)
-    : undefined;
-  if (!challenge) {
-    spendLikeAChallenge(key, address);
-    return;
-  }
+  // The same answer, after the same work, whether or not the address may sign in or asked too often.
+  const challenge = await createChallenge(await signInDatabase(), address, secret(), new Date(), {
+    allowed,
+  });
+  if (!challenge) return;
   const link = `${appUrl(request)}/sign-in/confirm/?token=${encodeURIComponent(challenge.token)}&returnTo=${encodeURIComponent(returnTo)}`;
   const message = { email: address, code: challenge.code, link, expiresInMinutes: CODE_MINUTES };
   const content = options.email?.(message) ?? defaultEmail(message);

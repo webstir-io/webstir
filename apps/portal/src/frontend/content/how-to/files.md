@@ -10,6 +10,8 @@ await ctx.files.delete(`avatars/${ctx.user.id}.png`);
 - A key is a relative path of plain segments: `avatars/42.png`, never `../x` or `/x`.
 - `put` takes a string, bytes, a Blob, or a file from a form's file field.
 - `url` makes a link that works for `expiresIn` seconds (an hour by default), for an `<img>` or a download.
+- Files come from your users, so a local file's link never runs as your app: images, audio, video, PDFs and plain text show in the browser, anything else (HTML and SVG included) downloads, and all of them are served under a sandbox policy.
+- The media type given to `put` (or the Blob's own) is kept, so `get` and the link report it.
 - Outside a handler: `import { files } from '@webstir-io/webstir-backend/files'`.
 
 ## Where they go

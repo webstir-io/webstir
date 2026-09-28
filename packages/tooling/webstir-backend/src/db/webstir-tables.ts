@@ -69,7 +69,7 @@ export function webstirMigrations(tables: WebstirTables): Migration[] {
   }));
 }
 
-/** Creates a battery's tables once per connection, before its first query. */
+/** Creates a battery's tables once per connection, before its first query outside a transaction. */
 export function ensureWebstirTables(
   connection: DatabaseConnection,
   tables: WebstirTables,
@@ -80,6 +80,10 @@ export function ensureWebstirTables(
     ensured.set(connection, byTables);
   }
   let pending = byTables.get(tables);
+  // Inside a caller's transaction the tables would go if it rolled back, so that is not kept.
+  if (!pending && connection.inTransaction()) {
+    return applyMigrations(connection, webstirMigrations(tables));
+  }
   if (!pending) {
     pending = applyMigrations(connection, webstirMigrations(tables));
     pending.catch(() => byTables?.delete(tables));

@@ -64,6 +64,31 @@ for (const target of databaseTargets) {
     await db.close();
   });
 
+  test(`${target.name}: an address turned away or asking too often does the same work, and changes nothing`, async () => {
+    const db = await challenges(target);
+    const email = 'ada@example.com';
+    const live = await createChallenge(db, email, SECRET, at(0));
+    assert.equal(
+      await createChallenge(db, 'nobody@example.com', SECRET, at(0), { allowed: false }),
+      undefined,
+    );
+    assert.equal(
+      await createChallenge(db, email, SECRET, new Date(at(0).getTime() + 10_000)),
+      undefined,
+    );
+    const rows = await db.query('SELECT email FROM webstir_sign_in_challenges');
+    assert.deepEqual(
+      rows.map((row) => row.email),
+      [email],
+    );
+    assert.equal(
+      await consumeCode(db, email, live.code, SECRET, at(1)),
+      true,
+      'the live code still works',
+    );
+    await db.close();
+  });
+
   test(`${target.name}: an address gets one code a minute and five in fifteen minutes`, async () => {
     const db = await challenges(target);
     const email = 'ada@example.com';
@@ -84,12 +109,47 @@ for (const target of databaseTargets) {
   });
 }
 
+for (const target of databaseTargets) {
+  test(`${target.name}: at the same time, only one sign-in uses a code or link, and every wrong try counts`, async () => {
+    const db = await challenges(target);
+    const email = 'ada@example.com';
+    const wrong = (code) => (code === '000000' ? '111111' : '000000');
+
+    const guessed = await createChallenge(db, email, SECRET, at(0));
+    await Promise.all(
+      Array.from({ length: 5 }, () => consumeCode(db, email, wrong(guessed.code), SECRET, at(0))),
+    );
+    assert.equal(
+      await consumeCode(db, email, guessed.code, SECRET, at(0)),
+      false,
+      'three wrong tries use it up',
+    );
+
+    const code = await createChallenge(db, email, SECRET, at(2));
+    const byCode = await Promise.all(
+      Array.from({ length: 4 }, () => consumeCode(db, email, code.code, SECRET, at(2))),
+    );
+    assert.deepEqual(byCode.filter(Boolean).length, 1, 'one sign-in per code');
+
+    const link = await createChallenge(db, email, SECRET, at(4));
+    const byLink = await Promise.all(
+      Array.from({ length: 4 }, () => consumeToken(db, link.token, SECRET, at(4))),
+    );
+    assert.deepEqual(byLink.filter(Boolean), [email], 'one sign-in per link');
+    await db.close();
+  });
+}
+
 test('return addresses stay on the app, and never lead back to sign-in', () => {
   for (const [value, expected] of [
     ['/notes/', '/notes/'],
     ['/notes/?page=2#top', '/notes/?page=2#top'],
     ['https://evil.test/', '/'],
     ['//evil.test/', '/'],
+    ['/.//evil.test', '/'],
+    ['/a/..//evil.test/x', '/'],
+    ['/%2e//evil.test', '/'],
+    ['/notes/..//evil.test', '/'],
     ['/\\evil.test', '/'],
     ['notes', '/'],
     ['/sign-in/', '/'],

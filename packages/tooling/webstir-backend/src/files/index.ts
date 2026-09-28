@@ -42,6 +42,14 @@ export const files: Files = {
     const file = store.file(key);
     await mkdir(path.dirname(file), { recursive: true });
     await Bun.write(file, data);
+    // A folder has no media types, so the given one is kept beside it, as S3 keeps it.
+    const typeFile = store.typeFile(key);
+    if (type) {
+      await mkdir(path.dirname(typeFile), { recursive: true });
+      await Bun.write(typeFile, type);
+    } else {
+      await rm(typeFile, { force: true });
+    }
   },
   async get(key) {
     const store = resolveStore();
@@ -49,8 +57,7 @@ export const files: Files = {
       const file = store.client.file(store.key(key));
       return (await file.exists()) ? file : undefined;
     }
-    const file = store.file(key);
-    return existsSync(file) ? Bun.file(file) : undefined;
+    return existsSync(store.file(key)) ? await localFile(store, key) : undefined;
   },
   async url(key, options) {
     const store = resolveStore();
@@ -68,8 +75,19 @@ export const files: Files = {
       return;
     }
     await rm(store.file(key), { force: true });
+    await rm(store.typeFile(key), { force: true });
   },
 };
+
+// Types a browser shows without running anything; anything else is served as a download.
+const INLINE_TYPES =
+  /^(?:image\/(?:png|jpeg|gif|webp|avif)|audio\/[\w.+-]+|video\/[\w.+-]+|application\/pdf|text\/plain)(?:;|$)/;
+
+async function localFile(store: Extract<Store, { kind: 'local' }>, key: string): Promise<Blob> {
+  const typeFile = Bun.file(store.typeFile(key));
+  const type = (await typeFile.exists()) ? (await typeFile.text()).trim() : undefined;
+  return Bun.file(store.file(key), type ? { type } : undefined);
+}
 
 /** Serves a file on local disk to a link `files.url` signed, or answers why not. */
 export async function serveLocalFile(url: URL): Promise<Response | undefined> {
@@ -92,15 +110,27 @@ export async function serveLocalFile(url: URL): Promise<Response | undefined> {
     signature.length === expected.length &&
     timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
   if (!valid) return new Response('This link has expired or is not valid.', { status: 403 });
-  const file = Bun.file(store.file(key));
-  if (!(await file.exists())) return new Response('Not found.', { status: 404 });
-  return new Response(file, {
-    headers: { 'cache-control': 'private, max-age=300', 'x-content-type-options': 'nosniff' },
+  if (!existsSync(store.file(key))) return new Response('Not found.', { status: 404 });
+  const file = await localFile(store, key);
+  const type = file.type || 'application/octet-stream';
+  // Files come from the app's users: on the app's own address, nothing in one may run as the app.
+  const headers = new Headers({
+    'content-type': type,
+    'cache-control': 'private, max-age=300',
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "sandbox; default-src 'none'",
   });
+  if (!INLINE_TYPES.test(type)) {
+    headers.set(
+      'content-disposition',
+      `attachment; filename="${path.basename(key).replace(/["\\]/g, '_')}"`,
+    );
+  }
+  return new Response(file, { headers });
 }
 
 type Store =
-  | { kind: 'local'; file(key: string): string }
+  | { kind: 'local'; file(key: string): string; typeFile(key: string): string }
   | { kind: 's3'; client: Bun.S3Client; key(key: string): string };
 
 let cached: { key: string; store: Store } | undefined;
@@ -119,7 +149,11 @@ function resolveStore(): Store {
     store = { kind: 's3', client, key: (key) => (checkKey(key), base ? `${base}/${key}` : key) };
   } else if (url.startsWith('file:')) {
     const root = path.resolve(appRoot(), url.slice('file:'.length).replace(/^\/\/(?=\/)/, ''));
-    store = { kind: 'local', file: (key) => (checkKey(key), path.join(root, ...key.split('/'))) };
+    store = {
+      kind: 'local',
+      file: (key) => (checkKey(key), path.join(root, ...key.split('/'))),
+      typeFile: (key) => (checkKey(key), path.join(`${root}.types`, ...key.split('/'))),
+    };
   } else {
     throw new Error(
       `STORAGE_URL "${url}" is not a storage URL; use file:./data/files or s3://bucket.`,

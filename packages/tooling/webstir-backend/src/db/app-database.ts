@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { existsSync } from 'node:fs';
 
 import { appRoot } from '../app/app-root.js';
@@ -20,6 +21,8 @@ let opening: Promise<DatabaseConnection> | undefined;
 let opened: DatabaseConnection | undefined;
 const whenOpen = new Set<(connection: DatabaseConnection) => void>();
 const firstTables = new Set<WebstirTables>();
+// Code run while the database opens, such as a migration, gets the connection being opened.
+const beingOpened = new AsyncLocalStorage<DatabaseConnection>();
 
 /**
  * Webstir tables the app's migrations may build on, created before them when the database opens:
@@ -38,13 +41,19 @@ export function appDatabaseUrl(): string {
  * An app that never touches it never creates one.
  */
 export function appDatabase(): Promise<DatabaseConnection> {
+  const current = beingOpened.getStore();
+  if (current) return Promise.resolve(current);
   if (!opening) {
     opening = (async () => {
       const workspaceRoot = appRoot();
       const connection = await openDatabase(appDatabaseUrl(), { workspaceRoot });
       try {
-        await applyFirstTables(connection);
-        await applyMigrations(connection, readAppMigrations(workspaceRoot));
+        await beingOpened.run(connection, async () => {
+          // Webstir's own tables are made here, before anyone can hold the connection in a
+          // transaction and wait on them.
+          await applyFirstTables(connection);
+          await applyMigrations(connection, readAppMigrations(workspaceRoot));
+        });
       } catch (error) {
         await connection.close();
         throw error;
@@ -125,5 +134,7 @@ export async function appMigrationStatus(): Promise<MigrationStatus[]> {
 }
 
 async function applyFirstTables(connection: DatabaseConnection): Promise<void> {
-  for (const tables of firstTables) await ensureWebstirTables(connection, tables);
+  for (const tables of new Set<WebstirTables>(['sessions', 'jobs', ...firstTables])) {
+    await ensureWebstirTables(connection, tables);
+  }
 }
