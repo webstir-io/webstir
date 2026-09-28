@@ -274,3 +274,27 @@ test('a published page, its render program and its Markdown pages load the finge
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test('a code sample that shows data-island loads no islands', async () => {
+  const sample = '`<div data-island="chart"></div>`';
+  const root = await createApp({
+    page: `<main><pre><code>&lt;div data-island="chart"&gt;&lt;/div&gt;</code></pre></main>`,
+    files: { 'src/frontend/content/intro.md': `# Intro\n\nPlace it with ${sample}.\n` },
+  });
+  try {
+    await build(root);
+    for (const file of [
+      ['home', 'index.html'],
+      ['docs', 'intro', 'index.html'],
+    ]) {
+      const html = await fs.readFile(
+        path.join(root, 'build', 'frontend', 'pages', ...file),
+        'utf8',
+      );
+      assert.ok(html.includes('data-island'), file.join('/'));
+      assert.doesNotMatch(html, /data-webstir-islands/, file.join('/'));
+    }
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

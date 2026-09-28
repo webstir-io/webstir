@@ -50,7 +50,9 @@ export function checkIslandElements(
 
 /** A page with islands loads the islands loader; one without ships no island code. */
 export function injectIslandsLoader(html: string, loader: string): string {
-  if (!/\sdata-island\s*=/.test(html) || html.includes(ISLANDS_LOADER_ATTRIBUTE)) return html;
+  if (!html.includes('data-island') || html.includes(ISLANDS_LOADER_ATTRIBUTE)) return html;
+  // An element, not the words: a code sample that shows data-island loads nothing.
+  if (load(html)('[data-island]').length === 0) return html;
   const tag = `<script type="module" src="${loader}" ${ISLANDS_LOADER_ATTRIBUTE}></script>`;
   return /<\/head>/i.test(html) ? html.replace(/<\/head>/i, `${tag}</head>`) : `${tag}${html}`;
 }

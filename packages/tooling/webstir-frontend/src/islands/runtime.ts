@@ -6,7 +6,12 @@
  */
 
 import type { IslandAddresses } from '../builders/islandsBuilder.js';
-import { ISLANDS, islandControls, type IslandControls } from '../runtime/islands.js';
+import {
+  ISLAND_STYLES_ATTRIBUTE,
+  ISLANDS,
+  islandControls,
+  type IslandControls,
+} from '../runtime/islands.js';
 
 /** What an island's bundle exports: mount into the element, and return how to unmount. */
 export type IslandMount = (
@@ -20,8 +25,6 @@ interface MountedIsland {
   readonly controller: AbortController;
   cleanup?: () => void | Promise<void>;
 }
-
-const STYLES_ATTRIBUTE = 'data-webstir-island-styles';
 
 export function startIslands(addresses: IslandAddresses): IslandControls {
   const existing = islandControls();
@@ -40,24 +43,26 @@ export function startIslands(addresses: IslandAddresses): IslandControls {
   };
 
   // An island's stylesheet, loaded before it mounts; a remount from new code replaces it.
-  const loadedStyles = new Map<string, Promise<void>>();
+  const loadedStyles = new Map<string, { link: HTMLLinkElement; loaded: Promise<void> }>();
   const loadStyles = (name: string): Promise<void> => {
     const href = address(addresses.styles[name]);
     if (!href) return Promise.resolve();
     const pending = loadedStyles.get(href);
-    if (pending) return pending;
+    if (pending?.link.isConnected) return pending.loaded;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = href;
-    link.setAttribute(STYLES_ATTRIBUTE, name);
+    link.setAttribute(ISLAND_STYLES_ATTRIBUTE, name);
     const loaded = new Promise<void>((resolve) => {
       link.addEventListener('load', () => resolve(), { once: true });
       link.addEventListener('error', () => resolve(), { once: true });
     });
-    const previous = document.head.querySelector(`link[${STYLES_ATTRIBUTE}="${CSS.escape(name)}"]`);
+    const previous = document.head.querySelector(
+      `link[${ISLAND_STYLES_ATTRIBUTE}="${CSS.escape(name)}"]`,
+    );
     if (previous) previous.replaceWith(link);
     else document.head.append(link);
-    loadedStyles.set(href, loaded);
+    loadedStyles.set(href, { link, loaded });
     return loaded;
   };
 

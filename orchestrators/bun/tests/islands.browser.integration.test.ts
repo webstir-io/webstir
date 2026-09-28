@@ -133,6 +133,14 @@ test('islands from React, Svelte, Vue and plain code mount with page data, share
       ).toEqual(['plain', 'react', 'svelte', 'vue']);
       // An island in the app shell stays across navigations.
       expect(await page.locator('[data-lib="shell"]').count()).toBe(1);
+      // Coming back, the page's islands mount again with their styles.
+      await page.goBack();
+      await page.waitForSelector('[data-lib="react"]:text("react:7")', { timeout: 15_000 });
+      expect(
+        await page.evaluate(
+          () => getComputedStyle(document.querySelector('[data-lib="react"]')!).color,
+        ),
+      ).toBe('rgb(1, 2, 3)');
     },
   );
 }, 300_000);

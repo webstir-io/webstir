@@ -7,6 +7,8 @@ export interface IslandControls {
 }
 
 export const ISLANDS = Symbol.for('webstir.islands');
+/** Marks the stylesheets islands load, which stay in the head across navigations. */
+export const ISLAND_STYLES_ATTRIBUTE = 'data-webstir-island-styles';
 
 /** The page's islands, when its loader has run; client-nav and `render(data)` keep them in step. */
 export function islandControls(): IslandControls | undefined {
