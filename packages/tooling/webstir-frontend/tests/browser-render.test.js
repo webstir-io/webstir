@@ -33,7 +33,16 @@ export const data = z.object({
 export const initial = { title: 'Items', items: [] };
 `;
 
-async function createWorkspace({ mode = 'ssg', template = TEMPLATE, data = DATA } = {}) {
+const SHELL =
+  '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>';
+
+async function createWorkspace({
+  mode = 'ssg',
+  template = TEMPLATE,
+  data = DATA,
+  shell = SHELL,
+  script = SCRIPT,
+} = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-browser-render-'));
   const app = path.join(root, 'src', 'frontend', 'app');
   const page = path.join(root, 'src', 'frontend', 'pages', 'items');
@@ -43,12 +52,9 @@ async function createWorkspace({ mode = 'ssg', template = TEMPLATE, data = DATA 
     path.join(root, 'package.json'),
     JSON.stringify({ name: 'fixture', type: 'module', webstir: { mode } }),
   );
-  await fs.writeFile(
-    path.join(app, 'app.html'),
-    '<!DOCTYPE html><html><head><title>App</title></head><body><main></main></body></html>',
-  );
+  await fs.writeFile(path.join(app, 'app.html'), shell);
   await fs.writeFile(path.join(page, 'index.html'), template);
-  await fs.writeFile(path.join(page, 'index.ts'), SCRIPT);
+  if (script !== null) await fs.writeFile(path.join(page, 'index.ts'), script);
   if (data !== null) await fs.writeFile(path.join(page, 'data.ts'), data);
   // A real app depends on the frontend package; the page bundle imports its runtime.
   const scope = path.join(root, 'node_modules', '@webstir-io');
@@ -133,6 +139,39 @@ const refusals = [
     },
     error:
       /src\/frontend\/pages\/items\/index\.html:2: page 'items' renders in the browser, which replaces only its <main> and <title>/,
+  },
+  {
+    name: 'a binding on <main> itself',
+    workspace: {
+      template: TEMPLATE.replace('<body><main>', '<body><main data-attr-class="title">'),
+    },
+    error:
+      /page 'items' renders in the browser, which replaces what is inside <main>, not <main> itself/,
+  },
+  {
+    name: 'a binding in the app shell',
+    workspace: {
+      shell: SHELL.replace('<body>', '<body><header><p data-text="title">App</p></header>'),
+    },
+    error:
+      /src\/frontend\/app\/app\.html:1: page 'items' renders in the browser, so the app shell can't have bindings/,
+  },
+  {
+    name: 'a POST form in the app shell',
+    workspace: {
+      mode: 'full',
+      shell: SHELL.replace(
+        '<body>',
+        '<body><form method="post" action="/sign-out/"><button>Out</button></form>',
+      ),
+    },
+    error: /page 'items' renders in the browser, so the app shell can't have a POST form/,
+  },
+  {
+    name: 'a data.ts without a page script',
+    workspace: { script: null },
+    error:
+      /page 'items' has src\/frontend\/pages\/items\/data\.ts, so it renders in the browser, but it has no index\.ts to export load/,
   },
   ...['ssg', 'full'].map((mode) => ({
     name: `a POST form (${mode})`,

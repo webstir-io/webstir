@@ -32,6 +32,9 @@ import {
   type TemplateSourceOptions,
 } from '../render/index.js';
 import {
+  assertBrowserPageScript,
+  assertShellRendersAnywhere,
+  compileBrowserPage,
   findPageDataModule,
   loadPageDataModule,
   renderInitialDocument,
@@ -148,9 +151,30 @@ async function buildHtml(context: BuilderContext): Promise<void> {
       if (dataModule) {
         // A browser-rendered page ships rendered with its first-load data; its script carries the
         // program, so none is written for the server.
-        const { initial } = await loadPageDataModule(dataModule, {
-          workspaceRoot: config.paths.workspace,
+        const workspaceRoot = config.paths.workspace;
+        await assertBrowserPageScript({
+          workspaceRoot,
           page: page.name,
+          pageDirectory: page.directory,
+          dataModule,
+        });
+        await assertShellRendersAnywhere({
+          workspaceRoot,
+          appTemplate: path.join(config.paths.src.app, FILE_NAMES.htmlAppTemplate),
+          partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+          page: page.name,
+        });
+        const { schema, initial } = await loadPageDataModule(dataModule, {
+          workspaceRoot,
+          page: page.name,
+        });
+        // The template's own checks run here too, so a page never ships unchecked.
+        await compileBrowserPage({
+          workspaceRoot,
+          partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+          page: page.name,
+          pageDirectory: page.directory,
+          schema,
         });
         await writeFile(
           targetPath,

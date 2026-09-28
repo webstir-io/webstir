@@ -162,13 +162,79 @@ function bindingsOutsideMain(html: string, source: string, page: string): Render
   const issues: RenderIssue[] = [];
   $('*').each((_, element) => {
     if (element.type !== 'tag' || !hasBindingAttribute(element.attribs)) return;
-    if (element.tagName === 'title' || $(element).closest('main').length > 0) return;
+    if (element.tagName === 'title' || $(element).parents('main').length > 0) return;
     issues.push({
       loc: { file: source, line: element.sourceCodeLocation?.startLine ?? 1 },
-      message: `page '${page}' renders in the browser, which replaces only its <main> and <title>; move this binding inside them`,
+      message:
+        element.tagName === 'main'
+          ? `page '${page}' renders in the browser, which replaces what is inside <main>, not <main> itself; move this binding inside it`
+          : `page '${page}' renders in the browser, which replaces only its <main> and <title>; move this binding inside them`,
     });
   });
   return issues;
+}
+
+const PAGE_SCRIPTS = ['index.ts', 'index.tsx', 'index.js'];
+
+/** A browser-rendered page needs a script: its `load` is where the data comes from. */
+export async function assertBrowserPageScript(options: {
+  readonly workspaceRoot: string;
+  readonly page: string;
+  readonly pageDirectory: string;
+  readonly dataModule: string;
+}): Promise<void> {
+  for (const name of PAGE_SCRIPTS) {
+    if (await pathExists(path.join(options.pageDirectory, name))) return;
+  }
+  const label = relativeLabel(options.workspaceRoot, options.dataModule);
+  throw new RenderTemplateError([
+    {
+      loc: { file: label, line: 1 },
+      message: `page '${options.page}' has ${label}, so it renders in the browser, but it has no index.ts to export load`,
+    },
+  ]);
+}
+
+/**
+ * A browser render replaces only a page's `<main>` and `<title>`, so the app shell around them
+ * can't have bindings or POST forms while any page renders in the browser: nothing would update
+ * them, and nothing could supply a CSRF token.
+ */
+export async function assertShellRendersAnywhere(options: {
+  readonly workspaceRoot: string;
+  readonly appTemplate: string;
+  readonly partialsRoot: string;
+  readonly page: string;
+}): Promise<void> {
+  if (!(await pathExists(options.appTemplate))) return;
+  const html = await readFile(options.appTemplate);
+  const source = relativeLabel(options.workspaceRoot, options.appTemplate);
+  const prepared = await prepareTemplateSource(html, options.appTemplate, options);
+  const program = compileRenderProgram(prepared, { page: 'app', source });
+  const first = program.bindings > 0 ? firstBindingLocation(program.nodes) : undefined;
+  const issues: RenderIssue[] = [];
+  if (first) {
+    issues.push({
+      loc: first,
+      message: `page '${options.page}' renders in the browser, so the app shell can't have bindings; only the page's <main> and <title> are rendered`,
+    });
+  }
+  if (programUsesCsrf(program)) {
+    issues.push({
+      loc: { file: source, line: 1 },
+      message: `page '${options.page}' renders in the browser, so the app shell can't have a POST form`,
+    });
+  }
+  if (issues.length > 0) throw new RenderTemplateError(issues);
+}
+
+function firstBindingLocation(
+  nodes: RenderProgram['nodes'],
+): { file: string; line: number } | undefined {
+  for (const node of nodes) {
+    if (typeof node !== 'string' && node.op !== 'csrf') return node.loc;
+  }
+  return undefined;
 }
 
 /** Build-only files; nothing under here is served. */

@@ -242,6 +242,50 @@ test('Bun-first SPA watch keeps the last valid page when an edit adds a binding'
   }
 }, 120_000);
 
+// A page that gains a data.ts renders in the browser, which this watch pipeline can't serve: watch
+// keeps the last valid page and says to restart, instead of serving the template's placeholders.
+test('Bun-first SPA watch asks for a restart when a page starts rendering in the browser', async () => {
+  const workspaceCopy = await copyDemoWorkspace('spa', 'webstir-bun-first-spa-browser-page-');
+  const workspace = workspaceCopy.workspaceRoot;
+  const pageDir = path.join(workspace, 'src', 'frontend', 'pages', 'home');
+  const pagePath = path.join(pageDir, 'index.html');
+  const original = await readFile(pagePath, 'utf8');
+  const port = await getFreePort();
+  const { child, stderrBuffer, stderrDrain, stdoutBuffer, stdoutDrain } = spawnBunFirstWatch(
+    workspace,
+    port,
+  );
+
+  try {
+    await waitFor(async () => {
+      expect(await fetchText(port, '/')).not.toContain('browser-v2');
+    }, 30_000);
+
+    await writeFile(
+      path.join(pageDir, 'data.ts'),
+      'export const data = { shape: {} } as never;\nexport const initial = {};\n',
+      'utf8',
+    );
+    await writeFile(
+      pagePath,
+      original.replace(/<main([^>]*)>/, '<main$1><p data-text="greeting">browser-v2</p>'),
+      'utf8',
+    );
+    await waitFor(async () => {
+      expect(stderrBuffer.text).toContain('restart watch to serve it');
+    }, 30_000);
+    expect(await fetchText(port, '/')).not.toContain('browser-v2');
+  } catch (error) {
+    throw appendWatchLogs(error, stdoutBuffer.text, stderrBuffer.text);
+  } finally {
+    child.kill('SIGTERM');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled([stdoutDrain, stderrDrain]);
+    removeTrackedChild(childProcesses, child);
+    await removeDemoWorkspace(workspaceCopy);
+  }
+}, 120_000);
+
 test('Bun-first SPA watch hot-applies CSS edits without a full page reload', async () => {
   const workspace = path.join(repoRoot, 'examples', 'demos', 'spa');
   const port = await getFreePort();

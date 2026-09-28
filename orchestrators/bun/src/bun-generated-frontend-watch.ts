@@ -78,18 +78,25 @@ export async function startBunGeneratedFrontendWatch(
     notFoundRoutePath: resolveNotFoundRoutePath(pages),
   };
 
-  // An SPA edit that adds a binding is not regenerated, so watch keeps serving the last valid pages.
-  const canRegenerate = isSpa
-    ? async () => {
-        try {
-          await checkSpaTemplates(options.workspaceRoot);
-          return true;
-        } catch (error) {
-          console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
-          return false;
-        }
-      }
-    : undefined;
+  // An edit this pipeline can't serve is not regenerated, so watch keeps serving the last valid
+  // pages: an SPA binding nothing renders, or a page that now renders in the browser, which needs
+  // the document builder this watch chose against at startup.
+  const canRegenerate = async () => {
+    if (await hasBrowserRenderedPages(pages)) {
+      console.error(
+        '[webstir] A page now has a data.ts, so it renders in the browser; restart watch to serve it.',
+      );
+      return false;
+    }
+    if (!isSpa) return true;
+    try {
+      await checkSpaTemplates(options.workspaceRoot);
+      return true;
+    } catch (error) {
+      console.error(`[webstir] ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  };
   let servedAddress: ServedAddress | undefined;
   // The watchers are armed before the first page is generated or served, so an edit made as soon
   // as a page is served, or while the server is starting, is regenerated rather than missed.
