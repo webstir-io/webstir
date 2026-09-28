@@ -30,12 +30,18 @@ import {
   type HistoryMode,
 } from './document-navigation.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
+import { syncHeadMetadata } from './head-metadata.js';
+import {
+  onScreenReferrerPolicy,
+  readReferrerMetas,
+  resolveReferrerPolicyNavigation,
+} from './referrer-policy-change.js';
 
 export {};
 
 /**
  * Minimal document navigation enhancement: swaps the <main> content, updates
- * title/URL, restores scroll/focus, and can consume fragment responses from
+ * title, page metadata and URL, restores scroll/focus, and can consume fragment responses from
  * enhanced POST forms.
  *
  * Opt out per-link with:
@@ -138,6 +144,9 @@ export function enableClientNav(): void {
 
 let enabled = false;
 let documentUrl = new URL(window.location.href);
+// The referrer policy the last client navigation kept (it never changes one); undefined for the
+// first load, whose Referrer-Policy header a script cannot read.
+let documentReferrerPolicy: string | null | undefined;
 const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
 let commitQueue = Promise.resolve();
@@ -378,13 +387,22 @@ async function submitFormRequest(
   }
 
   if (resolution.kind === 'document') {
+    const url = resolveDocumentResponseUrl({
+      contentLocation: response.headers.get('content-location'),
+      responseUrl: response.url,
+      requestUrl: submission.url,
+    });
     await renderDocumentResponse(response, requestId, {
       history: 'push',
-      url: resolveDocumentResponseUrl({
-        contentLocation: response.headers.get('content-location'),
-        responseUrl: response.url,
-        requestUrl: submission.url,
-      }),
+      url,
+      // A re-rendered form (422, a check the action refused) holds errors, values and messages
+      // only its own response carries, so it is posted again natively, which re-runs only that
+      // check. Any other answer may follow a change the action made, so it is not run twice: its
+      // address loads instead.
+      loadInFull:
+        response.status === 422 && isUnchangedSubmission(form, submitter, submission.snapshot)
+          ? () => submitFormNatively(form, submitter, submission.submissionId)
+          : () => leave(url),
     });
     return;
   }
@@ -413,7 +431,12 @@ function beginRequest(): { readonly controller: AbortController; readonly reques
 async function renderDocumentResponse(
   response: Response,
   requestId: number,
-  options: { readonly history: HistoryMode; readonly url: string },
+  options: {
+    readonly history: HistoryMode;
+    readonly url: string;
+    /** How to show the page in full when it cannot render in place; loads its address by default. */
+    readonly loadInFull?: () => void;
+  },
 ): Promise<void> {
   let html: string;
   try {
@@ -423,6 +446,17 @@ async function renderDocumentResponse(
     return;
   }
   if (requestId !== activeRequestId) return;
+
+  // A page with another referrer policy loads in full, so the browser applies it; it is decided
+  // from the response text, since parsing a referrer meta can apply it to the page on screen.
+  const referrer = resolveReferrerPolicyNavigation({
+    incoming: { header: response.headers.get('referrer-policy'), html },
+    current: { committed: documentReferrerPolicy, metas: readReferrerMetas(document) },
+  });
+  if (referrer.kind === 'load') {
+    (options.loadInFull ?? (() => leave(options.url, options.history)))();
+    return;
+  }
 
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const script = doc.querySelector<HTMLScriptElement>(
@@ -443,7 +477,12 @@ async function renderDocumentResponse(
   }
   const commit = commitQueue.then(async () => {
     if (requestId !== activeRequestId) return;
-    await renderDocumentHtml(doc, options, requestId, prepared);
+    await renderDocumentHtml(
+      doc,
+      { history: options.history, url: options.url, referrerPolicy: referrer.policy },
+      requestId,
+      prepared,
+    );
   });
   commitQueue = commit.catch(() => {});
   try {
@@ -456,7 +495,11 @@ async function renderDocumentResponse(
 
 async function renderDocumentHtml(
   doc: Document,
-  options: { readonly history: HistoryMode; readonly url: string },
+  options: {
+    readonly history: HistoryMode;
+    readonly url: string;
+    readonly referrerPolicy: string | null;
+  },
   requestId: number,
   prepared?: PreparedPage,
 ): Promise<void> {
@@ -469,23 +512,21 @@ async function renderDocumentHtml(
   await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
 
-  const newMain = doc.querySelector('main');
-  const currentMain = document.querySelector('main');
-  if (newMain && currentMain) {
-    currentMain.replaceWith(newMain);
-  }
-
-  const newTitle = doc.querySelector('title');
-  if (newTitle && newTitle.textContent) {
-    document.title = newTitle.textContent;
-  }
-
+  // The address changes just before the content goes in, in the same task, so the content's
+  // relative URLs resolve against it and its requests come from it, as in a full load.
   if (options.history === 'push') {
     window.history.pushState({}, '', options.url);
   } else if (options.history === 'replace') {
     window.history.replaceState({}, '', options.url);
   }
   documentUrl = new URL(options.url);
+  documentReferrerPolicy = options.referrerPolicy;
+  syncHeadMetadata(doc, options.url);
+  const newMain = doc.querySelector('main');
+  const currentMain = document.querySelector('main');
+  if (newMain && currentMain) {
+    currentMain.replaceWith(newMain);
+  }
   const anchor = fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();
@@ -666,16 +707,47 @@ async function followLocation(
     console.error(`client-nav: refused to follow a redirect to ${next.location}`);
   } else if (next.kind === 'load') {
     leave(next.url);
+  } else if (pageSetsReferrerPolicy()) {
+    // Fetching the destination to compare its policy would spend what it shows once, such as a
+    // flash message, on a response that is then thrown away for a full load.
+    leave(next.url, next.history);
   } else {
     await renderUrl(next.url, { history: next.history, hops: hops + 1 });
   }
 }
 
-/** Replaces this document with a full load. */
-function leave(url: string): void {
+// Whether the page on screen sets a referrer policy that client-nav can see: a first load's header
+// cannot be read, so it counts only by its metas.
+function pageSetsReferrerPolicy(): boolean {
+  const current = { committed: documentReferrerPolicy, metas: readReferrerMetas(document) };
+  return onScreenReferrerPolicy(current, null) !== null;
+}
+
+/**
+ * Replaces this document with a full load. One that stands for Back, Forward or a redirect that
+ * replaces its entry replaces the history entry too.
+ */
+function leave(url: string, history: HistoryMode = 'push'): void {
   leaving = true;
   setBusy(false);
-  window.location.href = url;
+  if (history === 'push') window.location.href = url;
+  else window.location.replace(url);
+}
+
+// Whether the form would still send what it sent: a native repost must not carry values the user
+// changed while the first post was in flight.
+function isUnchangedSubmission(
+  form: HTMLFormElement,
+  submitter: HTMLButtonElement | HTMLInputElement | null,
+  snapshot: FormSubmissionSnapshot,
+): boolean {
+  if (!form.isConnected) return false;
+  const now = snapshotFormSubmission(
+    resolveFormAction(form, submitter),
+    resolveFormEnctype(form, submitter),
+    createFormData(form, submitter),
+  );
+  return isSameFormSubmission(now, snapshot);
 }
 
 /**

@@ -42,7 +42,7 @@ There is no initial `webstir:client-nav` event, preserving its existing meaning.
 For a successful document visit:
 
 1. Abort the outgoing page signal and await its registered cleanup in reverse order.
-2. Synchronize styles, replace `<main>`, update title and history, and restore focus/scroll.
+2. Synchronize styles, update history, title and page metadata, replace `<main>`, and restore focus/scroll.
 3. Load incoming head scripts, then activate scripts inside `<main>`.
 4. Import the page entry at its existing URL and call its setup export.
 5. Emit `webstir:client-nav` with the existing `detail.url`.
@@ -65,6 +65,68 @@ Native document departures keep browser lifetime semantics, including BFCache.
 Ordinary links without enhancement, opt-outs, modifier clicks, non-self targets,
 downloads, external links, and same-document anchors keep native behavior.
 The framework does not decide authentication policy.
+
+## What follows the page in `<head>`
+
+Client-nav keeps the document it started in and brings the parts of the new
+page's `<head>` that describe that page:
+
+- **Title:** the new page's `<title>`, empty if it has none.
+- **Styles:** the new page's stylesheets load before the swap and the old page's
+  are removed after it; `app.css` stays. `<style data-critical>` is replaced.
+- **Scripts:** the old page's entry script goes, and the new page's head scripts
+  load after the swap. The client-nav, `hmr.js` and `refresh.js` scripts stay.
+- **Page metadata:** every `<meta name>` except `viewport` and `referrer`, every
+  `<meta property>` (Open Graph), and `<link>`s whose rel is only `canonical`,
+  `alternate`, `prev` or `next`. The old page's are removed and the new page's
+  added in its order, with relative `href`s resolved against the new page's
+  address and `<base>`, so a page that lacks a `description`, `robots`,
+  `theme-color` or canonical does not inherit the previous page's. A link whose
+  `href` is not `http:` or `https:` is left out.
+- **Address:** it changes just before the new `<main>` goes in, so the new
+  content's relative URLs, and the `Referer` its requests send, are the new
+  page's.
+
+Everything else stays as the first load left it: `charset`, `viewport`,
+`http-equiv` (a Content-Security-Policy included), `<base>`, icons, the manifest,
+preloads and inline head scripts. A page that needs a different one of those
+should opt its links out with `data-client-nav="off"` so it loads in full.
+
+## When client-nav loads a page in full
+
+The referrer policy never changes in place: a browser cannot undo a policy once a
+referrer meta has set it. So when the new page would get a different policy than
+the page on screen, client-nav loads its address in full and the browser applies
+the policy itself. A page's policy is its last valid `<meta name="referrer">`
+(anywhere, `<main>` included), else its `Referrer-Policy` header. Pages that set
+none, or the same one, stay client-side, and keep that policy even after the meta
+that set it leaves with `<main>`. This covers links, Back and Forward, redirects
+and forms.
+
+Loading in full fetches the page again, and a response is only used once, so
+client-nav avoids spending one on a page it then throws away:
+
+- A redirect followed from a page that sets a policy loads its destination in
+  full without fetching it first, so a message the destination shows once (a
+  flash) is still there.
+- A form answered with a page whose policy differs: a re-rendered form (`422`) is
+  posted again natively, if the form still holds what it sent, which re-runs only
+  the refused check and shows its errors and values at the form's action address,
+  as a browser without JavaScript would. Any other answer may follow a change the
+  action made, so it is not posted twice: its address loads.
+
+A page with another policy reached by a link, Back or Forward is fetched once to
+read its policy, then loaded; a message it would show once is spent on that
+first fetch.
+
+A page that sets `no-referrer` to keep a token in its address out of `Referer`
+does so only while it is on screen: leaving it for a page without that policy is
+a full load. Client-nav reads the new page's policy from the response before
+parsing it, so a looser policy never reaches the page on screen first. A referrer
+meta it cannot read for certain (one written with character references, say)
+also means a full load. A script cannot read the first page's own
+`Referrer-Policy` header, so client-nav takes it to be the same as the next
+page's, as a site-wide header would be.
 
 ## Redirects keep their destination
 

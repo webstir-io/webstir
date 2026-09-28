@@ -148,6 +148,8 @@ async function exerciseBrowserScenario(origin: string, progress?: ScenarioProgre
       await assertFragmentUpdateAndFocus(fragmentPage);
       setScenarioStep(progress, 'verify document navigation browser boundaries');
       await assertDocumentNavigationBoundaries(fragmentPage, origin);
+      setScenarioStep(progress, 'bring the page metadata along');
+      await assertHeadMetadataFollowsPage(fragmentPage, origin);
     } finally {
       await fragmentContext.close().catch(() => undefined);
     }
@@ -423,6 +425,384 @@ async function assertDocumentNavigationBoundaries(page: Page, origin: string): P
   await waitForPathname(page, '/client-nav-http-error-fixture');
   expect(httpErrorFallbackRequests).toBeGreaterThan(0);
   expect(await readClientNavEvents(page)).toEqual([]);
+
+  await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
+  await page.locator('#demo-name').waitFor({ state: 'visible' });
+}
+
+// The title, named meta and page links follow the page on screen. A relative canonical resolves
+// against the page's own <base>, not this document's, and a javascript: canonical is left out.
+// The referrer policy never changes in place: a page that sets another one, by meta (in <head> or
+// <main>) or header, loads in full and the browser applies it; pages with the same policy, or
+// none, stay client-side.
+async function assertHeadMetadataFollowsPage(page: Page, origin: string): Promise<void> {
+  // Fixture pages load the app's own scripts, so client-nav runs on those that load in full.
+  const appScripts = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('script[type="module"][src]'))
+      .filter((script) => !script.hasAttribute('data-webstir-page'))
+      .map((script) => `<script type="module" src="${script.getAttribute('src')}"></script>`)
+      .join(''),
+  );
+  const html = (title: string, head: string, main: string) =>
+    `<!doctype html><html><head><title>${title}</title>${head}${appScripts}</head><body><main>${main}</main></body></html>`;
+  const link = (id: string, href: string) => `<a id="${id}" href="${href}">on</a>`;
+  const referers = new Map<string, string[]>();
+  const fixture = async (
+    pathname: string,
+    body: string,
+    headers: Record<string, string> = {},
+  ): Promise<void> => {
+    await page.route(`${origin}${pathname}`, async (route) => {
+      const seen = referers.get(pathname) ?? [];
+      seen.push((await route.request().allHeaders()).referer ?? '');
+      referers.set(pathname, seen);
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8', ...headers },
+        body,
+      });
+    });
+  };
+  await fixture(
+    '/client-nav-meta-a',
+    html(
+      'Meta A',
+      '<base href="/client-nav-base/"><meta name="description" content="A">' +
+        '<meta name="robots" content="noindex"><link rel="canonical" href="client-nav-meta-a">',
+      `<h1 id="meta-a-heading">Meta A</h1>${link('to-meta-b', '/client-nav-meta-b')}`,
+    ),
+  );
+  // Its frame starts loading the moment the content goes in.
+  await fixture(
+    '/client-nav-meta-b',
+    html(
+      '',
+      '<link rel="canonical" href="javascript:alert(1)">',
+      '<h1 id="meta-b-heading">Meta B</h1><iframe src="/client-nav-frame"></iframe>' +
+        link('to-no-referrer', '/client-nav-no-referrer'),
+    ),
+  );
+  await fixture('/client-nav-frame', '<!doctype html><p>frame</p>');
+  await fixture(
+    '/client-nav-no-referrer',
+    html(
+      'No Referrer',
+      '<meta name="referrer" content="no-referrer">',
+      `<h1 id="no-referrer-heading">No Referrer</h1>${link('to-no-referrer-header', '/client-nav-no-referrer-header')}`,
+    ),
+  );
+  await fixture(
+    '/client-nav-no-referrer-header',
+    html(
+      'No Referrer Header',
+      '',
+      `<h1 id="no-referrer-header-heading">No Referrer Header</h1>${link('to-unsafe', '/client-nav-unsafe')}`,
+    ),
+    { 'referrer-policy': 'no-referrer' },
+  );
+  await fixture(
+    '/client-nav-unsafe',
+    html(
+      'Unsafe',
+      '<meta name="referrer" content="unsafe-url">',
+      `<h1 id="unsafe-heading">Unsafe</h1>${link('to-main-origin', '/client-nav-main-origin')}`,
+    ),
+  );
+  await fixture(
+    '/client-nav-main-origin',
+    html(
+      'Main Origin',
+      '',
+      '<meta name="referrer" content="origin"><h1 id="main-origin-heading">Main Origin</h1>' +
+        link('to-head-origin', '/client-nav-head-origin'),
+    ),
+  );
+  // The same policy, set in <head> this time: it stays client-side, keeps the policy though the
+  // meta it came from leaves with <main>, and a page with none after it loads in full.
+  await fixture(
+    '/client-nav-head-origin',
+    html(
+      'Head Origin',
+      '<meta name="referrer" content="origin">',
+      `<h1 id="head-origin-heading">Head Origin</h1>${link('to-plain', '/client-nav-plain')}`,
+    ),
+  );
+  await fixture(
+    '/client-nav-plain',
+    html(
+      'Plain',
+      '',
+      '<h1 id="plain-heading">Plain</h1>' +
+        '<form id="policy-form" method="post" action="/client-nav-form-policy">' +
+        '<button id="policy-form-submit">Send</button></form>',
+    ),
+  );
+  // A form answered with a document that sets another policy loads that address in full.
+  await page.route(`${origin}/client-nav-form-policy`, (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body:
+        route.request().method() === 'POST'
+          ? html('Posted', '<meta name="referrer" content="no-referrer">', '<h1>Posted</h1>')
+          : html(
+              'Form Policy',
+              '',
+              '<h1 id="form-policy-heading">Form Policy</h1>' +
+                '<form method="post" action="/client-nav-form-refused">' +
+                '<input name="email" value="not-an-email">' +
+                '<button id="refused-form-submit">Send</button></form>',
+            ),
+    }),
+  );
+  // A refused post (a re-rendered form) is posted again natively, so its own response, errors
+  // included, is what the browser shows under the policy it sets; unless the form changed while
+  // the first post was in flight, when its address loads instead of sending the new values.
+  const refusedRequests: string[] = [];
+  let holdRefused: Promise<void> | undefined;
+  // Any other failure may follow a change the action made, so it is never posted twice.
+  const failedRequests: string[] = [];
+  await page.route(`${origin}/client-nav-form-failed`, async (route) => {
+    const request = route.request();
+    failedRequests.push(`${request.method()} ${request.postData() ?? ''}`);
+    await route.fulfill({
+      status: request.method() === 'POST' ? 500 : 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body:
+        request.method() === 'POST'
+          ? html('Failed', '<meta name="referrer" content="no-referrer">', '<h1>Failed</h1>')
+          : html(
+              'Failed Form',
+              '',
+              '<h1 id="failed-form-heading">Failed Form</h1>' +
+                '<form method="post" action="/client-nav-form-refused">' +
+                '<input name="email" value="not-an-email">' +
+                '<button id="refused-again-submit">Send</button></form>',
+            ),
+    });
+  });
+  await page.route(`${origin}/client-nav-form-refused`, async (route) => {
+    const request = route.request();
+    refusedRequests.push(`${request.method()} ${request.postData() ?? ''}`);
+    if (request.method() !== 'POST') {
+      await route.fulfill({
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+        body: html(
+          'Refused Form',
+          '',
+          '<h1 id="refused-form-heading">Refused Form</h1>' +
+            '<form method="post" action="/client-nav-form-failed">' +
+            '<button id="failed-form-submit">Send</button></form>',
+        ),
+      });
+      return;
+    }
+    await holdRefused;
+    await route.fulfill({
+      status: 422,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+      body: html(
+        'Refused',
+        '<meta name="referrer" content="no-referrer">',
+        '<h1 id="refused-heading">Refused</h1>' +
+          '<form method="post" action="/client-nav-redirect">' +
+          '<button id="redirect-form-submit">Send</button></form>',
+      ),
+    });
+  });
+  // A redirect from a page that sets a policy loads its destination in full without fetching it
+  // first, so what the destination shows once (a flash message) is not spent on a thrown-away copy.
+  await page.route(`${origin}/client-nav-redirect`, (route) =>
+    route.fulfill({
+      status: 204,
+      headers: { 'x-webstir-location': '/client-nav-destination#section' },
+    }),
+  );
+  await fixture(
+    '/client-nav-destination',
+    html('Destination', '', '<h1 id="destination-heading">Destination</h1><p id="section">s</p>'),
+  );
+  await page.route(`${origin}/client-nav-referer-probe`, async (route) =>
+    route.fulfill({
+      status: 200,
+      headers: { 'content-type': 'text/plain' },
+      body: (await route.request().allHeaders()).referer ?? '',
+    }),
+  );
+  const probeReferer = () =>
+    page.evaluate(() => fetch('/client-nav-referer-probe').then((response) => response.text()));
+  const readMetadata = () =>
+    page.evaluate(() => ({
+      description:
+        document.querySelector('meta[name="description"]')?.getAttribute('content') ?? null,
+      robots: document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null,
+      canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') ?? null,
+      viewport: document.querySelectorAll('meta[name="viewport"]').length,
+    }));
+  // A marker on the window tells a client-side navigation (it survives) from a full load.
+  const markDocument = () =>
+    page.evaluate(() => {
+      (window as typeof window & { __clientNavDocument?: boolean }).__clientNavDocument = true;
+    });
+  const sameDocument = () =>
+    page.evaluate(
+      () =>
+        (window as typeof window & { __clientNavDocument?: boolean }).__clientNavDocument === true,
+    );
+  const go = async (linkId: string, headingId: string) => {
+    await page.locator(`#${linkId}`).click({ noWaitAfter: true });
+    await page.locator(`#${headingId}`).waitFor({ state: 'visible' });
+    await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  };
+
+  const viewport = (await readMetadata()).viewport;
+  await markDocument();
+  await page.evaluate(() => {
+    const anchor = document.createElement('a');
+    anchor.id = 'to-meta-a';
+    anchor.href = '/client-nav-meta-a';
+    anchor.textContent = 'meta a';
+    document.body.append(anchor);
+  });
+  await go('to-meta-a', 'meta-a-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await page.title()).toBe('Meta A');
+  expect(await readMetadata()).toEqual({
+    description: 'A',
+    robots: 'noindex',
+    canonical: `${origin}/client-nav-base/client-nav-meta-a`,
+    viewport,
+  });
+
+  await go('to-meta-b', 'meta-b-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await page.title()).toBe('');
+  expect(await readMetadata()).toEqual({
+    description: null,
+    robots: null,
+    canonical: null,
+    viewport,
+  });
+  expect(await probeReferer()).toBe(`${origin}/client-nav-meta-b`);
+  await waitFor(async () => expect(referers.get('/client-nav-frame')).toBeDefined(), 5_000);
+  expect(referers.get('/client-nav-frame')).toEqual([`${origin}/client-nav-meta-b`]);
+
+  // A referrer meta the page on screen lacks: a full load, and the browser applies it.
+  await go('to-no-referrer', 'no-referrer-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(await probeReferer()).toBe('');
+
+  // The same policy by header: client-side.
+  await markDocument();
+  await go('to-no-referrer-header', 'no-referrer-header-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await probeReferer()).toBe('');
+
+  // A looser meta is read from the response text, not parsed, so the page on screen keeps its
+  // policy until it leaves: the full load's own request sends no Referer either.
+  await go('to-unsafe', 'unsafe-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(referers.get('/client-nav-unsafe')).toEqual(['', '']);
+  expect(await probeReferer()).toBe(`${origin}/client-nav-unsafe`);
+
+  // A referrer meta inside <main> counts too.
+  await go('to-main-origin', 'main-origin-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(await probeReferer()).toBe(`${origin}/`);
+
+  // The same policy in <head>: client-side; then a page with none: a full load.
+  await markDocument();
+  await go('to-head-origin', 'head-origin-heading');
+  expect(await sameDocument()).toBe(true);
+  expect(await probeReferer()).toBe(`${origin}/`);
+  await go('to-plain', 'plain-heading');
+  expect(await sameDocument()).toBe(false);
+  expect(await probeReferer()).toBe(`${origin}/client-nav-plain`);
+
+  await markDocument();
+  await page.locator('#policy-form-submit').click({ noWaitAfter: true });
+  await page.locator('#form-policy-heading').waitFor({ state: 'visible' });
+  expect(await sameDocument()).toBe(false);
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  let releaseRefused = () => {};
+  holdRefused = new Promise<void>((resolve) => {
+    releaseRefused = resolve;
+  });
+  const firstPost = page.waitForRequest(`${origin}/client-nav-form-refused`);
+  await page.locator('#refused-form-submit').click({ noWaitAfter: true });
+  await firstPost;
+  await page.locator('input[name="email"]').fill('changed@example.com');
+  releaseRefused();
+  await page.locator('#refused-form-heading').waitFor({ state: 'visible' });
+  expect(refusedRequests).toEqual(['POST email=not-an-email', 'GET ']);
+  holdRefused = undefined;
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await page.locator('#failed-form-submit').click({ noWaitAfter: true });
+  await page.locator('#failed-form-heading').waitFor({ state: 'visible' });
+  expect(failedRequests).toEqual(['POST ', 'GET ']);
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await markDocument();
+  await page.locator('#refused-again-submit').click({ noWaitAfter: true });
+  await page.locator('#refused-heading').waitFor({ state: 'visible' });
+  expect(await sameDocument()).toBe(false);
+  // The native repost carries the same submission id.
+  expect(refusedRequests.slice(2)).toEqual([
+    'POST email=not-an-email',
+    expect.stringMatching(/^POST email=not-an-email&_webstir_submission=[\w-]+$/),
+  ]);
+  expect(await probeReferer()).toBe('');
+
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await page.locator('#redirect-form-submit').click({ noWaitAfter: true });
+  await page.locator('#destination-heading').waitFor({ state: 'visible' });
+  expect(new URL(page.url()).hash).toBe('#section');
+  expect(referers.get('/client-nav-destination')).toEqual(['']);
+
+  // Back onto an entry that now redirects, from a page that sets a policy: the destination
+  // replaces that entry, as a browser following the redirect would, so Forward still works.
+  let bounce = false;
+  await page.route(`${origin}/client-nav-bounce`, (route) =>
+    bounce
+      ? route.fulfill({
+          status: 204,
+          headers: { 'x-webstir-location': '/client-nav-bounced' },
+        })
+      : route.fulfill({
+          status: 200,
+          headers: { 'content-type': 'text/html; charset=utf-8' },
+          body: html(
+            'Bounce',
+            '<meta name="referrer" content="no-referrer">',
+            `<h1 id="bounce-heading">Bounce</h1>${link('to-bounce-next', '/client-nav-bounce-next')}`,
+          ),
+        }),
+  );
+  await fixture(
+    '/client-nav-bounce-next',
+    html(
+      'Bounce Next',
+      '<meta name="referrer" content="no-referrer">',
+      '<h1 id="bounce-next-heading">Bounce Next</h1>',
+    ),
+  );
+  await fixture(
+    '/client-nav-bounced',
+    html('Bounced', '', '<h1 id="bounced-heading">Bounced</h1>'),
+  );
+  await page.goto(`${origin}/client-nav-bounce`, { waitUntil: 'load' });
+  await page.locator('html[data-webstir-ready]').waitFor({ state: 'attached' });
+  await markDocument();
+  await go('to-bounce-next', 'bounce-next-heading');
+  expect(await sameDocument()).toBe(true);
+  bounce = true;
+  await page.goBack({ waitUntil: 'commit' });
+  await page.locator('#bounced-heading').waitFor({ state: 'visible' });
+  await page.goForward({ waitUntil: 'commit' });
+  await page.waitForURL(`${origin}/client-nav-bounce-next`);
 
   await page.goto(`${origin}/api/demo/progressive-enhancement`, { waitUntil: 'load' });
   await page.locator('#demo-name').waitFor({ state: 'visible' });
