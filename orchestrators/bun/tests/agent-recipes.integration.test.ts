@@ -7,6 +7,7 @@ import { createServer } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright';
 
 import { packageRoot } from '../src/paths.ts';
+import { runWebstir } from '../test-support/cli.ts';
 
 const recipeRoot = path.join(packageRoot, 'resources/guides/recipes');
 const dependencies = path.join(packageRoot, 'node_modules');
@@ -86,14 +87,7 @@ test('build and inspect leave storage untouched; requests use the app-root datab
   const defaultDatabase = path.join(workspace, 'data/app.sqlite');
   try {
     for (const command of ['build', 'backend-inspect']) {
-      const result = Bun.spawnSync({
-        cmd: [
-          process.execPath,
-          path.join(packageRoot, 'src/cli.ts'),
-          command,
-          '--workspace',
-          workspace,
-        ],
+      const result = await runWebstir([command, '--workspace', workspace], {
         cwd: caller,
         // This proof covers module-import side effects; the recipe types are checked
         // in the generated consumer app with @types/bun installed.
@@ -102,10 +96,8 @@ test('build and inspect leave storage untouched; requests use the app-root datab
           WEBSTIR_BACKEND_TYPECHECK: 'skip',
           ...(command === 'build' ? { APP_DATABASE_PATH: configured } : {}),
         },
-        stdout: 'pipe',
-        stderr: 'pipe',
       });
-      expect(new TextDecoder().decode(result.stderr)).toBe('');
+      expect(result.stderr).toBe('');
       expect(result.exitCode).toBe(0);
       expect(existsSync(configured)).toBe(false);
       expect(existsSync(defaultDatabase)).toBe(false);

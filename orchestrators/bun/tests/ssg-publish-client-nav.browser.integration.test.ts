@@ -5,8 +5,8 @@ import path from 'node:path';
 import { chromium, type Browser } from 'playwright';
 
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
-import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { runWebstirOrThrow } from '../test-support/cli.ts';
 import { getFreePort } from '../test-support/watch.ts';
 
 type VisitWindow = Window & { clientNavVisits: number };
@@ -136,26 +136,10 @@ async function step<T>(label: string, run: () => T | Promise<T>): Promise<T> {
   return result;
 }
 
-function runCli(workspace: string, args: string[]): void {
-  const result = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      ...args,
-      '--workspace',
-      workspace,
-    ],
-    cwd: repoRoot,
+async function runCli(workspace: string, args: string[]): Promise<void> {
+  await runWebstirOrThrow([...args, '--workspace', workspace], {
     env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: 60_000,
   });
-  if (result.exitCode !== 0) {
-    throw new Error(
-      `webstir ${args.join(' ')} failed with exit code ${result.exitCode}.\nstdout:\n${result.stdout.toString()}\n\nstderr:\n${result.stderr.toString()}`,
-    );
-  }
 }
 
 function serveStatic(root: string, port: number): ReturnType<typeof Bun.serve> {

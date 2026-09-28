@@ -4,6 +4,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { chromium, type Browser, type Page } from 'playwright';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { runWebstirOrThrow } from '../test-support/cli.ts';
 import {
   copyDemoWorkspace,
   removeDemoWorkspace,
@@ -537,21 +538,7 @@ async function withSpaWatch(
 }
 
 async function addPage(workspace: string, name: string): Promise<void> {
-  const result = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      'add-page',
-      name,
-      '--workspace',
-      workspace,
-    ],
-    cwd: repoRoot,
-    env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  expect(result.exitCode).toBe(0);
+  await runWebstirOrThrow(['add-page', name, '--workspace', workspace]);
 }
 
 async function openPage(port: number, address = '/'): Promise<Page> {
