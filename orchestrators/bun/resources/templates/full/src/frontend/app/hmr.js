@@ -60,6 +60,14 @@ if (typeof window === 'undefined' || typeof document === 'undefined') {
             return { success: false, reason: 'payload.invalid' };
         }
 
+        // A page's code changed: client-nav shows the page again from the new code, in place.
+        const clientNav = window[Symbol.for('webstir.client-nav')];
+        if (payload.pageRefresh && typeof clientNav?.refreshPage === 'function') {
+            await clientNav.refreshPage();
+            console.info(`[webstir-hmr] Refreshed the page for ${payload.changedFile ?? 'unknown'}.`);
+            return { success: true };
+        }
+
         if (payload.requiresReload) {
             return { success: false, reason: 'payload.requiresReload' };
         }

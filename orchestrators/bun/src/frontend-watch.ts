@@ -1,5 +1,4 @@
-import { startBunSpaFrontendWatch } from './bun-spa-watch.ts';
-import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
+import { startDocumentWatch } from './document-watch.ts';
 import { createSsgDevPages } from './ssg-dev-pages.ts';
 import type { DevServerAddress } from './dev-server.ts';
 import { createStopSignal } from './stop-signal.ts';
@@ -57,7 +56,7 @@ async function createFrontendWatchSession(
 ): Promise<FrontendWatchSession> {
   if (workspace.mode === 'ssg') {
     const pages = createSsgDevPages(workspace.root);
-    return await startBunSsgFrontendWatch({
+    return await startDocumentWatch({
       workspaceRoot: workspace.root,
       host: options.host,
       port: options.port,
@@ -67,9 +66,10 @@ async function createFrontendWatchSession(
     });
   }
 
-  return await startBunSpaFrontendWatch({
+  return await startDocumentWatch({
     workspaceRoot: workspace.root,
     host: options.host,
     port: options.port,
+    verbose: options.verbose,
   });
 }

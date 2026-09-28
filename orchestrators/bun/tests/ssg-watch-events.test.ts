@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import path from 'node:path';
 
-import { formatWorkspaceWatchEvent, mergeWorkspaceWatchEvents } from '../src/bun-ssg-watch.ts';
+import { formatWorkspaceWatchEvent, mergeWorkspaceWatchEvents } from '../src/document-watch.ts';
 import type { WorkspaceWatchEvent } from '../src/workspace-watcher.ts';
 
 const workspaceRoot = path.resolve('/workspace');

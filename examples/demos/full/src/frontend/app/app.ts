@@ -69,7 +69,3 @@ window.addEventListener('unhandledrejection', async () => {
 // Export for use by pages if needed
 export { loadErrorHandler };
 import '@webstir-io/webstir-frontend/features/client-nav';
-
-if (import.meta.hot) {
-  import.meta.hot.accept();
-}

@@ -33,8 +33,9 @@ import { createCleanupScope, defineBoundary } from '@webstir-io/webstir-frontend
 Webstir watch mode follows a narrow fallback policy:
 
 - CSS edits hot-swap in the browser.
-- JS edits remount only when the module or boundary explicitly opts in.
+- Edits to a page's code (anything under `src/frontend/pages/<page>/` that compiles to JavaScript) show the current page again from the new code, in place, when client-nav is on: the old page's cleanup runs, then the new `load` and `setup`, while scroll, focus and the app shell stay. Without client-nav, the page reloads.
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
+- Current exception: the SSG docs page (`src/frontend/pages/docs/`) swaps its module through `registerHotModule` handlers instead of refreshing.
 - Current exception: the SSG docs-sidebar pilot also remounts on `src/frontend/content/_sidebar.json` edits.
 - Any cleanup failure or declined boundary update falls back to reload.
 - A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only queues the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client drains the queue into its own registry, so production bundles carry no hot-update code.

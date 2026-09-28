@@ -1,4 +1,5 @@
-import { createRenderedViewMatcher, readWorkspacePageRoutes } from '@webstir-io/webstir-backend';
+import { createRenderedViewMatcher } from '@webstir-io/webstir-backend';
+import { checkWorkspacePageRoutes } from './page-route-checks.ts';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -8,7 +9,7 @@ import { ensureLocalPackageArtifacts } from './providers.ts';
 import { WorkspaceWatcher, type WorkspaceWatchEvent } from './workspace-watcher.ts';
 import type { HotUpdateAsset, HotUpdatePayload, HotUpdateTarget } from './watch-events.ts';
 
-export interface BunSsgFrontendWatchOptions {
+export interface DocumentWatchOptions {
   readonly workspaceRoot: string;
   readonly host?: string;
   readonly port?: number;
@@ -26,7 +27,7 @@ export interface BunSsgFrontendWatchOptions {
   readonly renderedPage?: (pathname: string) => string | null | undefined;
 }
 
-export interface BunSsgFrontendWatchSession {
+export interface DocumentWatchSession {
   readonly address: DevServerAddress;
   waitForExit(): Promise<number | null>;
   stop(): Promise<void>;
@@ -43,9 +44,9 @@ interface FrontendOperationsModule {
   }): Promise<void>;
 }
 
-export async function startBunSsgFrontendWatch(
-  options: BunSsgFrontendWatchOptions,
-): Promise<BunSsgFrontendWatchSession> {
+export async function startDocumentWatch(
+  options: DocumentWatchOptions,
+): Promise<DocumentWatchSession> {
   const workspaceRoot = path.resolve(options.workspaceRoot);
   const frontendSourceRoot = path.join(workspaceRoot, 'src', 'frontend');
   const buildRoot = path.join(workspaceRoot, 'build', 'frontend');
@@ -134,7 +135,7 @@ export async function startBunSsgFrontendWatch(
   server = new DevServer({
     buildRoot,
     apiProxyOrigin: options.apiProxyOrigin,
-    pageRoutes: await readWorkspacePageRoutes(workspaceRoot),
+    pageRoutes: await checkWorkspacePageRoutes(workspaceRoot),
     isRenderedView: options.apiProxyOrigin
       ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
       : undefined,
@@ -425,6 +426,16 @@ function createHotUpdatePayload(options: {
         id: 'docs-sidebar',
       },
     });
+  }
+
+  if (relativeParts[0] === 'pages' && relativeParts.length >= 3 && isJavaScriptFile(changedFile)) {
+    return {
+      requiresReload: true,
+      modules: [],
+      styles: [],
+      pageRefresh: true,
+      changedFile: normalizeForwardSlashes(path.relative(options.workspaceRoot, changedFile)),
+    };
   }
 
   if (

@@ -41,11 +41,13 @@ const LEGACY_REGISTRY_BLOCK =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: this is the scaffold's own source text, template literals included
   'export function registerHotModule(moduleId: string, handlers: HotModuleHandlers): void {\n  const normalized = normalizeModuleId(moduleId);\n  if (!normalized) {\n    return;\n  }\n\n  const record = ensureRecord(normalized);\n  record.accept = handlers.accept;\n  record.dispose = handlers.dispose;\n  hotModuleRegistry.set(normalized, record);\n}\n\nwindow.__webstirRegisterHotModule = registerHotModule;\n\nwindow.__webstirDispose = async (asset, context) => {\n  const moduleId = normalizeModuleId(asset?.url ?? asset?.relativePath);\n  if (!moduleId) {\n    return true;\n  }\n\n  const record = hotModuleRegistry.get(moduleId);\n  if (!record) {\n    return true;\n  }\n\n  if (!record.dispose) {\n    return true;\n  }\n\n  const contextWithHistory = withHistoryContext(context, record);\n\n  try {\n    const result = record.dispose(contextWithHistory);\n    if (isPromise(result)) {\n      await result;\n    }\n    return true;\n  } catch (error) {\n    console.error(`[webstir-hmr] Dispose handler failed for ${moduleId}.`, error);\n    return false;\n  }\n};\n\nwindow.__webstirAccept = async (moduleExports, context) => {\n  const moduleId = normalizeModuleId(context?.asset?.url ?? context?.asset?.relativePath);\n  if (!moduleId) {\n    return true;\n  }\n\n  const record = ensureRecord(moduleId);\n  const contextWithHistory = withHistoryContext(context, record);\n\n  let accepted = true;\n\n  if (record.accept) {\n    try {\n      accepted = await evaluateHandlerResult(record.accept(moduleExports, contextWithHistory));\n    } catch (error) {\n      console.error(`[webstir-hmr] Accept handler failed for ${moduleId}.`, error);\n      accepted = false;\n    }\n  }\n\n  if (accepted) {\n    record.currentExports = moduleExports;\n  }\n\n  hotModuleRegistry.set(moduleId, record);\n  return accepted;\n};\n\n';
 
-// SHA-256 of the hmr.js each scaffold shipped through 0.1.58: the SSG client
-// (with the reload marker) and the SPA/full client.
+// SHA-256 of the earlier hmr.js clients each scaffold shipped, SSG (with the reload marker) first,
+// then SPA/full: through 0.1.58, then 0.1.59 to 0.4, before page refresh through client-nav.
 const LEGACY_CLIENT_HASHES = new Set([
   '95389ea63898e0058a63ab9edf75e81eba54ef0da0ecf5366ef96adb00cecac7',
   'a081b7640499da3ebf9d80035b85852cc33434c81bd6b164b54a171f51ad48c5',
+  '79c3d9d93a5eb5b1033568ea738fdca20d6bef81687309de3e6488950492a4a3',
+  '135e2745a1a60c8c231b8b09dd0fb19c8369a477de433ea62814d3d96054a5f9',
 ]);
 
 export const HOT_MODULE_REGISTRATION = `// Pages can opt into hot module updates. During development the dev server's

@@ -44,12 +44,9 @@ const REMOVED_BY_MATURE_APP = [
   'types/global.d.ts',
   'src/frontend/app/error.ts',
   'src/frontend/app/hmr.js',
-  'src/frontend/app/navigation.ts',
-  'src/frontend/app/router.ts',
   'src/frontend/app/styles/base.css',
   'src/frontend/pages/lifecycle/index.html',
   'src/frontend/pages/lifecycle/index.ts',
-  'src/shared/router-types.ts',
   'src/shared/tsconfig.json',
   'src/shared/types/index.ts',
 ];
@@ -621,47 +618,30 @@ test('CLI repair restores the s3-cloudfront deploy script and edge function', as
   }
 });
 
-test('CLI repair preserves mode ownership when an enabled feature target overlaps', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-overlap-', {
+test('CLI repair lists the retired SPA router as removable and leaves it in place', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-router-', {
     workspaceName: 'spa',
   });
-  const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
-  const routerPath = path.join(
-    copiedWorkspace.workspaceRoot,
-    'src',
-    'frontend',
-    'app',
-    'router.ts',
-  );
-  const modeRouterPath = path.join(
-    packageRoot,
-    'assets',
-    'templates',
-    'spa',
-    'src',
-    'frontend',
-    'app',
-    'router.ts',
-  );
+  const routerFiles = [
+    path.join('src', 'frontend', 'app', 'router.ts'),
+    path.join('src', 'frontend', 'app', 'navigation.ts'),
+    path.join('src', 'shared', 'router-types.ts'),
+  ];
 
   try {
-    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8')) as {
-      webstir: { enable?: { spa?: boolean } };
-    };
-    packageJson.webstir.enable = { ...packageJson.webstir.enable, spa: true };
-    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
-    await rm(routerPath, { force: true });
+    for (const file of routerFiles) {
+      await writeFile(path.join(copiedWorkspace.workspaceRoot, file), 'export {};\n', 'utf8');
+    }
 
-    const result = await runCli([
-      'repair',
-      '--restore-scaffold',
-      '--workspace',
-      copiedWorkspace.workspaceRoot,
-    ]);
+    const result = await runCli(['repair', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('src/frontend/app/router.ts');
-    expect(await readFile(routerPath, 'utf8')).toBe(await readFile(modeRouterPath, 'utf8'));
+    expect(result.stdout).toContain(
+      'The SPA router is retired (client-nav is the navigation): delete src/frontend/app/router.ts, src/frontend/app/navigation.ts, src/shared/router-types.ts once nothing in the app imports them.',
+    );
+    for (const file of routerFiles) {
+      expect(existsSync(path.join(copiedWorkspace.workspaceRoot, file))).toBe(true);
+    }
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

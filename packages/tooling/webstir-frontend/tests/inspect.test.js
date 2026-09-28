@@ -90,7 +90,6 @@ test('inspectFrontendWorkspace resolves shallow workspace facts without building
     unknownFlag: true,
   });
   assert.deepEqual(result.packageJson.enable.known, {
-    spa: false,
     clientNav: true,
     backend: false,
     search: false,
@@ -135,7 +134,6 @@ test('inspectFrontendWorkspace reports absent frontend facts cleanly', async (t)
   assert.equal(result.packageJson.exists, true);
   assert.equal(result.packageJson.enable.raw, undefined);
   assert.deepEqual(result.packageJson.enable.known, {
-    spa: false,
     clientNav: false,
     backend: false,
     search: false,

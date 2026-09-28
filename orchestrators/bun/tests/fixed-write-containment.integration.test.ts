@@ -83,14 +83,14 @@ test('CLI enable rejects hard-linked package metadata before feature assets', as
     await rm(packageJsonPath);
     await link(externalPackagePath, packageJsonPath);
 
-    const result = await runCli(copiedWorkspace.workspaceRoot, ['enable', 'spa']);
+    const appSource = await readFile(path.join(appRoot, 'app.ts'), 'utf8');
+    const result = await runCli(copiedWorkspace.workspaceRoot, ['enable', 'client-nav']);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('multiple hard links');
     expect(await readFile(externalPackagePath, 'utf8')).toBe(packageJson);
     expect(await readFile(packageJsonPath, 'utf8')).toBe(packageJson);
-    expect(pathExists(appRoot, 'router.ts')).toBe(false);
-    expect(pathExists(appRoot, 'router-types.ts')).toBe(false);
+    expect(await readFile(path.join(appRoot, 'app.ts'), 'utf8')).toBe(appSource);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

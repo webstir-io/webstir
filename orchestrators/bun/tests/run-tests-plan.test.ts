@@ -28,11 +28,12 @@ test('core and browser test inventories are complete and non-overlapping', () =>
   const sorted = [...files].sort();
 
   expect(files).toEqual(sorted);
-  expect(browserFiles).toHaveLength(8);
+  expect(browserFiles).toHaveLength(7);
   expect(browserFiles).toContain('tests/agent-recipes.integration.test.ts');
   expect(browserFiles).toContain('tests/progressive-enhancement.browser.integration.test.ts');
   expect(browserFiles).toContain('tests/full-watch.integration.test.ts');
+  expect(browserFiles).toContain('tests/spa-watch.integration.test.ts');
   expect(browserFiles).toContain('tests/ssg-publish-client-nav.browser.integration.test.ts');
   expect(browserFiles).toContain('tests/browser-rendered-pages.browser.integration.test.ts');
-  expect(new Set([...files, ...browserFiles]).size).toBe(52);
+  expect(new Set([...files, ...browserFiles]).size).toBe(51);
 });

@@ -60,7 +60,7 @@ When in doubt, use this path:
 
 ### `watch`
 
-- Starts Bun-native frontend watch for `spa`, `ssg`, and `full`
+- Starts frontend watch for `spa`, `ssg`, and `full`, through the same pipeline as `build`
 - Starts the backend build watcher and runtime for `api` and `full`
 - Proxies `/api/*` in full-stack watch mode
 

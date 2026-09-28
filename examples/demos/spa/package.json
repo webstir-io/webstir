@@ -24,6 +24,9 @@
   ],
   "webstir": {
     "mode": "spa",
-    "moduleManifest": {}
+    "moduleManifest": {},
+    "enable": {
+      "clientNav": true
+    }
   }
 }

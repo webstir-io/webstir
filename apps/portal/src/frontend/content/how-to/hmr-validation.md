@@ -7,25 +7,21 @@ Follow these steps after touching the frontend hot-update pipeline.
 - Run `bun run --filter @webstir-io/webstir-frontend test`.
 - Start `webstir watch` in a clean frontend-capable workspace and confirm the dev loop boots without errors.
 
-## JavaScript/Edit Loop
-1. Launch `webstir watch --workspace "$PWD/examples/demos/spa" --hmr-verbose`.
-2. Modify `examples/demos/spa/src/frontend/pages/home/index.ts` (for example, change a string).
-3. Verify the browser console logs:
-   - `Applied hot update…` message with module/style counts.
-   - `Totals — applied: <n>, fallbacks: <m>` increments without forcing a reload.
-4. Repeat with additional JS edits to observe counters climbing without page refreshes.
+## Page Refresh
+1. Launch `webstir watch --workspace "$PWD/examples/demos/spa"`. The SPA demo has client-nav on.
+2. Scroll the home page, focus a control, then change `examples/demos/spa/src/frontend/pages/home/index.ts`.
+3. Verify:
+   - The console logs `Refreshed the page for src/frontend/pages/home/index.ts.`
+   - The page shows the new code without a reload: scroll and focus stay, and the previous `setup`'s cleanup ran before the new one.
 
 ## CSS Refresh
 1. Edit `examples/demos/spa/src/frontend/pages/home/index.css`.
-2. Confirm the DOM injects a fresh stylesheet and console totals increment.
+2. Confirm the DOM injects a fresh stylesheet and the page does not reload.
 
 ## Fallback Scenario
-1. From the browser console, register a declining handler for the page module: `(window.__webstirHotModules ??= []).push({ moduleId: '/pages/home/index.js', handlers: { accept: () => false } });`.
+1. Remove the client-nav import from `examples/demos/spa/src/frontend/app/app.ts`.
 2. Edit the page script again.
-3. Confirm:
-   - Console warning announces fallback with reasons and totals.
-   - SSE status switches to `hmr-fallback`, followed by a full reload.
-   - Watch logs show `frontend.watch.pipeline.hmrfallback`.
+3. Confirm the console warns about the fallback and the page reloads with the new code.
 
 ## HTML/Manifest Change
 1. Modify `examples/demos/spa/src/frontend/app/app.html`.

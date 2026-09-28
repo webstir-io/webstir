@@ -10,7 +10,7 @@ const repoRoot = path.resolve(packageRoot, '..', '..');
 const templateRoot = path.join(packageRoot, 'resources', 'templates', 'full', 'src');
 const demoRoot = path.join(repoRoot, 'examples', 'demos', 'full', 'src');
 
-const allowedDifferences = new Set(['frontend/app/app.ts', 'frontend/pages/home/index.ts']);
+const allowedDifferences = new Set();
 
 async function main() {
   const [templateEntries, demoEntries] = await Promise.all([

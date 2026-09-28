@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
 import { readFile, writeFile } from 'node:fs/promises';
 
-import { startBunSsgFrontendWatch } from '../src/bun-ssg-watch.ts';
+import { startDocumentWatch } from '../src/document-watch.ts';
 import {
   copyDemoWorkspace,
   removeDemoWorkspace,
@@ -25,7 +25,7 @@ test('watch builds an edit made while its first build runs', async () => {
   expect(edited).not.toBe(page);
 
   let builds = 0;
-  const session = await startBunSsgFrontendWatch({
+  const session = await startDocumentWatch({
     workspaceRoot: copy.workspaceRoot,
     port: 0,
     // The first build has read the page by the time its checks run, so this edit lands after it.

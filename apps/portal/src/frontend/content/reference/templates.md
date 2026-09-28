@@ -11,8 +11,8 @@ Embedded scaffolding used by the CLI to create projects and generate files. Keep
 ## Layout
 Created by `webstir init` according to workspace mode:
 
-- `full`: frontend, backend, shared, and types
-- `spa`: frontend, shared, and types
+- `full`: frontend, backend, shared, and types, with client-nav on
+- `spa`: frontend, shared, and types, with client-nav on
 - `ssg`: frontend and types
 - `api`: backend, shared, and types
 
@@ -38,7 +38,7 @@ Typical backend scaffold:
 - Fresh `api` and `full` scaffolds keep `src/backend/index.ts` thin and use it to boot the package-managed Bun runtime.
 - Manifest-backed route and demo logic lives in `src/backend/module.ts`.
 - The default app primitives are documented in [Primitives](./primitives.md); treat that page as the naming contract for pages, forms, actions, fragment targets, request-time views, and auth-gated routes.
-- For optional app features, prefer absolute app-asset imports such as `await import('/app/router.js')` so dev and publish paths stay aligned.
+- For optional app features, prefer absolute app-asset imports such as `await import('/app/search.js')` so dev and publish paths stay aligned.
 - Start with `full` when the app needs forms, redirects, auth, or server-rendered documents; opt into `spa` or `ssg` only when you need those delivery modes specifically.
 
 ## TypeScript

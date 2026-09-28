@@ -2,10 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { matchPageRoute, normalizePageRoutes } from '@webstir-io/webstir-backend';
 
-import {
-  assertPageRoutesCompatible,
-  resolvePageRoutes,
-} from '../src/bun-generated-frontend-watch.ts';
+import { assertPageRoutesCompatible, resolvePageRoutes } from '../src/page-route-checks.ts';
 
 const pageRoutes = normalizePageRoutes([
   { name: 'proposal', path: '/clients/:client/proposals/:proposal', page: 'proposal' },
@@ -49,7 +46,7 @@ test('resolvePageRoutes keeps the root page aliases', () => {
   ]);
 });
 
-test('the published matcher picks the same pattern Bun.serve serves for overlapping routes', async () => {
+test('the page matcher picks the same pattern Bun.serve would for overlapping routes', async () => {
   const patterns = [
     '/:x/foo/:z',
     '/bar/:y/:z',

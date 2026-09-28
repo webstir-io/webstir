@@ -60,6 +60,10 @@ export async function runPublish(options: FrontendCommandOptions): Promise<void>
 export async function runRebuild(options: FrontendCommandOptions): Promise<void> {
   const config = await prepareWorkspaceConfig(options.workspaceRoot);
   const enable = await readWorkspaceEnableFlags(options.workspaceRoot);
+  // Checked before anything is written, so a rejected edit leaves the last valid output served.
+  if ((await readWorkspaceModeName(options.workspaceRoot)) === 'spa') {
+    await checkSpaTemplates(options.workspaceRoot);
+  }
 
   console.info('[webstir-frontend] Running rebuild pipeline...');
   await runPipeline(config, 'build', {

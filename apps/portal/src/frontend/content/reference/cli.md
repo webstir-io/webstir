@@ -91,7 +91,7 @@ Usage: `webstir enable <feature> [feature-args...] --workspace <path>`
 
 What it does:
 - Adds optional enhancements to an existing workspace
-- Supported features include `scripts`, `spa`, `client-nav`, `search`, `content-nav`, `backend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
+- Supported features include `scripts`, `client-nav`, `search`, `content-nav`, `backend`, `github-pages`, `gh-deploy`, and `s3-cloudfront`
 - Updates workspace files and `package.json` flags so the feature is active on the next build/watch
 
 Notes:
@@ -164,20 +164,21 @@ What it does:
 - Accepts `--frontend-mode ssg` to force static-site publish behavior from the top-level Bun CLI
 
 ### watch
-Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--verbose] [--hmr-verbose]`
+Usage: `webstir watch --workspace <path> [--host <host>] [--port <port>] [--verbose]`
 
 What it does:
 - Starts the Bun dev loop for the selected workspace
 - Supports `spa`, `ssg`, `api`, and `full`
-- Runs the Bun static/dev server for frontend flows
+- Builds the frontend with the same pipeline as `build` and serves it, swapping CSS in place and, with client-nav, showing edited page code in place
 - Supervises the backend runtime for `api` and `full`
 - Proxies `/api/*` in `full` mode
 
 Notes:
 - Frontend runtime selection is no longer a CLI option
-- SPA and SSG watch serve frontend output and trigger reloads after rebuilds
+- Every frontend mode watches through the same pipeline: CSS edits swap in place, page code edits show the page again in place with client-nav, other edits reload
+- A rebuild that fails a build check keeps serving the last valid page
 - API watch rebuilds and restarts the backend runtime after successful backend changes
-- Full watch uses a Bun-native frontend host plus backend `/api` proxy composition
+- Full watch adds the backend runtime and `/api` proxying to the same frontend watch
 
 ### test
 Usage: `webstir test --workspace <path> [--runtime <frontend|backend|all>]`

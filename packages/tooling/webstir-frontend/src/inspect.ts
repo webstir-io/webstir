@@ -149,7 +149,6 @@ function normalizeKnownEnableFlags(
   value: Record<string, unknown> | undefined,
 ): FrontendWorkspaceKnownEnableFlags {
   return {
-    spa: value?.spa === true,
     clientNav: value?.clientNav === true,
     backend: value?.backend === true,
     search: value?.search === true,

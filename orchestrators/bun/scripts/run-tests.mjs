@@ -11,8 +11,7 @@ const browserTestFile = 'tests/progressive-enhancement.browser.integration.test.
 const browserTestFiles = [
   browserTestFile,
   'tests/agent-recipes.integration.test.ts',
-  'tests/runtime-boundary.integration.test.ts',
-  'tests/bun-first-spa.integration.test.ts',
+  'tests/spa-watch.integration.test.ts',
   'tests/ssg-watch.integration.test.ts',
   'tests/ssg-publish-client-nav.browser.integration.test.ts',
   'tests/browser-rendered-pages.browser.integration.test.ts',

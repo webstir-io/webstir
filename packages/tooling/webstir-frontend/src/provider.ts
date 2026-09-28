@@ -140,7 +140,6 @@ async function collectArtifacts(config: FrontendConfig): Promise<ModuleArtifact[
 }
 
 interface WorkspaceEnableFlags {
-  readonly spa?: boolean;
   readonly clientNav?: boolean;
   readonly backend?: boolean;
   readonly search?: boolean;
