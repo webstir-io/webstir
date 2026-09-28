@@ -181,3 +181,19 @@ test('local files keep their media type, and anything that could run script is a
     assert.equal(await files.get('photos/1'), undefined);
   });
 });
+
+test('downloads keep names in any script, and type records stay inside the storage folder', async () => {
+  await withApp({}, async (root) => {
+    for (const key of ['reports/报告.zip', 'reports/two words "quoted".bin']) {
+      await files.put(key, 'x', { contentType: 'application/zip' });
+      const served = await serveLocalFile(new URL(await files.url(key), 'http://app.test'));
+      assert.equal(served.status, 200, key);
+      const disposition = served.headers.get('content-disposition') ?? '';
+      assert.match(disposition, /^attachment; filename="[\x20-\x7e]*"; filename\*=UTF-8''/, key);
+      assert.ok(disposition.includes(encodeURIComponent(key.split('/').at(-1))), key);
+    }
+    const entries = await fs.readdir(path.join(root, 'data'));
+    assert.deepEqual(entries, ['files']);
+    await assert.rejects(files.put('.webstir/types/x', 'x'), /is not a file key/);
+  });
+});

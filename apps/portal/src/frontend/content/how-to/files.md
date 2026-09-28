@@ -7,7 +7,7 @@ const link = await ctx.files.url(`avatars/${ctx.user.id}.png`, { expiresIn: 3600
 await ctx.files.delete(`avatars/${ctx.user.id}.png`);
 ```
 
-- A key is a relative path of plain segments: `avatars/42.png`, never `../x` or `/x`.
+- A key is a relative path of plain segments: `avatars/42.png`, never `../x` or `/x`. `.webstir/` is reserved: Webstir keeps local files' media types there.
 - `put` takes a string, bytes, a Blob, or a file from a form's file field.
 - `url` makes a link that works for `expiresIn` seconds (an hour by default), for an `<img>` or a download.
 - Files come from your users, so a local file's link never runs as your app: images, audio, video, PDFs and plain text show in the browser, anything else (HTML and SVG included) downloads, and all of them are served under a sandbox policy.

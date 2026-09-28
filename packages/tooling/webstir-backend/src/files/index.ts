@@ -83,6 +83,12 @@ export const files: Files = {
 const INLINE_TYPES =
   /^(?:image\/(?:png|jpeg|gif|webp|avif)|audio\/[\w.+-]+|video\/[\w.+-]+|application\/pdf|text\/plain)(?:;|$)/;
 
+/** A download's name: plain ASCII for old clients, and the real name encoded (RFC 6266). */
+function attachment(name: string): string {
+  const plain = name.replace(/[^\x20-\x7e]|["\\]/g, '_');
+  return `attachment; filename="${plain}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 async function localFile(store: Extract<Store, { kind: 'local' }>, key: string): Promise<Blob> {
   const typeFile = Bun.file(store.typeFile(key));
   const type = (await typeFile.exists()) ? (await typeFile.text()).trim() : undefined;
@@ -121,10 +127,7 @@ export async function serveLocalFile(url: URL): Promise<Response | undefined> {
     'content-security-policy': "sandbox; default-src 'none'",
   });
   if (!INLINE_TYPES.test(type)) {
-    headers.set(
-      'content-disposition',
-      `attachment; filename="${path.basename(key).replace(/["\\]/g, '_')}"`,
-    );
+    headers.set('content-disposition', attachment(path.basename(key)));
   }
   return new Response(file, { headers });
 }
@@ -138,7 +141,7 @@ let cached: { key: string; store: Store } | undefined;
 function resolveStore(): Store {
   const url = process.env.STORAGE_URL?.trim() || DEFAULT_STORAGE_URL;
   const credentials = s3Credentials();
-  const key = `${url}\n${JSON.stringify(credentials)}`;
+  const key = `${appRoot()}\n${url}\n${JSON.stringify(credentials)}`;
   if (cached?.key === key) return cached.store;
   let store: Store;
   if (url.startsWith('s3://')) {
@@ -152,7 +155,8 @@ function resolveStore(): Store {
     store = {
       kind: 'local',
       file: (key) => (checkKey(key), path.join(root, ...key.split('/'))),
-      typeFile: (key) => (checkKey(key), path.join(`${root}.types`, ...key.split('/'))),
+      // Inside the storage folder, under a name no file key may take.
+      typeFile: (key) => (checkKey(key), path.join(root, TYPES_FOLDER, ...key.split('/'))),
     };
   } else {
     throw new Error(
@@ -182,9 +186,14 @@ function s3Credentials(): Record<string, string> {
   );
 }
 
-/** A key is a relative path of plain segments: `avatars/42.png`, never `../x` or `/x`. */
+const TYPES_FOLDER = path.join('.webstir', 'types');
+
+/** A key is a relative path of plain segments: `avatars/42.png`, never `../x`, `/x` or `.webstir/...`. */
 function checkKey(key: string): void {
   const segments = key.split('/');
+  if (segments[0] === '.webstir') {
+    throw new Error(`"${key}" is not a file key; .webstir/ is where Webstir keeps file types.`);
+  }
   const plain = segments.every(
     (segment) => segment !== '' && segment !== '.' && segment !== '..' && !/[\\\0]/.test(segment),
   );

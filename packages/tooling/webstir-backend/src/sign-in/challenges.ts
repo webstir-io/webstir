@@ -17,6 +17,7 @@ interface ChallengeRow {
   email: string;
   code_hash: string;
   attempts_remaining: number;
+  created_at: string;
 }
 
 /** Thrown to undo a challenge made only to take the time a real one takes. */
@@ -88,7 +89,7 @@ export async function consumeCode(
 ): Promise<boolean> {
   const stamp = now.toISOString();
   const open = await db.get<ChallengeRow>(
-    `SELECT id, email, code_hash, attempts_remaining FROM webstir_sign_in_challenges
+    `SELECT id, email, code_hash, attempts_remaining, created_at FROM webstir_sign_in_challenges
      WHERE email = ? AND consumed_at IS NULL AND expires_at > ?
      ORDER BY created_at DESC LIMIT 1`,
     [email, stamp],
@@ -110,7 +111,7 @@ export async function consumeCode(
     [stamp, open.id, stamp],
   );
   if (changes !== 1) return false;
-  await consumeAll(db, email, stamp);
+  await consumeOlder(db, email, open.created_at, stamp);
   return true;
 }
 
@@ -122,21 +123,28 @@ export async function consumeToken(
   now = new Date(),
 ): Promise<string | undefined> {
   const stamp = now.toISOString();
-  const used = await db.get<{ email: string }>(
+  const used = await db.get<{ email: string; created_at: string }>(
     `UPDATE webstir_sign_in_challenges SET consumed_at = ?
      WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?
-     RETURNING email`,
+     RETURNING email, created_at`,
     [stamp, hash(secret, `token\n${token}`), stamp],
   );
   if (!used) return undefined;
-  await consumeAll(db, used.email, stamp);
+  await consumeOlder(db, used.email, used.created_at, stamp);
   return used.email;
 }
 
-async function consumeAll(db: Database, email: string, stamp: string): Promise<void> {
+/** Uses up the address's codes sent no later than the one just used; one sent since stays good. */
+async function consumeOlder(
+  db: Database,
+  email: string,
+  createdAt: string,
+  stamp: string,
+): Promise<void> {
   await db.execute(
-    'UPDATE webstir_sign_in_challenges SET consumed_at = ? WHERE email = ? AND consumed_at IS NULL',
-    [stamp, email],
+    `UPDATE webstir_sign_in_challenges SET consumed_at = ?
+     WHERE email = ? AND consumed_at IS NULL AND created_at <= ?`,
+    [stamp, email, createdAt],
   );
 }
 

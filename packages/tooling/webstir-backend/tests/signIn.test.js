@@ -140,6 +140,35 @@ for (const target of databaseTargets) {
   });
 }
 
+test('a code resent while the old one signs someone in stays usable', async () => {
+  const db = await challenges(databaseTargets[0]);
+  const email = 'ada@example.com';
+  const old = await createChallenge(db, email, SECRET, at(0));
+  let resent;
+  // Between the update that uses the old code and what follows it, a new code is sent.
+  const racing = {
+    ...db,
+    get: db.get,
+    query: db.query,
+    transaction: db.transaction,
+    async execute(sql, params) {
+      const result = await db.execute(sql, params);
+      if (!resent && /SET consumed_at = \?\s+WHERE id = \?/.test(sql)) {
+        resent = await createChallenge(db, email, SECRET, at(2));
+      }
+      return result;
+    },
+  };
+  assert.equal(await consumeCode(racing, email, old.code, SECRET, at(1)), true);
+  assert.ok(resent);
+  assert.equal(
+    await consumeCode(db, email, resent.code, SECRET, at(3)),
+    true,
+    'the resent code works',
+  );
+  await db.close();
+});
+
 test('return addresses stay on the app, and never lead back to sign-in', () => {
   for (const [value, expected] of [
     ['/notes/', '/notes/'],
