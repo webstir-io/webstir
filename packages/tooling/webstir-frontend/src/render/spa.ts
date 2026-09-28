@@ -5,13 +5,14 @@ import type { RenderNode, RenderSourceLocation } from '@webstir-io/module-contra
 import { getPageDirectories } from '../core/pages.js';
 import { pathExists, readFile } from '../utils/fs.js';
 import { mayContainBindings } from './bindings.js';
+import { findPageDataModule } from './browser.js';
 import { compileRenderProgram } from './compile.js';
 import { RenderTemplateError, type RenderIssue } from './issues.js';
 import { prepareTemplateSource } from './source.js';
 
 /**
- * An SPA has no server and no build-time data, so nothing would fill a page's bindings: its
- * placeholders would ship as the page. Templates are checked from source, so watch, build and
+ * An SPA has no server and no build-time data, so only a page that renders in the browser (one with
+ * a data.ts) can fill its bindings; any other page's placeholders would ship as the page. Templates are checked from source, so watch, build and
  * publish all fail the same way.
  */
 export async function assertNoSpaBindings(options: {
@@ -26,11 +27,16 @@ export async function assertNoSpaBindings(options: {
       label: `page '${page.name}'`,
       name: page.name,
       file: path.join(page.directory, 'index.html'),
+      directory: page.directory,
     })),
   ];
   const issues: RenderIssue[] = [];
   for (const template of templates) {
     if (!(await pathExists(template.file))) {
+      continue;
+    }
+    // A page with a data.ts renders in the browser, which an SPA can do.
+    if ('directory' in template && (await findPageDataModule(template.directory))) {
       continue;
     }
     const html = await readFile(template.file);
@@ -44,7 +50,7 @@ export async function assertNoSpaBindings(options: {
     if (first) {
       issues.push({
         loc: first,
-        message: `${template.label} has bindings, but an SPA has no server to render them; use full mode, or ssg with a view that renders the page`,
+        message: `${template.label} has bindings, but an SPA has no server to render them; add a data.ts beside the page to render it in the browser`,
       });
     }
   }

@@ -11,6 +11,7 @@ import {
 import { getPageDirectories } from '../core/pages.js';
 import { loadBackendModuleDefinition } from '../utils/backendModule.js';
 import { pathExists, readJson } from '../utils/fs.js';
+import { findPageDataModule } from './browser.js';
 import { RenderTemplateError, type RenderIssue } from './issues.js';
 import {
   checkAttribute,
@@ -56,6 +57,17 @@ export async function validateRenderPrograms(
   for (const [page, views] of claims) {
     const source = path.join(sourcePagesRoot, page, 'index.html');
     const sourceLabel = path.relative(options.workspaceRoot, source).split(path.sep).join('/');
+    const dataModule = await findPageDataModule(path.join(sourcePagesRoot, page));
+    if (dataModule) {
+      const dataLabel = path.relative(options.workspaceRoot, dataModule).split(path.sep).join('/');
+      for (const view of views) {
+        issues.push({
+          loc: { file: dataLabel, line: 1 },
+          message: `page '${page}' renders in the browser (it has ${dataLabel}), and view ${viewName(view)} also renders it; keep one`,
+        });
+      }
+      continue;
+    }
     if (!(await pathExists(source))) {
       for (const view of views) {
         issues.push({
@@ -78,12 +90,15 @@ export async function validateRenderPrograms(
         });
         continue;
       }
-      issues.push(...validateRenderProgram(program, view.data, viewName(view)));
+      issues.push(...validateRenderProgram(program, view.data, `view ${viewName(view)}`));
     }
   }
 
   for (const page of await getPageDirectories(options.pagesRoot)) {
-    if (claims.has(page.name)) {
+    if (
+      claims.has(page.name) ||
+      (await findPageDataModule(path.join(sourcePagesRoot, page.name)))
+    ) {
       continue;
     }
     const program = await readProgram(path.join(page.directory, RENDER_PROGRAM_FILE));
@@ -91,7 +106,7 @@ export async function validateRenderPrograms(
     if (first) {
       issues.push({
         loc: first,
-        message: `page '${page.name}' has bindings, but no view renders it; add \`page: '${page.name}'\` to a view definition`,
+        message: `page '${page.name}' has bindings, but nothing renders it; add \`page: '${page.name}'\` to a view definition, or a data.ts beside it to render it in the browser`,
       });
     }
   }
@@ -101,13 +116,14 @@ export async function validateRenderPrograms(
   }
 }
 
+/** `renderer` names what supplies the data, as issues report it: `view clientsPage`, `page 'items'`. */
 export function validateRenderProgram(
   program: RenderProgram,
   dataSchema: SchemaLike,
-  view: string,
+  renderer: string,
 ): RenderIssue[] {
   const issues: RenderIssue[] = [];
-  walk(program.nodes, flattenSchema(dataSchema), [], view, issues);
+  walk(program.nodes, flattenSchema(dataSchema), [], renderer, issues);
   return issues;
 }
 
@@ -124,7 +140,7 @@ function walk(
     }
     const label = bindingLabel(node);
     const report = (message: string) => {
-      issues.push({ loc: node.loc, message: `${label}: ${message} (view ${view})` });
+      issues.push({ loc: node.loc, message: `${label}: ${message} (${view})` });
     };
 
     const resolved = resolve(node.path, root, scopes);

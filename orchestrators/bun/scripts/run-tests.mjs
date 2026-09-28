@@ -15,6 +15,7 @@ const browserTestFiles = [
   'tests/bun-first-spa.integration.test.ts',
   'tests/ssg-watch.integration.test.ts',
   'tests/ssg-publish-client-nav.browser.integration.test.ts',
+  'tests/browser-rendered-pages.browser.integration.test.ts',
   'tests/full-watch.integration.test.ts',
 ];
 

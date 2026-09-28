@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-export const RENDER_PROGRAM_VERSION = 1;
-export const RENDER_PROGRAM_FILE = 'index.program.json';
+import { RENDER_PROGRAM_VERSION } from './render-version.js';
+
+export { RENDER_PROGRAM_FILE, RENDER_PROGRAM_VERSION } from './render-version.js';
 
 export const renderSourceLocationSchema = z.object({
   file: z.string().min(1),

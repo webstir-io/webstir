@@ -188,7 +188,7 @@ test('SSG publish fails on a template with bindings that no view renders', async
       assert.ok(error instanceof RenderTemplateError);
       assert.match(
         error.message,
-        /src\/frontend\/pages\/post\/index.html:\d+: page 'post' has bindings, but no view renders it/,
+        /src\/frontend\/pages\/post\/index.html:\d+: page 'post' has bindings, but nothing renders it/,
       );
       return true;
     });

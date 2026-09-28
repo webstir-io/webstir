@@ -13,6 +13,12 @@ import {
 import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
+import {
+  compileBrowserPage,
+  findPageDataModule,
+  loadPageDataModule,
+  writeBrowserPageEntry,
+} from '../render/browser.js';
 
 const ENTRY_EXTENSIONS = ['.ts', '.tsx', '.js'];
 const APP_ENTRY_BASENAME = 'app';
@@ -61,7 +67,8 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
     !shouldProcess(context, [
       {
         directory: config.paths.src.frontend,
-        extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx'],
+        // Templates too: a browser-rendered page's bundle carries its compiled template.
+        extensions: [EXTENSIONS.ts, EXTENSIONS.js, '.tsx', '.jsx', '.html'],
       },
     ])
   ) {
@@ -77,10 +84,11 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
     if (targetPage && page.name !== targetPage) {
       continue;
     }
-    const entryPoint = await resolveEntryPoint(page.directory);
-    if (!entryPoint) {
+    const pageEntry = await resolveEntryPoint(page.directory);
+    if (!pageEntry) {
       continue;
     }
+    const entryPoint = await resolveBundleEntry(config, page, pageEntry);
 
     if (isProduction) {
       await buildForProduction(config, page.name, entryPoint, bundler);
@@ -385,6 +393,33 @@ async function copyRuntimeScripts(
       await copy(source, distDestination);
     }
   }
+}
+
+/** A browser-rendered page bundles its script together with its compiled template. */
+async function resolveBundleEntry(
+  config: BuilderContext['config'],
+  page: { readonly name: string; readonly directory: string },
+  pageEntry: string,
+): Promise<string> {
+  const dataModule = await findPageDataModule(page.directory);
+  if (!dataModule) {
+    return pageEntry;
+  }
+  const workspaceRoot = config.paths.workspace;
+  const { schema } = await loadPageDataModule(dataModule, { workspaceRoot, page: page.name });
+  const program = await compileBrowserPage({
+    workspaceRoot,
+    partialsRoot: path.join(config.paths.src.app, FOLDERS.partials),
+    page: page.name,
+    pageDirectory: page.directory,
+    schema,
+  });
+  return await writeBrowserPageEntry({
+    workspaceRoot,
+    page: page.name,
+    entryPoint: pageEntry,
+    program,
+  });
 }
 
 async function resolveEntryPoint(pageDirectory: string): Promise<string | null> {

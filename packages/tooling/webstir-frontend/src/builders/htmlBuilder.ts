@@ -31,6 +31,12 @@ import {
   writePageProgram,
   type TemplateSourceOptions,
 } from '../render/index.js';
+import {
+  findPageDataModule,
+  loadPageDataModule,
+  renderInitialDocument,
+} from '../render/browser.js';
+import { RENDER_PROGRAM_FILE } from '@webstir-io/module-contract';
 import type { EnableFlags } from '../types.js';
 import {
   resolvePageAssetUrl,
@@ -125,21 +131,37 @@ async function buildHtml(context: BuilderContext): Promise<void> {
       const fragment = await withInlineScripts(context, preparedFragment, sourceHtmlPath, false);
 
       const mergedHtml = mergeTemplates(templateHtml, fragment);
+      const dataModule = isPageIndex ? await findPageDataModule(page.directory) : undefined;
       const mergedWithScripts = injectOptInScripts(
         mergedHtml,
         context.enable,
         page.name,
         page.directory,
         sourceHtmlPath,
+        dataModule !== undefined,
       );
       const targetPath = path.join(targetDir, path.basename(relativeHtml));
+      const source = path
+        .relative(config.paths.workspace, sourceHtmlPath)
+        .split(path.sep)
+        .join('/');
+      if (dataModule) {
+        // A browser-rendered page ships rendered with its first-load data; its script carries the
+        // program, so none is written for the server.
+        const { initial } = await loadPageDataModule(dataModule, {
+          workspaceRoot: config.paths.workspace,
+          page: page.name,
+        });
+        await writeFile(
+          targetPath,
+          renderInitialDocument(mergedWithScripts, { page: page.name, source, initial }),
+        );
+        await remove(path.join(targetDir, RENDER_PROGRAM_FILE));
+        continue;
+      }
       await writeFile(targetPath, mergedWithScripts);
       if (isPageIndex) {
-        await writePageProgram(mergedWithScripts, {
-          page: page.name,
-          source: path.relative(config.paths.workspace, sourceHtmlPath).split(path.sep).join('/'),
-          targetDir,
-        });
+        await writePageProgram(mergedWithScripts, { page: page.name, source, targetDir });
       }
     }
   }
@@ -286,6 +308,7 @@ function injectOptInScripts(
   pageName: string,
   pageDir: string,
   _sourceHtmlPath: string,
+  browserRendered = false,
 ): string {
   const document = load(html);
 
@@ -331,6 +354,8 @@ function injectOptInScripts(
       const script = document(element);
       if (isPageEntryScript(script.attr('src') ?? '', pageName, `/${FOLDERS.pages}`)) {
         script.attr('data-webstir-page', '');
+        // Client-nav loads a browser-rendered page's data before it swaps the page in.
+        if (browserRendered) script.attr('data-webstir-load', '');
       }
     });
   }

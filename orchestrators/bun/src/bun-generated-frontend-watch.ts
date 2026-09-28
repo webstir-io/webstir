@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { startBunSsgFrontendWatch } from './bun-ssg-watch.ts';
+import { findPageDataModule } from '@webstir-io/webstir-frontend';
 import { checkSpaTemplates } from './render-validation.ts';
 import { watch, type FSWatcher } from 'node:fs';
 
@@ -62,10 +63,12 @@ export async function startBunGeneratedFrontendWatch(
   assertPageRoutesCompatible(pageRoutes, pages);
   if (
     packageJson.webstir?.enable?.clientNav === true ||
-    (options.apiProxyOrigin !== undefined && (await hasRenderedViewRoutes(paths.workspaceRoot)))
+    (options.apiProxyOrigin !== undefined && (await hasRenderedViewRoutes(paths.workspaceRoot))) ||
+    (await hasBrowserRenderedPages(pages))
   ) {
-    // Client navigation needs independently importable page entries, and rendered views need
-    // compiled page programs. Bun's HTML bundler provides neither; use the document builder.
+    // Client navigation needs independently importable page entries, and rendered views and
+    // browser-rendered pages need compiled page programs. Bun's HTML bundler provides neither;
+    // use the document builder.
     return startBunSsgFrontendWatch(options);
   }
   const host = options.host ?? '127.0.0.1';
@@ -426,4 +429,13 @@ function createSession(
       await exitPromise;
     },
   };
+}
+
+async function hasBrowserRenderedPages(
+  pages: readonly { readonly directory: string }[],
+): Promise<boolean> {
+  for (const page of pages) {
+    if (await findPageDataModule(page.directory)) return true;
+  }
+  return false;
 }

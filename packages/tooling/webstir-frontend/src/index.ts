@@ -17,6 +17,7 @@ export {
   RenderTemplateError,
   assertNoSpaBindings,
   compileRenderProgram,
+  findPageDataModule,
   formatRenderIssues,
   prepareTemplateSource,
   validateRenderProgram,

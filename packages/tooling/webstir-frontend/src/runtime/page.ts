@@ -6,6 +6,11 @@ export interface PageContext<Data = unknown> {
   readonly url: URL;
   readonly signal: AbortSignal;
   readonly scope: CleanupScope;
+  /**
+   * Renders the page again with new data, for a page that renders in the browser (one with a
+   * data.ts). It replaces `<main>`'s content, so listen on `root`, which stays.
+   */
+  readonly render?: (data: Data) => void;
 }
 
 // biome-ignore lint/suspicious/noConfusingVoidType: Accept callbacks typed void or Promise<void>, not only explicit undefined returns.
@@ -18,13 +23,30 @@ export function createPageLifecycle(reportError: (error: unknown) => void = cons
 
   return {
     /** Starts the page; the promise settles once its setup has finished, async setup included. */
-    start(setup: PageSetup, root: HTMLElement, url: string, data?: unknown): Promise<void> {
+    start(
+      setup: PageSetup,
+      root: HTMLElement,
+      url: string,
+      data?: unknown,
+      render?: (data: unknown) => void,
+    ): Promise<void> {
       if (current) throw new Error('Dispose the previous page before starting another.');
       const controller = new AbortController();
       const scope = createCleanupScope();
       current = { controller, scope };
       try {
-        const result = setup({ data, root, url: new URL(url), signal: controller.signal, scope });
+        const result = setup({
+          data,
+          root,
+          url: new URL(url),
+          signal: controller.signal,
+          scope,
+          render: render
+            ? (next) => {
+                if (!controller.signal.aborted) render(next);
+              }
+            : undefined,
+        });
         if (typeof result === 'function') {
           scope.add(result);
           return Promise.resolve();

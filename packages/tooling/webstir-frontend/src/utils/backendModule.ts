@@ -42,7 +42,7 @@ const require = createRequire(import.meta.url);
  * Imports the module as it is now, not as an earlier import cached it. Bun keeps ES modules in
  * `require.cache` and ignores a query string; Node does the opposite.
  */
-async function importCurrent(fullPath: string): Promise<Record<string, unknown>> {
+export async function importCurrent(fullPath: string): Promise<Record<string, unknown>> {
   const url = pathToFileURL(fullPath).href;
   if (!('Bun' in globalThis)) {
     return (await import(`${url}?t=${Date.now()}`)) as Record<string, unknown>;

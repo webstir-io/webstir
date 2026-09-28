@@ -1,10 +1,11 @@
-import {
-  RENDER_PROGRAM_VERSION,
-  type RenderNode,
-  type RenderPath,
-  type RenderProgram,
-  type RenderSourceLocation,
+// Zod-free, so the executor can run in the browser: only types come from the schemas.
+import type {
+  RenderNode,
+  RenderPath,
+  RenderProgram,
+  RenderSourceLocation,
 } from './render-program.js';
+import { RENDER_PROGRAM_VERSION } from './render-version.js';
 
 export const RENDER_CSRF_FIELD = '_csrf';
 
