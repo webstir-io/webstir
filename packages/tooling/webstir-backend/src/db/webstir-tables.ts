@@ -4,22 +4,19 @@ import { applyMigrations, type Migration } from './migrations.js';
 /** Webstir's own tables, by the battery that uses them; each is created the first time it is. */
 export type WebstirTables = 'sessions' | 'jobs' | 'sign-in';
 
-const TABLES: Record<WebstirTables, readonly { id: string; sql: string }[]> = {
-  sessions: [
-    {
-      id: 'webstir/sessions-1',
-      sql: `CREATE TABLE IF NOT EXISTS webstir_sessions (
-  id TEXT PRIMARY KEY,
-  record TEXT NOT NULL,
-  expires_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS webstir_sessions_expires_at ON webstir_sessions (expires_at);`,
-    },
-  ],
+type Step = { readonly id: string; apply(connection: DatabaseConnection): Promise<void> };
+
+const script =
+  (sql: string) =>
+  (connection: DatabaseConnection): Promise<void> =>
+    connection.exec(sql);
+
+const TABLES: Record<WebstirTables, readonly Step[]> = {
+  sessions: [{ id: 'webstir/sessions-2', apply: createSessionRecords }],
   jobs: [
     {
       id: 'webstir/jobs-1',
-      sql: `CREATE TABLE IF NOT EXISTS webstir_jobs (
+      apply: script(`CREATE TABLE IF NOT EXISTS webstir_jobs (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   payload TEXT,
@@ -31,13 +28,13 @@ CREATE INDEX IF NOT EXISTS webstir_sessions_expires_at ON webstir_sessions (expi
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS webstir_jobs_due ON webstir_jobs (status, run_at);`,
+CREATE INDEX IF NOT EXISTS webstir_jobs_due ON webstir_jobs (status, run_at);`),
     },
   ],
   'sign-in': [
     {
       id: 'webstir/sign-in-1',
-      sql: `CREATE TABLE IF NOT EXISTS users (
+      apply: script(`CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   session_version INTEGER NOT NULL DEFAULT 1,
@@ -54,7 +51,7 @@ CREATE TABLE IF NOT EXISTS webstir_sign_in_challenges (
   consumed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS webstir_sign_in_challenges_email
-  ON webstir_sign_in_challenges (email, created_at);`,
+  ON webstir_sign_in_challenges (email, created_at);`),
     },
   ],
 };
@@ -62,11 +59,44 @@ CREATE INDEX IF NOT EXISTS webstir_sign_in_challenges_email
 const ensured = new WeakMap<DatabaseConnection, Map<WebstirTables, Promise<unknown>>>();
 
 export function webstirMigrations(tables: WebstirTables): Migration[] {
-  return TABLES[tables].map(({ id, sql }) => ({
+  return TABLES[tables].map(({ id, apply }) => ({
     id,
     source: `Webstir's ${tables} tables`,
-    apply: (connection) => connection.exec(sql),
+    apply,
   }));
+}
+
+/**
+ * Sessions live in `webstir_session_records`. Webstir 0.7.0 kept them in `webstir_sessions`, which
+ * moves across; a `webstir_sessions` of another shape is an app's own, from the old session
+ * template, and stays as it is.
+ */
+async function createSessionRecords(connection: DatabaseConnection): Promise<void> {
+  const [sessions, records] = await Promise.all([
+    tableColumns(connection, 'webstir_sessions'),
+    tableColumns(connection, 'webstir_session_records'),
+  ]);
+  if (records.length === 0 && sessions.sort().join() === 'expires_at,id,record') {
+    await connection.exec(`ALTER TABLE webstir_sessions RENAME TO webstir_session_records;
+DROP INDEX IF EXISTS webstir_sessions_expires_at;`);
+  }
+  await connection.exec(`CREATE TABLE IF NOT EXISTS webstir_session_records (
+  id TEXT PRIMARY KEY,
+  record TEXT NOT NULL,
+  expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS webstir_session_records_expires_at ON webstir_session_records (expires_at);`);
+}
+
+async function tableColumns(connection: DatabaseConnection, table: string): Promise<string[]> {
+  const rows = await connection.query<{ name: string }>(
+    connection.dialect === 'sqlite'
+      ? 'SELECT name FROM pragma_table_info(?)'
+      : `SELECT column_name AS name FROM information_schema.columns
+         WHERE table_schema = current_schema() AND table_name = ?`,
+    [table],
+  );
+  return rows.map((row) => row.name);
 }
 
 /** Creates a battery's tables once per connection, before its first query outside a transaction. */

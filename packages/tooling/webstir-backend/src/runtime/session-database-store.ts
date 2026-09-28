@@ -21,7 +21,7 @@ export function createDatabaseSessionStore<
   return {
     async get(sessionId) {
       const row = await (await database()).get<{ record: string }>(
-        'SELECT record FROM webstir_sessions WHERE id = ?',
+        'SELECT record FROM webstir_session_records WHERE id = ?',
         [sessionId],
       );
       return row ? (JSON.parse(row.record) as SessionStoreRecord<TSession>) : undefined;
@@ -29,20 +29,22 @@ export function createDatabaseSessionStore<
     async set(record) {
       const connection = await database();
       await connection.execute(
-        `INSERT INTO webstir_sessions (id, record, expires_at) VALUES (?, ?, ?)
+        `INSERT INTO webstir_session_records (id, record, expires_at) VALUES (?, ?, ?)
          ON CONFLICT (id) DO UPDATE SET record = excluded.record, expires_at = excluded.expires_at`,
         [record.id, JSON.stringify(record), record.expiresAt],
       );
       const now = Date.now();
       if (now - lastPurge > PURGE_EVERY_MS) {
         lastPurge = now;
-        await connection.execute('DELETE FROM webstir_sessions WHERE expires_at <= ?', [
+        await connection.execute('DELETE FROM webstir_session_records WHERE expires_at <= ?', [
           new Date(now).toISOString(),
         ]);
       }
     },
     async delete(sessionId) {
-      await (await database()).execute('DELETE FROM webstir_sessions WHERE id = ?', [sessionId]);
+      await (await database()).execute('DELETE FROM webstir_session_records WHERE id = ?', [
+        sessionId,
+      ]);
     },
   };
 }
