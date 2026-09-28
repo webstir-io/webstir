@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { prepareApp } from '../dist/index.js';
-import { files, serveLocalFile } from '../dist/files/index.js';
+import { files, serveLocalFile, setFileStore } from '../dist/files/index.js';
 
 const KEYS = [
   'STORAGE_URL',
@@ -202,6 +202,64 @@ test('downloads keep names in any script, and type records stay inside the stora
     assert.deepEqual(entries, ['files']);
     for (const key of ['.webstir/types/x', '.WEBSTIR/types/x', '.Webstir/x']) {
       await assert.rejects(files.put(key, 'x'), /is not a file key/, key);
+    }
+  });
+});
+
+test("setFileStore keeps files with the app's own store, under the same key rule", async () => {
+  await withApp({ STORAGE_URL: 's3://not-used' }, async () => {
+    const kept = new Map();
+    const calls = [];
+    setFileStore({
+      async put(key, data, options) {
+        calls.push(['put', key, options]);
+        kept.set(key, new Blob([data], { type: options?.contentType }));
+      },
+      async get(key) {
+        calls.push(['get', key]);
+        return kept.get(key);
+      },
+      async url(key, options) {
+        calls.push(['url', key, options]);
+        return `https://files.example/${key}?expires=${options.expiresIn}`;
+      },
+      async delete(key) {
+        calls.push(['delete', key]);
+        kept.delete(key);
+      },
+    });
+    try {
+      await files.put('proposals/a.pdf', new Blob(['%PDF'], { type: 'application/pdf' }));
+      assert.equal(await (await files.get('proposals/a.pdf'))?.text(), '%PDF');
+      assert.equal(
+        await files.url('proposals/a.pdf', { expiresIn: 90.5 }),
+        'https://files.example/proposals/a.pdf?expires=90',
+      );
+      await files.delete('proposals/a.pdf');
+      assert.equal(await files.get('proposals/a.pdf'), undefined);
+      await files.put('proposals/b.pdf', new Uint8Array([37, 80]));
+      await files.put('proposals/c', 'no extension');
+      assert.deepEqual(calls, [
+        ['put', 'proposals/a.pdf', { contentType: 'application/pdf' }],
+        ['get', 'proposals/a.pdf'],
+        ['url', 'proposals/a.pdf', { expiresIn: 90 }],
+        ['delete', 'proposals/a.pdf'],
+        ['get', 'proposals/a.pdf'],
+        ['put', 'proposals/b.pdf', { contentType: 'application/pdf' }],
+        ['put', 'proposals/c', undefined],
+      ]);
+
+      for (const key of ['../x', '/x', 'a//b']) {
+        await assert.rejects(files.put(key, 'x'), /not a file key/);
+        await assert.rejects(files.get(key), /not a file key/);
+      }
+      assert.equal(calls.length, 7);
+      assert.equal(
+        (await serveLocalFile(new URL('http://app/api/_webstir/files/proposals/a.pdf')))?.status,
+        404,
+      );
+    } finally {
+      setFileStore(undefined);
     }
   });
 });

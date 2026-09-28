@@ -25,6 +25,21 @@ await ctx.files.delete(`avatars/${ctx.user.id}.png`);
 
 For S3, set `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_REGION` (or the `AWS_*` names), and `S3_ENDPOINT` for a service other than AWS.
 
+## Your own storage client
+
+When Bun's S3 client doesn't fit, such as keys kept in an AWS credentials profile, set a store in `src/backend/index.ts`, before the server starts. `ctx.files` then uses it, with the same key rule:
+
+```ts
+import { setFileStore } from '@webstir-io/webstir-backend/files';
+
+setFileStore({
+  async put(key, data, options) { /* write it, with options?.contentType */ },
+  async get(key) { /* a Blob, or undefined */ },
+  async url(key, { expiresIn }) { /* a link that works for expiresIn seconds */ },
+  async delete(key) { /* remove it */ },
+});
+```
+
 ## Files from a form
 
 A form with `enctype="multipart/form-data"` gives its file fields as `File` objects in `ctx.body`:
