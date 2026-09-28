@@ -26,24 +26,39 @@ const accountView = {
 
 ## How it works
 
-1. The visitor gives their address. If they may sign in, Webstir emails a 6-digit code and a link.
-2. The code works for 5 minutes and 3 tries. A new request replaces the old code. An address gets at most one code a minute and five in fifteen minutes.
+1. The visitor gives their address. If they may sign in, Webstir emails a 6-digit code and a link. Someone already signed in, who still may, goes straight on.
+2. The code works for 5 minutes and 3 tries. It can be typed with spaces or dashes, or pasted with the email's words around it. A new request replaces the old code, and the page says one is on its way. An address gets at most one code a minute and five in fifteen minutes.
 3. The answer is the same whether or not the address may sign in, or asked too often, so the page tells nobody who has an account.
 4. The link opens a page that signs in with a button (a POST), so a mail scanner that follows links uses nothing up.
-5. Signing in starts a new session, and returns the visitor to the page they came from, never to another site.
+5. Signing in starts a new session, and returns the visitor to the page they came from, never to another site. Someone already signed in who opens sign-in goes straight there.
 6. Codes and link tokens are stored only as hashes, keyed with `SESSION_SECRET`.
 
 In development, the email is printed in the terminal and kept in `.webstir/email.log`, and the page says so.
 
 ## Choose who may sign in
 
-By default anyone can, and a first sign-in creates the user. For an app where people are invited, turn others away in `src/backend/sign-in.ts`:
+By default anyone can, and a first sign-in creates the user. For an app where people are invited, turn others away in `src/backend/sign-in.ts`. It is asked when a code is requested and again when the code or link is used, so someone removed in between is turned away:
 
 ```ts
 const signIn: SignInOptions = {
   canSignIn: async (email) => Boolean(await db.get('SELECT 1 FROM invitations WHERE email = ?', [email])),
 };
 ```
+
+## An app with its own users table
+
+Webstir makes `users (id, email, session_version, created_at)` before the app's migrations run, so they can reference `users (id)`. An app whose own migrations make `users`, with more columns such as a name or a status, says so, and Webstir leaves the table to them:
+
+```ts
+const signIn: SignInOptions = { usersTable: 'app', canSignIn };
+```
+
+Its table needs:
+
+- `id` as text: Webstir gives a new user a UUID.
+- `email`, unique, stored lowercase: Webstir looks addresses up lowercased.
+- `session_version`, an integer that starts at 0 or 1, and `created_at`.
+- A default, or room for NULL, in every other column, since a first sign-in inserts only these four. An invite-only app whose `canSignIn` turns unknown addresses away never has Webstir insert one.
 
 ## In production
 

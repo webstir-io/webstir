@@ -152,7 +152,9 @@ export function createConnection(driver: DatabaseDriver): DatabaseConnection {
         );
       }
       return serial(async () => {
-        await driver.exec('BEGIN');
+        // A single connection's transaction takes the write lock at once, so another process
+        // writing to the file makes it wait, instead of failing when a read turns into a write.
+        await driver.exec(driver.dialect === 'sqlite' ? 'BEGIN IMMEDIATE' : 'BEGIN');
         try {
           const result = await scope.run({ driver, depth: 1 }, () => work(database));
           await driver.exec('COMMIT');

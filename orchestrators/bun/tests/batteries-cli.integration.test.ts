@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 
 import { runWebstir } from '../test-support/cli.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
@@ -124,6 +124,54 @@ test('add-migration numbers migrations, and migrate applies them and lists them'
     const unknown = await runWebstir(['migrate', '--down', '--workspace', root], { env });
     expect(unknown.exitCode).toBe(1);
     expect(unknown.stderr).toContain('Unknown option "--down"');
+  } finally {
+    await removeDemoWorkspace(copy);
+  }
+}, 120_000);
+
+test('migrate leaves the users table to an app whose migrations make it', async () => {
+  const copy = await copyDemoWorkspace('full', 'webstir-users-table-');
+  try {
+    const root = copy.workspaceRoot;
+    expect((await runWebstir(['enable', 'sign-in', '--workspace', root], { env })).exitCode).toBe(
+      0,
+    );
+    const migrations = path.join(root, 'src', 'backend', 'migrations');
+    await mkdir(migrations, { recursive: true });
+    await writeFile(
+      path.join(migrations, '0001-users.sql'),
+      'CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, status TEXT NOT NULL, session_version INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);\n',
+    );
+    const signIn = path.join(root, 'src', 'backend', 'sign-in.ts');
+
+    // Without saying so, Webstir's users table comes first, and the app's cannot be made.
+    const refused = await runWebstir(['migrate', '--workspace', root], { env });
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stderr).toContain('table users already exists');
+
+    await rm(path.join(root, 'data'), { recursive: true, force: true });
+    // Said in the app's settings, read from its .env as the server reads them.
+    await writeFile(
+      signIn,
+      (await readFile(signIn, 'utf8')).replace(
+        'const signIn: SignInOptions = {',
+        "const signIn: SignInOptions = {\n  usersTable: process.env.USERS_TABLE === 'app' ? 'app' : 'webstir',",
+      ),
+    );
+    await writeFile(path.join(root, '.env'), 'USERS_TABLE=app\n');
+
+    // A module that cannot load stops the migration before it writes anything.
+    const working = await readFile(signIn, 'utf8');
+    await writeFile(signIn, `throw new Error('sign-in settings are missing');\n${working}`);
+    const broken = await runWebstir(['migrate', '--workspace', root], { env });
+    expect(broken.exitCode).toBe(1);
+    expect(broken.stderr).toContain('sign-in settings are missing');
+    expect(existsSync(path.join(root, 'data', 'app.sqlite'))).toBe(false);
+    await writeFile(signIn, working);
+
+    const applied = await runWebstir(['migrate', '--workspace', root], { env });
+    expect(applied.exitCode).toBe(0);
+    expect(applied.stdout).toContain('[webstir] applied\n  0001-users');
   } finally {
     await removeDemoWorkspace(copy);
   }

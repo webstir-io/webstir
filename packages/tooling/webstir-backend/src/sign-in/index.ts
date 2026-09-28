@@ -6,4 +6,5 @@ export {
   type SignInModule,
   type SignInOptions,
 } from './module.js';
+export { declareSignInTables } from './database.js';
 export type { SessionUser } from './users.js';

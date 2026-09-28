@@ -11,7 +11,7 @@ import { executeRequestHookPhase, type RequestHookReferenceLike } from './reques
 import { isProduction, setAppRoot } from '../app/app-root.js';
 import { appUrl, loadAppEnv, loadEnvFiles } from '../app/env.js';
 import { appServices } from '../app/services.js';
-import { appDatabase, appDatabaseExists, declareWebstirTables } from '../db/app-database.js';
+import { appDatabase, appDatabaseExists } from '../db/app-database.js';
 import type { Database } from '../db/database.js';
 import { readAppMigrations } from '../db/migrations.js';
 import { emailSetupProblem, type Email } from '../email/index.js';
@@ -23,6 +23,8 @@ import {
   signInLocation,
   signInRequired,
 } from '../sign-in/guard.js';
+import { declareSignInTables } from '../sign-in/database.js';
+import type { SignInOptions } from '../sign-in/module.js';
 import type { SessionUser } from '../sign-in/users.js';
 import { createRequestMetricsTracker } from './metrics.js';
 import { createDatabaseSessionStore } from './session-database-store.js';
@@ -239,12 +241,13 @@ export async function startBunBackend<
     logger.warn({ warning }, '[webstir-backend] module configuration warning');
   }
   const manifestSummary = summarizeManifest(runtime.manifest);
-  const signInEnabled = Boolean((runtime.definition as { signIn?: unknown } | undefined)?.signIn);
+  const signIn = (runtime.definition as { signIn?: SignInOptions } | undefined)?.signIn;
+  const signInEnabled = Boolean(signIn);
   const signInProblem = checkSignInSetup(runtime, signInEnabled);
   if (signInProblem) {
     throw new Error(`[webstir-backend] ${signInProblem}`);
   }
-  if (signInEnabled) declareWebstirTables('sign-in');
+  if (signIn) declareSignInTables(signIn);
   // A database the app has, or needs for its migrations, opens now, so a failing migration stops
   // the server before it listens.
   if (readAppMigrations(workspaceRoot).length > 0 || appDatabaseExists()) {
