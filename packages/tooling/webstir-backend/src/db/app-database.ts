@@ -140,8 +140,11 @@ export async function snapshotAppDatabase(): Promise<string | undefined> {
   // A copy of the database as it is: when the app hasn't opened it, the copy is taken over a
   // connection of its own, so taking one never applies migrations.
   let own: DatabaseConnection | undefined;
-  const connection = async () =>
-    opened ?? (own ??= await openDatabase(appDatabaseUrl(), { workspaceRoot: appRoot() }));
+  const connection = async () => {
+    if (opened) return opened;
+    own ??= await openDatabase(appDatabaseUrl(), { workspaceRoot: appRoot() });
+    return own;
+  };
   const snapshots = databaseSnapshots(connection, appDatabaseUrl());
   if (!snapshots) {
     throw new Error(
