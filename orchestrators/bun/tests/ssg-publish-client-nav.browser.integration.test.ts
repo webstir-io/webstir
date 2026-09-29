@@ -22,8 +22,19 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
       materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' }),
     );
     await step('enable client-nav', () => runCli(workspace, ['enable', 'client-nav']));
-    await writeLifecyclePage(workspace, 'home', '<a href="/second/">Second</a>');
-    await writeLifecyclePage(workspace, 'second', '<a href="/">Home</a>');
+    // Home's small stylesheet is inlined as a critical style; the second page's is too large to be.
+    await writeLifecyclePage(
+      workspace,
+      'home',
+      '<a href="/second/">Second</a>',
+      'h1 { letter-spacing: 3px; }\n',
+    );
+    await writeLifecyclePage(
+      workspace,
+      'second',
+      '<a href="/">Home</a>',
+      Array.from({ length: 400 }, (_, i) => `.pad-${i} { margin: ${i}px; }`).join('\n'),
+    );
     await step('publish', () => runCli(workspace, ['publish']));
 
     const distRoot = path.join(workspace, 'dist', 'frontend');
@@ -58,7 +69,30 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
     // Webstir's critical app styles sit before the app's stylesheet, so the app's rules win.
     expect(await criticalStylesPrecedeAppCss(page)).toBe(true);
 
+    // While the next page's stylesheet loads, the outgoing page keeps its own inlined styles.
+    expect(await page.locator('head style[data-critical=""]').count()).toBe(1);
+    let releaseCss!: () => void;
+    const cssHeld = new Promise<void>((resolve) => {
+      releaseCss = resolve;
+    });
+    let cssRequested!: () => void;
+    const cssAsked = new Promise<void>((resolve) => {
+      cssRequested = resolve;
+    });
+    await page.route(/\/second\/.*\.css$/, async (route) => {
+      cssRequested();
+      await cssHeld;
+      await route.continue();
+    });
     await page.locator('main a[href="/second/"]').click();
+    await cssAsked;
+    expect(
+      await page.evaluate(() => ({
+        path: location.pathname,
+        spacing: getComputedStyle(document.querySelector('h1')!).letterSpacing,
+      })),
+    ).toEqual({ path: '/', spacing: '3px' });
+    releaseCss();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 1);
     expect(await readPageState(page)).toEqual({
       path: '/second/',
@@ -172,14 +206,21 @@ async function readPageState(page: import('playwright').Page) {
   }));
 }
 
-async function writeLifecyclePage(workspace: string, name: string, link: string): Promise<void> {
+async function writeLifecyclePage(
+  workspace: string,
+  name: string,
+  link: string,
+  css?: string,
+): Promise<void> {
   const pageDir = path.join(workspace, 'src', 'frontend', 'pages', name);
   await mkdir(pageDir, { recursive: true });
+  if (css !== undefined) await writeFile(path.join(pageDir, 'index.css'), css, 'utf8');
   await writeFile(
     path.join(pageDir, 'index.html'),
     [
       '<head>',
       `  <title>${name}</title>`,
+      ...(css !== undefined ? ['  <link rel="stylesheet" href="index.css">'] : []),
       '  <script type="module" src="index.js"></script>',
       '</head>',
       '<body>',

@@ -168,17 +168,17 @@ export async function syncHead(
 
   const stylesReady =
     pendingStyles.length > 0 ? waitForStylesheets(pendingStyles) : Promise.resolve();
-  if (staleStyles.length > 0) {
+  // The outgoing page keeps its styles, linked or inlined, until the new page has replaced it.
+  const staleCritical = syncCriticalStyles(head, newHead, url, runtime);
+  if (staleStyles.length > 0 || staleCritical.length > 0) {
     void stylesReady.then(() => {
       requestAnimationFrame(() => {
-        for (const link of staleStyles) {
-          link.remove();
+        for (const style of [...staleStyles, ...staleCritical]) {
+          style.remove();
         }
       });
     });
   }
-
-  syncCriticalStyles(head, newHead, url, runtime);
 
   if (preservedClientNav && !head.contains(preservedClientNav)) {
     head.appendChild(preservedClientNav);
@@ -386,17 +386,17 @@ function waitForStylesheets(links: HTMLLinkElement[], timeoutMs = 2000): Promise
 
 /**
  * Critical styles go where the new document has them: before the stylesheet they precede there,
- * such as the app's own, so the cascade matches a full load of the page.
+ * such as the app's own, so the cascade matches a full load of the page. The outgoing page's are
+ * returned for the caller to remove once the new page has replaced it: a page's own small
+ * stylesheet is inlined as one, and removing it early leaves that page unstyled while it waits.
  */
 function syncCriticalStyles(
   head: HTMLHeadElement,
   newHead: HTMLHeadElement,
   url: string,
   runtime: NavigationDomRuntime,
-): void {
-  for (const style of Array.from(head.querySelectorAll<HTMLStyleElement>('style[data-critical]'))) {
-    style.remove();
-  }
+): HTMLStyleElement[] {
+  const stale = Array.from(head.querySelectorAll<HTMLStyleElement>('style[data-critical]'));
 
   for (const style of Array.from(
     newHead.querySelectorAll<HTMLStyleElement>('style[data-critical]'),
@@ -422,6 +422,7 @@ function syncCriticalStyles(
       head.appendChild(next);
     }
   }
+  return stale;
 }
 
 function followingStylesheetKey(
