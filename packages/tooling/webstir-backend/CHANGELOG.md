@@ -1,5 +1,12 @@
 # @webstir-io/webstir-backend
 
+## 0.7.3
+
+### Patch Changes
+
+- 8bf2df9: `webstir migrate` gives migrations the database it is migrating, as the server does when it starts, so a migration that uses `db` or queues a job no longer locks up.
+- @webstir-io/module-contract@0.7.3
+
 ## 0.7.2
 
 ### Patch Changes
