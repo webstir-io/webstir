@@ -105,3 +105,40 @@ test('a snapshot needs SNAPSHOT_URL, and a SQLite database', async () => {
     },
   );
 });
+
+// A backup must not change what it backs up: taking one never applies a pending migration.
+test('a snapshot copies the database as it is, applying no migration', async () => {
+  await withApp(
+    { SNAPSHOT_URL: 'file:./snapshots', DATABASE_URL: 'file:./app.sqlite' },
+    async (root) => {
+      const live = new Sqlite(path.join(root, 'app.sqlite'));
+      live.run('CREATE TABLE notes (body TEXT)');
+      live.run("INSERT INTO notes (body) VALUES ('kept')");
+      live.close();
+      const migrations = path.join(root, 'build', 'backend', 'migrations');
+      await fs.mkdir(migrations, { recursive: true });
+      await fs.writeFile(
+        path.join(migrations, '0001_pending.sql'),
+        'CREATE TABLE pending (id TEXT);\n',
+      );
+
+      const key = await snapshotAppDatabase();
+      await closeAppDatabase();
+
+      const tables = (file) => {
+        const copy = new Sqlite(file, { readonly: true });
+        try {
+          return copy
+            .query("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+            .all()
+            .map((row) => row.name);
+        } finally {
+          copy.close();
+        }
+      };
+      assert.deepEqual(tables(path.join(root, 'snapshots', key)), ['notes']);
+      assert.deepEqual(tables(path.join(root, 'app.sqlite')), ['notes']);
+      assert.deepEqual(notesIn(path.join(root, 'snapshots', key)), ['kept']);
+    },
+  );
+});

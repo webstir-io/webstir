@@ -475,7 +475,8 @@ export async function buildSupportFile(options: SupportFileBuildOptions): Promis
     } else {
       await esbuild({
         entryPoints: [sourceFile],
-        bundle: false,
+        bundle: true,
+        packages: 'external',
         platform: 'node',
         target: 'node20',
         format: 'esm',
@@ -568,7 +569,9 @@ async function runEsbuild(options: BuildOptions): Promise<Record<string, number>
         }
         const ctx = await esbuildContext({
           entryPoints: entryPoints as string[],
-          bundle: false,
+          // As publish does: the app's own imports go in, packages stay outside.
+          bundle: true,
+          packages: 'external',
           platform: 'node',
           target: 'node20',
           format: 'esm',
@@ -592,7 +595,8 @@ async function runEsbuild(options: BuildOptions): Promise<Record<string, number>
       }
       result = await esbuild({
         entryPoints: entryPoints as string[],
-        bundle: false,
+        bundle: true,
+        packages: 'external',
         platform: 'node',
         target: 'node20',
         format: 'esm',

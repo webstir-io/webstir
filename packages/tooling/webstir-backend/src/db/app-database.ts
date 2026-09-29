@@ -137,7 +137,12 @@ function afterWrite(): void {
 
 /** Takes a snapshot of the app's database now, when SNAPSHOT_URL is set; its key, or undefined. */
 export async function snapshotAppDatabase(): Promise<string | undefined> {
-  const snapshots = databaseSnapshots(appDatabase, appDatabaseUrl());
+  // A copy of the database as it is: when the app hasn't opened it, the copy is taken over a
+  // connection of its own, so taking one never applies migrations.
+  let own: DatabaseConnection | undefined;
+  const connection = async () =>
+    opened ?? (own ??= await openDatabase(appDatabaseUrl(), { workspaceRoot: appRoot() }));
+  const snapshots = databaseSnapshots(connection, appDatabaseUrl());
   if (!snapshots) {
     throw new Error(
       process.env.SNAPSHOT_URL?.trim()
@@ -145,7 +150,12 @@ export async function snapshotAppDatabase(): Promise<string | undefined> {
         : 'SNAPSHOT_URL is not set; set it to s3://bucket/prefix or file:./data/snapshots.',
     );
   }
-  return snapshots.now();
+  try {
+    return await snapshots.now();
+  } finally {
+    await own?.close();
+    own = undefined;
+  }
 }
 
 /** Applies the app's pending migrations, as the server does when it starts, and says which. */
