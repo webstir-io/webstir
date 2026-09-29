@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { startBackendWatch } from '../dist/watch.js';
-import { backendProvider } from '../dist/index.js';
+import { scaffoldAssets } from './support/scaffold.js';
 
 async function createTempWorkspace(prefix = 'webstir-backend-watch-') {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -23,7 +23,7 @@ async function copyFile(src, dest) {
 }
 
 async function seedBackendEntry(workspace) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
   for (const asset of assets) {
     if (!asset.targetPath.endsWith(path.join('backend', 'index.ts'))) continue;
     const target = path.join(workspace, asset.targetPath);
@@ -32,7 +32,7 @@ async function seedBackendEntry(workspace) {
 }
 
 async function seedBackendScaffold(workspace) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
   for (const asset of assets) {
     if (!asset.targetPath.startsWith(path.join('src', 'backend'))) continue;
     const target = path.join(workspace, asset.targetPath);

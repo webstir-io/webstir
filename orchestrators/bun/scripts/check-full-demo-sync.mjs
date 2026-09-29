@@ -10,7 +10,15 @@ const repoRoot = path.resolve(packageRoot, '..', '..');
 const templateRoot = path.join(packageRoot, 'resources', 'templates', 'full', 'src');
 const demoRoot = path.join(repoRoot, 'examples', 'demos', 'full', 'src');
 
-const allowedDifferences = new Set();
+// The demo is the starter plus samples: its backend module, home page and their tests show the
+// progressive-enhancement flow, and it adds the lifecycle page. Every other starter file matches.
+const allowedDifferences = new Set([
+  'backend/module.ts',
+  'frontend/pages/home/index.css',
+  'frontend/pages/home/index.html',
+  'frontend/pages/home/tests/home.test.ts',
+]);
+const demoOnly = ['backend/tests/', 'frontend/pages/lifecycle/'];
 
 async function main() {
   const [templateEntries, demoEntries] = await Promise.all([
@@ -26,7 +34,9 @@ async function main() {
     const demoFile = demoEntries.get(relativePath);
 
     if (!templateFile) {
-      differences.push(`unexpected demo file: src/${relativePath}`);
+      if (!demoOnly.some((prefix) => relativePath.startsWith(prefix))) {
+        differences.push(`unexpected demo file: src/${relativePath}`);
+      }
       continue;
     }
 

@@ -1,6 +1,4 @@
 /* Index Page Styles */
-@import "@app/app.css";
-
 .hero {
     display: grid;
     gap: 2rem;

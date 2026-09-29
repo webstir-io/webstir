@@ -7,6 +7,7 @@ import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import { ensureDir, pathExists, readFile, writeFile, remove, copy } from '../utils/fs.js';
 import { scanGlob } from '../utils/glob.js';
 import type { Builder, BuilderContext } from './types.js';
+import { featureStyleImports, withFeatureStyles } from './appStyles.js';
 import { getPages } from '../core/pages.js';
 import { hashContent } from '../utils/hash.js';
 import {
@@ -65,7 +66,7 @@ async function processCss(context: BuilderContext, isProduction: boolean): Promi
 
   const processor = createPostcssProcessor();
   const customMediaPrelude = await loadCustomMediaPrelude(config);
-  const sharedArtifacts = await processAppCss(config, isProduction, processor, customMediaPrelude);
+  const sharedArtifacts = await processAppCss(context, isProduction, processor, customMediaPrelude);
   const targetPage = findPageFromChangedFile(context.changedFile, config.paths.src.pages);
   const pages = await getPages(config.paths.src.pages);
 
@@ -181,18 +182,21 @@ async function syncPageCssAssetsForDevelopment(
 }
 
 async function processAppCss(
-  config: BuilderContext['config'],
+  context: BuilderContext,
   isProduction: boolean,
   processor: postcss.Processor,
   customMediaPrelude: string,
 ): Promise<SharedCssArtifacts> {
+  const { config } = context;
   const appCssPath = path.join(config.paths.src.app, 'app.css');
-  if (!(await pathExists(appCssPath))) {
+  const features = await featureStyleImports(context);
+  const ownCss = (await pathExists(appCssPath)) ? await readFile(appCssPath) : null;
+  if (ownCss === null && features.length === 0) {
     return {};
   }
 
-  const appCss = await readFile(appCssPath);
-  assertCssImportsResolve(appCss, appCssPath, { packages: true });
+  assertCssImportsResolve(ownCss ?? '', appCssPath, { packages: true });
+  const appCss = withFeatureStyles(ownCss ?? '', features);
 
   if (isProduction) {
     const source = applyCustomMediaPrelude(

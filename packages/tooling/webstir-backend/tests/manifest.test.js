@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { backendProvider } from '../dist/index.js';
+import { scaffoldAssets } from './support/scaffold.js';
 
 async function createTempWorkspace(prefix = 'webstir-backend-manifest-') {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -28,7 +29,7 @@ function getLocalBinPath() {
 }
 
 async function seedBackendEntry(workspace) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
   for (const asset of assets) {
     if (!asset.targetPath.endsWith(path.join('backend', 'index.ts'))) continue;
     const target = path.join(workspace, asset.targetPath);
@@ -62,6 +63,8 @@ test('manifest loader honors package overrides', async () => {
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
@@ -90,6 +93,8 @@ test('manifest loader falls back to package name/version when no overrides prese
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
@@ -126,6 +131,8 @@ test('manifest loader merges compiled module definition metadata', async () => {
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
@@ -203,6 +210,8 @@ test('manifest loader merges package routes with compiled module routes without 
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
@@ -276,6 +285,8 @@ test('manifest loader merges package jobs with compiled module jobs without dupl
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
@@ -331,6 +342,8 @@ test('manifest loader falls back to module exports from the compiled index entry
 
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 
@@ -343,28 +356,6 @@ test('manifest loader falls back to module exports from the compiled index entry
   assert.deepEqual(
     moduleManifest?.routes?.map((route) => route.path),
     ['/demo/index-entry'],
-  );
-});
-
-test('scaffold assets are the app-owned backend files; the batteries live in the package', async () => {
-  const assets = await backendProvider.getScaffoldAssets();
-  assert.deepEqual(
-    assets.map((asset) => asset.targetPath).sort(),
-    [
-      path.join('src', 'backend', 'functions', 'hello', 'index.ts'),
-      path.join('src', 'backend', 'index.ts'),
-      path.join('src', 'backend', 'jobs', 'nightly', 'index.ts'),
-      path.join('src', 'backend', 'module.ts'),
-      path.join('src', 'backend', 'tsconfig.json'),
-    ].sort(),
-  );
-  const index = assets.find(
-    (asset) => asset.targetPath === path.join('src', 'backend', 'index.ts'),
-  );
-  const source = await fs.readFile(index.sourcePath, 'utf8');
-  assert.match(
-    source,
-    /createDefaultBunBackendBootstrap\(\{ importMetaUrl: import\.meta\.url \}\)/,
   );
 });
 
@@ -382,6 +373,8 @@ test('views.json lists only views the module renders, not package page routes', 
   );
   const env = {
     WEBSTIR_MODULE_MODE: 'build',
+    // A throwaway workspace has no node_modules to type-check against.
+    WEBSTIR_BACKEND_TYPECHECK: 'skip',
     PATH: `${getLocalBinPath()}${path.delimiter}${process.env.PATH ?? ''}`,
   };
 

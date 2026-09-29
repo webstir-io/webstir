@@ -35,37 +35,19 @@ const fixturesRoot = path.join(packageRoot, 'test-support', 'fixtures');
 
 // Files a mature full-mode app removes when it moves to server-rendered views, and its own
 // instructions file it chose not to keep.
-const REMOVED_BY_MATURE_APP = [
-  'AGENTS.md',
-  'Errors.404.html',
-  'Errors.500.html',
-  'Errors.default.html',
-  'types.global.d.ts',
-  'types/global.d.ts',
-  'src/frontend/app/error.ts',
-  'src/frontend/app/hmr.js',
-  'src/frontend/app/styles/base.css',
-  'src/frontend/pages/lifecycle/index.html',
-  'src/frontend/pages/lifecycle/index.ts',
-  'src/shared/tsconfig.json',
-  'src/shared/types/index.ts',
-];
+const REMOVED_BY_MATURE_APP = ['AGENTS.md', 'src/frontend/pages/home/index.ts'];
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-// The shape of a real app: starter files removed, project references kept in tsconfig.json, and
-// base.tsconfig.json holding only shared compiler options.
+// The shape of a real app from before the package tsconfigs: starter files removed, project
+// references kept in tsconfig.json, and base.tsconfig.json holding only shared compiler options.
 async function matureFullApp(root: string): Promise<void> {
   for (const relative of REMOVED_BY_MATURE_APP) {
     await rm(path.join(root, relative), { force: true });
   }
-  const basePath = path.join(root, 'base.tsconfig.json');
-  const base = JSON.parse(await readFile(basePath, 'utf8')) as Record<string, unknown>;
-  delete base.files;
-  delete base.references;
-  await writeJson(basePath, base);
+  await writeJson(path.join(root, 'base.tsconfig.json'), { compilerOptions: { strict: true } });
   await writeJson(path.join(root, 'tsconfig.json'), {
     files: [],
     references: [{ path: 'src/frontend' }, { path: 'src/backend' }],
@@ -93,7 +75,7 @@ test.each([
     missing: [] as string[],
   },
   {
-    name: 'repair moves the hot-module registry out of app.ts and writes the missing hmr.js it moves into',
+    name: "repair takes the scaffold's hot-module registry and error loader out of app.ts and writes no dev client",
     args: [] as string[],
     prepare: async (root: string) => {
       await writeFile(
@@ -102,29 +84,15 @@ test.each([
         'utf8',
       );
     },
-    changes: ['src/frontend/app/app.ts', 'src/frontend/app/hmr.js'],
-    missing: REMOVED_BY_MATURE_APP.filter((file) => file !== 'src/frontend/app/hmr.js'),
-    verify: async (root: string) => {
-      const app = path.join(root, 'src', 'frontend', 'app');
-      expect(await readFile(path.join(app, 'hmr.js'), 'utf8')).toBe(
-        await readFile(path.join(templateRoot, 'src', 'frontend', 'app', 'hmr.js'), 'utf8'),
-      );
-      const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
-      expect(appTs).toContain('window.__webstirHotModules ??= []');
-      expect(appTs).not.toContain('__webstirDispose');
-    },
-  },
-  {
-    name: 'repair leaves a missing hmr.js alone when app.ts has no legacy registry',
-    args: [] as string[],
-    prepare: async (root: string) => {
-      const appTs = await readFile(path.join(root, 'src', 'frontend', 'app', 'app.ts'), 'utf8');
-      expect(appTs).not.toContain('__webstirDispose');
-    },
-    changes: [] as string[],
+    changes: ['src/frontend/app/app.ts'],
     missing: REMOVED_BY_MATURE_APP,
     verify: async (root: string) => {
-      expect(existsSync(path.join(root, 'src', 'frontend', 'app', 'hmr.js'))).toBe(false);
+      const app = path.join(root, 'src', 'frontend', 'app');
+      expect(existsSync(path.join(app, 'hmr.js'))).toBe(false);
+      // Only the app's own import is left.
+      expect(await readFile(path.join(app, 'app.ts'), 'utf8')).toBe(
+        "import './scripts/components/menu.js';\n",
+      );
     },
   },
   {
@@ -190,7 +158,7 @@ test('CLI repair lists missing scaffold files and the flag that restores them', 
     expect(plain.stdout).toContain(
       `missing scaffold files (left alone; --restore-scaffold re-creates them): ${REMOVED_BY_MATURE_APP.length}`,
     );
-    expect(plain.stdout).toContain('  - Errors.404.html');
+    expect(plain.stdout).toContain('  - src/frontend/pages/home/index.ts');
 
     const restoring = await runCli([
       'repair',
@@ -217,7 +185,10 @@ test('CLI repair supports dry-run without restoring files', async () => {
   });
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.500.html');
+    const missingFile = path.join(
+      copiedWorkspace.workspaceRoot,
+      'src/frontend/pages/home/index.css',
+    );
     await rm(missingFile, { force: true });
 
     const result = await runCli([
@@ -230,14 +201,14 @@ test('CLI repair supports dry-run without restoring files', async () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('dry-run: true');
-    expect(result.stdout).toContain('Errors.500.html');
+    expect(result.stdout).toContain('src/frontend/pages/home/index.css');
     expect(existsSync(missingFile)).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
-test('CLI repair swaps the client-nav copies Webstir shipped for the package import', async () => {
+test('CLI repair swaps the client-nav copies Webstir shipped for the packaged feature', async () => {
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-client-nav-', {
     workspaceName: 'full',
   });
@@ -263,14 +234,11 @@ test('CLI repair swaps the client-nav copies Webstir shipped for the package imp
         await readFile(path.join(fixtures, `${name}.txt`), 'utf8'),
       );
     }
+    // The entry those versions wrote imported the copies, and nothing of the app's own.
     const appTsPath = path.join(root, 'src', 'frontend', 'app', 'app.ts');
-    const appTs = await readFile(appTsPath, 'utf8');
     await writeFile(
       appTsPath,
-      appTs.replace(
-        "import '@webstir-io/webstir-frontend/features/client-nav';",
-        "import './scripts/features/client-nav.js';",
-      ),
+      "// Global app initialization\n\nimport './scripts/features/client-nav.js';\n",
     );
 
     // A dry run reports the switch without touching anything.
@@ -290,15 +258,14 @@ test('CLI repair swaps the client-nav copies Webstir shipped for the package imp
     for (const name of ['client-nav.ts', 'document-navigation.ts', 'form-enhancement.ts']) {
       expect(existsSync(path.join(features, name))).toBe(false);
     }
-    const repaired = await readFile(appTsPath, 'utf8');
-    expect(repaired).toContain("import '@webstir-io/webstir-frontend/features/client-nav';");
-    expect(repaired).not.toContain('./scripts/features/client-nav.js');
+    // The flag brings in the packaged feature, so the entry has nothing left to hold.
+    expect(existsSync(appTsPath)).toBe(false);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
 });
 
-test('CLI repair restores enabled feature imports and wiring for the SSG site demo', async () => {
+test('CLI repair restores the SSG site demo deploy wiring and leaves feature imports to the build', async () => {
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-ssg-site-', {
     workspaceName: 'site',
   });
@@ -321,14 +288,14 @@ test('CLI repair restores enabled feature imports and wiring for the SSG site de
     const searchStyles = '@import "@webstir-io/webstir-frontend/features/search.css";\n';
 
     await rm(deployScript, { force: true });
-    await writeFile(
-      appTsPath,
-      (await readFile(appTsPath, 'utf8')).replace(searchScript, ''),
-      'utf8',
-    );
+    // An app from before the build added features imports them itself.
+    await writeFile(appTsPath, `${await readFile(appTsPath, 'utf8')}${searchScript}`, 'utf8');
     await writeFile(
       appCssPath,
-      (await readFile(appCssPath, 'utf8')).replace(searchStyles, ''),
+      (await readFile(appCssPath, 'utf8')).replace(
+        '@import "./styles/shell.css";',
+        `${searchStyles}@import "./styles/shell.css";`,
+      ),
       'utf8',
     );
 
@@ -337,8 +304,8 @@ test('CLI repair restores enabled feature imports and wiring for the SSG site de
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('utils/deploy-gh-pages.sh');
     expect(existsSync(deployScript)).toBe(true);
-    expect(await readFile(appTsPath, 'utf8')).toContain(searchScript.trim());
-    expect(await readFile(appCssPath, 'utf8')).toContain(searchStyles.trim());
+    expect(await readFile(appTsPath, 'utf8')).not.toContain('features/search');
+    expect(await readFile(appCssPath, 'utf8')).not.toContain('features/search.css');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
@@ -351,23 +318,24 @@ async function prepareHotModuleWorkspace(
   readonly workspace: Awaited<ReturnType<typeof copyDemoWorkspace>>;
   readonly appTsPath: string;
   readonly clientPath: string;
-  readonly currentClient: string;
 }> {
   const workspace = await copyDemoWorkspace('ssg/site', prefix, { workspaceName: 'site' });
   const appDir = path.join(workspace.workspaceRoot, 'src', 'frontend', 'app');
   const appTsPath = path.join(appDir, 'app.ts');
   const clientPath = path.join(appDir, 'hmr.js');
-  const currentClient = await readFile(clientPath, 'utf8');
   if (files.app !== undefined) {
     await writeFile(appTsPath, files.app, 'utf8');
   }
   if (files.client !== undefined) {
     await writeFile(clientPath, files.client, 'utf8');
   }
-  return { workspace, appTsPath, clientPath, currentClient };
+  return { workspace, appTsPath, clientPath };
 }
 
-test('CLI repair replaces the scaffold hot-module registry in app.ts when the client is current', async () => {
+const packagedClient = (name: string) =>
+  path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend', 'src', 'dev-clients', name);
+
+test("CLI repair takes the scaffold's hot-module registry and error loader out of app.ts, and writes no client", async () => {
   const legacy = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
   const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-', { app: legacy });
 
@@ -385,15 +353,14 @@ test('CLI repair replaces the scaffold hot-module registry in app.ts when the cl
     const result = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('  - src/frontend/app/app.ts');
-    expect(result.stdout).not.toContain('  - src/frontend/app/hmr.js');
+    expect(result.stdout).not.toContain('src/frontend/app/hmr.js');
     expect(result.stdout).not.toContain('note:');
 
-    const updated = await readFile(prepared.appTsPath, 'utf8');
-    expect(updated).toContain('export function registerHotModule(');
-    expect(updated).toContain('window.__webstirHotModules ??= []');
-    expect(updated).not.toContain('__webstirDispose');
-    expect(updated).toContain('export { loadErrorHandler };');
-    expect(await readFile(prepared.clientPath, 'utf8')).toBe(prepared.currentClient);
+    // The registry and error loader are Webstir's now; only the app's own import is left.
+    expect(await readFile(prepared.appTsPath, 'utf8')).toBe(
+      "import './scripts/components/menu.js';\n",
+    );
+    expect(existsSync(prepared.clientPath)).toBe(false);
 
     const again = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
     expect(again.stdout).not.toContain('src/frontend/app/app.ts');
@@ -402,86 +369,249 @@ test('CLI repair replaces the scaffold hot-module registry in app.ts when the cl
   }
 });
 
-test('CLI repair moves a scaffold app.ts and a scaffold hmr.js forward together', async () => {
-  const legacyApp = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
-  const legacyClient = await readFile(
-    path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'),
-    'utf8',
-  );
-  const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-pair-', {
-    app: legacyApp,
-    client: legacyClient,
+// Webstir owns the app entry's registry, the error reporter and the app's styles on every page, so
+// repair takes the copies 0.7 wrote out of an app, and leaves anything the app changed with a note.
+const APP_07 = path.join(fixturesRoot, 'app-0.7');
+test.each([
+  {
+    name: 'an app as 0.7 wrote it',
+    prepare: async (_root: string) => {},
+    removed: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    kept: [] as string[],
+    note: null as RegExp | null,
+  },
+  {
+    name: 'an app that edited its error reporter',
+    prepare: async (root: string) => {
+      const errorTs = path.join(root, 'src', 'frontend', 'app', 'error.ts');
+      await writeFile(errorTs, `${await readFile(errorTs, 'utf8')}// ours\n`);
+    },
+    removed: ['src/frontend/app/app.ts'],
+    kept: ['src/frontend/app/error.ts'],
+    note: /src\/frontend\/app\/error\.ts is no longer used/,
+  },
+  {
+    name: 'an app whose page imports from app.ts',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'uses-app.ts'),
+        "import { registerHotModule } from '../../app/app';\nexport { registerHotModule };\n",
+      );
+    },
+    removed: [] as string[],
+    kept: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    note: /because src\/frontend\/pages\/home\/uses-app\.ts import from it/,
+  },
+  {
+    name: 'an app whose page add-page wrote loads app.ts itself',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts'),
+        "// Page entry point\nimport '../../app/app';\n\n// Add page-specific logic here\n",
+      );
+    },
+    removed: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    kept: [] as string[],
+    note: null as RegExp | null,
+    verify: async (root: string) => {
+      expect(
+        await readFile(path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts'), 'utf8'),
+      ).toBe('// Page entry point\nexport {};\n\n// Add page-specific logic here\n');
+    },
+  },
+  {
+    name: 'an app with a page that only shows the import in a string',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'sample.ts'),
+        "export const sample = `\nimport '../../app/app';\n`;\n",
+      );
+    },
+    removed: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    kept: [] as string[],
+    note: null as RegExp | null,
+    verify: async (root: string) => {
+      expect(
+        await readFile(path.join(root, 'src', 'frontend', 'pages', 'home', 'sample.ts'), 'utf8'),
+      ).toBe("export const sample = `\nimport '../../app/app';\n`;\n");
+    },
+  },
+  {
+    name: 'an app whose page imports its error reporter',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'uses-error.ts'),
+        "import { install } from '../../app/error';\nexport { install };\n",
+      );
+    },
+    removed: ['src/frontend/app/app.ts'],
+    kept: ['src/frontend/app/error.ts'],
+    note: /but src\/frontend\/pages\/home\/uses-error\.ts import it/,
+  },
+  {
+    name: 'an app whose page imports app.css with a condition',
+    prepare: async (root: string) => {
+      const pageCss = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.css');
+      await writeFile(
+        pageCss,
+        (await readFile(pageCss, 'utf8')).replace(
+          '@import "@app/app.css";',
+          '@import "@app/app.css" layer(app);',
+        ),
+      );
+    },
+    removed: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    kept: [] as string[],
+    note: /index\.css still import @app\/app\.css with a condition/,
+  },
+])('CLI repair moves $name onto the packaged entry, reporter and styles', async (row) => {
+  const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-repair-app-07-', {
+    workspaceName: 'full',
   });
-
+  const root = copiedWorkspace.workspaceRoot;
+  const app = path.join(root, 'src', 'frontend', 'app');
+  const pageCss = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.css');
   try {
-    const result = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('src/frontend/app/app.ts');
-    expect(result.stdout).toContain('src/frontend/app/hmr.js');
-    expect(result.stdout).not.toContain('note:');
-    expect(await readFile(prepared.clientPath, 'utf8')).toBe(prepared.currentClient);
-    expect(await readFile(prepared.appTsPath, 'utf8')).toContain(
-      'window.__webstirHotModules ??= []',
+    const installed = path.join(root, 'node_modules', '@webstir-io');
+    await mkdir(installed, { recursive: true });
+    await rm(path.join(installed, 'webstir-frontend'), { force: true });
+    await symlink(
+      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend'),
+      path.join(installed, 'webstir-frontend'),
+      'dir',
     );
-  } finally {
-    await removeDemoWorkspace(prepared.workspace);
-  }
-});
-
-test('CLI repair refreshes a scaffold hmr.js left behind by a newer app.ts', async () => {
-  const legacyClient = await readFile(
-    path.join(fixturesRoot, 'legacy-hmr-client-spa.js.txt'),
-    'utf8',
-  );
-  const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-client-', {
-    client: legacyClient,
-  });
-
-  try {
-    const result = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain('src/frontend/app/hmr.js');
-    expect(result.stdout).not.toContain('note:');
-    expect(await readFile(prepared.clientPath, 'utf8')).toBe(prepared.currentClient);
-  } finally {
-    await removeDemoWorkspace(prepared.workspace);
-  }
-});
-
-test('CLI repair leaves a scaffold app.ts and a customized hmr.js both unchanged, with a note', async () => {
-  const legacyApp = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
-  const customClient = `${await readFile(path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'), 'utf8')}\nconsole.log('mine');\n`;
-  const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-custom-client-', {
-    app: legacyApp,
-    client: customClient,
-  });
-
-  try {
-    const result = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(
-      'note: src/frontend/app/app.ts still installs the old hot-update hooks, and src/frontend/app/hmr.js is customized',
+    await writeFile(
+      path.join(app, 'app.ts'),
+      await readFile(path.join(APP_07, 'app.ts.txt'), 'utf8'),
     );
-    expect(await readFile(prepared.clientPath, 'utf8')).toBe(customClient);
-    const app = await readFile(prepared.appTsPath, 'utf8');
-    expect(app).toContain('window.__webstirDispose = async');
-    expect(app).not.toContain('window.__webstirHotModules ??= []');
+    await writeFile(
+      path.join(app, 'error.ts'),
+      await readFile(path.join(APP_07, 'error.ts.txt'), 'utf8'),
+    );
+    await writeFile(pageCss, `@import "@app/app.css";\n\n${await readFile(pageCss, 'utf8')}`);
+    await row.prepare(root);
+
+    const result = await runCli(['repair', '--workspace', root]);
+    expect(result.exitCode).toBe(0);
+    for (const file of row.removed) expect(existsSync(path.join(root, file))).toBe(false);
+    for (const file of row.kept) expect(existsSync(path.join(root, file))).toBe(true);
+    if (row.note) expect(result.stdout).toMatch(row.note);
+    else expect(result.stdout).not.toContain('note:');
+    const repairedCss = await readFile(pageCss, 'utf8');
+    expect(repairedCss.includes('@import "@app/app.css";')).toBe(false);
+    if ('verify' in row && row.verify) await row.verify(root);
+
+    const again = await runCli(['repair', '--dry-run', '--workspace', root]);
+    expect(again.stdout).toContain('changes: none');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+// A condition on a feature stylesheet import is the app's; repair keeps it, and the build adds no
+// second, unconditioned import.
+test('CLI repair keeps a feature stylesheet import that carries a condition', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-conditioned-css-', {
+    workspaceName: 'site',
+  });
+  const root = copiedWorkspace.workspaceRoot;
+  const appCss = path.join(root, 'src', 'frontend', 'app', 'app.css');
+  const conditioned =
+    '@import "@webstir-io/webstir-frontend/features/search.css" layer(widgets) print;';
+  try {
+    const installed = path.join(root, 'node_modules', '@webstir-io');
+    await mkdir(installed, { recursive: true });
+    await rm(path.join(installed, 'webstir-frontend'), { force: true });
+    await symlink(
+      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend'),
+      path.join(installed, 'webstir-frontend'),
+      'dir',
+    );
+    await writeFile(
+      appCss,
+      (await readFile(appCss, 'utf8')).replace(
+        '@import "./styles/shell.css";',
+        `${conditioned}\n@import "./styles/shell.css";`,
+      ),
+    );
+    const result = await runCli(['repair', '--workspace', root]);
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(appCss, 'utf8')).toContain(conditioned);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+// Webstir serves its own dev clients: a copy a scaffold wrote goes, an edited one stays with a note.
+test.each([
+  {
+    name: 'the last hmr.js',
+    file: 'hmr.js',
+    source: () => readFile(packagedClient('hmr.js'), 'utf8'),
+    removed: true,
+  },
+  {
+    name: 'the last refresh.js',
+    file: 'refresh.js',
+    source: () => readFile(packagedClient('refresh.js'), 'utf8'),
+    removed: true,
+  },
+  {
+    name: 'an older ssg hmr.js',
+    file: 'hmr.js',
+    source: () => readFile(path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'), 'utf8'),
+    removed: true,
+  },
+  {
+    name: 'an older spa hmr.js',
+    file: 'hmr.js',
+    source: () => readFile(path.join(fixturesRoot, 'legacy-hmr-client-spa.js.txt'), 'utf8'),
+    removed: true,
+  },
+  {
+    name: 'an edited hmr.js',
+    file: 'hmr.js',
+    source: async () =>
+      `${await readFile(packagedClient('hmr.js'), 'utf8')}\nconsole.log('mine');\n`,
+    removed: false,
+  },
+  {
+    name: 'an edited refresh.js',
+    file: 'refresh.js',
+    source: async () =>
+      `${await readFile(packagedClient('refresh.js'), 'utf8')}\nconsole.log('mine');\n`,
+    removed: false,
+  },
+])('CLI repair with $name in the app', async ({ file, source, removed }) => {
+  const prepared = await prepareHotModuleWorkspace('webstir-repair-dev-client-', {});
+  const clientPath = path.join(path.dirname(prepared.appTsPath), file);
+  const contents = await source();
+  await writeFile(clientPath, contents, 'utf8');
+
+  try {
+    const result = await runCli(['repair', '--workspace', prepared.workspace.workspaceRoot]);
+    expect(result.exitCode).toBe(0);
+    if (removed) {
+      expect(result.stdout).toContain(`  - src/frontend/app/${file}`);
+      expect(result.stdout).not.toContain('note:');
+      expect(existsSync(clientPath)).toBe(false);
+    } else {
+      expect(result.stdout).toContain(
+        `note: src/frontend/app/${file} is no longer used: Webstir serves its own /${file} in development.`,
+      );
+      expect(await readFile(clientPath, 'utf8')).toBe(contents);
+    }
   } finally {
     await removeDemoWorkspace(prepared.workspace);
   }
 });
 
-test('CLI repair keeps a scaffold hmr.js under an app.ts that still installs the old hooks', async () => {
+test('CLI repair reports an app.ts that still installs part of the old hooks', async () => {
   const legacy = await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8');
   const partial = legacy.replace('window.__webstirRegisterHotModule = registerHotModule;\n', '');
   expect(partial).not.toBe(legacy);
-  const legacyClient = await readFile(
-    path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'),
-    'utf8',
-  );
   const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-partial-', {
     app: partial,
-    client: legacyClient,
   });
 
   try {
@@ -490,8 +620,6 @@ test('CLI repair keeps a scaffold hmr.js under an app.ts that still installs the
     expect(result.stdout).toContain(
       'note: src/frontend/app/app.ts still installs the old hot-update hooks',
     );
-    expect(result.stdout).not.toContain('  - src/frontend/app/hmr.js');
-    expect(await readFile(prepared.clientPath, 'utf8')).toBe(legacyClient);
     expect(await readFile(prepared.appTsPath, 'utf8')).toContain('window.__webstirDispose = async');
   } finally {
     await removeDemoWorkspace(prepared.workspace);
@@ -502,7 +630,7 @@ test.each([
   { file: 'app.ts', fixture: 'legacy-hot-module-app.ts.txt' },
   { file: 'hmr.js', fixture: 'legacy-hmr-client-ssg.js.txt' },
 ])(
-  'CLI repair refuses to migrate a linked $file that restores would not touch',
+  'CLI repair refuses to touch a linked $file that restores would not touch',
   async ({ file, fixture }) => {
     const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-link-', {
       app: await readFile(path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt'), 'utf8'),
@@ -548,13 +676,8 @@ test('CLI repair reports a customized hot-module registry instead of rewriting i
     "  try {\n    console.debug('disposing', moduleId);\n    const result = record.dispose(contextWithHistory);",
   );
   expect(customized).not.toBe(legacy);
-  const legacyClient = await readFile(
-    path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt'),
-    'utf8',
-  );
   const prepared = await prepareHotModuleWorkspace('webstir-repair-hot-module-custom-app-', {
     app: customized,
-    client: legacyClient,
   });
 
   try {
@@ -563,11 +686,9 @@ test('CLI repair reports a customized hot-module registry instead of rewriting i
     expect(result.stdout).toContain(
       'note: src/frontend/app/app.ts still installs the old hot-update hooks, but its registry block differs from the scaffold',
     );
-    expect(result.stdout).not.toContain('  - src/frontend/app/hmr.js');
     const app = await readFile(prepared.appTsPath, 'utf8');
     expect(app).toContain("console.debug('disposing', moduleId);");
     expect(app).toContain('window.__webstirDispose = async');
-    expect(await readFile(prepared.clientPath, 'utf8')).toBe(legacyClient);
 
     const json = await runCli([
       'repair',
@@ -665,6 +786,9 @@ test('CLI repair lists the retired SPA router as removable and leaves it in plac
 
   try {
     for (const file of routerFiles) {
+      await mkdir(path.dirname(path.join(copiedWorkspace.workspaceRoot, file)), {
+        recursive: true,
+      });
       await writeFile(path.join(copiedWorkspace.workspaceRoot, file), 'export {};\n', 'utf8');
     }
 
@@ -688,7 +812,10 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
   });
 
   try {
-    const missingFile = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+    const missingFile = path.join(
+      copiedWorkspace.workspaceRoot,
+      'src/frontend/pages/home/index.css',
+    );
     await rm(missingFile, { force: true });
 
     const result = await runCli([
@@ -716,7 +843,7 @@ test('CLI repair emits machine-readable JSON for dry-run output', async () => {
     expect(parsed.workspaceRoot).toBe(copiedWorkspace.workspaceRoot);
     expect(parsed.layers).toEqual({ pages: true, server: false });
     expect(parsed.dryRun).toBe(true);
-    expect(parsed.changes).toContain('Errors.404.html');
+    expect(parsed.changes).toContain('src/frontend/pages/home/index.css');
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }
@@ -729,7 +856,10 @@ test('CLI repair preflights every asset before dry-run or mutation', async () =>
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-assets-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src/frontend/pages/home/index.css',
+  );
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const packageJson = await readFile(packageJsonPath, 'utf8');
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
@@ -770,7 +900,10 @@ test('CLI repair preflights enabled feature assets before restoring root assets'
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-feature-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src/frontend/pages/home/index.css',
+  );
   const sentinelPath = path.join(externalRoot, 'sentinel.txt');
   await writeFile(sentinelPath, 'outside-sentinel', 'utf8');
 
@@ -813,7 +946,10 @@ test('CLI repair preflights backend scaffold assets before restoring root assets
   const externalRoot = await mkdtemp(
     path.join(os.tmpdir(), 'webstir-repair-backend-symlink-outside-'),
   );
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  const missingRootAsset = path.join(
+    copiedWorkspace.workspaceRoot,
+    'src/frontend/pages/home/index.css',
+  );
   const backendRoot = path.join(copiedWorkspace.workspaceRoot, 'src', 'backend');
 
   try {

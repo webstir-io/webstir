@@ -30,7 +30,7 @@ Start from the `full` template when you need the default action shape. Use `webs
 
 - Canonical HTML marker: `data-webstir-fragment-target="<name>"`
 - Canonical backend metadata: `fragment: { target, selector?, mode? }`
-- Default scaffold: the progressive-enhancement example in the `full` template
+- Example: the progressive-enhancement flow in the full demo (`examples/demos/full`)
 
 Fragment targets are optional. The baseline route should still work as a normal form submission and redirect when enhancement is unavailable.
 

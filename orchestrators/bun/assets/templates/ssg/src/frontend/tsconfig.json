@@ -1,12 +1,3 @@
 {
-  "extends": "../../base.tsconfig.json",
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
-    "outDir": "../../build/frontend",
-    "rootDir": "."
-  },
-  "include": ["**/*.ts", "../../types/**/*.d.ts"],
-  "exclude": ["node_modules", "../../build", "../../dist"],
-  "references": []
+  "extends": "@webstir-io/webstir-frontend/tsconfig.json"
 }

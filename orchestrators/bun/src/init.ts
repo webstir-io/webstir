@@ -99,10 +99,6 @@ export async function scaffoldWorkspace(
   );
   changes.push('package.json');
 
-  const baseTsconfigPath = path.join(workspaceRoot, 'base.tsconfig.json');
-  await Bun.write(baseTsconfigPath, `${JSON.stringify(createBaseTsconfig(starter), null, 2)}\n`);
-  changes.push('base.tsconfig.json');
-
   return {
     workspaceRoot,
     starter,
@@ -181,15 +177,19 @@ async function isRepoWorkspacePath(workspaceRoot: string): Promise<boolean> {
 }
 
 async function resolveDependencySpecs(workspaceRoot: string): Promise<Record<string, string>> {
+  // An app's view schemas are zod's, and the version the backend reads them with.
+  const zod = await readInstalledDependencySpec('@webstir-io/webstir-backend', 'zod');
   if (await isRepoWorkspacePath(workspaceRoot)) {
     return {
       '@webstir-io/webstir-frontend': 'workspace:*',
       '@webstir-io/webstir-backend': 'workspace:*',
       '@webstir-io/webstir-testing': 'workspace:*',
+      zod,
     };
   }
 
   return {
+    zod,
     '@webstir-io/webstir-frontend': await readInstalledPackageVersion(
       '@webstir-io/webstir-frontend',
     ),
@@ -227,6 +227,10 @@ function createPackageJson(
     dependencies['@webstir-io/webstir-backend'] = dependencySpecs['@webstir-io/webstir-backend'];
   }
 
+  if (starter === 'full') {
+    dependencies.zod = dependencySpecs.zod;
+  }
+
   return {
     name: packageName,
     version: '1.0.0',
@@ -236,8 +240,6 @@ function createPackageJson(
     dependencies,
     devDependencies: {
       '@types/node': '^20.0.0',
-      autoprefixer: '^10.4.20',
-      esbuild: '^0.25.0',
       typescript: '^7.0.2',
     },
     packageManager: PACKAGE_MANAGER,
@@ -248,49 +250,7 @@ function createPackageJson(
       'iOS >= 14',
       'not dead',
     ],
-    webstir: {
-      moduleManifest: {},
-      ...(starter === 'spa' || starter === 'full' ? { enable: { clientNav: true } } : {}),
-    },
-  };
-}
-
-function createBaseTsconfig(starter: Starter): Record<string, unknown> {
-  const references = [];
-  if (starter !== 'api') {
-    if (starter !== 'ssg' && starter !== 'spa') {
-      references.push({ path: 'src/shared' });
-      references.push({ path: 'src/frontend' });
-      references.push({ path: 'src/backend' });
-    } else if (starter === 'spa') {
-      references.push({ path: 'src/shared' });
-      references.push({ path: 'src/frontend' });
-    } else {
-      references.push({ path: 'src/frontend' });
-    }
-  } else {
-    references.push({ path: 'src/shared' });
-    references.push({ path: 'src/backend' });
-  }
-
-  return {
-    files: [],
-    references,
-    compilerOptions: {
-      target: 'ES2022',
-      module: 'esnext',
-      moduleResolution: 'Bundler',
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      forceConsistentCasingInFileNames: true,
-      sourceMap: true,
-      declaration: false,
-      removeComments: true,
-      types: ['node'],
-      typeRoots: ['./types', './node_modules/@types'],
-      inlineSources: true,
-    },
+    webstir: starter === 'spa' || starter === 'full' ? { enable: { clientNav: true } } : {},
   };
 }
 
@@ -300,6 +260,21 @@ function resolvePackageName(workspaceRoot: string, metadata: ScaffoldMetadata | 
   }
 
   return sanitizePackageName(path.basename(workspaceRoot));
+}
+
+async function readInstalledDependencySpec(
+  packageName: string,
+  dependency: string,
+): Promise<string> {
+  const packageJsonPath = fileURLToPath(import.meta.resolve(`${packageName}/package.json`));
+  const packageJson = JSON.parse(await readTextFile(packageJsonPath)) as {
+    readonly dependencies?: Record<string, string>;
+  };
+  const spec = packageJson.dependencies?.[dependency];
+  if (!spec) {
+    throw new Error(`Missing ${dependency} in the dependencies of ${packageJsonPath}`);
+  }
+  return spec;
 }
 
 async function readInstalledPackageVersion(packageName: string): Promise<string> {

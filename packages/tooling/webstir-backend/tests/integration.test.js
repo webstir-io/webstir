@@ -14,6 +14,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { build as esbuild } from 'esbuild';
 
 import { backendProvider } from '../dist/index.js';
+import { scaffoldAssets } from './support/scaffold.js';
 
 async function createTempWorkspace(prefix = 'webstir-backend-workspace-') {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -30,7 +31,7 @@ async function copyFile(src, dest) {
 }
 
 async function hydrateBackendScaffold(workspace) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
 
   for (const asset of assets) {
     const normalized = asset.targetPath.replace(/\\/g, '/');

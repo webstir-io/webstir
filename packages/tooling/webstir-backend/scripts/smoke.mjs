@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { backendProvider } from '../dist/index.js';
+import { scaffoldAssets } from '../tests/support/scaffold.js';
 import { CONTRACT_VERSION } from '@webstir-io/module-contract';
 
 function getLocalBinPath() {
@@ -185,7 +186,7 @@ async function runBatteriesProbes(workspace) {
 
 async function main() {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-backend-smoke-'));
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
   await Promise.all(
     assets.map(async (asset) => {
       const target = path.join(workspace, asset.targetPath);

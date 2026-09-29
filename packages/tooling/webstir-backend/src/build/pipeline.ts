@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { existsSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
+import { fileURLToPath } from 'node:url';
 
 import { build as esbuild, context as esbuildContext } from 'esbuild';
 import { glob } from 'glob';
@@ -61,7 +61,7 @@ export async function runBackendBuildPipeline(
     });
   console.info(`[webstir-backend] ${mode}:tsc start`);
   if (shouldTypeCheck(mode, env)) {
-    await runTypeCheck(tsconfigPath, env, diagnostics);
+    await runTypeCheck(await resolveTypeCheckConfig(tsconfigPath, sourceRoot), env, diagnostics);
   } else {
     diagnostics.push({
       severity: 'info',
@@ -126,19 +126,26 @@ export async function runBackendBuildPipeline(
   };
 }
 
+// The package's settings, for an app with no src/backend/tsconfig.json of its own.
+const APP_TSCONFIG = fileURLToPath(new URL('../../config/tsconfig.app.json', import.meta.url));
+
+async function resolveTypeCheckConfig(tsconfigPath: string, sourceRoot: string): Promise<string> {
+  if (existsSync(tsconfigPath)) return tsconfigPath;
+  // Beside the app's other generated state, out of the build output.
+  const generated = path.resolve(sourceRoot, '..', '..', '.webstir', 'backend.tsconfig.json');
+  await mkdir(path.dirname(generated), { recursive: true });
+  await writeFile(
+    generated,
+    `${JSON.stringify({ extends: APP_TSCONFIG, include: [path.join(sourceRoot, '**', '*')] }, null, 2)}\n`,
+  );
+  return generated;
+}
+
 async function runTypeCheck(
   tsconfigPath: string,
   env: Record<string, string | undefined>,
   diagnostics: ModuleDiagnostic[],
 ): Promise<void> {
-  if (!existsSync(tsconfigPath)) {
-    diagnostics.push({
-      severity: 'warn',
-      message: `TypeScript config not found at ${tsconfigPath}; skipping type-check.`,
-    });
-    return;
-  }
-
   await new Promise<void>((resolve, reject) => {
     const child = spawn('tsc', ['-p', tsconfigPath, '--noEmit', '--pretty', 'false'], {
       stdio: 'pipe',

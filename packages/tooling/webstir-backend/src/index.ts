@@ -6,7 +6,6 @@ export {
   buildWorkspaceModuleDefinition,
   hasWorkspaceModuleDefinition,
 } from './build/module-definition.js';
-export { getBackendScaffoldAssets } from './scaffold/assets.js';
 export { createDefaultBunBackendBootstrap, startBunBackend } from './runtime/bun.js';
 export { prepareApp } from './app/prepare.js';
 export { appUrl, loadAppEnv, loadEnvFiles, type AppEnv } from './app/env.js';

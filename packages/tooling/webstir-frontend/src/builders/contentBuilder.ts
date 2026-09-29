@@ -23,6 +23,9 @@ import {
 } from '../islands/html.js';
 import { listIslands, readIslandsManifest } from './islandsBuilder.js';
 import { RenderTemplateError } from '../render/issues.js';
+import { withAppBundle, withAppStyles, withDevClients } from '../html/shellAssets.js';
+import { appBundleImports } from './appBundle.js';
+import { hasAppStyles } from './appStyles.js';
 
 interface ContentFrontmatter {
   title?: string;
@@ -131,7 +134,13 @@ async function buildContentPages(context: BuilderContext): Promise<void> {
     throw new Error(`Base application HTML file not found for content pages: ${appTemplatePath}`);
   }
 
-  const templateHtml = await readContentTemplate(context, appTemplatePath, false);
+  const templateHtml = withAppStyles(
+    withAppBundle(
+      withDevClients(await readContentTemplate(context, appTemplatePath, false)),
+      (await appBundleImports(context)).length > 0,
+    ),
+    await hasAppStyles(context),
+  );
   const islands = new Set((await listIslands(config)).map((island) => island.name));
 
   const buildPagesUrlPrefix = resolvePagesUrlPrefix(
@@ -1001,21 +1010,6 @@ function mergeContentIntoTemplate(
   const defaultDescription =
     head.find('meta[name="description"]').first().attr('content')?.trim() ?? '';
   const effectiveDescription = (description ?? '').trim() || defaultDescription;
-
-  // Ensure content pages load the shared app styles.
-  const cssHref = `/${FOLDERS.app}/app.css`;
-  const existingStylesheet =
-    head.find(`link[rel="stylesheet"][href="${cssHref}"]`).first().length > 0 ||
-    head
-      .find('link[rel="stylesheet"]')
-      .toArray()
-      .some((element) => {
-        const href = document(element).attr('href');
-        return typeof href === 'string' && href.includes('/app/app.css');
-      });
-  if (!existingStylesheet) {
-    head.append(`<link rel="stylesheet" href="${cssHref}" />`);
-  }
 
   // Ensure content pages load the content layout styles.
   const contentCssHref = resolvePageAssetUrl(

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { build as esbuild, type Metafile } from 'esbuild';
 import { FOLDERS, FILES, EXTENSIONS } from '../core/constants.js';
 import type { Builder, BuilderContext } from './types.js';
@@ -14,6 +15,7 @@ import { createCompressedVariants } from '../assets/precompression.js';
 import { buildIslands, islandsSourceRoot } from './islandsBuilder.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
+import { writeAppBundleEntry } from './appBundle.js';
 import {
   compileBrowserPage,
   findPageDataModule,
@@ -22,7 +24,6 @@ import {
 } from '../render/browser.js';
 
 const ENTRY_EXTENSIONS = ['.ts', '.tsx', '.js'];
-const APP_ENTRY_BASENAME = 'app';
 type JavaScriptBundler = 'esbuild' | 'bun';
 
 interface BunBuildOutputFile {
@@ -89,7 +90,6 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
   // An HTML edit only changes the bundles of browser-rendered pages, which carry their template.
   const htmlEdit = context.changedFile?.endsWith('.html') === true;
 
-  await assertFeatureModulesPresent(config, context.enable);
   if (!htmlEdit) await compileAppTypeScript(context, isProduction, bundler);
 
   for (const page of pages) {
@@ -132,7 +132,7 @@ async function compileAppTypeScript(
   }
 
   if (isProduction) {
-    const entryPoint = await resolveAppEntry(appRoot);
+    const entryPoint = await writeAppBundleEntry(context);
     if (!entryPoint) {
       return;
     }
@@ -171,7 +171,7 @@ async function compileAppTypeScript(
     return;
   }
 
-  const entryPoint = await resolveAppEntry(appRoot);
+  const entryPoint = await writeAppBundleEntry(context);
   if (!entryPoint) {
     return;
   }
@@ -395,10 +395,8 @@ async function copyRuntimeScripts(
       continue;
     }
 
-    const source = path.join(config.paths.src.app, script.name);
-    if (!(await pathExists(source))) {
-      continue;
-    }
+    // Webstir's own clients, not a copy in the app: they speak the dev server's protocol.
+    const source = fileURLToPath(new URL(`../../src/dev-clients/${script.name}`, import.meta.url));
 
     const buildDestination = path.join(config.paths.build.frontend, script.name);
     await ensureDir(path.dirname(buildDestination));
@@ -448,105 +446,6 @@ async function resolveEntryPoint(pageDirectory: string): Promise<string | null> 
   }
 
   return null;
-}
-
-async function assertFeatureModulesPresent(
-  config: BuilderContext['config'],
-  enable: BuilderContext['enable'],
-): Promise<void> {
-  if (!enable) {
-    return;
-  }
-
-  const missing: string[] = [];
-  const enabled = [
-    [enable.clientNav, 'client-nav'],
-    [enable.search, 'search'],
-    [enable.contentNav, 'content-nav'],
-  ] as const;
-  for (const [on, name] of enabled) {
-    if (on !== true) continue;
-    // An app imports the feature from the package, or still has the copy an older version wrote.
-    const present =
-      (await appImportsPackagedFeature(config, name)) || (await hasFeatureModule(config, name));
-    if (!present) {
-      missing.push(name);
-    }
-  }
-
-  if (missing.length === 0) {
-    return;
-  }
-
-  const expected = missing
-    .map((name) =>
-      PACKAGED_FEATURES.has(name)
-        ? `import '${PACKAGED_FEATURE_PREFIX}${name}' in src/frontend/app/app.ts`
-        : `src/frontend/app/scripts/features/${name}.ts`,
-    )
-    .join(', ');
-  throw new Error(
-    `Enabled feature module(s) missing: ${missing.join(', ')}. Run 'webstir enable <feature>' to scaffold them (expected: ${expected}).`,
-  );
-}
-
-const PACKAGED_FEATURE_PREFIX = '@webstir-io/webstir-frontend/features/';
-const PACKAGED_FEATURES = new Set(['client-nav', 'search', 'content-nav']);
-
-/**
- * A feature the package ships is enabled by importing it from the app entry the build bundles.
- * esbuild parses the entry, so an import in a comment or a string never counts; an entry that does
- * not parse is left for the real compile to report.
- */
-async function appImportsPackagedFeature(
-  config: BuilderContext['config'],
-  name: string,
-): Promise<boolean> {
-  const entry = await resolveAppEntry(config.paths.src.app);
-  if (!entry) {
-    return false;
-  }
-  try {
-    return (await listEntryImports(entry)).includes(`${PACKAGED_FEATURE_PREFIX}${name}`);
-  } catch {
-    return true;
-  }
-}
-
-async function listEntryImports(entry: string): Promise<string[]> {
-  const result = await esbuild({
-    entryPoints: [entry],
-    bundle: true,
-    write: false,
-    metafile: true,
-    logLevel: 'silent',
-    platform: 'browser',
-    format: 'esm',
-    plugins: [
-      {
-        name: 'webstir-list-imports',
-        setup(build) {
-          build.onResolve({ filter: /.*/ }, (args) =>
-            args.kind === 'entry-point' ? undefined : { path: args.path, external: true },
-          );
-        },
-      },
-    ],
-  });
-  // Only static imports run with the page; a dynamic import() of a feature does not start it.
-  return Object.values(result.metafile.inputs).flatMap((input) =>
-    input.imports
-      .filter((imported) => imported.kind === 'import-statement')
-      .map((imported) => imported.original ?? imported.path),
-  );
-}
-
-async function hasFeatureModule(config: BuilderContext['config'], name: string): Promise<boolean> {
-  const root = path.join(config.paths.src.app, 'scripts', 'features');
-  return (
-    (await pathExists(path.join(root, `${name}${EXTENSIONS.ts}`))) ||
-    (await pathExists(path.join(root, `${name}${EXTENSIONS.js}`)))
-  );
 }
 
 async function resolveAppBundleName(
@@ -697,22 +596,4 @@ function getBunBuild(): BunBuildFunction | undefined {
   };
   const build = runtime.Bun?.build;
   return typeof build === 'function' ? build.bind(runtime.Bun) : undefined;
-}
-
-async function resolveAppEntry(appRoot: string): Promise<string | null> {
-  const candidates = [
-    `${APP_ENTRY_BASENAME}${EXTENSIONS.ts}`,
-    `${APP_ENTRY_BASENAME}.tsx`,
-    `${APP_ENTRY_BASENAME}${EXTENSIONS.js}`,
-    `${APP_ENTRY_BASENAME}.jsx`,
-  ];
-
-  for (const candidate of candidates) {
-    const fullPath = path.join(appRoot, candidate);
-    if (await pathExists(fullPath)) {
-      return fullPath;
-    }
-  }
-
-  return null;
 }

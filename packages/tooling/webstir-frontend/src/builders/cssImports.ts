@@ -69,6 +69,19 @@ export async function linkPackageCssImports(
   ]);
 }
 
+const OWN_PACKAGE = '@webstir-io/webstir-frontend/';
+const ownRequire = createRequire(import.meta.url);
+
+// Webstir's own stylesheets resolve from the app's install, or else from the package doing the build.
+function resolvePackageCss(specifier: string, containingPath: string): string {
+  try {
+    return createRequire(containingPath).resolve(specifier);
+  } catch (error) {
+    if (!specifier.startsWith(OWN_PACKAGE)) throw error;
+    return ownRequire.resolve(specifier);
+  }
+}
+
 export interface PackageCss {
   readonly importPath: string;
   readonly resolved: string;
@@ -96,7 +109,7 @@ async function replacePackageCssImports(
     }
     let resolved: string;
     try {
-      resolved = createRequire(containingPath).resolve(parsed.path);
+      resolved = resolvePackageCss(parsed.path, containingPath);
     } catch {
       throw new Error(
         `Unable to resolve CSS @import "${parsed.path}" at ${sourceLocation(containingPath, rule)}. Is the package installed and does it export that stylesheet?`,

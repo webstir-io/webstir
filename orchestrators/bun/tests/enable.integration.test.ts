@@ -132,18 +132,12 @@ for (const { feature, flag, copies } of styledFeatureCases) {
     const appTs = await readFile(path.join(app, 'app.ts'), 'utf8');
     const appCss = await readFile(path.join(app, 'app.css'), 'utf8');
     expect((await readJsonFile(path.join(root, 'package.json'))).webstir.enable[flag]).toBe(true);
-    expect(appTs).toContain(`import '@webstir-io/webstir-frontend/features/${feature}';`);
-    expect(appTs).not.toContain(`./scripts/features/${feature}.js`);
-    expect(appCss).toContain(`@import "@webstir-io/webstir-frontend/features/${feature}.css";`);
-    expect(appCss).not.toContain(`./styles/features/${feature}.css`);
+    // The flag alone brings in the feature and its styles; the app imports neither.
+    expect(appTs).not.toContain(`features/${feature}`);
+    expect(appCss).not.toContain(`features/${feature}.css`);
     expect(appCss).toContain(
       '@layer reset, tokens, base, layout, components, features, utilities, overrides;',
     );
-    // The stylesheet import sits with the other imports, before the first rule.
-    const firstRule = appCss.indexOf('{');
-    if (firstRule !== -1) {
-      expect(appCss.indexOf(`features/${feature}.css`)).toBeLessThan(firstRule);
-    }
     expect(existsSync(path.join(app, 'scripts', 'features', `${feature}.ts`))).toBe(false);
     expect(existsSync(path.join(app, 'styles', 'features', `${feature}.css`))).toBe(false);
   });
@@ -367,11 +361,9 @@ const clientNavCases: Array<{
       );
       await rm(path.join(app, 'app.ts'));
     },
-    exitCode: 1,
-    imports: 'legacy',
-    copies: true,
-    stderr: /There is no src\/frontend\/app\/app\.\{ts,tsx,js,jsx\} to import/,
-    entry: 'app.backup',
+    exitCode: 0,
+    imports: 'packaged',
+    copies: false,
   },
   {
     name: 'an app with the copies Webstir shipped',
@@ -515,12 +507,11 @@ for (const scenario of clientNavCases) {
 
     expect(result.exitCode).toBe(scenario.exitCode);
     if (scenario.stderr) expect(result.stderr).toMatch(scenario.stderr);
-    const appTs = await readFile(
-      path.join(root, 'src', 'frontend', 'app', scenario.entry ?? 'app.ts'),
-      'utf8',
-    );
+    const entry = path.join(root, 'src', 'frontend', 'app', scenario.entry ?? 'app.ts');
+    const appTs = existsSync(entry) ? await readFile(entry, 'utf8') : '';
     if (scenario.imports === 'packaged') {
-      expect(appTs).toContain(PACKAGED_IMPORT);
+      // The flag alone brings in the feature; the app imports neither it nor its old copy.
+      expect(appTs).not.toContain(PACKAGED_IMPORT);
       expect(appTs).not.toContain('./scripts/features/client-nav.js');
       expect((await readJsonFile(path.join(root, 'package.json'))).webstir.enable.clientNav).toBe(
         true,
@@ -642,9 +633,6 @@ test('CLI enables backend on the SPA demo workspace end to end', async () => {
   expect(result.stdout).toContain('feature: backend');
 
   const packageJson = await readJsonFile(path.join(copiedWorkspace.workspaceRoot, 'package.json'));
-  const baseTsconfig = await readJsonFile(
-    path.join(copiedWorkspace.workspaceRoot, 'base.tsconfig.json'),
-  );
 
   expect(packageJson.webstir.mode).toBeUndefined();
   expect(packageJson.webstir.enable?.backend).toBeUndefined();
@@ -654,7 +642,16 @@ test('CLI enables backend on the SPA demo workspace end to end', async () => {
   expect(existsSync(path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'index.ts'))).toBe(
     true,
   );
-  expect(baseTsconfig.references).toContainEqual({ path: 'src/backend' });
+  // The server's compiler settings are the package's; the app has no base config to reference.
+  expect(
+    JSON.parse(
+      await readFile(
+        path.join(copiedWorkspace.workspaceRoot, 'src', 'backend', 'tsconfig.json'),
+        'utf8',
+      ),
+    ),
+  ).toEqual({ extends: '@webstir-io/webstir-backend/tsconfig.json' });
+  expect(existsSync(path.join(copiedWorkspace.workspaceRoot, 'base.tsconfig.json'))).toBe(false);
 
   const repairResult = await runWorkspaceCli(copiedWorkspace.workspaceRoot, [
     'repair',
@@ -669,7 +666,6 @@ test('CLI enables backend on the SPA demo workspace end to end', async () => {
   expect(repairResult.stderr).toBe('');
   // Enable and repair share one server scaffold, so nothing of it counts as missing.
   expect(repair.missingScaffold.filter((file) => file.startsWith('src/backend/'))).toEqual([]);
-  expect(repair.changes).not.toContain('src/backend/tests/progressive-enhancement.test.ts');
   expect(repair.changes.some((change) => change.startsWith('src/backend/'))).toBe(false);
 });
 

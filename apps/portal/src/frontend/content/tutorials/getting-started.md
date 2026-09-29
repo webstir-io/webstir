@@ -43,8 +43,7 @@ bun install
 
 Open the printed URL, then check both of these routes:
 
-- `/` for the scaffolded document shell
-- `/api/demo/progressive-enhancement` for the built-in backend form flow that demonstrates the baseline redirect-after-post path before any optional `client-nav` enhancement
+- `/` for the home page, rendered by the server on each request, with a form that posts to `/greet` and comes back with a message: the baseline redirect-after-post path, with or without JavaScript
 
 The default app should work without JavaScript for forms, links, redirects, and auth-gated flows.
 

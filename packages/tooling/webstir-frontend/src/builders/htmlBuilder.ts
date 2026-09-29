@@ -20,6 +20,9 @@ import { readPageManifest, readSharedAssets } from '../assets/assetManifest.js';
 import { createCompressedVariants } from '../assets/precompression.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { getImageDimensions } from '../assets/imageOptimizer.js';
+import { withAppBundle, withAppStyles, withDevClients } from '../html/shellAssets.js';
+import { appBundleImports } from './appBundle.js';
+import { hasAppStyles } from './appStyles.js';
 import { applyLazyLoading } from '../html/lazyLoad.js';
 import { addSubresourceIntegrity } from '../html/htmlSecurity.js';
 import { injectResourceHints } from '../html/resourceHints.js';
@@ -102,7 +105,13 @@ async function buildHtml(context: BuilderContext): Promise<void> {
   };
   const templateHtml = await withInlineScripts(
     context,
-    await prepareTemplateSource(rawTemplateHtml, appTemplatePath, renderSource),
+    withAppStyles(
+      withAppBundle(
+        withDevClients(await prepareTemplateSource(rawTemplateHtml, appTemplatePath, renderSource)),
+        (await appBundleImports(context)).length > 0,
+      ),
+      await hasAppStyles(context),
+    ),
     appTemplatePath,
     false,
   );
@@ -364,9 +373,6 @@ function injectOptInScripts(
     }
   }
 
-  if (enable?.clientNav && document('script[src="/app/app.js"]').length === 0) {
-    document('head').prepend('<script type="module" src="/app/app.js"></script>');
-  }
   if (enable?.clientNav && pageScriptExists) {
     document('script[src]').each((_, element) => {
       const script = document(element);

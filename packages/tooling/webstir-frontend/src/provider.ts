@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 
 import type {
-  ModuleAsset,
   ModuleArtifact,
   ModuleBuildOptions,
   ModuleBuildResult,
@@ -117,10 +116,6 @@ function normalizeMode(rawMode: unknown): PipelineMode {
   return rawMode.toLowerCase() === 'publish' ? 'publish' : 'build';
 }
 
-async function getScaffoldAssets(): Promise<readonly ModuleAsset[]> {
-  return [];
-}
-
 async function collectArtifacts(config: FrontendConfig): Promise<ModuleArtifact[]> {
   const buildRoot = config.paths.build.frontend;
   const matches = await scanGlob('**/*', {
@@ -224,8 +219,5 @@ export const frontendProvider: ModuleProvider = {
   },
   async build(options) {
     return await buildModule(options);
-  },
-  async getScaffoldAssets() {
-    return await getScaffoldAssets();
   },
 };

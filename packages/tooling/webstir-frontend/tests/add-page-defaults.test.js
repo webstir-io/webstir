@@ -369,3 +369,24 @@ test('add-page escapes display text for portable page names', async () => {
     await fs.rm(workspace, { recursive: true, force: true });
   }
 });
+
+// Client-nav calls a page's setup on each visit; without it, only top-level code runs.
+for (const [name, enable, expectsSetup] of [
+  ['with client-nav', { clientNav: true }, true],
+  ['without client-nav', {}, false],
+]) {
+  test(`add-page writes page code that runs ${name}`, async () => {
+    const workspace = await createWorkspace({ name: 'webstir-project', webstir: { enable } });
+    try {
+      await runAddPage({ workspaceRoot: workspace, pageName: 'about' });
+      const script = await fs.readFile(
+        path.join(workspace, 'src', 'frontend', 'pages', 'about', 'index.ts'),
+        'utf8',
+      );
+      assert.equal(/export function setup\(/.test(script), expectsSetup);
+      assert.doesNotMatch(script, /app\/app/);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+}

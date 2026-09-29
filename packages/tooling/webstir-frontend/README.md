@@ -42,57 +42,19 @@ Webstir watch mode follows a narrow fallback policy:
 - Most content, HTML, and route-shape changes fall back to rebuild + reload.
 - Current exception: in apps without a server, edits to the docs page (`src/frontend/pages/docs/`) or a `src/frontend/content/**/_sidebar.json` re-import the docs page's module, whose sidebar remounts itself, instead of refreshing the page. A module that registered handlers with `registerHotModule` has them run.
 - Any cleanup failure or declined boundary update falls back to reload.
-- A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `app.ts`. That call only queues the handlers in `window.__webstirHotModules`; the dev-only `hmr.js` client drains the queue into its own registry, so production bundles carry no hot-update code.
+- A page opts a module in with `registerHotModule(import.meta.url, { accept, dispose })` from `@webstir-io/webstir-frontend/runtime`. That call only queues the handlers in `window.__webstirHotModules`; Webstir's dev-only client (served at `/hmr.js` in `watch`) drains the queue into its own registry, so production bundles carry no hot-update code.
 
-### Moving an older workspace to the dev-only registry
+### Moving an older workspace onto the package
 
-Workspaces scaffolded before this split still carry the registry in `app.ts`, where it installs `window.__webstirDispose` and `window.__webstirAccept`. The current client does not read those hooks; it warns once in the console when it finds them, because page handlers registered through them no longer run.
+Older workspaces carry Webstir's plumbing in the app: a hot-module registry and an error loader in `app.ts`, the error reporter in `error.ts`, the dev clients `hmr.js` and `refresh.js`, feature imports in `app.ts` and `app.css`, and `@import "@app/app.css"` in each page stylesheet. The package does all of that now. An app that still has them keeps working until it moves, except that a page script importing `app.ts` runs it a second time, since the app bundle loads it on every page.
 
-1. Run `webstir repair`. When `app.ts` and `hmr.js` are both still the scaffold's own files, repair replaces the registry block in `app.ts` with the thin registration below and brings `hmr.js` up to the current client, in the same run. It never changes one without the other: if either file has been customized, it leaves both alone and prints a note saying which one and why. Pages that import `registerHotModule` from `app.ts` keep compiling and keep their handlers.
-2. If repair reports that `app.ts` was customized, do the replacement by hand. There are two separate ranges, with the error-handler section between them that stays as it is:
-   - Range A starts at the line `type HotAsset = {` and ends just before the comment `// Lazy-load error handler on first error`. It holds the hot-module types, the `declare global` block, the registry Map, and the `ensureRecord`, `normalizeModuleId`, `isPromise`, `withHistoryContext`, and `evaluateHandlerResult` helpers. Replace this range with the block below.
-   - Range B starts at the line `export function registerHotModule(` and ends just before the comment `// Set up error listeners`. It holds the old `registerHotModule` and the three `window.__webstir*` assignments. Delete this range.
-   - Keep `errorHandlerLoaded`, `loadErrorHandler`, the two `window.addEventListener` calls, and `export { loadErrorHandler };`. Then run `webstir repair` again; it brings a scaffold `hmr.js` up to the current client.
-
-```ts
-export type HotAsset = {
-  type: 'js' | 'css';
-  url: string;
-  relativePath: string;
-};
-
-export type HotModuleContext = {
-  changedFile: string | null;
-  modules: ReadonlyArray<HotAsset>;
-  styles: ReadonlyArray<HotAsset>;
-  cacheBuster: string;
-  timestamp: number;
-  asset?: HotAsset;
-  previousExports?: unknown;
-};
-
-export type HotModuleHandlers = {
-  accept?: (moduleExports: unknown, context: HotModuleContext) => boolean | Promise<boolean>;
-  dispose?: (context: HotModuleContext) => void | Promise<void>;
-};
-
-export type HotModuleRegistration = { moduleId: string; handlers: HotModuleHandlers };
-
-declare global {
-  interface Window {
-    __webstirEventSource?: EventSource;
-    __webstirSetDevStatus?: (status: string, message?: string) => void;
-    __webstirOnHmrFallback?: (info: { reason?: string; payload?: unknown; details?: unknown }) => void;
-    __webstirHotModules?: HotModuleRegistration[];
-  }
-}
-
-export function registerHotModule(moduleId: string, handlers: HotModuleHandlers): void {
-  (window.__webstirHotModules ??= []).push({ moduleId, handlers });
-}
-```
-
-The current ssg template's `app.ts` is the reference for the finished file.
+1. Run `webstir repair`. It removes each of those where it is still what a Webstir version wrote, removes the `import '../../app/app';` line older `add-page` scaffolds wrote into page scripts, and deletes `app.ts` when nothing of the app's own is left.
+2. Where the app changed one, repair leaves it and prints a note. By hand:
+   - In `app.ts`, delete the hot-module types, the `declare global` block and `registerHotModule`, and the error loader (`errorHandlerLoaded`, `loadErrorHandler`, its two `window.addEventListener` calls and its export). Delete `app.ts` if nothing else is left.
+   - Import `registerHotModule` from `@webstir-io/webstir-frontend/runtime` in any page that imported it from `app.ts`.
+   - Delete `error.ts` once nothing you changed in it is needed; `webstir.enable.clientErrors` turns the packaged reporter off.
+   - Remove `@import "@app/app.css"` from page stylesheets, moving any layer or media condition on it into `app.css`.
+3. Optionally, move to the package's compiler settings, which repair leaves to you: make `src/frontend/tsconfig.json` `{ "extends": "@webstir-io/webstir-frontend/tsconfig.json" }` and `src/backend/tsconfig.json` `{ "extends": "@webstir-io/webstir-backend/tsconfig.json" }`, keeping any options of your own beside the `extends`. Then `base.tsconfig.json`, `types.global.d.ts`, `types/global.d.ts` and an unused `src/shared/` can go.
 
 ## Fragment Ownership Decision
 

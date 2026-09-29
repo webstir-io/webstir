@@ -1412,6 +1412,7 @@ async function copyDemoWorkspace(prefix: string, fixtureName: string): Promise<s
     );
     const manifestPath = path.join(workspace, 'package.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.webstir.moduleManifest ??= {};
     manifest.webstir.moduleManifest.views = [
       { name: 'lifecycle-record', path: '/records/:id', page: 'lifecycle' },
     ];

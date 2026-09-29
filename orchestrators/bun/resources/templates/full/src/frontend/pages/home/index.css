@@ -1,6 +1,4 @@
 /* Index Page Styles */
-@import "@app/app.css";
-
 .hero {
     display: grid;
     gap: 2rem;
@@ -21,9 +19,15 @@
     max-width: 42ch;
 }
 
-.eyebrow {
-    font-size: 0.875rem;
-    font-weight: 700;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
+.greet {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: center;
+}
+
+.greet input,
+.greet button {
+    padding: 0.5rem 0.75rem;
 }

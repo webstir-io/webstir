@@ -579,7 +579,7 @@ test('CLI add-island scaffolds an island in each library and adds what it needs'
       const tsconfig = JSON.parse(
         await readFile(path.join(root, 'src', 'frontend', 'tsconfig.json'), 'utf8'),
       );
-      expect({ flag: entry.flag, jsx: tsconfig.compilerOptions.jsxImportSource }).toEqual({
+      expect({ flag: entry.flag, jsx: tsconfig.compilerOptions?.jsxImportSource }).toEqual({
         flag: entry.flag,
         jsx: entry.jsx,
       });

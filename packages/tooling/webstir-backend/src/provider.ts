@@ -12,7 +12,6 @@ import {
 import { loadBackendModuleManifest } from './manifest/pipeline.js';
 import { createCacheReporter } from './cache/reporters.js';
 import { normalizeLogLevel, filterDiagnostics } from './diagnostics/summary.js';
-import { getBackendScaffoldAssets } from './scaffold/assets.js';
 import { normalizeMode, resolveWorkspacePaths, resolveWorkspaceRoot } from './workspace.js';
 
 import packageJson from '../package.json' with { type: 'json' };
@@ -134,8 +133,5 @@ export const backendProvider: ModuleProvider = {
         diagnostics: filteredDiagnostics,
       },
     };
-  },
-  async getScaffoldAssets() {
-    return await getBackendScaffoldAssets();
   },
 };

@@ -1,6 +1,6 @@
 // TypeScript file for index page
 
-import { registerHotModule } from '../../app/app';
+import { registerHotModule } from '@webstir-io/webstir-frontend/runtime';
 
 const main = document.querySelector('main');
 if (main) {

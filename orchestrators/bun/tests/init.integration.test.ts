@@ -78,7 +78,6 @@ test('CLI init scaffolds an external SSG workspace with published package versio
     expect(result.stdout).toContain('[webstir] init complete');
 
     const packageJson = await readJson(path.join(workspaceRoot, 'package.json'));
-    const baseTsconfig = await readJson(path.join(workspaceRoot, 'base.tsconfig.json'));
 
     expect(packageJson.name).toBe('docs-site');
     // The app is its files; init records no mode.
@@ -90,10 +89,14 @@ test('CLI init scaffolds an external SSG workspace with published package versio
       existsSync(path.join(workspaceRoot, 'src', 'frontend', 'pages', 'home', 'index.html')),
     ).toBe(true);
     expect(existsSync(path.join(workspaceRoot, 'src', 'backend'))).toBe(false);
-    expect(baseTsconfig.references).toEqual([{ path: 'src/frontend' }]);
-    expect(packageJson.devDependencies.typescript).toBe('^7.0.2');
-    expect(baseTsconfig.compilerOptions.moduleResolution).toBe('Bundler');
-    expect(baseTsconfig.compilerOptions.types).toEqual(['node']);
+    expect(packageJson.devDependencies).toEqual({ '@types/node': '^20.0.0', typescript: '^7.0.2' });
+    // The compiler settings are the package's; the app keeps one line naming them.
+    expect(await readJson(path.join(workspaceRoot, 'src', 'frontend', 'tsconfig.json'))).toEqual({
+      extends: '@webstir-io/webstir-frontend/tsconfig.json',
+    });
+    for (const file of ['base.tsconfig.json', 'types.global.d.ts', 'Errors.404.html']) {
+      expect(existsSync(path.join(workspaceRoot, file))).toBe(false);
+    }
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
@@ -115,10 +118,10 @@ test('CLI init keeps workspace dependencies for repo-local workspaces', async ()
     expect(packageJson.dependencies['@webstir-io/webstir-testing']).toBe('workspace:*');
     expect(packageJson.dependencies['@webstir-io/webstir-backend']).toBeUndefined();
     expect(packageJson.webstir.enable).toEqual({ clientNav: true });
-    expect(
-      await readFile(path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts'), 'utf8'),
-    ).toContain("import '@webstir-io/webstir-frontend/features/client-nav';");
-    expect(existsSync(path.join(workspaceRoot, 'src', 'frontend', 'app', 'router.ts'))).toBe(false);
+    // The flag alone turns client navigation on; the app has no entry of Webstir's to hold it.
+    for (const file of ['app.ts', 'error.ts', 'hmr.js', 'refresh.js', 'router.ts']) {
+      expect(existsSync(path.join(workspaceRoot, 'src', 'frontend', 'app', file))).toBe(false);
+    }
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true });
   }

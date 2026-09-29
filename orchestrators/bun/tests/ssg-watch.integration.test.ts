@@ -285,7 +285,7 @@ test('CLI watch runs page handlers registered through registerHotModule for JS e
   const originalDocsScript = await readFile(docsScriptPath, 'utf8');
   const registration = [
     '',
-    "import { registerHotModule } from '../../app/app.js';",
+    "import { registerHotModule } from '@webstir-io/webstir-frontend/runtime';",
     '',
     "document.documentElement.dataset.docsVersion = 'docs-v1';",
     '',

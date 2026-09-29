@@ -94,7 +94,7 @@ test('repair preserves user-authored instructions byte for byte', async () => {
     const instructions = path.join(workspace, 'AGENTS.md');
     const customized = '# App-specific instructions\r\n\r\nKeep this exact content.\r\n';
     await writeFile(instructions, customized);
-    await rm(path.join(workspace, 'Errors.404.html'));
+    await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
     for (const flags of [['--dry-run'], []]) {
       const result = runCli([
         'repair',
@@ -108,7 +108,7 @@ test('repair preserves user-authored instructions byte for byte', async () => {
       expect(JSON.parse(result.stdout).changes).not.toContain('AGENTS.md');
       expect(await readFile(instructions, 'utf8')).toBe(customized);
     }
-    expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(true);
+    expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -134,10 +134,13 @@ test('missing instructions and scaffold files do not make an existing app unheal
     );
     expect(existsSync(path.join(workspace, 'AGENTS.md'))).toBe(false);
 
-    await rm(path.join(workspace, 'Errors.404.html'));
+    await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
     const stillHealthy = JSON.parse(runCli(['doctor', '--json', '--workspace', workspace]).stdout);
     expect(stillHealthy.healthy).toBe(true);
-    expect(stillHealthy.repair.restoreScaffold.changes).toEqual(['AGENTS.md', 'Errors.404.html']);
+    expect(stillHealthy.repair.restoreScaffold.changes).toEqual([
+      'AGENTS.md',
+      'src/frontend/pages/home/index.css',
+    ]);
 
     // A migration repair would apply is drift: an older scaffold hmr.js.
     await writeFile(
@@ -160,7 +163,10 @@ test('missing instructions and scaffold files do not make an existing app unheal
       ]),
     );
     expect(drift.repair.changes).toEqual(['src/frontend/app/hmr.js']);
-    expect(drift.repair.restoreScaffold.changes).toEqual(['AGENTS.md', 'Errors.404.html']);
+    expect(drift.repair.restoreScaffold.changes).toEqual([
+      'AGENTS.md',
+      'src/frontend/pages/home/index.css',
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -212,7 +218,7 @@ test('existing instruction links and directories do not block unrelated scaffold
       } else {
         await symlink(kind === 'symlink' ? external : path.join(root, 'missing.md'), instructions);
       }
-      await rm(path.join(workspace, 'Errors.404.html'));
+      await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
 
       const preview = runCli([
         'repair',
@@ -224,12 +230,12 @@ test('existing instruction links and directories do not block unrelated scaffold
       ]);
       expect(preview.exitCode).toBe(0);
       expect(JSON.parse(preview.stdout).changes).not.toContain('AGENTS.md');
-      expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(false);
+      expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(false);
 
       const repair = runCli(['repair', '--restore-scaffold', '--json', '--workspace', workspace]);
       expect(repair.exitCode).toBe(0);
       expect(JSON.parse(repair.stdout).changes).not.toContain('AGENTS.md');
-      expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(true);
+      expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(true);
       const preserved = await lstat(instructions);
       expect(kind === 'directory' ? preserved.isDirectory() : preserved.isSymbolicLink()).toBe(
         true,
@@ -263,17 +269,15 @@ test('repair --restore-scaffold preserves removed starter tests while restoring 
       path.join(workspace, 'node_modules'),
       'dir',
     );
-    const removedTests = [
-      'src/backend/tests/progressive-enhancement.test.ts',
-      'src/frontend/pages/home/tests/home.test.ts',
-    ];
+    const removedTests = ['src/frontend/pages/home/tests/home.test.ts'];
     for (const relativePath of removedTests) {
       await rm(path.join(workspace, relativePath));
     }
     const appTest = path.join(workspace, 'src', 'backend', 'tests', 'notes.test.ts');
     const appTestContent = '// Application-specific behavior checks belong here.\n';
+    await mkdir(path.dirname(appTest), { recursive: true });
     await writeFile(appTest, appTestContent);
-    await rm(path.join(workspace, 'Errors.404.html'));
+    await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
 
     for (const flags of [['--dry-run'], []]) {
       const result = runCli([
@@ -286,14 +290,14 @@ test('repair --restore-scaffold preserves removed starter tests while restoring 
       ]);
       expect(result.exitCode).toBe(0);
       const changes = JSON.parse(result.stdout).changes;
-      expect(changes).toContain('Errors.404.html');
+      expect(changes).toContain('src/frontend/pages/home/index.css');
       for (const relativePath of removedTests) {
         expect(changes).not.toContain(relativePath);
         expect(existsSync(path.join(workspace, relativePath))).toBe(false);
       }
       expect(await readFile(appTest, 'utf8')).toBe(appTestContent);
     }
-    expect(existsSync(path.join(workspace, 'Errors.404.html'))).toBe(true);
+    expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(true);
     const diagnosis = runCli(['doctor', '--json', '--workspace', workspace]);
     expect(diagnosis).toMatchObject({ exitCode: 0 });
     expect(JSON.parse(diagnosis.stdout).healthy).toBe(true);

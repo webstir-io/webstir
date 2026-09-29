@@ -43,9 +43,18 @@
       "default": "./dist/features/content-nav.js"
     },
     "./features/content-nav.css": "./src/features/content-nav.css",
+    "./features/client-errors": {
+      "types": "./dist/features/client-errors.d.ts",
+      "import": "./dist/features/client-errors.js",
+      "default": "./dist/features/client-errors.js"
+    },
     "./cli": {
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"
+    },
+    "./tsconfig.json": "./config/tsconfig.app.json",
+    "./client": {
+      "types": "./config/client.d.ts"
     },
     "./package.json": "./package.json"
   },
@@ -60,6 +69,7 @@
   },
   "files": [
     "dist",
+    "config",
     "src",
     "scripts",
     "tests",

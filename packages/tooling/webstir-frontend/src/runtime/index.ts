@@ -3,3 +3,4 @@ export * from './page.js';
 export * from './page-load.js';
 export * from './browser-render.js';
 export * from './islands.js';
+export * from './hot.js';

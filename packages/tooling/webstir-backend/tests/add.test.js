@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { backendProvider, runAddJob, runAddRoute, runUpdateRouteContract } from '../dist/index.js';
+import { scaffoldAssets } from './support/scaffold.js';
 
 async function createTempWorkspace(prefix = 'webstir-backend-add-') {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -15,7 +16,7 @@ async function ensureDir(dir) {
 }
 
 async function copyAssetByTarget(workspace, targetPath) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
   const asset = assets.find((entry) => entry.targetPath === targetPath);
   assert.ok(asset, `expected scaffold asset ${targetPath}`);
   const destination = path.join(workspace, targetPath);
