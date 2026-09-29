@@ -3,31 +3,25 @@ import path from 'node:path';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { runWebstir } from '../test-support/cli.ts';
 
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
-
-function runCli(args: readonly string[]): {
+async function runCli(args: readonly string[]): Promise<{
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
-} {
-  const processResult = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
+}> {
+  const processResult = await runWebstir(args, {
     cwd: repoRoot,
     env: {
       ...process.env,
       WEBSTIR_BACKEND_TYPECHECK: 'skip',
     },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
@@ -35,7 +29,7 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
   const copiedWorkspace = await copyDemoWorkspace('full', 'webstir-smoke-full-');
 
   try {
-    const result = runCli(['smoke', '--workspace', copiedWorkspace.workspaceRoot]);
+    const result = await runCli(['smoke', '--workspace', copiedWorkspace.workspaceRoot]);
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('[webstir-backend] build:start');
@@ -53,8 +47,8 @@ test('CLI smoke runs the full demo workspace end to end', async () => {
   }
 });
 
-test('CLI smoke defaults to a temporary full workspace built from Bun-owned templates', () => {
-  const result = runCli(['smoke']);
+test('CLI smoke defaults to a temporary full workspace built from Bun-owned templates', async () => {
+  const result = await runCli(['smoke']);
 
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain('[webstir-backend] build:start');

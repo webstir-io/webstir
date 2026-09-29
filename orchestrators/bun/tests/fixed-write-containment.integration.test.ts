@@ -5,33 +5,21 @@ import { link, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
-
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
+import { runWebstir } from '../test-support/cli.ts';
 
 async function runCli(
   workspaceRoot: string,
   args: readonly string[],
 ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
-  const processResult = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      ...args,
-      '--workspace',
-      workspaceRoot,
-    ],
+  const processResult = await runWebstir([...args, '--workspace', workspaceRoot], {
     cwd: repoRoot,
     env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 

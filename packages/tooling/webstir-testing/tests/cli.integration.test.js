@@ -16,7 +16,7 @@ test('CLI test emits per-runtime and overall summaries for a mixed workspace', a
     await writeWorkspaceTest(workspaceRoot, 'frontend', 'home', { testName: 'frontend passes' });
     await writeWorkspaceTest(workspaceRoot, 'backend', 'api', { testName: 'backend passes' });
 
-    const result = runCli(['test', '--workspace', workspaceRoot], {
+    const result = await runCli(['test', '--workspace', workspaceRoot], {
       env: {
         WEBSTIR_BACKEND_TESTS: 'skip',
       },
@@ -57,7 +57,7 @@ test('CLI test honors WEBSTIR_TEST_RUNTIME=backend', async () => {
     await writeWorkspaceTest(workspaceRoot, 'frontend', 'home', { testName: 'frontend passes' });
     await writeWorkspaceTest(workspaceRoot, 'backend', 'api', { testName: 'backend passes' });
 
-    const result = runCli(['test', '--workspace', workspaceRoot], {
+    const result = await runCli(['test', '--workspace', workspaceRoot], {
       env: {
         WEBSTIR_BACKEND_TESTS: 'skip',
         WEBSTIR_TEST_RUNTIME: 'backend',

@@ -4,10 +4,7 @@ import path from 'node:path';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
-
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
+import { runWebstir } from '../test-support/cli.ts';
 
 async function runCli(
   args: readonly string[],
@@ -17,21 +14,18 @@ async function runCli(
   readonly stderr: string;
   readonly exitCode: number;
 }> {
-  const processResult = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
+  const processResult = await runWebstir(args, {
     cwd: repoRoot,
     env: {
       ...process.env,
       ...envOverrides,
     },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 

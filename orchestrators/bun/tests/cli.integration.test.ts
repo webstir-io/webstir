@@ -5,10 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
-
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
+import { runWebstir } from '../test-support/cli.ts';
 
 async function runCliInCopiedWorkspace(
   command: string,
@@ -20,7 +17,7 @@ async function runCliInCopiedWorkspace(
     fixtureName,
     `webstir-${fixtureName.replace(/[\\/]/g, '-')}-`,
   );
-  const processResult = runCli(
+  const processResult = await runCli(
     [command, '--workspace', copiedWorkspace.workspaceRoot, ...extraArgs],
     envOverrides,
   );
@@ -29,20 +26,19 @@ async function runCliInCopiedWorkspace(
     copiedWorkspace: copiedWorkspace.workspaceRoot,
     stdout: processResult.stdout,
     stderr: processResult.stderr,
-    exitCode: processResult.exitCode,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
-function runCli(
+async function runCli(
   args: readonly string[],
   envOverrides: Record<string, string | undefined> = {},
-): {
+): Promise<{
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
-} {
-  const processResult = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
+}> {
+  const processResult = await runWebstir(args, {
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -50,14 +46,12 @@ function runCli(
       BROWSERSLIST_IGNORE_OLD_DATA: 'true',
       ...envOverrides,
     },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
@@ -91,7 +85,7 @@ test('CLI rejects the removed --frontend-mode flag', async () => {
   const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-spa-frontend-mode-removed-');
 
   try {
-    const result = runCli([
+    const result = await runCli([
       'publish',
       '--workspace',
       copiedWorkspace.workspaceRoot,
@@ -173,7 +167,7 @@ test('CLI build fails when a provider reports fatal diagnostics', async () => {
     packageJson.webstir.moduleManifest.services = 'invalid';
     await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
 
-    const result = runCli(['build', '--workspace', copiedWorkspace.workspaceRoot], {
+    const result = await runCli(['build', '--workspace', copiedWorkspace.workspaceRoot], {
       WEBSTIR_BACKEND_TYPECHECK: 'skip',
     });
 

@@ -6,7 +6,6 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const textDecoder = new TextDecoder();
 
 function readJson(relativePath) {
   return JSON.parse(readFileSync(path.join(repoRoot, relativePath), 'utf8'));
@@ -30,13 +29,15 @@ function workspacePackages() {
 const published = workspacePackages().filter(({ manifest }) => manifest.private !== true);
 const versionOf = new Map(published.map(({ manifest }) => [manifest.name, manifest.version]));
 
-function run(command, args, cwd) {
-  const result = Bun.spawnSync({ cmd: [command, ...args], cwd, stdout: 'pipe', stderr: 'pipe' });
-  return {
-    status: result.exitCode,
-    stdout: textDecoder.decode(result.stdout),
-    stderr: textDecoder.decode(result.stderr),
-  };
+// Never a blocking spawn: in a bun test worker one has waited forever for a child that had exited.
+async function run(command, args, cwd) {
+  const child = Bun.spawn({ cmd: [command, ...args], cwd, stdout: 'pipe', stderr: 'pipe' });
+  const [stdout, stderr, status] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { status, stdout, stderr };
 }
 
 // Changesets versions each release group together; every published package belongs to exactly one
@@ -76,22 +77,22 @@ test('published packages depend on their siblings at versions that exist', () =>
   }
 });
 
-test('packed packages carry no workspace ranges', () => {
+test('packed packages carry no workspace ranges', async () => {
   const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'webstir-package-publishing-'));
   try {
     for (const { dir } of published.filter(({ dir }) => dir.startsWith('packages/'))) {
       const copy = path.join(tempRoot, dir);
       cpSync(path.join(repoRoot, dir), copy, { recursive: true });
 
-      const pack = run('bun', ['pm', 'pack', '--ignore-scripts', '--quiet'], copy);
+      const pack = await run('bun', ['pm', 'pack', '--ignore-scripts', '--quiet'], copy);
       assert.equal(pack.status, 0, pack.stderr);
       const tarball = path.join(copy, pack.stdout.trim());
 
-      const manifest = run('tar', ['-xOf', tarball, 'package/package.json'], copy);
+      const manifest = await run('tar', ['-xOf', tarball, 'package/package.json'], copy);
       assert.equal(manifest.status, 0, manifest.stderr);
       assert.doesNotMatch(manifest.stdout, /"workspace:/, dir);
 
-      const listing = run('tar', ['-tf', tarball], copy);
+      const listing = await run('tar', ['-tf', tarball], copy);
       assert.equal(listing.status, 0, listing.stderr);
       assert.doesNotMatch(listing.stdout, /package\/package-lock\.json/, dir);
     }

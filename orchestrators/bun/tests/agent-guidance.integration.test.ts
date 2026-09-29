@@ -5,19 +5,14 @@ import { existsSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 
 import { assetsRoot, packageRoot, repoRoot } from '../src/paths.ts';
+import { runWebstir } from '../test-support/cli.ts';
 
-function runCli(args: readonly string[]) {
-  const result = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
-    cwd: repoRoot,
-    env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+async function runCli(args: readonly string[]) {
+  const result = await runWebstir(args, { cwd: repoRoot, env: process.env });
   return {
-    stdout: new TextDecoder().decode(result.stdout),
-    stderr: new TextDecoder().decode(result.stderr),
-    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: result.exitCode ?? -1,
   };
 }
 
@@ -30,7 +25,7 @@ test('new app guidance is available in each supported scaffold mode', async () =
   try {
     for (const mode of ['full', 'api', 'spa', 'ssg']) {
       const workspace = path.join(root, mode);
-      const result = runCli(['init', mode, workspace]);
+      const result = await runCli(['init', mode, workspace]);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain(
         `Read app instructions: ${path.join(workspace, 'AGENTS.md')}`,
@@ -49,7 +44,7 @@ test('repair leaves missing instructions alone; --restore-scaffold restores them
   const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-agent-guidance-repair-'));
   const workspace = path.join(root, 'site');
   try {
-    expect(runCli(['init', 'ssg', workspace]).exitCode).toBe(0);
+    expect((await runCli(['init', 'ssg', workspace])).exitCode).toBe(0);
     const instructions = path.join(workspace, 'AGENTS.md');
     const customPage = path.join(workspace, 'src', 'frontend', 'pages', 'home', 'index.html');
     const customContent = '<h1>Application-owned content</h1>\n';
@@ -57,13 +52,13 @@ test('repair leaves missing instructions alone; --restore-scaffold restores them
     await writeFile(customPage, customContent);
     await rm(instructions);
 
-    const plain = runCli(['repair', '--json', '--workspace', workspace]);
+    const plain = await runCli(['repair', '--json', '--workspace', workspace]);
     expect(plain.exitCode).toBe(0);
     expect(JSON.parse(plain.stdout).changes).not.toContain('AGENTS.md');
     expect(JSON.parse(plain.stdout).missingScaffold).toContain('AGENTS.md');
     expect(existsSync(instructions)).toBe(false);
 
-    const preview = runCli([
+    const preview = await runCli([
       'repair',
       '--dry-run',
       '--restore-scaffold',
@@ -76,7 +71,13 @@ test('repair leaves missing instructions alone; --restore-scaffold restores them
     expect(existsSync(instructions)).toBe(false);
     expect(await readFile(customPage, 'utf8')).toBe(customContent);
 
-    const repair = runCli(['repair', '--restore-scaffold', '--json', '--workspace', workspace]);
+    const repair = await runCli([
+      'repair',
+      '--restore-scaffold',
+      '--json',
+      '--workspace',
+      workspace,
+    ]);
     expect(repair.exitCode).toBe(0);
     expect(JSON.parse(repair.stdout).changes).toContain('AGENTS.md');
     expect(await readFile(instructions, 'utf8')).toBe(expected);
@@ -90,13 +91,13 @@ test('repair preserves user-authored instructions byte for byte', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-agent-guidance-preserve-'));
   const workspace = path.join(root, 'site');
   try {
-    expect(runCli(['init', 'ssg', workspace]).exitCode).toBe(0);
+    expect((await runCli(['init', 'ssg', workspace])).exitCode).toBe(0);
     const instructions = path.join(workspace, 'AGENTS.md');
     const customized = '# App-specific instructions\r\n\r\nKeep this exact content.\r\n';
     await writeFile(instructions, customized);
     await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
     for (const flags of [['--dry-run'], []]) {
-      const result = runCli([
+      const result = await runCli([
         'repair',
         '--restore-scaffold',
         '--json',
@@ -118,10 +119,10 @@ test('missing instructions and scaffold files do not make an existing app unheal
   const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-agent-guidance-health-'));
   const workspace = path.join(root, 'site');
   try {
-    expect(runCli(['init', 'ssg', workspace]).exitCode).toBe(0);
+    expect((await runCli(['init', 'ssg', workspace])).exitCode).toBe(0);
     await rm(path.join(workspace, 'AGENTS.md'));
 
-    const healthy = runCli(['doctor', '--json', '--workspace', workspace]);
+    const healthy = await runCli(['doctor', '--json', '--workspace', workspace]);
     expect(healthy.exitCode).toBe(0);
     const diagnosis = JSON.parse(healthy.stdout);
     expect(diagnosis.healthy).toBe(true);
@@ -135,7 +136,9 @@ test('missing instructions and scaffold files do not make an existing app unheal
     expect(existsSync(path.join(workspace, 'AGENTS.md'))).toBe(false);
 
     await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
-    const stillHealthy = JSON.parse(runCli(['doctor', '--json', '--workspace', workspace]).stdout);
+    const stillHealthy = JSON.parse(
+      (await runCli(['doctor', '--json', '--workspace', workspace])).stdout,
+    );
     expect(stillHealthy.healthy).toBe(true);
     expect(stillHealthy.repair.restoreScaffold.changes).toEqual([
       'AGENTS.md',
@@ -150,7 +153,7 @@ test('missing instructions and scaffold files do not make an existing app unheal
         'utf8',
       ),
     );
-    const unhealthy = runCli(['doctor', '--json', '--workspace', workspace]);
+    const unhealthy = await runCli(['doctor', '--json', '--workspace', workspace]);
     expect(unhealthy.exitCode).toBe(1);
     const drift = JSON.parse(unhealthy.stdout);
     expect(drift.healthy).toBe(false);
@@ -178,14 +181,14 @@ test('agent validate still tests an existing app without optional instructions',
   const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-agent-guidance-validate-'));
   const workspace = path.join(root, 'spa');
   try {
-    expect(runCli(['init', 'spa', workspace]).exitCode).toBe(0);
+    expect((await runCli(['init', 'spa', workspace])).exitCode).toBe(0);
     await symlink(
       path.join(packageRoot, 'node_modules'),
       path.join(workspace, 'node_modules'),
       'dir',
     );
     await rm(path.join(workspace, 'AGENTS.md'));
-    const result = runCli(['agent', 'validate', '--json', '--workspace', workspace]);
+    const result = await runCli(['agent', 'validate', '--json', '--workspace', workspace]);
     expect(result.exitCode).toBe(0);
     const validation = JSON.parse(result.stdout);
     expect(validation.success).toBe(true);
@@ -210,7 +213,7 @@ test('existing instruction links and directories do not block unrelated scaffold
 
     for (const kind of ['symlink', 'dangling-symlink', 'directory']) {
       const workspace = path.join(root, kind);
-      expect(runCli(['init', 'ssg', workspace]).exitCode).toBe(0);
+      expect((await runCli(['init', 'ssg', workspace])).exitCode).toBe(0);
       const instructions = path.join(workspace, 'AGENTS.md');
       await rm(instructions);
       if (kind === 'directory') {
@@ -220,7 +223,7 @@ test('existing instruction links and directories do not block unrelated scaffold
       }
       await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
 
-      const preview = runCli([
+      const preview = await runCli([
         'repair',
         '--dry-run',
         '--restore-scaffold',
@@ -232,7 +235,13 @@ test('existing instruction links and directories do not block unrelated scaffold
       expect(JSON.parse(preview.stdout).changes).not.toContain('AGENTS.md');
       expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(false);
 
-      const repair = runCli(['repair', '--restore-scaffold', '--json', '--workspace', workspace]);
+      const repair = await runCli([
+        'repair',
+        '--restore-scaffold',
+        '--json',
+        '--workspace',
+        workspace,
+      ]);
       expect(repair.exitCode).toBe(0);
       expect(JSON.parse(repair.stdout).changes).not.toContain('AGENTS.md');
       expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(true);
@@ -241,7 +250,7 @@ test('existing instruction links and directories do not block unrelated scaffold
         true,
       );
       expect(await readFile(external, 'utf8')).toBe(content);
-      expect(runCli(['doctor', '--json', '--workspace', workspace]).exitCode).toBe(0);
+      expect((await runCli(['doctor', '--json', '--workspace', workspace])).exitCode).toBe(0);
     }
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -249,7 +258,7 @@ test('existing instruction links and directories do not block unrelated scaffold
 });
 
 test('help locates the installed recipes and current starter instructions', async () => {
-  const result = runCli(['--help']);
+  const result = await runCli(['--help']);
   const guide = path.join(assetsRoot, 'guides', 'README.md');
   const instructions = path.join(assetsRoot, 'templates', 'shared', 'AGENTS.md');
   expect(result.exitCode).toBe(0);
@@ -263,7 +272,7 @@ test('repair --restore-scaffold preserves removed starter tests while restoring 
   const root = await mkdtemp(path.join(os.tmpdir(), 'webstir-agent-test-ownership-'));
   const workspace = path.join(root, 'full');
   try {
-    expect(runCli(['init', 'full', workspace]).exitCode).toBe(0);
+    expect((await runCli(['init', 'full', workspace])).exitCode).toBe(0);
     await symlink(
       path.join(packageRoot, 'node_modules'),
       path.join(workspace, 'node_modules'),
@@ -280,7 +289,7 @@ test('repair --restore-scaffold preserves removed starter tests while restoring 
     await rm(path.join(workspace, 'src/frontend/pages/home/index.css'));
 
     for (const flags of [['--dry-run'], []]) {
-      const result = runCli([
+      const result = await runCli([
         'repair',
         '--restore-scaffold',
         '--json',
@@ -298,7 +307,7 @@ test('repair --restore-scaffold preserves removed starter tests while restoring 
       expect(await readFile(appTest, 'utf8')).toBe(appTestContent);
     }
     expect(existsSync(path.join(workspace, 'src/frontend/pages/home/index.css'))).toBe(true);
-    const diagnosis = runCli(['doctor', '--json', '--workspace', workspace]);
+    const diagnosis = await runCli(['doctor', '--json', '--workspace', workspace]);
     expect(diagnosis).toMatchObject({ exitCode: 0 });
     expect(JSON.parse(diagnosis.stdout).healthy).toBe(true);
   } finally {

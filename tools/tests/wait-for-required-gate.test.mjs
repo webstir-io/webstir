@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,7 +24,8 @@ case "$2" in
 esac
 `;
 
-function run({ heads, trees, gates, compare }) {
+// Never a blocking spawn: in a bun test worker one has waited forever for a child that had exited.
+async function run({ heads, trees, gates, compare }) {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'webstir-gate-'));
   try {
     writeFileSync(path.join(dir, 'gh'), STUB);
@@ -38,7 +38,18 @@ function run({ heads, trees, gates, compare }) {
     };
     for (const [sha, tree] of Object.entries(trees)) env[`TREE_${sha}`] = tree;
     for (const [sha, gate] of Object.entries(gates)) env[`GATE_${sha}`] = gate;
-    return spawnSync('bash', [script, 'owner/repo', 'merge'], { env, encoding: 'utf8' });
+    const child = Bun.spawn({
+      cmd: ['bash', script, 'owner/repo', 'merge'],
+      env,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    const [stdout, stderr, status] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    return { status, stdout, stderr };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -95,9 +106,9 @@ for (const { name, heads, trees, gates, compare, passes, via } of [
     via: /Required Gate passed on merge$/m,
   },
 ]) {
-  test(`wait-for-required-gate: ${name}`, () => {
+  test(`wait-for-required-gate: ${name}`, async () => {
     // The head's own gate result defaults to success unless the case says otherwise.
-    const result = run({ heads, trees, compare, gates: { head: 'success', ...gates } });
+    const result = await run({ heads, trees, compare, gates: { head: 'success', ...gates } });
     assert.equal(result.status === 0, passes, result.stderr);
     assert.match(`${result.stdout}${result.stderr}`, via);
   });

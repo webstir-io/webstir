@@ -60,7 +60,7 @@ async function seedWorkspace(workspaceRoot) {
 }
 
 async function runSmokeStep(label, args, validate, env = {}, entrypoint = 'dist/cli.js') {
-  const result = runEntrypoint(entrypoint, args, {
+  const result = await runEntrypoint(entrypoint, args, {
     env: {
       WEBSTIR_BACKEND_TESTS: 'skip',
       ...env,

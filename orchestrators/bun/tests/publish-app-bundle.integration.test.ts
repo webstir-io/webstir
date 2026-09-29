@@ -6,6 +6,7 @@ import path from 'node:path';
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
+import { runWebstir } from '../test-support/cli.ts';
 
 test('published app bundle carries no hot-update machinery', async () => {
   const copy = await copyDemoWorkspace('ssg/site', 'webstir-publish-app-bundle');
@@ -18,7 +19,7 @@ test('published app bundle carries no hot-update machinery', async () => {
       ),
     );
     await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
-    runCli(workspace, ['publish']);
+    await runCli(workspace, ['publish']);
 
     const distRoot = path.join(workspace, 'dist', 'frontend');
     const html = await readFile(path.join(distRoot, 'index.html'), 'utf8');
@@ -37,19 +38,10 @@ test('published app bundle carries no hot-update machinery', async () => {
   }
 }, 180_000);
 
-function runCli(workspace: string, args: string[]): void {
-  const result = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      ...args,
-      '--workspace',
-      workspace,
-    ],
+async function runCli(workspace: string, args: string[]): Promise<void> {
+  const result = await runWebstir([...args, '--workspace', workspace], {
     cwd: repoRoot,
     env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
   if (result.exitCode !== 0) {
     throw new Error(

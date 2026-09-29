@@ -9,15 +9,15 @@ export interface CliResult {
 }
 
 /**
- * Runs the webstir CLI without blocking. A blocking spawn in a test worker that also runs Chromium
- * has waited forever in CI for a child that had already finished.
+ * Runs a command without blocking. A blocking spawn (`spawnSync`, `execSync`) in a `bun test`
+ * worker has waited forever in CI for a child that had already exited, so tests never use one.
  */
-export async function runWebstir(
-  args: readonly string[],
+export async function runCommand(
+  cmd: readonly string[],
   options: { readonly cwd?: string; readonly env?: Record<string, string | undefined> } = {},
 ): Promise<CliResult> {
   const child = Bun.spawn({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
+    cmd: [...cmd],
     cwd: options.cwd ?? repoRoot,
     env: options.env ?? process.env,
     stdout: 'pipe',
@@ -29,6 +29,14 @@ export async function runWebstir(
     child.exited,
   ]);
   return { exitCode, stdout, stderr };
+}
+
+/** Runs the webstir CLI without blocking; see `runCommand`. */
+export function runWebstir(
+  args: readonly string[],
+  options: { readonly cwd?: string; readonly env?: Record<string, string | undefined> } = {},
+): Promise<CliResult> {
+  return runCommand([process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args], options);
 }
 
 export async function runWebstirOrThrow(
