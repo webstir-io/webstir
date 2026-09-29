@@ -1,5 +1,12 @@
 # @webstir-io/webstir-frontend
 
+## 0.8.1
+
+### Patch Changes
+
+- 755dded: Client navigation keeps Webstir's critical page styles before the app's stylesheet, where a full page load has them, so the app's own styles still win after navigating.
+- @webstir-io/module-contract@0.8.1
+
 ## 0.8.0
 
 ### Minor Changes

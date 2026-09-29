@@ -1,5 +1,14 @@
 # @webstir-io/webstir
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [755dded]
+  - @webstir-io/webstir-frontend@0.8.1
+  - @webstir-io/module-contract@0.8.1
+  - @webstir-io/webstir-backend@0.8.1
+
 ## 0.8.0
 
 ### Minor Changes
