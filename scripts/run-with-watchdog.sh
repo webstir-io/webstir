@@ -7,9 +7,10 @@ set -uo pipefail
 limit="$1"
 shift
 
-# Its own process group, so everything it starts can be stopped together.
+# Its own process group, so everything it starts can be stopped together. With job control on,
+# bash no longer gives a background command /dev/null as its input, so it is given here, as before.
 set -m
-"$@" &
+"$@" < /dev/null &
 command_pid=$!
 set +m
 
