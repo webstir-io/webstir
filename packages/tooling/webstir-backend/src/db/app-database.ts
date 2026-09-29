@@ -9,7 +9,12 @@ import {
   type Database,
   type DatabaseConnection,
 } from './database.js';
-import { closeDatabaseSnapshots, databaseSnapshots } from './snapshots.js';
+import {
+  closeDatabaseSnapshots,
+  databaseSnapshots,
+  snapshotOnce,
+  snapshotProblem,
+} from './snapshots.js';
 import { ensureWebstirTables, type WebstirTables } from './webstir-tables.js';
 import {
   applyMigrations,
@@ -137,27 +142,19 @@ function afterWrite(): void {
 
 /** Takes a snapshot of the app's database now, when SNAPSHOT_URL is set; its key, or undefined. */
 export async function snapshotAppDatabase(): Promise<string | undefined> {
-  // A copy of the database as it is: when the app hasn't opened it, the copy is taken over a
-  // connection of its own, so taking one never applies migrations.
-  let own: DatabaseConnection | undefined;
-  const connection = async () => {
-    if (opened) return opened;
-    own ??= await openDatabase(appDatabaseUrl(), { workspaceRoot: appRoot() });
-    return own;
-  };
-  const snapshots = databaseSnapshots(connection, appDatabaseUrl());
-  if (!snapshots) {
-    throw new Error(
-      process.env.SNAPSHOT_URL?.trim()
-        ? 'Snapshots are for a SQLite database; back up a Postgres database with its host.'
-        : 'SNAPSHOT_URL is not set; set it to s3://bucket/prefix or file:./data/snapshots.',
-    );
-  }
+  const url = appDatabaseUrl();
+  const problem = snapshotProblem(url);
+  if (problem) throw new Error(problem);
+  // Open, the app's database is copied by its snapshotter, after any copy already underway.
+  if (opened) return databaseSnapshots(appDatabase, url)?.now();
+  // Otherwise the copy is of the database as it is, over a connection of its own: taking one
+  // never applies migrations, and never makes a database that isn't there.
+  if (!appDatabaseExists()) throw new Error(`There is no database at ${url} to snapshot.`);
+  const connection = await openDatabase(url, { workspaceRoot: appRoot() });
   try {
-    return await snapshots.now();
+    return await snapshotOnce(connection, url);
   } finally {
-    await own?.close();
-    own = undefined;
+    await connection.close();
   }
 }
 

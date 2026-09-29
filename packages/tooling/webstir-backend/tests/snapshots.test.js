@@ -123,6 +123,9 @@ test('a snapshot copies the database as it is, applying no migration', async () 
       );
 
       const key = await snapshotAppDatabase();
+      // Taken again, over a fresh connection each time, it is another copy.
+      const again = await snapshotAppDatabase();
+      assert.notEqual(again, key);
       await closeAppDatabase();
 
       const tables = (file) => {
@@ -139,6 +142,26 @@ test('a snapshot copies the database as it is, applying no migration', async () 
       assert.deepEqual(tables(path.join(root, 'snapshots', key)), ['notes']);
       assert.deepEqual(tables(path.join(root, 'app.sqlite')), ['notes']);
       assert.deepEqual(notesIn(path.join(root, 'snapshots', key)), ['kept']);
+    },
+  );
+});
+
+test('a snapshot of a database that is not there refuses, and makes none', async () => {
+  await withApp(
+    { SNAPSHOT_URL: 'file:./snapshots', DATABASE_URL: 'file:./missing.sqlite' },
+    async (root) => {
+      await assert.rejects(
+        snapshotAppDatabase(),
+        /There is no database at file:\.\/missing\.sqlite/,
+      );
+      assert.equal(
+        await fs.access(path.join(root, 'missing.sqlite')).then(
+          () => true,
+          () => false,
+        ),
+        false,
+      );
+      assert.deepEqual(await copies(root), []);
     },
   );
 });

@@ -25,7 +25,7 @@ afterEach(async () => {
 const GREETING = 'Hello from a sibling module';
 
 // An app's server entry, its jobs and its TypeScript migrations import the app's own modules; a
-// development build carries those in as publish does, so the server starts and they all run.
+// development build carries those in as publish does.
 async function writeAppWithSiblingImports(workspace: string): Promise<void> {
   const backend = path.join(workspace, 'src', 'backend');
   await mkdir(path.join(backend, 'shared'), { recursive: true });
@@ -85,7 +85,7 @@ async function danglingImports(buildRoot: string): Promise<string[]> {
   return dangling.sort();
 }
 
-test('a development build carries in the app’s own imports, so its entries, jobs and migrations run', async () => {
+test('a development build carries in the app’s own imports: nothing is left dangling, and the server entry runs', async () => {
   const copy = await copyDemoWorkspace('api', 'webstir-dev-build-imports');
   const workspace = copy.workspaceRoot;
   try {

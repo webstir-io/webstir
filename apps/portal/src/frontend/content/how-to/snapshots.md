@@ -13,7 +13,7 @@ SNAPSHOT_URL=s3://my-app-backups/database-snapshots/v1
 - Give snapshots a place of their own, not `STORAGE_URL` itself: `SNAPSHOT_KEEP` removes the oldest `.sqlite` files it finds there.
 - `SNAPSHOT_KEEP=48` keeps only the newest 48. Unset, every copy stays, for the bucket's lifecycle rules to expire.
 - A copy that fails is retried, then logged; the write it followed has already succeeded.
-- `webstir snapshot --workspace <path>` takes one now.
+- `webstir snapshot --workspace <path>` takes one now, of the database as it is: it applies no migration, and refuses when there is no database.
 
 Webstir's own tables that change on almost every request, sessions and the job queue, don't trigger a copy by themselves; the next copy includes them.
 
