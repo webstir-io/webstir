@@ -19,17 +19,19 @@ test('deploy cli is emitted with a Bun shebang', async () => {
   assert.match(source, /^#!\/usr\/bin\/env bun/m);
 });
 
-test('deploy cli prints usage', () => {
+test('deploy cli prints usage', async () => {
   const cliPath = path.join(getPackageRoot(), 'dist', 'deploy-cli.js');
-  const result = Bun.spawnSync({
+  // Never a blocking spawn: in a bun test worker one has waited forever for a child that had exited.
+  const child = Bun.spawn({
     cmd: ['bun', cliPath, '--help'],
     cwd: getPackageRoot(),
     stdout: 'pipe',
     stderr: 'pipe',
   });
+  const [stdout, exitCode] = await Promise.all([new Response(child.stdout).text(), child.exited]);
 
-  assert.equal(result.exitCode, 0);
-  assert.match(new TextDecoder().decode(result.stdout), /Usage: webstir-backend-deploy/);
+  assert.equal(exitCode, 0);
+  assert.match(stdout, /Usage: webstir-backend-deploy/);
 });
 
 test('published deploy refuses an app recorded with pages whose frontend output is missing', async () => {

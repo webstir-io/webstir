@@ -9,34 +9,21 @@ import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 import { materializeRepoLocalWorkspaceDependencies } from '../src/external-workspace.ts';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
-
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
+import { runCommand, runWebstir } from '../test-support/cli.ts';
 
 async function runEnableInWorkspace(
   copiedWorkspace: string,
   featureArgs: readonly string[],
 ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
-  const processResult = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      'enable',
-      ...featureArgs,
-      '--workspace',
-      copiedWorkspace,
-    ],
-    cwd: repoRoot,
-    env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const processResult = await runWebstir(
+    ['enable', ...featureArgs, '--workspace', copiedWorkspace],
+    { cwd: repoRoot, env: process.env },
+  );
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
@@ -44,24 +31,15 @@ async function runWorkspaceCli(
   copiedWorkspace: string,
   args: readonly string[],
 ): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }> {
-  const processResult = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      path.join(packageRoot, 'src', 'cli.ts'),
-      ...args,
-      '--workspace',
-      copiedWorkspace,
-    ],
+  const processResult = await runWebstir([...args, '--workspace', copiedWorkspace], {
     cwd: repoRoot,
     env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
@@ -827,25 +805,23 @@ test('generated s3-cloudfront script publishes from a clean checkout and retains
     const callLog = path.join(stubDir, `calls-${history}.log`);
     await rm(path.join(stubDir, 'manifests'), { recursive: true, force: true });
     await mkdir(path.join(stubDir, 'manifests'), { recursive: true });
-    const run = Bun.spawnSync({
-      cmd: ['bash', path.join(workspace, 'utils', 'deploy-s3-cloudfront.sh')],
-      cwd: workspace,
-      env: {
-        ...process.env,
-        PATH: `${stubDir}:${process.env.PATH ?? ''}`,
-        AWS_STUB_LOG: callLog,
-        AWS_STUB_DIR: stubDir,
-        AWS_STUB_HISTORY: history,
-        DIST_DIR: path.join(workspace, 'dist', 'frontend'),
-        S3_BUCKET: 'example-bucket',
-        CLOUDFRONT_DISTRIBUTION_ID: 'EXAMPLE',
+    const run = await runCommand(
+      ['bash', path.join(workspace, 'utils', 'deploy-s3-cloudfront.sh')],
+      {
+        cwd: workspace,
+        env: {
+          ...process.env,
+          PATH: `${stubDir}:${process.env.PATH ?? ''}`,
+          AWS_STUB_LOG: callLog,
+          AWS_STUB_DIR: stubDir,
+          AWS_STUB_HISTORY: history,
+          DIST_DIR: path.join(workspace, 'dist', 'frontend'),
+          S3_BUCKET: 'example-bucket',
+          CLOUDFRONT_DISTRIBUTION_ID: 'EXAMPLE',
+        },
       },
-      stdout: 'pipe',
-      stderr: 'pipe',
-    });
-    const stdout = decodeOutput(run.stdout);
-    const stderr = decodeOutput(run.stderr);
-    expect(run.exitCode, `stdout:\n${stdout}\nstderr:\n${stderr}`).toBe(0);
+    );
+    expect(run.exitCode, `stdout:\n${run.stdout}\nstderr:\n${run.stderr}`).toBe(0);
     return (await readFile(callLog, 'utf8')).trim().split('\n');
   }
 

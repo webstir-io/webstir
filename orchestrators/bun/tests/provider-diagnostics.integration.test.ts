@@ -11,38 +11,32 @@ import {
   removeDemoWorkspace,
   type DemoWorkspaceCopy,
 } from '../test-support/demo-workspace.ts';
+import { runWebstir } from '../test-support/cli.ts';
 
 const backendTypecheckSkipped = {
   WEBSTIR_BACKEND_TYPECHECK: 'skip',
 };
 
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
-
-function runCli(
+async function runCli(
   args: readonly string[],
   envOverrides: Record<string, string | undefined> = {},
-): {
+): Promise<{
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
-} {
-  const processResult = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
+}> {
+  const processResult = await runWebstir(args, {
     cwd: repoRoot,
     env: {
       ...process.env,
       ...envOverrides,
     },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
@@ -103,7 +97,7 @@ test('provider error diagnostics fail direct test and backend-inspect commands',
   );
 
   try {
-    const testResult = runCli(
+    const testResult = await runCli(
       ['test', '--workspace', copiedWorkspace.workspaceRoot],
       backendTypecheckSkipped,
     );
@@ -111,7 +105,7 @@ test('provider error diagnostics fail direct test and backend-inspect commands',
     expect(testResult.stderr).toContain('backend test reported 1 error diagnostic');
     expect(testResult.stderr).toContain('module manifest validation failed');
 
-    const inspectResult = runCli(
+    const inspectResult = await runCli(
       ['backend-inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],
       backendTypecheckSkipped,
     );
@@ -129,7 +123,7 @@ test('provider error diagnostics make every composed truth surface unhealthy', a
   );
 
   try {
-    const doctorResult = runCli(
+    const doctorResult = await runCli(
       ['doctor', '--json', '--workspace', copiedWorkspace.workspaceRoot],
       backendTypecheckSkipped,
     );
@@ -147,7 +141,7 @@ test('provider error diagnostics make every composed truth surface unhealthy', a
       expect.arrayContaining([expect.objectContaining({ code: 'backend_inspect_failed' })]),
     );
 
-    const inspectResult = runCli(
+    const inspectResult = await runCli(
       ['inspect', '--json', '--workspace', copiedWorkspace.workspaceRoot],
       backendTypecheckSkipped,
     );
@@ -164,7 +158,7 @@ test('provider error diagnostics make every composed truth surface unhealthy', a
       ]),
     );
 
-    const validateResult = runCli(
+    const validateResult = await runCli(
       ['agent', 'validate', '--json', '--workspace', copiedWorkspace.workspaceRoot],
       backendTypecheckSkipped,
     );

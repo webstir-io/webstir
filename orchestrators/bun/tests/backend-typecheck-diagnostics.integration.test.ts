@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
+import { runWebstir } from '../test-support/cli.ts';
 
 test('real compiler failures retain source diagnostics in CLI and agent validation', async () => {
   const workspace = await mkdtemp(path.join(os.tmpdir(), 'webstir-typecheck-diagnostic-'));
@@ -25,7 +26,7 @@ test('real compiler failures retain source diagnostics in CLI and agent validati
       "export const count: number = 'invalid';\n",
     );
 
-    const build = runCli(['build', '--workspace', workspace]);
+    const build = await runCli(['build', '--workspace', workspace]);
     expect(build.exitCode).toBe(1);
     expect(build.stderr).toContain('Type checking failed');
     expect(build.stderr).toMatch(/src\/backend\/index\.ts\(1,14\): error TS2322/);
@@ -33,7 +34,7 @@ test('real compiler failures retain source diagnostics in CLI and agent validati
     expect(build.stderr).not.toContain('\u001b[');
     expect(`${build.stdout}${build.stderr}`).not.toContain('private-environment-marker');
 
-    const validation = runCli(['agent', 'validate', '--json', '--workspace', workspace]);
+    const validation = await runCli(['agent', 'validate', '--json', '--workspace', workspace]);
     expect(validation.exitCode).toBe(1);
     const result = JSON.parse(validation.stdout) as {
       success: boolean;
@@ -51,21 +52,18 @@ test('real compiler failures retain source diagnostics in CLI and agent validati
   }
 });
 
-function runCli(args: string[]) {
-  const result = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src/cli.ts'), ...args],
+async function runCli(args: string[]) {
+  const result = await runWebstir(args, {
     cwd: repoRoot,
     env: {
       ...process.env,
       WEBSTIR_BACKEND_TYPECHECK: 'true',
       WEBSTIR_DIAGNOSTIC_TEST_SECRET: 'private-environment-marker',
     },
-    stdout: 'pipe',
-    stderr: 'pipe',
   });
   return {
-    exitCode: result.exitCode,
-    stdout: new TextDecoder().decode(result.stdout),
-    stderr: new TextDecoder().decode(result.stderr),
+    exitCode: result.exitCode ?? -1,
+    stdout: result.stdout,
+    stderr: result.stderr,
   };
 }

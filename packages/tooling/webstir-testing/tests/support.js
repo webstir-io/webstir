@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -47,15 +47,24 @@ export async function writeWorkspaceTest(
   return { sourcePath, buildPath };
 }
 
-export function runEntrypoint(entrypoint, args, { env = {} } = {}) {
-  return spawnSync('bun', [entrypoint, ...args], {
+// Never a blocking spawn: in a bun test worker one has waited forever for a child that had exited.
+export async function runEntrypoint(entrypoint, args, { env = {} } = {}) {
+  const child = Bun.spawn({
+    cmd: ['bun', entrypoint, ...args],
     cwd: packageRoot,
     env: {
       ...process.env,
       ...env,
     },
-    encoding: 'utf8',
+    stdout: 'pipe',
+    stderr: 'pipe',
   });
+  const [stdout, stderr, status] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { status, stdout, stderr };
 }
 
 export function runCli(args, options) {

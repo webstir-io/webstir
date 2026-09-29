@@ -2,28 +2,19 @@ import { expect, test } from 'bun:test';
 import path from 'node:path';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
-
-function decodeOutput(buffer: Uint8Array | undefined): string {
-  return new TextDecoder().decode(buffer ?? new Uint8Array());
-}
+import { runWebstir } from '../test-support/cli.ts';
 
 async function runCli(args: readonly string[]): Promise<{
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
 }> {
-  const processResult = Bun.spawnSync({
-    cmd: [process.execPath, path.join(packageRoot, 'src', 'cli.ts'), ...args],
-    cwd: repoRoot,
-    env: process.env,
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
+  const processResult = await runWebstir(args, { cwd: repoRoot, env: process.env });
 
   return {
-    stdout: decodeOutput(processResult.stdout),
-    stderr: decodeOutput(processResult.stderr),
-    exitCode: processResult.exitCode,
+    stdout: processResult.stdout,
+    stderr: processResult.stderr,
+    exitCode: processResult.exitCode ?? -1,
   };
 }
 
