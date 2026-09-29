@@ -55,6 +55,8 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
     // The scenario only exists because published SSG output relocates page entries.
     expect(initialScript.startsWith('/pages/')).toBe(false);
     expect(initialScript).toContain('/home/');
+    // Webstir's critical app styles sit before the app's stylesheet, so the app's rules win.
+    expect(await criticalStylesPrecedeAppCss(page)).toBe(true);
 
     await page.locator('main a[href="/second/"]').click();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 1);
@@ -63,6 +65,8 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
       setup: 'second',
       pageScripts: 1,
     });
+    // Navigation keeps them there, as a full load of the page has them.
+    expect(await criticalStylesPrecedeAppCss(page)).toBe(true);
 
     await page.locator('main a[href="/"]').click();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 2);
@@ -243,5 +247,19 @@ function serveStatic(root: string, port: number): ReturnType<typeof Bun.serve> {
       }
       return new Response('Not found', { status: 404 });
     },
+  });
+}
+
+async function criticalStylesPrecedeAppCss(page: import('playwright').Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const critical = document.head.querySelector('style[data-critical="app"]');
+    const appCss = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).find(
+      (link) => /\/app\/app(?:-[^/]*)?\.css$/.test(link.getAttribute('href') ?? ''),
+    );
+    return Boolean(
+      critical &&
+        appCss &&
+        critical.compareDocumentPosition(appCss) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 }

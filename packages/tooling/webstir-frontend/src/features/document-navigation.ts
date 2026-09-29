@@ -178,7 +178,7 @@ export async function syncHead(
     });
   }
 
-  syncCriticalStyles(head, newHead);
+  syncCriticalStyles(head, newHead, url, runtime);
 
   if (preservedClientNav && !head.contains(preservedClientNav)) {
     head.appendChild(preservedClientNav);
@@ -384,7 +384,16 @@ function waitForStylesheets(links: HTMLLinkElement[], timeoutMs = 2000): Promise
   });
 }
 
-function syncCriticalStyles(head: HTMLHeadElement, newHead: HTMLHeadElement): void {
+/**
+ * Critical styles go where the new document has them: before the stylesheet they precede there,
+ * such as the app's own, so the cascade matches a full load of the page.
+ */
+function syncCriticalStyles(
+  head: HTMLHeadElement,
+  newHead: HTMLHeadElement,
+  url: string,
+  runtime: NavigationDomRuntime,
+): void {
   for (const style of Array.from(head.querySelectorAll<HTMLStyleElement>('style[data-critical]'))) {
     style.remove();
   }
@@ -399,8 +408,33 @@ function syncCriticalStyles(head: HTMLHeadElement, newHead: HTMLHeadElement): vo
     if (style.textContent) {
       next.textContent = style.textContent;
     }
-    head.appendChild(next);
+    const before = followingStylesheetKey(style, url, runtime);
+    const anchor = before
+      ? Array.from(head.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')).find(
+          (link) =>
+            normalizeStylesheetKey(link.getAttribute('href'), window.location.href, runtime) ===
+            before,
+        )
+      : undefined;
+    if (anchor) {
+      head.insertBefore(next, anchor);
+    } else {
+      head.appendChild(next);
+    }
   }
+}
+
+function followingStylesheetKey(
+  element: Element,
+  url: string,
+  runtime: NavigationDomRuntime,
+): string | null {
+  for (let sibling = element.nextElementSibling; sibling; sibling = sibling.nextElementSibling) {
+    if (sibling.matches('link[rel="stylesheet"]')) {
+      return normalizeStylesheetKey(sibling.getAttribute('href'), url, runtime);
+    }
+  }
+  return null;
 }
 
 function splitPathSuffix(value: string): [string, string] {
