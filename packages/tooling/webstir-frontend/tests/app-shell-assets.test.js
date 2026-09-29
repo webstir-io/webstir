@@ -166,3 +166,29 @@ test('an app with no styles of its own links none', async () => {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+// The behaviors come with the bundle only when a page, the shell or a partial marks a control.
+for (const [name, markup, bundled] of [
+  ['a form that submits on change', '<form data-submit-on-change></form>', true],
+  ['a dismissable details', '<details data-dismissable><summary>x</summary></details>', true],
+  ['a menu button', '<button data-menu-trigger aria-controls="menu">Menu</button>', true],
+  ['no marked control', '<p>Home</p>', false],
+]) {
+  test(`a page with ${name} ${bundled ? 'gets' : 'does not get'} the behaviors`, async () => {
+    const root = await workspace({});
+    try {
+      await fs.writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html'),
+        `<head></head><main>${markup}</main>`,
+      );
+      await build(root, 'build');
+      const bundle = path.join(root, 'build', 'frontend', 'app', 'app.js');
+      assert.equal(
+        (await exists(bundle)) && /__WEBSTIR_BEHAVIORS_INSTALLED__/.test(await read(bundle)),
+        bundled,
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+}

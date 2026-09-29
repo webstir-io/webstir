@@ -201,7 +201,11 @@ test('a full app with batteries: emailed sign-in, a guarded page, durable sessio
     // Signing out everywhere ends her other sessions too.
     const other = createBrowser(origin);
     other.cookie = ada.cookie;
-    const signOut = await ada.request('/sign-out/', { method: 'POST', form: { everywhere: '1' } });
+    const signOutToken = csrfTokenFrom(await (await ada.request('/notes/')).text());
+    const signOut = await ada.request('/sign-out/', {
+      method: 'POST',
+      form: { everywhere: '1', _csrf: signOutToken },
+    });
     expect(signOut.status).toBe(303);
     expect((await other.request('/notes/')).status).toBe(303);
     // A signed-out form post is sent to sign in; an API call is told it needs to.

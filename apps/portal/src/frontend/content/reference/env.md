@@ -15,7 +15,9 @@ A server app reads its settings from the environment, then from `.env.local`, th
 | `EMAIL_URL` | printed and kept in `.webstir/email.log`, in development | SMTP URL for email. **Required in production to send.** See [Send Email](../how-to/email.md). |
 | `EMAIL_FROM` | `Webstir <webstir@localhost>` in development | Who email comes from. **Required in production to send.** |
 | `STORAGE_URL` | `file:./data/files` | Where files go: a folder, or `s3://bucket/prefix`. See [Store Files](../how-to/files.md). |
-| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`, `S3_ENDPOINT` | the `AWS_*` names | Credentials for `s3://` storage. |
+| `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION`, `S3_ENDPOINT`, `S3_PROFILE` | the `AWS_*` names, `AWS_PROFILE`, or the instance's role | Credentials and region for `s3://` storage and snapshots. |
+| `SNAPSHOT_URL` | unset (off) | Where copies of a SQLite database go after writes: a folder, or `s3://bucket/prefix`. See [Snapshot the Database](../how-to/snapshots.md). |
+| `SNAPSHOT_KEEP` | unset (every copy) | How many of the newest copies to keep. |
 | `REQUEST_BODY_MAX_BYTES` | `1048576` | The largest request body the server accepts. |
 | `WEBSTIR_JOBS` | on | `off` keeps this process from running scheduled and queued jobs. |
 | `METRICS_ENABLED`, `METRICS_WINDOW` | on, `200` | Request counts and timings at `/metrics`, over the last N requests. |

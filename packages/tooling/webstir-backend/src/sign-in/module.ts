@@ -7,6 +7,7 @@ import { processFormSubmission, type FormIssue, type FormValues } from '../runti
 import { renewSession } from '../runtime/session-metadata.js';
 import { redirect } from '../runtime/view-control.js';
 import { signInDatabase } from './database.js';
+import type { LoadUser } from './guard.js';
 import { CODE_MINUTES, consumeCode, consumeToken, createChallenge } from './challenges.js';
 import {
   findOrCreateUser,
@@ -30,6 +31,12 @@ export interface SignInOptions {
    * so they can reference `users (id)`.
    */
   usersTable?: 'webstir' | 'app';
+  /**
+   * The app's own user for a signed-in person: `ctx.user` everywhere is what this returns, and
+   * `roles` on it is what `auth: { role }` checks. Null means no access: such a person is treated as
+   * signed out. By default `ctx.user` is Webstir's `{ id, email }`.
+   */
+  loadUser?: LoadUser;
 }
 
 export interface SignInEmail {
@@ -87,13 +94,13 @@ const signInData = z.object({
 
 const confirmData = z.object({ token: z.string(), returnTo: z.string() });
 
-const formRoute = (name: string, path: string) => ({
+const formRoute = (name: string, path: string, formId: string) => ({
   name,
   method: 'POST' as const,
   path,
   interaction: 'navigation' as const,
   session: { mode: 'optional' as const, write: true },
-  form: { contentType: 'application/x-www-form-urlencoded' as const, csrf: true },
+  form: { id: formId, contentType: 'application/x-www-form-urlencoded' as const, csrf: true },
 });
 
 export interface SignInModule {
@@ -143,7 +150,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
 
   const routes = [
     {
-      definition: formRoute('sign-in-submit', '/sign-in'),
+      definition: formRoute('sign-in-submit', '/sign-in', FORM_ID),
       async handler(ctx: FormContext): Promise<HandlerResult> {
         const submitted = processFormSubmission({
           session: ctx.session,
@@ -202,7 +209,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
       },
     },
     {
-      definition: formRoute('sign-in-confirm-submit', '/sign-in/confirm'),
+      definition: formRoute('sign-in-confirm-submit', '/sign-in/confirm', 'sign-in-confirm'),
       async handler(ctx: FormContext): Promise<HandlerResult> {
         const submitted = processFormSubmission({
           session: ctx.session,
@@ -230,7 +237,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
       },
     },
     {
-      definition: formRoute('sign-out', '/sign-out'),
+      definition: formRoute('sign-out', '/sign-out', 'sign-out'),
       async handler(ctx: FormContext): Promise<HandlerResult> {
         // A sign-out form can sit on any page, rendered or not, so it is checked by its origin.
         if (!isSameOrigin(ctx.request)) return { status: 403 };

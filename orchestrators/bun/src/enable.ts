@@ -392,7 +392,7 @@ async function enableFrontend(
   if (!installed) notes.push(INSTALL_NOTE);
   if (!hadPages && readWorkspaceLayers(workspaceRoot).server) {
     notes.push(
-      "With pages, the site's addresses are its pages, and the server answers under /api/*: routes outside /api/ are no longer reachable from the browser, so move them under /api/.",
+      "With pages, the site's addresses are its pages, and the server answers under /api/*, at its views and at the GET routes its module declares: move anything else under /api/.",
     );
   }
 }

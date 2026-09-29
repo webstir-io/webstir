@@ -654,6 +654,7 @@ const updateAccountSettingsDefinition = {
   path: '/account/settings',
   interaction: 'mutation',
   form: {
+    id: 'account-settings',
     contentType: 'application/x-www-form-urlencoded',
     csrf: true,
     session: { write: true },
@@ -1581,6 +1582,8 @@ async function assertFormWorkflowRuntimeBehavior() {
         'content-type': 'application/x-www-form-urlencoded',
         cookie: cookieHeader,
         'x-service-token': 'service-secret',
+        // A browser names the page the form was on; a failed check goes back to it.
+        referer: `http://127.0.0.1:${port}/account/settings`,
       },
       body: `_csrf=wrong-token&email=ada%40example.com`,
       redirect: 'manual',

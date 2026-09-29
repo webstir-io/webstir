@@ -614,3 +614,30 @@ test('a problem in a partial used twice is reported once', async () => {
   assert.equal(issues.length, 2);
   assert.equal(new RenderTemplateError(issues).issues.length, 1);
 });
+
+test('the shell binds on every view page, checked against its own schema', async () => {
+  const root = await createWorkspace();
+  const program = await compileSource(
+    root,
+    [
+      '<head><title data-text="title">T</title></head>',
+      '<main>',
+      '<p data-text="shell.account.email"></p>',
+      '<p data-text="shell.acount"></p>',
+      '</main>',
+    ].join('\n'),
+  );
+  const page = z.object({ title: z.string() });
+  const shell = z.object({ account: z.object({ email: z.string() }).nullable() });
+  const messages = validateRenderProgram(program, page, 'view fixture', shell).map(
+    (issue) => `${issue.loc.line}: ${issue.message.replace(' (view fixture)', '')}`,
+  );
+  assert.deepEqual(messages, [
+    '4: data-text="shell.acount": `shell` has no `acount`; it has `account`',
+  ]);
+  // Without a shell, `shell` is a binding like any other, and the page data lacks it.
+  assert.match(
+    validateRenderProgram(program, page, 'view fixture')[0].message,
+    /the view data has no `shell`/,
+  );
+});

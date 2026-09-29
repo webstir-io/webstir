@@ -16,5 +16,8 @@ export const CLIENT_NAV_HEADERS = {
   submission: 'x-webstir-submission',
 } as const;
 
-/** The form field carrying the submission id when client-nav falls back to a normal post. */
+/**
+ * The form field carrying a submission id: rendered into every POST form a view renders, and set by
+ * client-nav when it falls back to a normal post.
+ */
 export const CLIENT_NAV_SUBMISSION_FIELD = '_webstir_submission';

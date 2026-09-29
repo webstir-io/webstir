@@ -24,4 +24,5 @@ export {
   db,
   declareWebstirTables,
   migrateAppDatabase,
+  snapshotAppDatabase,
 } from './app-database.js';

@@ -10,6 +10,7 @@ import {
   type CompiledView,
   type EnvAccessorLike,
   type FormStateReaderLike,
+  type ShellLike,
   type LoggerLike,
   type ViewFlashMessage,
 } from './views.js';
@@ -42,6 +43,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   /** Messages this page shows: those the action consumed, then those it returned. */
   readonly flash?: readonly ViewFlashMessage[];
   readonly services?: Record<string, unknown>;
+  readonly shell?: ShellLike;
 }): Promise<{ html: string; session: TSession | null; location: string }> {
   const { rerender } = options;
   const view = findView(options.views, rerender.view);
@@ -75,6 +77,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
     now: options.now,
     flash: options.flash ?? [],
     services: options.services,
+    shell: options.shell,
     csrfToken: () => {
       const ensured = ensureSessionCsrfToken(session);
       session = ensured.session;

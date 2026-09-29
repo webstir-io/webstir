@@ -62,10 +62,11 @@ export interface BackendRouteDefinitionLike extends SessionAwareRouteDefinitionL
   method?: string;
   path?: string;
   requestHooks?: RequestHookReferenceLike[];
-  /** `required`: only a signed-in user reaches the route. */
-  auth?: 'required';
+  /** Who reaches the route: anyone signed in, or someone signed in with a role. */
+  auth?: 'required' | { readonly role: string };
   interaction?: 'navigation' | 'mutation';
   form?: SessionAwareRouteDefinitionLike['form'] & {
+    id?: string;
     contentType?: 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain';
     csrf?: boolean;
   };

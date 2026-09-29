@@ -223,7 +223,7 @@ export async function loadBackendModuleManifest(
     // ignore
   }
 
-  await writeViewRoutes(buildRoot, renderedViews);
+  await writeViewRoutes(buildRoot, renderedViews, manifest.routes);
   return manifest;
 }
 

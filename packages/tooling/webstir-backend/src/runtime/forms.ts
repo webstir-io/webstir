@@ -215,6 +215,28 @@ export function processFormSubmission<TSession extends Record<string, unknown>, 
   };
 }
 
+/**
+ * Whether a submission carries a CSRF token its session issued: the session's own, or one of its
+ * forms'. Nothing is used up, so the action's own check, if it has one, still passes.
+ */
+export function hasSessionCsrfToken(
+  session: Record<string, unknown> | null,
+  body: unknown,
+  csrfFieldName = DEFAULT_CSRF_FIELD_NAME,
+): boolean {
+  const provided = readCsrfToken(body, csrfFieldName);
+  if (!session || provided === undefined) return false;
+  const store = getFormRuntimeStore(session);
+  return [store.token, ...Object.values(store.csrf)].some(
+    (token) => typeof token === 'string' && tokensMatch(provided, token),
+  );
+}
+
+/** A form's submitted values, without its CSRF token. */
+export function readFormValues(body: unknown, csrfFieldName = DEFAULT_CSRF_FIELD_NAME): FormValues {
+  return normalizeFormValues(body, csrfFieldName);
+}
+
 export function readFormState(session: Record<string, unknown> | null, formId: string): FormState {
   if (!session) {
     return createFormState(undefined, undefined);
@@ -282,6 +304,32 @@ export function groupFormIssuesByField(issues: readonly FormIssue[] | undefined)
     grouped.fields[issue.field].push(issue.message);
   }
   return grouped;
+}
+
+/**
+ * A failed submission's answer: the form rendered again at `rerender`, or kept in the session for
+ * the page `redirectTo` leads to, with its values and issues.
+ */
+export function formFailure<TSession extends Record<string, unknown>>(options: {
+  session: TSession | null;
+  formId: string;
+  values: FormValues;
+  issues: FormIssue[];
+  rerender?: FormRerenderTarget;
+  redirectTo?: string;
+  now?: () => Date;
+}): FormSubmissionResult<TSession, never> {
+  const session = ensureSession(options.session);
+  return failSubmission({
+    session,
+    store: getFormRuntimeStore(session),
+    formId: options.formId,
+    values: options.values,
+    issues: options.issues,
+    rerender: options.rerender,
+    redirectTo: options.redirectTo,
+    now: options.now ?? (() => new Date()),
+  });
 }
 
 function failSubmission<TSession extends Record<string, unknown>>(options: {

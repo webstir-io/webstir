@@ -50,6 +50,7 @@ const HELP_TEXT = `Usage:
   webstir add-job <name> --workspace <path> [--schedule <expression>]
   webstir add-migration <name> --workspace <path> [--ts]
   webstir migrate --workspace <path> [--status]
+  webstir snapshot --workspace <path>
   webstir jobs --workspace <path>
   webstir jobs run <name> --workspace <path> [--payload <json>]
   webstir operations
@@ -126,6 +127,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
     command !== 'add-job' &&
     command !== 'add-migration' &&
     command !== 'migrate' &&
+    command !== 'snapshot' &&
     command !== 'jobs' &&
     command !== 'operations' &&
     command !== 'mcp' &&
@@ -155,6 +157,7 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       command === 'add-island' ||
       command === 'add-migration' ||
       command === 'migrate' ||
+      command === 'snapshot' ||
       command === 'jobs',
   });
   if (options.help) {
@@ -367,10 +370,16 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
       return 0;
     }
 
-    if (command === 'add-migration' || command === 'migrate' || command === 'jobs') {
+    if (
+      command === 'add-migration' ||
+      command === 'migrate' ||
+      command === 'snapshot' ||
+      command === 'jobs'
+    ) {
       const allowed: Record<string, readonly string[]> = {
         'add-migration': ['--ts'],
         migrate: ['--status'],
+        snapshot: [],
         jobs: ['--payload'],
       };
       const payloadAt = options.rawArgs.indexOf('--payload');
@@ -405,6 +414,14 @@ export async function runCli(argv: readonly string[], io: CliIo = defaultIo): Pr
           }),
         );
         io.stdout.write(`${formatMigrateResult(result)}\n`);
+        return 0;
+      }
+      if (command === 'snapshot') {
+        const { runSnapshot } = await import('./migrate.ts');
+        const result = await withSuppressedStdout(() =>
+          runSnapshot({ workspaceRoot: requireWorkspaceRoot() }),
+        );
+        io.stdout.write(`[webstir] snapshot taken: ${result.key}\n`);
         return 0;
       }
       const payloadIndex = options.rawArgs.indexOf('--payload');

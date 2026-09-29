@@ -6,10 +6,12 @@ import { compileViews, matchView, type CompiledView } from './views.js';
 
 export const VIEW_ROUTES_FILE = 'views.json';
 
+/** A view's path, with the page it renders; or, with `method`, a GET route's path. */
 export interface ViewRouteEntry {
   readonly name?: string;
   readonly path: string;
   readonly page?: string;
+  readonly method?: 'GET';
 }
 
 interface ViewDefinitionInput {
@@ -18,9 +20,16 @@ interface ViewDefinitionInput {
   readonly page?: unknown;
 }
 
+interface RouteDefinitionInput {
+  readonly name?: unknown;
+  readonly method?: unknown;
+  readonly path?: unknown;
+}
+
 export async function writeViewRoutes(
   buildRoot: string,
   views: readonly ViewDefinitionInput[] | undefined,
+  routes: readonly RouteDefinitionInput[] | undefined = [],
 ): Promise<void> {
   const entries: ViewRouteEntry[] = [];
   for (const view of views ?? []) {
@@ -31,6 +40,16 @@ export async function writeViewRoutes(
       ...(typeof view.name === 'string' ? { name: view.name } : {}),
       path: view.path,
       ...(typeof view.page === 'string' && view.page.length > 0 ? { page: view.page } : {}),
+    });
+  }
+  // A GET route outside /api, such as a download, is answered by the backend like a view.
+  for (const route of routes ?? []) {
+    if (typeof route?.path !== 'string' || route.path.length === 0) continue;
+    if (typeof route.method !== 'string' || route.method.toUpperCase() !== 'GET') continue;
+    entries.push({
+      ...(typeof route.name === 'string' ? { name: route.name } : {}),
+      path: route.path,
+      method: 'GET',
     });
   }
   await mkdir(buildRoot, { recursive: true });
@@ -56,41 +75,44 @@ export async function hasRenderedViewRoutes(workspaceRoot: string): Promise<bool
 }
 
 /**
- * Answers whether a request path belongs to a view the backend renders: a view that names a
- * page, with or without bindings, since its loader must run either way. Watch and the published
- * server proxy those paths to the backend instead of serving the page's template as a file.
- * Only an asset that exists as a file, such as a page's stylesheet, is served in its place.
+ * Answers whether a request path is the backend's to answer: a view that names a page, with or
+ * without bindings, since its loader must run either way, or a GET route the app declares. Watch
+ * and the published server proxy those paths to the backend instead of serving a file. Only an
+ * asset that exists as a file, such as a page's stylesheet, is served in a view's place.
  */
 export function createRenderedViewMatcher(options: {
   readonly workspaceRoot: string;
   readonly frontendRoot: string;
 }): (pathname: string) => Promise<boolean> {
-  let cached: { mtimeMs: number; views: CompiledView[] } | undefined;
+  type Compiled = { views: CompiledView[]; routes: CompiledView[] };
+  let cached: (Compiled & { mtimeMs: number }) | undefined;
 
-  const load = async (): Promise<CompiledView[]> => {
+  const load = async (): Promise<Compiled> => {
     let mtimeMs: number;
     try {
       mtimeMs = (await stat(viewRoutesPath(options.workspaceRoot))).mtimeMs;
     } catch {
       cached = undefined;
-      return [];
+      return { views: [], routes: [] };
     }
     if (cached?.mtimeMs === mtimeMs) {
-      return cached.views;
+      return cached;
     }
     const entries = await readViewRoutes(options.workspaceRoot);
-    const views = compileViews(
-      entries
-        .filter((entry) => typeof entry.page === 'string')
-        .map((entry) => ({ definition: entry })),
-    );
-    cached = { mtimeMs, views };
-    return views;
+    const compile = (keep: (entry: ViewRouteEntry) => boolean) =>
+      compileViews(entries.filter(keep).map((entry) => ({ definition: entry })));
+    cached = {
+      mtimeMs,
+      views: compile((entry) => typeof entry.page === 'string'),
+      routes: compile((entry) => entry.method === 'GET'),
+    };
+    return cached;
   };
 
   return async (pathname: string) => {
-    if (!matchView(await load(), pathname)?.view.definition?.page) {
-      return false;
+    const { views, routes } = await load();
+    if (!matchView(views, pathname)?.view.definition?.page) {
+      return matchView(routes, pathname) !== undefined;
     }
     return !(
       isStaticAssetPath(pathname) && (await staticFileExists(options.frontendRoot, pathname))

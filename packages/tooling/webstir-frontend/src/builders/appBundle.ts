@@ -4,7 +4,8 @@ import path from 'node:path';
 import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 
 import { EXTENSIONS, FILES } from '../core/constants.js';
-import { pathExists, writeFile, ensureDir } from '../utils/fs.js';
+import { pathExists, readFile, writeFile, ensureDir } from '../utils/fs.js';
+import { scanGlob } from '../utils/glob.js';
 import type { BuilderContext } from './types.js';
 
 const FEATURES = '@webstir-io/webstir-frontend/features/';
@@ -25,8 +26,8 @@ function resolveWebstirModule(workspaceRoot: string, specifier: string): string 
 
 /**
  * What the app bundle every page loads is made of: Webstir's error reporter (an app with a server
- * reports to it, unless `clientErrors` says otherwise), each enabled feature, and the app's own
- * `app.ts` when it has one. Empty means the app has no bundle.
+ * reports to it, unless `clientErrors` says otherwise), each enabled feature, the behaviors when a
+ * page uses them, and the app's own `app.ts` when it has one. Empty means the app has no bundle.
  */
 export async function appBundleImports(context: BuilderContext): Promise<string[]> {
   const { config, enable } = context;
@@ -43,6 +44,9 @@ export async function appBundleImports(context: BuilderContext): Promise<string[
     if (on === true && !(await hasFeatureCopy(config, name))) {
       imports.push(resolveWebstirModule(config.paths.workspace, `${FEATURES}${name}`));
     }
+  }
+  if (await usesBehaviors(config)) {
+    imports.push(resolveWebstirModule(config.paths.workspace, `${FEATURES}behaviors`));
   }
   const own = await resolveAppEntry(config.paths.src.app);
   if (own) imports.push(own);
@@ -77,4 +81,17 @@ async function hasFeatureCopy(config: BuilderContext['config'], name: string): P
     (await pathExists(path.join(root, `${name}${EXTENSIONS.ts}`))) ||
     (await pathExists(path.join(root, `${name}${EXTENSIONS.js}`)))
   );
+}
+
+const BEHAVIOR_ATTRIBUTES = /\bdata-(?:submit-on-change|dismissable|menu-trigger)\b/;
+
+/** Whether a page, the shell or a partial marks a control for the packaged behaviors. */
+async function usesBehaviors(config: BuilderContext['config']): Promise<boolean> {
+  const sources = await scanGlob('**/*.html', { cwd: config.paths.src.frontend });
+  for (const relative of sources) {
+    if (BEHAVIOR_ATTRIBUTES.test(await readFile(path.join(config.paths.src.frontend, relative)))) {
+      return true;
+    }
+  }
+  return false;
 }

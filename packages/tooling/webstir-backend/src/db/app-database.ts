@@ -9,6 +9,7 @@ import {
   type Database,
   type DatabaseConnection,
 } from './database.js';
+import { closeDatabaseSnapshots, databaseSnapshots } from './snapshots.js';
 import { ensureWebstirTables, type WebstirTables } from './webstir-tables.js';
 import {
   applyMigrations,
@@ -84,6 +85,8 @@ export function onAppDatabaseOpen(listener: (connection: DatabaseConnection) => 
 }
 
 export async function closeAppDatabase(): Promise<void> {
+  // A copy after the last writes, such as a command's, is taken before the database closes.
+  await closeDatabaseSnapshots();
   const current = opening;
   opening = undefined;
   opened = undefined;
@@ -103,12 +106,36 @@ export const db: Database = {
     return (await appDatabase()).get<T>(sql, params);
   },
   async execute(sql: string, params?: readonly unknown[]) {
-    return (await appDatabase()).execute(sql, params);
+    const connection = await appDatabase();
+    const result = await connection.execute(sql, params);
+    if (result.changes > 0 && !connection.inTransaction()) afterWrite();
+    return result;
   },
   async transaction<T>(work: (tx: Database) => Promise<T>) {
-    return (await appDatabase()).transaction(work);
+    const connection = await appDatabase();
+    const result = await connection.transaction(work);
+    if (!connection.inTransaction()) afterWrite();
+    return result;
   },
 };
+
+/** The app changed its data: a snapshot follows, when the app keeps them. */
+function afterWrite(): void {
+  databaseSnapshots(appDatabase, appDatabaseUrl())?.schedule();
+}
+
+/** Takes a snapshot of the app's database now, when SNAPSHOT_URL is set; its key, or undefined. */
+export async function snapshotAppDatabase(): Promise<string | undefined> {
+  const snapshots = databaseSnapshots(appDatabase, appDatabaseUrl());
+  if (!snapshots) {
+    throw new Error(
+      process.env.SNAPSHOT_URL?.trim()
+        ? 'Snapshots are for a SQLite database; back up a Postgres database with its host.'
+        : 'SNAPSHOT_URL is not set; set it to s3://bucket/prefix or file:./data/snapshots.',
+    );
+  }
+  return snapshots.now();
+}
 
 /** Applies the app's pending migrations, as the server does when it starts, and says which. */
 export async function migrateAppDatabase(): Promise<string[]> {

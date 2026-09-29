@@ -133,6 +133,48 @@ export interface FormStateReader {
   read(formId: string): FormState;
 }
 
+/**
+ * What a page binds for one form: whether it came back from a failed submission, what was typed in
+ * each field, and the first error per field (and `form`, for errors about the whole form).
+ */
+export function formStateSchema<const TFields extends readonly string[]>(fields: TFields) {
+  const strings = (names: readonly string[]) =>
+    z.object(
+      Object.fromEntries(names.map((name) => [name, z.string().optional()])) as Record<
+        TFields[number],
+        z.ZodOptional<z.ZodString>
+      >,
+    );
+  return z.object({
+    submitted: z.boolean(),
+    values: strings(fields),
+    errors: strings([...fields, 'form']),
+  });
+}
+
+/** A form's state as `formStateSchema(fields)` binds it, with `defaults` for a fresh form. */
+export function formView<const TFields extends readonly string[]>(
+  state: FormState,
+  fields: TFields,
+  defaults: Partial<Record<TFields[number], string>> = {},
+): {
+  submitted: boolean;
+  values: Partial<Record<TFields[number], string>>;
+  errors: Partial<Record<TFields[number] | 'form', string>>;
+} {
+  const values: Partial<Record<TFields[number], string>> = {};
+  const errors: Partial<Record<TFields[number] | 'form', string>> = {};
+  for (const field of fields as readonly TFields[number][]) {
+    const value = state.values[field];
+    const typed = typeof value === 'string' ? value : Array.isArray(value) ? value[0] : undefined;
+    const shown = state.submitted ? typed : defaults[field];
+    if (shown !== undefined) values[field] = shown;
+    if (state.errors[field]) errors[field] = state.errors[field];
+  }
+  if (state.errors.form) errors.form = state.errors.form;
+  return { submitted: state.submitted, values, errors };
+}
+
 export interface SSRContext<
   TParams = Record<string, string>,
   TAuth = unknown,
@@ -252,6 +294,17 @@ export const moduleErrorSchema = z.object({
 
 export type ModuleError = z.infer<typeof moduleErrorSchema>;
 
+/**
+ * Who reaches a route or view: `'required'` is anyone signed in; `{ role }` is someone signed in
+ * whose user has that role. Others are sent to sign in; signed in without the role is a 404.
+ */
+export const accessRequirementSchema = z.union([
+  z.literal('required'),
+  z.object({ role: z.string().min(1) }).strict(),
+]);
+
+export type AccessRequirement = z.infer<typeof accessRequirementSchema>;
+
 export const httpMethodSchema = z.enum([
   'GET',
   'HEAD',
@@ -351,6 +404,9 @@ export const flashLevelSchema = z.enum(['info', 'success', 'warning', 'error']);
 
 export type FlashLevel = z.infer<typeof flashLevelSchema>;
 
+/** What a page binds as `flash`: the messages an action left for it. The framework supplies it. */
+export const flashSchema = z.array(z.object({ level: flashLevelSchema, message: z.string() }));
+
 export const flashPublishConditionSchema = z.enum(['always', 'success', 'error']);
 
 export type FlashPublishCondition = z.infer<typeof flashPublishConditionSchema>;
@@ -377,6 +433,8 @@ export type RouteFlashDefinition = z.infer<typeof routeFlashSchema>;
 
 export const routeFormSchema = z
   .object({
+    /** The form's id, which the page's loader reads its state by; the route's name by default. */
+    id: z.string().min(1).optional(),
     contentType: formEncodingSchema.optional(),
     csrf: z.boolean().optional(),
     session: routeSessionSchema.optional(),
@@ -468,8 +526,8 @@ export const routeDefinitionSchema = z.object({
   interaction: routeInteractionKindSchema.optional(),
   requestHooks: z.array(requestHookReferenceSchema).optional(),
   session: routeSessionSchema.optional(),
-  /** `required`: only a signed-in user reaches the route; others are sent to sign in. */
-  auth: z.enum(['required']).optional(),
+  /** Who reaches the route: see `accessRequirementSchema`. */
+  auth: accessRequirementSchema.optional(),
   flash: routeFlashSchema.optional(),
   form: routeFormSchema.optional(),
   fragment: routeFragmentSchema.optional(),
@@ -628,8 +686,8 @@ export const viewDefinitionSchema = z.object({
   summary: z.string().optional(),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
-  /** `required`: only a signed-in user sees the page; others are sent to sign in. */
-  auth: z.enum(['required']).optional(),
+  /** Who sees the page: see `accessRequirementSchema`. */
+  auth: accessRequirementSchema.optional(),
   params: schemaReferenceSchema.optional(),
   data: schemaReferenceSchema.optional(),
   renderMode: z.enum(['ssg', 'ssr', 'spa']).optional(),
@@ -650,11 +708,17 @@ export type ViewLoaderContext<
   readonly params: InferOrNever<TParams>;
 };
 
+/** What a loader returns: the page's data, less the `flash` the framework adds. */
+export type ViewLoaderData<TData extends z.ZodTypeAny> =
+  z.input<TData> extends Record<string, unknown> ? Omit<z.input<TData>, 'flash'> : z.input<TData>;
+
 export type ViewLoader<
   TContext extends SSRContext,
   TParams extends z.ZodTypeAny | undefined,
   TData extends z.ZodTypeAny,
-> = (context: ViewLoaderContext<TContext, TParams>) => Promise<z.infer<TData>> | z.infer<TData>;
+> = (
+  context: ViewLoaderContext<TContext, TParams>,
+) => Promise<ViewLoaderData<TData>> | ViewLoaderData<TData>;
 
 export interface ViewSpec<
   TContext extends SSRContext = SSRContext,
@@ -823,6 +887,7 @@ export {
   RenderProgramError,
   prepareViewData,
   schemaDeclaresField,
+  withShellData,
 } from './render-execute.js';
 export type { ExecuteRenderProgramOptions, PreparedViewData } from './render-execute.js';
 

@@ -1,7 +1,17 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+import {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+  type GetObjectCommandOutput,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import { appRoot } from '../app/app-root.js';
 import { sessionSecret } from '../app/env.js';
@@ -11,12 +21,24 @@ export type FileData = string | ArrayBuffer | Uint8Array | Blob;
 export interface PutOptions {
   /** The file's media type, such as `image/png`; inferred from the key's extension when left out. */
   readonly contentType?: string;
+  /** Write only when no file has this key yet; otherwise `put` throws `FileExistsError`. */
+  readonly ifAbsent?: boolean;
+  /** Short text kept with the file and returned with it, such as who uploaded it. */
+  readonly metadata?: Readonly<Record<string, string>>;
 }
+
+export interface GetOptions {
+  /** The most bytes to read; a larger file throws `FileTooLargeError` instead of loading. */
+  readonly maxBytes?: number;
+}
+
+/** A stored file: its contents as a Blob (`await file.text()`, `file.stream()`), and its metadata. */
+export type StoredFile = Blob & { readonly metadata: Readonly<Record<string, string>> };
 
 export interface Files {
   put(key: string, data: FileData, options?: PutOptions): Promise<void>;
-  /** The file, as a Blob (`await file.text()`, `file.stream()`), or undefined when there is none. */
-  get(key: string): Promise<Blob | undefined>;
+  /** The file, or undefined when there is none. */
+  get(key: string, options?: GetOptions): Promise<StoredFile | undefined>;
   /** An address the browser can fetch the file from, for `expiresIn` seconds (default an hour). */
   url(key: string, options?: { readonly expiresIn?: number }): Promise<string>;
   delete(key: string): Promise<void>;
@@ -25,9 +47,28 @@ export interface Files {
 /** An app's own storage, for `setFileStore`: Webstir checks keys and settles the options first. */
 export interface FileStore {
   put(key: string, data: FileData, options?: PutOptions): Promise<void>;
-  get(key: string): Promise<Blob | undefined>;
+  get(key: string, options?: GetOptions): Promise<StoredFile | undefined>;
   url(key: string, options: { readonly expiresIn: number }): Promise<string>;
   delete(key: string): Promise<void>;
+}
+
+/** `put` with `ifAbsent` found a file already at the key. */
+export class FileExistsError extends Error {
+  constructor(readonly key: string) {
+    super(`A file already exists at ${key}.`);
+    this.name = 'FileExistsError';
+  }
+}
+
+/** `get` with `maxBytes` found a larger file. */
+export class FileTooLargeError extends Error {
+  constructor(
+    readonly key: string,
+    readonly maxBytes: number,
+  ) {
+    super(`The file at ${key} is larger than ${maxBytes} bytes.`);
+    this.name = 'FileTooLargeError';
+  }
 }
 
 let customStore: FileStore | undefined;
@@ -48,8 +89,9 @@ export const DEFAULT_STORAGE_URL = 'file:./data/files';
 
 /**
  * File storage: `STORAGE_URL=file:./data/files` (the default) keeps files on disk; `s3://bucket` or
- * `s3://bucket/prefix` keeps them in S3, R2 or MinIO through Bun's S3 client, which reads the usual
- * S3_* or AWS_* credentials and S3_ENDPOINT. `setFileStore` puts an app's own store in their place.
+ * `s3://bucket/prefix` keeps them in S3, R2 or MinIO through the AWS SDK. It reads S3_* settings
+ * (key, secret, region, endpoint, profile), or finds AWS credentials the SDK's usual way: AWS_*
+ * variables, an `AWS_PROFILE`, or the instance's role. `setFileStore` puts an app's own store in their place.
  */
 export const files: Files = {
   async put(key, data, options) {
@@ -58,41 +100,32 @@ export const files: Files = {
     const own = appStore(key);
     if (own) {
       const contentType = type ?? typeFromKey(key);
-      return own.put(key, data, contentType ? { contentType } : undefined);
+      const settled = { ...options, ...(contentType ? { contentType } : {}) };
+      return own.put(key, data, Object.keys(settled).length > 0 ? settled : undefined);
     }
     const store = resolveStore();
-    if (store.kind === 's3') {
-      await store.client.write(store.key(key), data, type ? { type } : undefined);
-      return;
-    }
-    const file = store.file(key);
-    await mkdir(path.dirname(file), { recursive: true });
-    await Bun.write(file, data);
-    // A folder has no media types, so the given one is kept beside it, as S3 keeps it.
-    const typeFile = store.typeFile(key);
-    if (type) {
-      await mkdir(path.dirname(typeFile), { recursive: true });
-      await Bun.write(typeFile, type);
-    } else {
-      await rm(typeFile, { force: true });
-    }
+    if (store.kind === 's3') return putS3(store, key, data, type, options);
+    return putLocal(store, key, data, type, options);
   },
-  async get(key) {
+  async get(key, options) {
     const own = appStore(key);
-    if (own) return own.get(key);
+    if (own) return own.get(key, options);
     const store = resolveStore();
-    if (store.kind === 's3') {
-      const file = store.client.file(store.key(key));
-      return (await file.exists()) ? file : undefined;
-    }
-    return existsSync(store.file(key)) ? await localFile(store, key) : undefined;
+    if (store.kind === 's3') return getS3(store, key, options);
+    return existsSync(store.file(key)) ? await localFile(store, key, options) : undefined;
   },
   async url(key, options) {
     const expiresIn = Math.max(1, Math.floor(options?.expiresIn ?? 3600));
     const own = appStore(key);
     if (own) return own.url(key, { expiresIn });
     const store = resolveStore();
-    if (store.kind === 's3') return store.client.presign(store.key(key), { expiresIn });
+    if (store.kind === 's3') {
+      return getSignedUrl(
+        store.client,
+        new GetObjectCommand({ Bucket: store.bucket, Key: store.key(key) }),
+        { expiresIn },
+      );
+    }
     checkKey(key);
     const expires = Math.floor(Date.now() / 1000) + expiresIn;
     const address = `${LOCAL_FILES_PATH}${key.split('/').map(encodeURIComponent).join('/')}`;
@@ -103,13 +136,125 @@ export const files: Files = {
     if (own) return own.delete(key);
     const store = resolveStore();
     if (store.kind === 's3') {
-      await store.client.delete(store.key(key));
+      await store.client.send(
+        new DeleteObjectCommand({ Bucket: store.bucket, Key: store.key(key) }),
+      );
       return;
     }
     await rm(store.file(key), { force: true });
     await rm(store.typeFile(key), { force: true });
+    await rm(store.metadataFile(key), { force: true });
   },
 };
+
+async function bytesOf(data: FileData): Promise<Uint8Array> {
+  if (typeof data === 'string') return new TextEncoder().encode(data);
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+async function putLocal(
+  store: Extract<Store, { kind: 'local' }>,
+  key: string,
+  data: FileData,
+  type: string | undefined,
+  options: PutOptions | undefined,
+): Promise<void> {
+  const file = store.file(key);
+  await mkdir(path.dirname(file), { recursive: true });
+  try {
+    // `wx` creates the file only when none is there, in one step, so two writers cannot both win.
+    await writeFile(file, await bytesOf(data), { flag: options?.ifAbsent ? 'wx' : 'w' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new FileExistsError(key);
+    throw error;
+  }
+  // A folder has no media types or metadata, so they are kept beside it, as S3 keeps them.
+  await keepBeside(store.typeFile(key), type);
+  await keepBeside(
+    store.metadataFile(key),
+    options?.metadata && Object.keys(options.metadata).length > 0
+      ? JSON.stringify(options.metadata)
+      : undefined,
+  );
+}
+
+async function keepBeside(file: string, contents: string | undefined): Promise<void> {
+  if (contents === undefined) {
+    await rm(file, { force: true });
+    return;
+  }
+  await mkdir(path.dirname(file), { recursive: true });
+  await Bun.write(file, contents);
+}
+
+async function putS3(
+  store: Extract<Store, { kind: 's3' }>,
+  key: string,
+  data: FileData,
+  type: string | undefined,
+  options: PutOptions | undefined,
+): Promise<void> {
+  try {
+    await store.client.send(
+      new PutObjectCommand({
+        Bucket: store.bucket,
+        Key: store.key(key),
+        Body: await bytesOf(data),
+        ...(type ? { ContentType: type } : {}),
+        ...(options?.metadata ? { Metadata: { ...options.metadata } } : {}),
+        ...(options?.ifAbsent ? { IfNoneMatch: '*' } : {}),
+        // S3 checks the bytes it receives against this, and returns it on reads to check them.
+        ChecksumAlgorithm: 'SHA256',
+      }),
+    );
+  } catch (error) {
+    if (options?.ifAbsent && statusOf(error) === 412) throw new FileExistsError(key);
+    throw error;
+  }
+}
+
+async function getS3(
+  store: Extract<Store, { kind: 's3' }>,
+  key: string,
+  options: GetOptions | undefined,
+): Promise<StoredFile | undefined> {
+  let response: GetObjectCommandOutput;
+  try {
+    response = await store.client.send(
+      new GetObjectCommand({ Bucket: store.bucket, Key: store.key(key), ChecksumMode: 'ENABLED' }),
+    );
+  } catch (error) {
+    if (statusOf(error) === 404) return undefined;
+    throw error;
+  }
+  const limit = options?.maxBytes;
+  const body = response.Body as
+    | { transformToByteArray(): Promise<Uint8Array>; destroy?(): void }
+    | undefined;
+  if (limit !== undefined && (response.ContentLength ?? 0) > limit) {
+    body?.destroy?.();
+    throw new FileTooLargeError(key, limit);
+  }
+  const bytes = body ? await body.transformToByteArray() : new Uint8Array();
+  if (limit !== undefined && bytes.byteLength > limit) throw new FileTooLargeError(key, limit);
+  return withMetadata(
+    new Blob(
+      [bytes as Uint8Array<ArrayBuffer>],
+      response.ContentType ? { type: response.ContentType } : undefined,
+    ),
+    response.Metadata ?? {},
+  );
+}
+
+function statusOf(error: unknown): number | undefined {
+  return (error as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+}
+
+function withMetadata(blob: Blob, metadata: Record<string, string>): StoredFile {
+  return Object.assign(blob, { metadata: Object.freeze({ ...metadata }) });
+}
 
 /** The media type a key's extension names, as local disk and S3 infer it, or undefined. */
 function typeFromKey(key: string): string | undefined {
@@ -131,10 +276,22 @@ function attachment(name: string): string {
   return `attachment; filename="${plain}"; filename*=UTF-8''${encoded}`;
 }
 
-async function localFile(store: Extract<Store, { kind: 'local' }>, key: string): Promise<Blob> {
+async function localFile(
+  store: Extract<Store, { kind: 'local' }>,
+  key: string,
+  options?: GetOptions,
+): Promise<StoredFile> {
+  const file = store.file(key);
+  if (options?.maxBytes !== undefined && (await stat(file)).size > options.maxBytes) {
+    throw new FileTooLargeError(key, options.maxBytes);
+  }
   const typeFile = Bun.file(store.typeFile(key));
   const type = (await typeFile.exists()) ? (await typeFile.text()).trim() : undefined;
-  return Bun.file(store.file(key), type ? { type } : undefined);
+  const metadataFile = Bun.file(store.metadataFile(key));
+  const metadata = (await metadataFile.exists())
+    ? (JSON.parse(await metadataFile.text()) as Record<string, string>)
+    : {};
+  return withMetadata(Bun.file(file, type ? { type } : undefined), metadata);
 }
 
 /** Serves a file on local disk to a link `files.url` signed, or answers why not. */
@@ -175,45 +332,143 @@ export async function serveLocalFile(url: URL): Promise<Response | undefined> {
 }
 
 type Store =
-  | { kind: 'local'; file(key: string): string; typeFile(key: string): string }
-  | { kind: 's3'; client: Bun.S3Client; key(key: string): string };
+  | {
+      kind: 'local';
+      file(key: string): string;
+      typeFile(key: string): string;
+      metadataFile(key: string): string;
+    }
+  | { kind: 's3'; client: S3Client; bucket: string; key(key: string): string };
 
-let cached: { key: string; store: Store } | undefined;
+const cachedStores = new Map<string, Store>();
 
-function resolveStore(): Store {
-  const url = process.env.STORAGE_URL?.trim() || DEFAULT_STORAGE_URL;
-  const credentials = s3Credentials();
-  const key = `${appRoot()}\n${url}\n${JSON.stringify(credentials)}`;
-  if (cached?.key === key) return cached.store;
+// Each request gives up after this long, and the SDK retries the ones that may be retried.
+const S3_REQUEST_TIMEOUT_MS = 10_000;
+const S3_ATTEMPTS = 3;
+
+function resolveStore(url = process.env.STORAGE_URL?.trim() || DEFAULT_STORAGE_URL): Store {
+  const settings = s3Settings();
+  const key = `${appRoot()}\n${url}\n${JSON.stringify(settings)}`;
+  const known = cachedStores.get(key);
+  if (known) return known;
   let store: Store;
   if (url.startsWith('s3://')) {
     const [bucket, ...prefix] = url.slice('s3://'.length).split('/').filter(Boolean);
     if (!bucket) throw new Error(`STORAGE_URL "${url}" names no bucket; use s3://bucket.`);
     const base = prefix.join('/');
-    const client = new Bun.S3Client({ bucket, ...credentials });
-    store = { kind: 's3', client, key: (key) => (checkKey(key), base ? `${base}/${key}` : key) };
+    const client = new S3Client({
+      region: settings.region ?? 'us-east-1',
+      ...(settings.endpoint ? { endpoint: settings.endpoint, forcePathStyle: true } : {}),
+      ...(settings.profile ? { profile: settings.profile } : {}),
+      ...(settings.accessKeyId && settings.secretAccessKey
+        ? {
+            credentials: {
+              accessKeyId: settings.accessKeyId,
+              secretAccessKey: settings.secretAccessKey,
+              ...(settings.sessionToken ? { sessionToken: settings.sessionToken } : {}),
+            },
+          }
+        : {}),
+      maxAttempts: S3_ATTEMPTS,
+      requestHandler: { requestTimeout: S3_REQUEST_TIMEOUT_MS, connectionTimeout: 5_000 },
+    });
+    store = {
+      kind: 's3',
+      client,
+      bucket,
+      key: (key) => (checkKey(key), base ? `${base}/${key}` : key),
+    };
   } else if (url.startsWith('file:')) {
     const root = path.resolve(appRoot(), url.slice('file:'.length).replace(/^\/\/(?=\/)/, ''));
     store = {
       kind: 'local',
       file: (key) => (checkKey(key), path.join(root, ...key.split('/'))),
-      // Inside the storage folder, under a name no file key may take.
+      // Inside the storage folder, under names no file key may take.
       typeFile: (key) => (checkKey(key), path.join(root, TYPES_FOLDER, ...key.split('/'))),
+      metadataFile: (key) => (checkKey(key), path.join(root, METADATA_FOLDER, ...key.split('/'))),
     };
   } else {
     throw new Error(
       `STORAGE_URL "${url}" is not a storage URL; use file:./data/files or s3://bucket.`,
     );
   }
-  cached = { key, store };
+  if (cachedStores.size > 8) cachedStores.clear();
+  cachedStores.set(key, store);
   return store;
 }
 
 /**
- * S3 settings from the environment as it is now, `.env` files included: Bun's client reads its own
- * only when the process starts.
+ * For Webstir's own use: a store at another storage URL, such as SNAPSHOT_URL, with the same
+ * settings and key rule as `files`.
  */
-function s3Credentials(): Record<string, string> {
+export function storeAt(url: string): {
+  put(key: string, data: FileData, options?: PutOptions): Promise<void>;
+  /** Every key in the store, in no particular order. */
+  list(): Promise<string[]>;
+  delete(key: string): Promise<void>;
+} {
+  const store = resolveStore(url);
+  return {
+    put: (key, data, options) =>
+      store.kind === 's3'
+        ? putS3(store, key, data, options?.contentType, options)
+        : putLocal(store, key, data, options?.contentType, options),
+    async list() {
+      if (store.kind === 'local') {
+        const root = store.file('x').slice(0, -2);
+        if (!existsSync(root)) return [];
+        return (await readdir(root, { recursive: true, withFileTypes: true }))
+          .filter((entry) => entry.isFile())
+          .map((entry) =>
+            path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'),
+          )
+          .filter((key) => !key.toLowerCase().startsWith('.webstir/'));
+      }
+      const prefix = store.key('x').slice(0, -1);
+      const keys: string[] = [];
+      let token: string | undefined;
+      do {
+        const page = await store.client.send(
+          new ListObjectsV2Command({
+            Bucket: store.bucket,
+            Prefix: prefix,
+            ...(token ? { ContinuationToken: token } : {}),
+          }),
+        );
+        for (const item of page.Contents ?? []) {
+          if (item.Key) keys.push(item.Key.slice(prefix.length));
+        }
+        token = page.IsTruncated ? page.NextContinuationToken : undefined;
+      } while (token);
+      return keys;
+    },
+    async delete(key) {
+      if (store.kind === 's3') {
+        await store.client.send(
+          new DeleteObjectCommand({ Bucket: store.bucket, Key: store.key(key) }),
+        );
+        return;
+      }
+      await rm(store.file(key), { force: true });
+      await rm(store.typeFile(key), { force: true });
+      await rm(store.metadataFile(key), { force: true });
+    },
+  };
+}
+
+/**
+ * S3 settings from the environment as it is now, `.env` files included. Without a key and secret,
+ * the SDK finds credentials itself: AWS_* variables, a profile (`S3_PROFILE`, else `AWS_PROFILE`), or
+ * the instance's role.
+ */
+function s3Settings(): {
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  sessionToken?: string;
+  region?: string;
+  endpoint?: string;
+  profile?: string;
+} {
   const pick = (...names: string[]) =>
     names.map((name) => process.env[name]?.trim()).find((value) => value);
   const settings = {
@@ -222,19 +477,21 @@ function s3Credentials(): Record<string, string> {
     sessionToken: pick('S3_SESSION_TOKEN', 'AWS_SESSION_TOKEN'),
     region: pick('S3_REGION', 'AWS_REGION'),
     endpoint: pick('S3_ENDPOINT', 'AWS_ENDPOINT'),
+    profile: pick('S3_PROFILE', 'AWS_PROFILE'),
   };
-  return Object.fromEntries(
-    Object.entries(settings).filter((entry): entry is [string, string] => Boolean(entry[1])),
-  );
+  return Object.fromEntries(Object.entries(settings).filter((entry) => Boolean(entry[1])));
 }
 
 const TYPES_FOLDER = path.join('.webstir', 'types');
+const METADATA_FOLDER = path.join('.webstir', 'metadata');
 
 /** A key is a relative path of plain segments: `avatars/42.png`, never `../x`, `/x` or `.webstir/...`. */
 function checkKey(key: string): void {
   const segments = key.split('/');
   if (segments[0]?.toLowerCase() === '.webstir') {
-    throw new Error(`"${key}" is not a file key; .webstir/ is where Webstir keeps file types.`);
+    throw new Error(
+      `"${key}" is not a file key; .webstir/ is where Webstir keeps file types and metadata.`,
+    );
   }
   const plain = segments.every(
     (segment) => segment !== '' && segment !== '.' && segment !== '..' && !/[\\\0]/.test(segment),
