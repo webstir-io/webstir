@@ -16,6 +16,7 @@ import { RenderTemplateError, type RenderIssue } from './issues.js';
 import {
   checkAttribute,
   checkText,
+  declaresKey,
   elementOf,
   flattenSchema,
   isSchemaLike,
@@ -39,9 +40,23 @@ const FLASH = flattenSchema(renderFlashSchema as unknown as SchemaLike);
 export async function validateRenderPrograms(
   options: ValidateRenderProgramsOptions,
 ): Promise<void> {
-  const moduleDefinition = await loadBackendModuleDefinition<{ views?: readonly ViewLike[] }>(
-    options.workspaceRoot,
-  );
+  const moduleDefinition = await loadBackendModuleDefinition<{
+    views?: readonly ViewLike[];
+    shell?: { readonly data?: unknown; readonly load?: unknown };
+  }>(options.workspaceRoot);
+  const issues: RenderIssue[] = [];
+  const moduleShell = moduleDefinition?.shell;
+  const shellSchema = moduleShell?.data;
+  // A shell binds only with both halves: without its loader, `shell.*` would render empty.
+  const shell =
+    isSchemaLike(shellSchema) && typeof moduleShell?.load === 'function' ? shellSchema : undefined;
+  if (moduleShell && !shell) {
+    issues.push({
+      loc: { file: 'src/backend/module.ts', line: 1 },
+      message:
+        'the module exports a `shell` without both a zod `data` schema and a `load` function',
+    });
+  }
   const claims = new Map<string, ViewLike[]>();
   for (const view of moduleDefinition?.views ?? []) {
     const page = view.definition?.page;
@@ -50,7 +65,6 @@ export async function validateRenderPrograms(
     }
   }
 
-  const issues: RenderIssue[] = [];
   const sourcePagesRoot =
     options.sourcePagesRoot ?? path.join(options.workspaceRoot, 'src', 'frontend', 'pages');
 
@@ -90,7 +104,14 @@ export async function validateRenderPrograms(
         });
         continue;
       }
-      issues.push(...validateRenderProgram(program, view.data, `view ${viewName(view)}`));
+      if (shell && declaresKey(flattenSchema(view.data), 'shell')) {
+        issues.push({
+          loc: { file: program.source, line: 1 },
+          message: `view ${viewName(view)} has its own \`shell\` data, which the module's shell replaces; rename it`,
+        });
+        continue;
+      }
+      issues.push(...validateRenderProgram(program, view.data, `view ${viewName(view)}`, shell));
     }
   }
 
@@ -121,9 +142,12 @@ export function validateRenderProgram(
   program: RenderProgram,
   dataSchema: SchemaLike,
   renderer: string,
+  /** The app's shell data schema: every page a view renders binds it as `shell`. */
+  shellSchema?: SchemaLike,
 ): RenderIssue[] {
   const issues: RenderIssue[] = [];
-  walk(program.nodes, flattenSchema(dataSchema), [], renderer, issues);
+  const shell = shellSchema ? flattenSchema(shellSchema) : undefined;
+  walk(program.nodes, flattenSchema(dataSchema), [], renderer, issues, shell);
   return issues;
 }
 
@@ -133,6 +157,7 @@ function walk(
   scopes: readonly (readonly SchemaLike[])[],
   view: string,
   issues: RenderIssue[],
+  shell?: readonly SchemaLike[],
 ): void {
   for (const node of nodes) {
     if (typeof node === 'string' || node.op === 'csrf') {
@@ -143,11 +168,11 @@ function walk(
       issues.push({ loc: node.loc, message: `${label}: ${message} (${view})` });
     };
 
-    const resolved = resolve(node.path, root, scopes);
+    const resolved = resolve(node.path, root, scopes, shell);
     if ('error' in resolved) {
       report(resolved.error);
       if (node.op === 'if') {
-        walk(node.body, root, scopes, view, issues);
+        walk(node.body, root, scopes, view, issues, shell);
       }
       continue;
     }
@@ -164,14 +189,14 @@ function walk(
         report(`\`${node.path.source}\` ${problem}`);
       }
     } else if (node.op === 'if') {
-      walk(node.body, root, scopes, view, issues);
+      walk(node.body, root, scopes, view, issues, shell);
     } else {
       const element = elementOf(resolved.ok);
       if ('error' in element) {
         report(`\`${node.path.source}\` ${element.error}`);
         continue;
       }
-      walk(node.body, root, [...scopes, element.ok], view, issues);
+      walk(node.body, root, [...scopes, element.ok], view, issues, shell);
     }
   }
 }
@@ -180,6 +205,7 @@ function resolve(
   renderPath: RenderPath,
   root: readonly SchemaLike[],
   scopes: readonly (readonly SchemaLike[])[],
+  shell?: readonly SchemaLike[],
 ): { ok: readonly SchemaLike[] } | { error: string } {
   let current = renderPath.scope === -1 ? root : scopes[renderPath.scope];
   if (!current) {
@@ -193,6 +219,11 @@ function resolve(
     if ('error' in result) {
       if (renderPath.scope === -1 && index === 0 && key === 'flash') {
         current = FLASH;
+        consumed += 1;
+        continue;
+      }
+      if (renderPath.scope === -1 && index === 0 && key === 'shell' && shell) {
+        current = shell;
         consumed += 1;
         continue;
       }

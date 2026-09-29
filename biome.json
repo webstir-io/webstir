@@ -18,7 +18,7 @@
       "packages/tooling/*/package.json",
       "packages/tooling/*/tsconfig.json",
       "packages/tooling/*/src/**/*.{ts,js,mjs,json}",
-      "!packages/tooling/webstir-frontend/src/dev-clients/**",
+      "!packages/tooling/webstir-frontend/src/dev-clients",
       "packages/tooling/*/tests/**/*.{ts,js,mjs,json}",
       "packages/tooling/*/scripts/**/*.{ts,js,mjs,json}",
       "packages/tooling/*/templates/**/*.{ts,js,mjs,json}",

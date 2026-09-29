@@ -13,6 +13,7 @@ export interface WebstirOperationDescriptor {
     | 'add-job'
     | 'add-migration'
     | 'migrate'
+    | 'snapshot'
     | 'jobs'
     | 'frontend-inspect'
     | 'backend-inspect'
@@ -138,6 +139,15 @@ const OPERATIONS: readonly WebstirOperationDescriptor[] = [
     summary: "Apply the app's pending database migrations, or list them with --status.",
     requiresWorkspace: true,
     mutatesWorkspace: true,
+    supportsJson: false,
+    stableForMcp: false,
+    requiresLayer: 'server',
+  },
+  {
+    id: 'snapshot',
+    summary: "Copy the app's SQLite database to SNAPSHOT_URL now.",
+    requiresWorkspace: true,
+    mutatesWorkspace: false,
     supportsJson: false,
     stableForMcp: false,
     requiresLayer: 'server',

@@ -676,9 +676,27 @@ function createEnhancedFormSubmission(
     enctype,
     formData,
     submissionId:
-      pending && isSameFormSubmission(pending.snapshot, snapshot) ? pending.id : newSubmissionId(),
+      pending && isSameFormSubmission(pending.snapshot, snapshot)
+        ? pending.id
+        : claimRenderedSubmissionId(form, formData),
   });
   return request ? { ...request, snapshot } : null;
+}
+
+// The rendered id each form has already sent: a later, different submission needs a new one.
+const sentRenderedIds = new WeakMap<HTMLFormElement, string>();
+
+/**
+ * The id the server rendered into the form, the first time it is sent, so a normal post of the
+ * same submission carries the same id; after that, or without one, a new id.
+ */
+function claimRenderedSubmissionId(form: HTMLFormElement, formData: FormData): string {
+  const rendered = formData.get(CLIENT_NAV_SUBMISSION_FIELD);
+  if (typeof rendered === 'string' && rendered && sentRenderedIds.get(form) !== rendered) {
+    sentRenderedIds.set(form, rendered);
+    return rendered;
+  }
+  return newSubmissionId();
 }
 
 function hasClientNavOptOut(element: Element | null): boolean {
@@ -751,12 +769,20 @@ function submitFormNatively(
   setBusy(false);
   form.setAttribute(BYPASS_ATTR, 'true');
   if (submissionId) {
-    const field = document.createElement('input');
-    field.type = 'hidden';
-    field.name = CLIENT_NAV_SUBMISSION_FIELD;
-    field.value = submissionId;
-    form.append(field);
-    window.setTimeout(() => field.remove(), 0);
+    // A form the server rendered already has the field: it carries this id, so the post has one.
+    const rendered = form.querySelector<HTMLInputElement>(
+      `input[type="hidden"][name="${CLIENT_NAV_SUBMISSION_FIELD}"]`,
+    );
+    if (rendered) {
+      rendered.value = submissionId;
+    } else {
+      const field = document.createElement('input');
+      field.type = 'hidden';
+      field.name = CLIENT_NAV_SUBMISSION_FIELD;
+      field.value = submissionId;
+      form.append(field);
+      window.setTimeout(() => field.remove(), 0);
+    }
   }
   if (submitter && typeof form.requestSubmit === 'function') {
     form.requestSubmit(submitter);

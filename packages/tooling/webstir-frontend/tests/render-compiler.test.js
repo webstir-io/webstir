@@ -55,7 +55,7 @@ async function editClientsPage(root, from, to) {
   await fs.writeFile(file, html.replace(from, to), 'utf8');
 }
 
-async function writeBackendModule(root, dataSource) {
+async function writeBackendModule(root, dataSource, shellSource) {
   const zodUrl = import.meta.resolve('zod');
   const dir = path.join(root, 'build', 'backend');
   await fs.mkdir(dir, { recursive: true });
@@ -70,6 +70,7 @@ async function writeBackendModule(root, dataSource) {
       `    data: ${dataSource},`,
       '    load: () => ({}),',
       '  }],',
+      ...(shellSource ? [`  shell: ${shellSource},`] : []),
       '};',
     ].join('\n'),
     'utf8',
@@ -239,6 +240,52 @@ test('the clients page validates against its view schema', async () => {
     pagesRoot: path.join(root, 'build', 'frontend', 'pages'),
   });
 });
+
+// A module's shell is checked at build: both halves, and no view data that it would replace.
+for (const [name, shellSource, dataSource, error] of [
+  [
+    'a shell and its loader',
+    '{ data: z.object({}), load: () => ({}) }',
+    CLIENTS_SCHEMA_SOURCE,
+    null,
+  ],
+  [
+    'a shell beside a view schema open to any key',
+    '{ data: z.object({}), load: () => ({}) }',
+    `${CLIENTS_SCHEMA_SOURCE}.passthrough()`,
+    null,
+  ],
+  [
+    'a shell beside a transformed view schema',
+    '{ data: z.object({}), load: () => ({}) }',
+    `${CLIENTS_SCHEMA_SOURCE}.transform((value) => value)`,
+    null,
+  ],
+  [
+    'a shell without a loader',
+    '{ data: z.object({}) }',
+    CLIENTS_SCHEMA_SOURCE,
+    /exports a `shell` without both a zod `data` schema and a `load` function/,
+  ],
+  [
+    'a view with its own shell data',
+    '{ data: z.object({}), load: () => ({}) }',
+    CLIENTS_SCHEMA_SOURCE.replace('z.object({\n', 'z.object({\n  shell: z.string(),\n'),
+    /view clientsPage has its own `shell` data, which the module's shell replaces/,
+  ],
+]) {
+  test(`the build accepts ${name}${error ? ' only with an error' : ''}`, async () => {
+    const root = await createWorkspace();
+    await buildWorkspace(root);
+    await writeBackendModule(root, dataSource, shellSource);
+    const validating = validateRenderPrograms({
+      workspaceRoot: root,
+      pagesRoot: path.join(root, 'build', 'frontend', 'pages'),
+    });
+    if (error) await assert.rejects(validating, error);
+    else await validating;
+  });
+}
 
 test('a misspelled path fails with file and line', async () => {
   const root = await createWorkspace();
@@ -613,4 +660,31 @@ test('a problem in a partial used twice is reported once', async () => {
   const issues = validateRenderProgram(program, schema, 'view fixture');
   assert.equal(issues.length, 2);
   assert.equal(new RenderTemplateError(issues).issues.length, 1);
+});
+
+test('the shell binds on every view page, checked against its own schema', async () => {
+  const root = await createWorkspace();
+  const program = await compileSource(
+    root,
+    [
+      '<head><title data-text="title">T</title></head>',
+      '<main>',
+      '<p data-text="shell.account.email"></p>',
+      '<p data-text="shell.acount"></p>',
+      '</main>',
+    ].join('\n'),
+  );
+  const page = z.object({ title: z.string() });
+  const shell = z.object({ account: z.object({ email: z.string() }).nullable() });
+  const messages = validateRenderProgram(program, page, 'view fixture', shell).map(
+    (issue) => `${issue.loc.line}: ${issue.message.replace(' (view fixture)', '')}`,
+  );
+  assert.deepEqual(messages, [
+    '4: data-text="shell.acount": `shell` has no `acount`; it has `account`',
+  ]);
+  // Without a shell, `shell` is a binding like any other, and the page data lacks it.
+  assert.match(
+    validateRenderProgram(program, page, 'view fixture')[0].message,
+    /the view data has no `shell`/,
+  );
 });

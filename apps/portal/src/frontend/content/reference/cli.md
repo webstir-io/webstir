@@ -309,6 +309,13 @@ What it does:
 - Builds the backend and applies the app's pending migrations to the database `DATABASE_URL` names, as the server does when it starts
 - `--status` lists each migration and when it was applied, without changing anything
 
+### snapshot
+Usage: `webstir snapshot --workspace <path>`
+
+What it does:
+- Takes a copy of the app's SQLite database now and writes it to `SNAPSHOT_URL`, as the server does after writes; see [Snapshot the Database](../how-to/snapshots.md)
+- Fails when `SNAPSHOT_URL` is unset, or the database is Postgres
+
 ### jobs
 Usage:
 - `webstir jobs --workspace <path>`

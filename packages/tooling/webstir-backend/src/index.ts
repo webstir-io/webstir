@@ -7,6 +7,7 @@ export {
   hasWorkspaceModuleDefinition,
 } from './build/module-definition.js';
 export { createDefaultBunBackendBootstrap, startBunBackend } from './runtime/bun.js';
+export type { ActionContext, AppUser, SubmittedForm, ViewContext } from './runtime/contexts.js';
 export { prepareApp } from './app/prepare.js';
 export { appUrl, loadAppEnv, loadEnvFiles, type AppEnv } from './app/env.js';
 export {

@@ -5,6 +5,7 @@ import type {
   RenderProgram,
   RenderSourceLocation,
 } from './render-program.js';
+import { CLIENT_NAV_SUBMISSION_FIELD } from './client-nav.js';
 import { RENDER_PROGRAM_VERSION } from './render-version.js';
 
 export const RENDER_CSRF_FIELD = '_csrf';
@@ -49,6 +50,11 @@ export interface ExecuteRenderProgramOptions {
    * POST forms render without a token field.
    */
   readonly csrfToken?: string | false;
+  /**
+   * A new id for each POST form rendered, so the same submission sent again (a resent post, a
+   * double click) is answered once. Left out, forms render without one.
+   */
+  readonly submissionId?: () => string;
 }
 
 export function readRenderProgram(value: unknown, source: string): RenderProgram {
@@ -102,6 +108,11 @@ function run(
         out.push(
           `<input type="hidden" name="${RENDER_CSRF_FIELD}" value="${escapeAttribute(options.csrfToken)}">`,
         );
+        if (options.submissionId) {
+          out.push(
+            `<input type="hidden" name="${CLIENT_NAV_SUBMISSION_FIELD}" value="${escapeAttribute(options.submissionId())}">`,
+          );
+        }
         break;
       case 'text': {
         const value = read(node.path, data, scopes);
@@ -252,6 +263,27 @@ export function prepareViewData(
     }
   }
   return { ok: false, error: describeSchemaError(firstError) };
+}
+
+/**
+ * A page's data with the app's shell data beside it as `shell`, checked against the shell's schema
+ * when it has one.
+ */
+export function withShellData(
+  data: unknown,
+  shellSchema: unknown,
+  loaded: unknown,
+): PreparedViewData {
+  if (!isPlainObject(data)) {
+    return { ok: true, data };
+  }
+  if (!shellSchema || typeof (shellSchema as ViewDataSchemaLike).safeParse !== 'function') {
+    return { ok: true, data: { ...(data as object), shell: loaded } };
+  }
+  const parsed = (shellSchema as ViewDataSchemaLike).safeParse(loaded);
+  return parsed.success
+    ? { ok: true, data: { ...(data as object), shell: parsed.data } }
+    : { ok: false, error: describeSchemaError(parsed.error) };
 }
 
 function mergeFlash(value: unknown, flash: readonly unknown[]): unknown {

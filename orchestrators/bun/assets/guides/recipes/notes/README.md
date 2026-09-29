@@ -47,7 +47,7 @@ With JavaScript disabled in a browser:
 1. Create a note and follow its edit link. Change both fields, save, reload, and verify the values.
 2. Bypass browser validation and POST a blank title with a valid form token. Expect HTTP 422, a visible error, preserved body text, and no new row. A bad CSRF token must return 403 without a write.
 3. Submit `<img src=x onerror=alert(1)>` in both fields. It must appear as text without creating an image element.
-4. Restart the server. Verify the note remains, then delete it and reload. Direct edits/deletes of an unknown ID return 404.
+4. Restart the server. Verify the note remains, then delete it and reload. Direct edits/deletes of an unknown ID, with a valid form token, return 404.
 
 Copy the adjacent `notes.test.ts` into `src/backend/tests/notes.test.ts`. It uses Webstir's public `test`, `assert`, and backend request context to check native submissions and validation. Run against a disposable database:
 

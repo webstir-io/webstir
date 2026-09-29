@@ -39,7 +39,7 @@ Use two accounts and an anonymous browser with JavaScript disabled:
 
 1. Verify existing projects receive `active` after migration without changing owner/title. Create and edit each status. Reload, filter each status, use Back, and confirm the URL and selected option agree. Empty results still show usable controls.
 2. Verify invalid statuses return 422 without changing stored data; unknown filters return 400. Blank/long titles and invalid CSRF tokens also fail without a write. Submitted HTML must render as text.
-3. Account B must neither list nor update/delete account A's project, even with A's ID and B's valid CSRF token. Cross-owner and missing IDs both return 404. Anonymous GET and POST requests return 401.
+3. Account B must neither list nor update/delete account A's project, even with A's ID and B's valid CSRF token. Cross-owner and missing IDs both return 404. Anonymous GET requests return 401; an anonymous POST has no form token, so it fails its form check with 403 first.
 4. Restart the backend and sign in again through the real auth flow. Status and ownership must persist. Existing sign-in/out and unrelated app features must still pass their tests.
 
 Keep owner predicates in every SELECT, UPDATE, and DELETE even when an earlier lookup already checked ownership. Do not turn the owner into a hidden field or replace sign-in with `session.mode: 'required'`. Add optional fragment enhancement only after these native-browser and authorization checks pass.

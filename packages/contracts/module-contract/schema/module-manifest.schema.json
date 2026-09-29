@@ -147,9 +147,24 @@
                 "additionalProperties": false
               },
               "auth": {
-                "type": "string",
-                "enum": [
-                  "required"
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "const": "required"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "role": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "role"
+                    ],
+                    "additionalProperties": false
+                  }
                 ]
               },
               "flash": {
@@ -205,6 +220,10 @@
               "form": {
                 "type": "object",
                 "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
                   "contentType": {
                     "type": "string",
                     "enum": [
@@ -486,10 +505,7 @@
                 }
               },
               "auth": {
-                "type": "string",
-                "enum": [
-                  "required"
-                ]
+                "$ref": "#/definitions/module-manifest/properties/routes/items/properties/auth"
               },
               "params": {
                 "$ref": "#/definitions/module-manifest/properties/routes/items/properties/input/properties/params"

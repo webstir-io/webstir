@@ -359,14 +359,18 @@ test('manifest loader falls back to module exports from the compiled index entry
   );
 });
 
-test('views.json lists only views the module renders, not package page routes', async () => {
+test('views.json lists the views the module renders and its GET routes, not package page routes', async () => {
   const workspace = await createTempWorkspace();
   await seedBackendEntry(workspace);
   await fs.writeFile(
     path.join(workspace, 'src', 'backend', 'module.ts'),
     `export const module = {
   manifest: { contractVersion: '1.0.0', name: '@demo/views', version: '1.0.0', kind: 'backend' },
-  views: [{ definition: { name: 'clients', path: '/clients', page: 'clients' }, load: () => ({}) }]
+  views: [{ definition: { name: 'clients', path: '/clients', page: 'clients' }, load: () => ({}) }],
+  routes: [
+    { definition: { name: 'download', method: 'GET', path: '/clients/:id/pdf' }, handler: () => ({}) },
+    { definition: { name: 'save', method: 'POST', path: '/clients' }, handler: () => ({}) },
+  ]
 };
 `,
     'utf8',
@@ -394,7 +398,10 @@ test('views.json lists only views the module renders, not package page routes', 
   const listed = JSON.parse(
     await fs.readFile(path.join(workspace, 'build', 'backend', 'views.json'), 'utf8'),
   );
-  assert.deepEqual(listed, [{ name: 'clients', path: '/clients', page: 'clients' }]);
+  assert.deepEqual(listed, [
+    { name: 'clients', path: '/clients', page: 'clients' },
+    { name: 'download', path: '/clients/:id/pdf', method: 'GET' },
+  ]);
 
   await fs.writeFile(
     path.join(workspace, 'src', 'backend', 'module.ts'),

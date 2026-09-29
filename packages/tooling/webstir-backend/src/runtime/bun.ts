@@ -11,21 +11,24 @@ import { executeRequestHookPhase, type RequestHookReferenceLike } from './reques
 import { isProduction, setAppRoot } from '../app/app-root.js';
 import { appUrl, loadAppEnv, loadEnvFiles } from '../app/env.js';
 import { appServices } from '../app/services.js';
-import { appDatabase, appDatabaseExists } from '../db/app-database.js';
+import { appDatabase, appDatabaseExists, closeAppDatabase } from '../db/app-database.js';
 import type { Database } from '../db/database.js';
 import { readAppMigrations } from '../db/migrations.js';
 import { emailSetupProblem, type Email } from '../email/index.js';
 import { LOCAL_FILES_PATH, serveLocalFile, type Files } from '../files/index.js';
 import { startJobs, type Jobs } from '../jobs/index.js';
 import {
+  hasRequiredRole,
   requiresSignIn,
   resolveSessionUser,
   signInLocation,
   signInRequired,
+  type LoadUser,
 } from '../sign-in/guard.js';
 import { declareSignInTables } from '../sign-in/database.js';
 import type { SignInOptions } from '../sign-in/module.js';
-import type { SessionUser } from '../sign-in/users.js';
+import type { AppUser, SubmittedForm } from './contexts.js';
+import { checkDeclaredForm, declaredFormId, failDeclaredForm } from './form-routes.js';
 import { createRequestMetricsTracker } from './metrics.js';
 import { createDatabaseSessionStore } from './session-database-store.js';
 import {
@@ -60,13 +63,14 @@ import { createSessionFormReader, renderFormRerender } from './rerender.js';
 import { readRequestBody } from './request-body.js';
 import { toClientNavLocation } from './client-nav.js';
 import { claimSubmission, takeSubmissionId, type SubmissionClaim } from './form-submissions.js';
-import { isViewRedirect, readViewControl } from './view-control.js';
+import { isViewRedirect, notFound, readFormIssue, readViewControl } from './view-control.js';
 import { loadNotFoundDocument } from './view-documents.js';
 import {
   matchView,
   renderRequestTimeView,
   type CompiledView,
   type LoggerLike,
+  type ShellLike,
   type ViewFlashMessage,
 } from './views.js';
 
@@ -165,11 +169,13 @@ interface RouteContext<
   params: Record<string, string>;
   query: Record<string, string>;
   body: unknown;
+  /** The submitted form, for a route that declares `form`; its CSRF token is already checked. */
+  form?: SubmittedForm;
   auth: TAuth | undefined;
   session: TSession | null;
   flash: SessionFlashMessage[];
-  /** The signed-in user, when the app has sign-in; null when nobody is signed in. */
-  user: SessionUser | null;
+  /** The signed-in user, when the app has sign-in; null when nobody with access is signed in. */
+  user: AppUser | null;
   db: Database;
   /** This request's own scratch space, for request hooks and the handler to hand values along. */
   locals: Record<string, unknown>;
@@ -242,6 +248,7 @@ export async function startBunBackend<
   }
   const manifestSummary = summarizeManifest(runtime.manifest);
   const signIn = (runtime.definition as { signIn?: SignInOptions } | undefined)?.signIn;
+  const shell = (runtime.definition as { shell?: ShellLike } | undefined)?.shell;
   const signInEnabled = Boolean(signIn);
   const signInProblem = checkSignInSetup(runtime, signInEnabled);
   if (signInProblem) {
@@ -260,7 +267,7 @@ export async function startBunBackend<
     error: (message) => logger.error(message),
   });
 
-  bun.serve({
+  const server = bun.serve({
     port: env.PORT,
     hostname: '0.0.0.0',
     fetch: async (request) => {
@@ -276,6 +283,8 @@ export async function startBunBackend<
           metrics,
           options,
           signInEnabled,
+          loadUser: signIn?.loadUser,
+          shell,
         }),
       );
     },
@@ -287,6 +296,18 @@ export async function startBunBackend<
 
   if (!loadError) {
     readiness.ready();
+  }
+
+  // A stop (a deploy, a restart) takes the database's pending snapshot before the process ends.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      server.stop();
+      void closeAppDatabase()
+        .catch((error: unknown) =>
+          logger.error({ err: error }, '[webstir-backend] shutdown failed'),
+        )
+        .finally(() => process.exit(0));
+    });
   }
 
   logger.info({ port: env.PORT, mode: env.NODE_ENV, runtime: 'bun' }, 'API server running');
@@ -405,9 +426,11 @@ async function handleRequest<
   manifestSummary?: ManifestSummary;
   options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>;
   signInEnabled: boolean;
+  loadUser?: LoadUser;
+  shell?: ShellLike;
 }): Promise<Response> {
   const { request, runtime, readiness, manifestSummary, env, logger, metrics, options } = args;
-  const { signInEnabled } = args;
+  const { signInEnabled, loadUser, shell } = args;
 
   try {
     const url = new URL(request.url);
@@ -502,6 +525,8 @@ async function handleRequest<
           now,
           options,
           signInEnabled,
+          loadUser,
+          shell,
         });
         responseStatus = response.status;
         return response;
@@ -529,7 +554,7 @@ async function handleRequest<
         auth: undefined,
         session: sessionState.session,
         flash: sessionState.flash,
-        user: signInEnabled ? await resolveSessionUser(sessionState.session) : null,
+        user: signInEnabled ? await resolveSessionUser(sessionState.session, loadUser) : null,
         ...appServices,
         locals: Object.create(null),
         env: envAccessor,
@@ -643,38 +668,95 @@ async function handleRequest<
         return response;
       }
 
-      let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
-      try {
-        handlerResult = await routeMatch.route.handler(ctx);
-      } catch (error) {
-        // An action can end with redirect() or notFound() just as a view loader can.
-        const control = readViewControl(error);
-        if (!control) {
-          throw error;
-        }
-        const response = await createViewControlResponse(control, {
+      // Signed in without the role a route needs: it is not there for them.
+      if (ctx.user && !hasRequiredRole(ctx.user, routeMatch.route.definition)) {
+        const response = await createViewControlResponse(NOT_FOUND, {
           method,
           requestId,
           workspaceRoot: options.resolveWorkspaceRoot(),
-          // Its session changes land; messages already queued wait for the page it leads to.
-          commit: async (status) => {
-            submission?.record(
-              ctx.session,
-              status,
-              isViewRedirect(control) ? control.location : undefined,
-              now(),
-            );
-            const committed = await sessionState.commit({
-              session: ctx.session,
-              result: { status },
-              retainFlash: true,
-            });
-            submission?.recordCookie(committed, now());
-            return committed;
-          },
+          commit: (status) =>
+            sessionState.commit({ session: ctx.session, result: { status }, retainFlash: true }),
         });
         responseStatus = response.status;
         return response;
+      }
+
+      // A route that declares a form gets it checked and parsed before it runs; one that fails
+      // goes back to the page it came from without running the action.
+      const declared =
+        method === 'POST' && routeMatch.route.definition?.form
+          ? routeMatch.route.definition
+          : undefined;
+      const formCheck = declared
+        ? checkDeclaredForm({
+            request,
+            views: runtime.views,
+            route: declared,
+            session: ctx.session,
+            body: ctx.body,
+            now,
+          })
+        : undefined;
+      if (formCheck && declared) {
+        ctx.session = formCheck.session;
+        if (formCheck.ok) ctx.form = { id: declaredFormId(declared), values: formCheck.values };
+      }
+
+      let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
+      try {
+        handlerResult =
+          formCheck && !formCheck.ok
+            ? (formCheck.result as typeof handlerResult)
+            : await routeMatch.route.handler(ctx);
+      } catch (error) {
+        // An action can end with fieldIssue(): the form goes back where it came from.
+        const issue = readFormIssue(error);
+        if (issue) {
+          const failed = failDeclaredForm({
+            request,
+            views: runtime.views,
+            session: ctx.session,
+            formId: issue.formId ?? ctx.form?.id ?? declaredFormId(routeDefinition),
+            values: { ...(ctx.form?.values ?? {}), ...(issue.values ?? {}) },
+            issue: {
+              code: 'validation',
+              ...(issue.field ? { field: issue.field } : {}),
+              message: issue.message,
+            },
+            now,
+          });
+          ctx.session = failed.session;
+          handlerResult = (failed.ok ? {} : failed.result) as typeof handlerResult;
+        } else {
+          // An action can end with redirect() or notFound() just as a view loader can.
+          const control = readViewControl(error);
+          if (!control) {
+            throw error;
+          }
+          const response = await createViewControlResponse(control, {
+            method,
+            requestId,
+            workspaceRoot: options.resolveWorkspaceRoot(),
+            // Its session changes land; messages already queued wait for the page it leads to.
+            commit: async (status) => {
+              submission?.record(
+                ctx.session,
+                status,
+                isViewRedirect(control) ? control.location : undefined,
+                now(),
+              );
+              const committed = await sessionState.commit({
+                session: ctx.session,
+                result: { status },
+                retainFlash: true,
+              });
+              submission?.recordCookie(committed, now());
+              return committed;
+            },
+          });
+          responseStatus = response.status;
+          return response;
+        }
       }
       const afterHandler = await executeRequestHookPhase({
         hooks: routeMatch.route.requestHooks,
@@ -703,12 +785,14 @@ async function handleRequest<
             cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
             headers: toRequestHeadersRecord(request.headers),
             auth: ctx.auth,
+            user: ctx.user,
             session: ctx.session,
             env: envAccessor,
             logger: structuredLogger,
             requestId,
             now,
             services: { ...appServices, user: ctx.user },
+            shell,
             // The re-rendered page is where the action's messages are seen, so they are not queued.
             flash: toViewFlash([...sessionState.flash, ...rerenderFlash]),
           });
@@ -832,6 +916,8 @@ async function handleViewRequest<
   now: () => Date;
   options: BunRuntimeBootstrapOptions<TEnv, TLogger, TSession, TAuth, TMetricsTracker>;
   signInEnabled: boolean;
+  loadUser?: LoadUser;
+  shell?: ShellLike;
 }): Promise<Response> {
   const {
     request,
@@ -845,6 +931,8 @@ async function handleViewRequest<
     now,
     options,
     signInEnabled,
+    loadUser,
+    shell,
   } = args;
   const rendersPage = Boolean(matchedView.view.definition?.page);
   const sessionState = await prepareSessionState<TSession, RouteHandlerResult>({
@@ -856,7 +944,7 @@ async function handleViewRequest<
     now,
   });
   let session = sessionState.session;
-  const user = signInEnabled ? await resolveSessionUser(session) : null;
+  const user = signInEnabled ? await resolveSessionUser(session, loadUser) : null;
   if (requiresSignIn(matchedView.view.definition) && user === null) {
     // Messages wait for the page the visitor reaches after signing in.
     const { setCookie } = await sessionState.commit({
@@ -871,6 +959,15 @@ async function handleViewRequest<
     });
     if (setCookie) headers.append('set-cookie', setCookie);
     return new Response(null, { status: 303, headers });
+  }
+  // Signed in without the role the page needs: it is not there for them.
+  if (user && !hasRequiredRole(user, matchedView.view.definition)) {
+    return await createViewControlResponse(NOT_FOUND, {
+      method,
+      requestId,
+      workspaceRoot: options.resolveWorkspaceRoot(),
+      commit: (status) => sessionState.commit({ session, result: { status }, retainFlash: true }),
+    });
   }
   let rendered: Awaited<ReturnType<typeof renderRequestTimeView>>;
   try {
@@ -890,6 +987,7 @@ async function handleViewRequest<
       flash: rendersPage && method !== 'HEAD' ? toViewFlash(sessionState.flash) : undefined,
       forms: createSessionFormReader(() => session),
       services: { ...appServices, user },
+      shell,
       csrfToken: () => {
         const ensured = ensureSessionCsrfToken(session);
         session = ensured.session;
@@ -929,6 +1027,16 @@ async function handleViewRequest<
     headers,
   });
 }
+
+const NOT_FOUND = readViewControl(
+  (() => {
+    try {
+      notFound();
+    } catch (error) {
+      return error;
+    }
+  })(),
+) as NonNullable<ReturnType<typeof readViewControl>>;
 
 async function createViewControlResponse(
   control: NonNullable<ReturnType<typeof readViewControl>>,

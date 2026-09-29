@@ -48,6 +48,11 @@
       "import": "./dist/features/client-errors.js",
       "default": "./dist/features/client-errors.js"
     },
+    "./features/behaviors": {
+      "types": "./dist/features/behaviors.d.ts",
+      "import": "./dist/features/behaviors.js",
+      "default": "./dist/features/behaviors.js"
+    },
     "./cli": {
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"

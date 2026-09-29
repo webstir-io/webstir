@@ -164,9 +164,12 @@ test('notes work without JavaScript, validate, escape, persist across restart, a
     await page.getByRole('link', { name: 'Edit Saved note', exact: true }).click();
     await clickAndNavigate(page, 'Delete note');
     expect(await page.locator('article').count()).toBe(0);
-    expect((await context.request.post(`${origin}/api/notes/missing`, { form: {} })).status()).toBe(
-      404,
-    );
+    const freshToken = await page.locator('input[name="_csrf"]').first().inputValue();
+    expect(
+      (
+        await context.request.post(`${origin}/api/notes/missing`, { form: { _csrf: freshToken } })
+      ).status(),
+    ).toBe(404);
   } finally {
     await context.close();
   }
@@ -227,13 +230,14 @@ test('projects preserve migration data, filter natively, reject invalid writes a
       expect(denied.status()).toBe(404);
     }
     expect((await anonymous.request.get(`${origin}/api/projects`)).status()).toBe(401);
+    // Without a session there is no form token, so the post fails its form check first.
     expect(
       (
         await anonymous.request.post(`${origin}/api/projects`, {
           form: { title: 'Anonymous', status: 'active' },
         })
       ).status(),
-    ).toBe(401);
+    ).toBe(403);
     const forgedOwner = await beta.request.post(`${origin}/api/projects`, {
       form: {
         _csrf: betaToken,

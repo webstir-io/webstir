@@ -64,7 +64,7 @@ An app that still has the copies an older version wrote under `src/frontend/app/
 ### frontend
 - In an app without pages, writes an app shell and a home page under `src/frontend/**` (from the `spa` starter), with client-nav on.
 - Adds the frontend package dependency (run `bun install` afterwards), and in an older app with a `base.tsconfig.json`, its reference for `src/frontend`.
-- Once an app has pages, its pages own the site's addresses and its server answers under `/api/*`. Routes outside `/api/` are no longer reachable from the browser, so the command says to move them under `/api/`.
+- Once an app has pages, its pages own the site's addresses, and its server answers under `/api/*`, at its views, and at the GET routes its module declares (a download, say). Anything else the server answered is no longer reachable from the browser, so the command says to move it under `/api/`.
 
 ### github-pages
 - Writes `utils/deploy-gh-pages.sh`.

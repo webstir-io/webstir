@@ -48,6 +48,13 @@ export function flattenSchema(schema: SchemaLike): SchemaLike[] {
   return leaves;
 }
 
+/** Whether an object schema names this key itself, not just accepts any key. */
+export function declaresKey(candidates: readonly SchemaLike[], key: string): boolean {
+  return candidates.some(
+    (candidate) => typeNameOf(candidate) === 'ZodObject' && key in objectShape(candidate),
+  );
+}
+
 export function lookupKey(candidates: readonly SchemaLike[], key: string): SchemaResult {
   const found: SchemaLike[] = [];
   const known = new Set<string>();

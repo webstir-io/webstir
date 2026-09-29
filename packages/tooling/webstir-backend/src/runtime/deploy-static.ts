@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { access } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 
 import { requireBunRuntime, textResponse } from './deploy-shared.js';
 import { matchPageRoute, type PageRoute } from './page-routes.js';
@@ -189,7 +189,8 @@ async function resolveStaticFile(
     }
 
     try {
-      await access(absolutePath);
+      // A folder, such as app/ beside a page, is not a file to serve.
+      if (!(await stat(absolutePath)).isFile()) continue;
       return { absolutePath, relativePath };
     } catch (error) {
       if (isMissingStaticCandidate(error)) {

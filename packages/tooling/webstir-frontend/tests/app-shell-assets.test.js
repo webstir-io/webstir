@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { frontendProvider } from '../dist/index.js';
+import { frontendProvider, runRebuild } from '../dist/index.js';
 
 async function workspace({ server = false, enable = {}, appCss = null, appTs = null }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-shell-assets-'));
@@ -162,6 +162,48 @@ test('an app with no styles of its own links none', async () => {
     await build(root, 'build');
     const built = stylesheets(await read(root, 'build', 'frontend', 'pages', 'home', 'index.html'));
     assert.ok(!built.includes('/app/app.css'));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+// The behaviors come with the bundle only when a page, the shell or a partial marks a control.
+for (const [name, markup, bundled] of [
+  ['a form that submits on change', '<form data-submit-on-change></form>', true],
+  ['a dismissable details', '<details data-dismissable><summary>x</summary></details>', true],
+  ['a menu button', '<button data-menu-trigger aria-controls="menu">Menu</button>', true],
+  ['no marked control', '<p>Home</p>', false],
+]) {
+  test(`a page with ${name} ${bundled ? 'gets' : 'does not get'} the behaviors`, async () => {
+    const root = await workspace({});
+    try {
+      await fs.writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html'),
+        `<head></head><main>${markup}</main>`,
+      );
+      await build(root, 'build');
+      const bundle = path.join(root, 'build', 'frontend', 'app', 'app.js');
+      assert.equal(
+        (await exists(bundle)) && /__WEBSTIR_BEHAVIORS_INSTALLED__/.test(await read(bundle)),
+        bundled,
+      );
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+}
+
+// In watch, the edit that gives a page its first marked control brings the behaviors with it.
+test('an HTML edit that first marks a control rebuilds the bundle with the behaviors', async () => {
+  const root = await workspace({});
+  try {
+    await build(root, 'build');
+    const page = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html');
+    await fs.writeFile(page, '<head></head><main><form data-submit-on-change></form></main>');
+    await runRebuild({ workspaceRoot: root, changedFile: page });
+    const bundle = path.join(root, 'build', 'frontend', 'app', 'app.js');
+    assert.equal(await exists(bundle), true);
+    assert.match(await read(bundle), /__WEBSTIR_BEHAVIORS_INSTALLED__/);
   } finally {
     await fs.rm(root, { recursive: true, force: true });
   }

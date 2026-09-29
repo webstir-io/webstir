@@ -130,11 +130,13 @@
     "url": "https://github.com/webstir-io/webstir/issues"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1140.0",
+    "@aws-sdk/s3-request-presigner": "^3.1140.0",
     "@webstir-io/module-contract": "^0.8.1",
     "esbuild": "^0.28.2",
     "glob": "^10.4.1",
-    "zod": "^3.23.8",
-    "nodemailer": "^10.0.0"
+    "nodemailer": "^10.0.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^20.19.21",

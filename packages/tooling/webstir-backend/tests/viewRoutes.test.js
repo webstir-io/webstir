@@ -6,7 +6,7 @@ import path from 'node:path';
 
 import { createRenderedViewMatcher } from '../dist/runtime/view-routes.js';
 
-test('every view that names a page routes to the backend unless a real file answers', async () => {
+test('every view that names a page, and every GET route, goes to the backend unless a real file answers', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-view-routes-'));
   try {
     await fs.mkdir(path.join(workspace, 'build', 'backend'), { recursive: true });
@@ -16,11 +16,13 @@ test('every view that names a page routes to the backend unless a real file answ
         { name: 'secret', path: '/secret', page: 'secret' },
         { name: 'client', path: '/clients/:slug', page: 'client' },
         { name: 'legacy', path: '/legacy' },
+        { name: 'download', path: '/proposals/:id/pdf', method: 'GET' },
       ]),
     );
     const frontendRoot = path.join(workspace, 'build', 'frontend');
     await fs.mkdir(path.join(frontendRoot, 'pages', 'clients'), { recursive: true });
     await fs.writeFile(path.join(frontendRoot, 'pages', 'clients', 'index.css'), 'main {}');
+
     const matches = createRenderedViewMatcher({ workspaceRoot: workspace, frontendRoot });
 
     // A page with no bindings compiles to no program, but its loader still has to run.
@@ -36,7 +38,36 @@ test('every view that names a page routes to the backend unless a real file answ
     assert.equal(await matches('/clients/data.json'), true);
     assert.equal(await matches('/clients/private.html'), true);
     assert.equal(await matches('/legacy'), false, 'a view without a page is not rendered here');
+    assert.equal(await matches('/proposals/42/pdf'), true, 'a GET route, such as a download');
+    assert.equal(await matches('/proposals/42'), false);
     assert.equal(await matches('/elsewhere'), false);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("a GET route yields to the site's own files and pages at its address", async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-view-routes-'));
+  try {
+    await fs.mkdir(path.join(workspace, 'build', 'backend'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'build', 'backend', 'views.json'),
+      JSON.stringify([{ name: 'short', path: '/:code', method: 'GET' }]),
+    );
+    const frontendRoot = path.join(workspace, 'build', 'frontend');
+    await fs.mkdir(path.join(frontendRoot, 'pages', 'about'), { recursive: true });
+    await fs.writeFile(path.join(frontendRoot, 'pages', 'about', 'index.html'), '<main></main>');
+    await fs.writeFile(path.join(frontendRoot, 'favicon.ico'), '');
+    // A folder of assets is not a page: the route still answers at its name.
+    await fs.mkdir(path.join(frontendRoot, 'app'), { recursive: true });
+    await fs.writeFile(path.join(frontendRoot, 'app', 'app.js'), '');
+    const matches = createRenderedViewMatcher({ workspaceRoot: workspace, frontendRoot });
+
+    assert.equal(await matches('/abc123'), true);
+    assert.equal(await matches('/app'), true);
+    for (const taken of ['/favicon.ico', '/about', '/about/']) {
+      assert.equal(await matches(taken), false, taken);
+    }
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

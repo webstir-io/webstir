@@ -21,7 +21,8 @@ const accountView = {
 ```
 
 - `auth: 'required'` on a view or route sends a signed-out visitor to `/sign-in/` and back to where they were going. An API call (a route without a form, asking for JSON) gets 401 instead.
-- `ctx.user` is `{ id, email }`, or `null` when nobody is signed in. A migration can reference `users (id)`.
+- `auth: { role: 'staff' }` also needs the role: signed out goes to sign in, as above; signed in without it gets the 404 page, so the address doesn't reveal what is there.
+- `ctx.user` is `{ id, email }`, or the app's own user when it has a `loadUser` (below), or `null` when nobody is signed in. A migration can reference `users (id)`.
 - A form that posts to `/sign-out/` signs out; with a field named `everywhere`, it ends every session of that user, on every device.
 
 ## How it works
@@ -44,6 +45,22 @@ const signIn: SignInOptions = {
   canSignIn: async (email) => Boolean(await db.get('SELECT 1 FROM invitations WHERE email = ?', [email])),
 };
 ```
+
+## Say who a signed-in person is
+
+An app with its own idea of a user (a name, a team, roles) turns Webstir's `{ id, email }` into it once per request, with `loadUser`. What it returns is `ctx.user` in every view, route and shell loader, and its `roles` are what `auth: { role }` checks:
+
+```ts
+const signIn: SignInOptions = {
+  loadUser: async (user) => {
+    const member = await db.get('SELECT name, team, staff FROM members WHERE user_id = ?', [user.id]);
+    if (!member) return null;
+    return { ...user, name: member.name, team: member.team, roles: member.staff ? ['staff'] : [] };
+  },
+};
+```
+
+`null` means no access: that person is treated as signed out, and the sign-in page tells them this account has no access here. Type loaders with `ViewContext<Member>` and handlers with `ActionContext<Member>` from `@webstir-io/webstir-backend`.
 
 ## An app with its own users table
 

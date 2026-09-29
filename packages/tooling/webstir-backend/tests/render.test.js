@@ -216,3 +216,17 @@ test('readRenderProgram rejects other versions', () => {
     new RegExp(`not a version ${RENDER_PROGRAM_VERSION} program`),
   );
 });
+
+test('a POST form gets a new submission id each time it renders, and static output gets none', () => {
+  const posting = program(['<form method="post">', { op: 'csrf' }, '</form>']);
+  const ids = ['id-1', 'id-2'];
+  const submissionId = () => ids.shift();
+  const field = (id) =>
+    `<form method="post"><input type="hidden" name="_csrf" value="t"><input type="hidden" name="_webstir_submission" value="${id}"></form>`;
+  assert.equal(executeRenderProgram(posting, {}, { csrfToken: 't', submissionId }), field('id-1'));
+  assert.equal(executeRenderProgram(posting, {}, { csrfToken: 't', submissionId }), field('id-2'));
+  assert.equal(
+    executeRenderProgram(posting, {}, { csrfToken: false, submissionId }),
+    '<form method="post"></form>',
+  );
+});

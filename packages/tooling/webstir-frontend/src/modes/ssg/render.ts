@@ -5,6 +5,7 @@ import {
   executeRenderProgram,
   prepareViewData,
   readRenderProgram,
+  withShellData,
 } from '@webstir-io/module-contract';
 
 import type { WorkspacePackageJson } from '../../config/workspaceManifest.js';
@@ -48,9 +49,11 @@ export async function renderSsgViews(options: {
   );
   const isSsgWorkspace = isStaticApp(readWorkspaceLayers(options.workspaceRoot));
   const metadata = pkg?.webstir?.moduleManifest?.views ?? [];
-  const moduleDefinition = await loadBackendModuleDefinition<{ views?: readonly PageViewLike[] }>(
-    options.workspaceRoot,
-  );
+  const moduleDefinition = await loadBackendModuleDefinition<{
+    views?: readonly PageViewLike[];
+    shell?: { readonly data?: unknown; readonly load?: (context: unknown) => unknown };
+  }>(options.workspaceRoot);
+  const shell = moduleDefinition?.shell;
 
   const rendered: SsgRenderedPage[] = [];
   const documents = new Map<string, (data: unknown) => string>();
@@ -116,7 +119,21 @@ export async function renderSsgViews(options: {
           `[webstir-frontend] view ${name} returned data for ${urlPath} that does not match its schema: ${prepared.error}`,
         );
       }
-      rendered.push({ path: urlPath, page, view: name, html: render(prepared.data) });
+      let data = prepared.data;
+      if (shell?.load) {
+        const withShell = withShellData(
+          data,
+          shell.data,
+          await shell.load(createMinimalSsrContext(urlPath, params)),
+        );
+        if (!withShell.ok) {
+          throw new Error(
+            `[webstir-frontend] the shell returned data for ${urlPath} that does not match its schema: ${withShell.error}`,
+          );
+        }
+        data = withShell.data;
+      }
+      rendered.push({ path: urlPath, page, view: name, html: render(data) });
     }
   }
   return rendered;

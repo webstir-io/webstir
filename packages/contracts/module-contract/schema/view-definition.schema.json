@@ -29,9 +29,24 @@
           }
         },
         "auth": {
-          "type": "string",
-          "enum": [
-            "required"
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "required"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "role"
+              ],
+              "additionalProperties": false
+            }
           ]
         },
         "params": {

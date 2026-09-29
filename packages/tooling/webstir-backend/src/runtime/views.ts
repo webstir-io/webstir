@@ -1,11 +1,15 @@
+import { randomUUID } from 'node:crypto';
+
 import { resolveWorkspaceRoot } from '../workspace.js';
 
-export { notFound, redirect } from './view-control.js';
+export { fieldIssue, isWebstirControl, notFound, readFormIssue, redirect } from './view-control.js';
+export type { FormIssueControl } from './view-control.js';
 export type { ViewRedirectStatus } from './view-control.js';
 import {
   executeRenderProgram,
   prepareViewData as prepareSharedViewData,
   programUsesCsrf,
+  withShellData,
 } from './render.js';
 import {
   loadFrontendDocument,
@@ -35,8 +39,8 @@ export interface ViewDefinitionLike {
   path?: string;
   page?: string;
   renderMode?: 'ssg' | 'ssr' | 'spa';
-  /** `required`: only a signed-in user sees the page. */
-  auth?: 'required';
+  /** Who sees the page: anyone signed in, or someone signed in with a role. */
+  auth?: 'required' | { readonly role: string };
 }
 
 export interface ViewFlashMessage {
@@ -87,6 +91,15 @@ export interface SSRContextLike {
   readonly jobs?: unknown;
   readonly email?: unknown;
   readonly files?: unknown;
+}
+
+/**
+ * What every page a view renders binds as `shell`: data for the app's shell and partials, such as
+ * navigation or the account menu, loaded once per page instead of by every view.
+ */
+export interface ShellLike {
+  readonly data?: unknown;
+  readonly load?: (context: SSRContextLike) => Promise<unknown> | unknown;
 }
 
 export interface ModuleViewLike {
@@ -165,6 +178,8 @@ export async function renderRequestTimeView(options: {
   forms?: FormStateReaderLike;
   /** More for the loader's context: the app's batteries and its user. */
   services?: Record<string, unknown>;
+  /** The app's shell data, for pages a view renders. */
+  shell?: ShellLike;
 }): Promise<RenderedRequestTimeView> {
   const {
     workspaceRoot,
@@ -186,29 +201,30 @@ export async function renderRequestTimeView(options: {
     ? await loadPageArtifact(root, page)
     : await loadFrontendDocument(root, url.pathname);
 
-  const viewData = view.load
-    ? await view.load({
-        ...options.services,
-        url,
-        params,
-        cookies,
-        headers,
-        auth,
-        session,
-        env,
-        logger,
-        requestId,
-        now,
-        forms: options.forms ?? EMPTY_FORMS,
-      })
-    : null;
+  const context = {
+    ...options.services,
+    url,
+    params,
+    cookies,
+    headers,
+    auth,
+    session,
+    env,
+    logger,
+    requestId,
+    now,
+    forms: options.forms ?? EMPTY_FORMS,
+  } as SSRContextLike;
+  const viewData = view.load ? await view.load(context) : null;
 
   if (page) {
     const program = document.program;
+    const data = prepareViewData(view, viewData, options.flash ?? []);
     return {
       html: program
-        ? executeRenderProgram(program, prepareViewData(view, viewData, options.flash ?? []), {
+        ? executeRenderProgram(program, await withShell(data, options.shell, context), {
             csrfToken: programUsesCsrf(program) ? options.csrfToken?.() : undefined,
+            submissionId: randomUUID,
           })
         : document.html,
       documentCache: {
@@ -232,6 +248,16 @@ export async function renderRequestTimeView(options: {
       documentPath: document.path,
     },
   };
+}
+
+/** The page's data with the app's shell data beside it, as `shell`. */
+async function withShell(data: unknown, shell: ShellLike | undefined, context: SSRContextLike) {
+  if (!shell?.load) return data;
+  const prepared = withShellData(data, shell.data, await shell.load(context));
+  if (!prepared.ok) {
+    throw new Error(`The shell returned data that does not match its schema: ${prepared.error}`);
+  }
+  return prepared.data;
 }
 
 function prepareViewData(

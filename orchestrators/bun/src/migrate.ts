@@ -69,3 +69,24 @@ export function formatMigrateResult(result: MigrateResult): string {
     ? '[webstir] migrations are up to date'
     : ['[webstir] applied', ...applied.map((id) => `  ${id}`)].join('\n');
 }
+
+/** Copies the app's database to SNAPSHOT_URL now, with its migrations applied first. */
+export async function runSnapshot(options: {
+  readonly workspaceRoot: string;
+}): Promise<{ readonly workspaceRoot: string; readonly key: string }> {
+  const { prepareApp } = await import('@webstir-io/webstir-backend');
+  prepareApp(options.workspaceRoot);
+  await buildBackendForCommand(options.workspaceRoot, 'snapshot');
+  if (hasSignIn(options.workspaceRoot)) {
+    const { declareSignInTables } = await import('@webstir-io/webstir-backend/sign-in');
+    declareSignInTables(await readSignInOptions(options.workspaceRoot));
+  }
+  const { closeAppDatabase, snapshotAppDatabase } = await import('@webstir-io/webstir-backend/db');
+  try {
+    const key = await snapshotAppDatabase();
+    if (!key) throw new Error('The snapshot failed; the error above says why.');
+    return { workspaceRoot: options.workspaceRoot, key };
+  } finally {
+    await closeAppDatabase();
+  }
+}

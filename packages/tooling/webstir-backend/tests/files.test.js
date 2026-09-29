@@ -5,7 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { prepareApp } from '../dist/index.js';
-import { files, serveLocalFile, setFileStore } from '../dist/files/index.js';
+import {
+  FileExistsError,
+  FileTooLargeError,
+  files,
+  serveLocalFile,
+  setFileStore,
+} from '../dist/files/index.js';
 
 const KEYS = [
   'STORAGE_URL',
@@ -15,6 +21,11 @@ const KEYS = [
   'S3_ACCESS_KEY_ID',
   'S3_SECRET_ACCESS_KEY',
   'S3_REGION',
+  'S3_PROFILE',
+  'S3_TIMEOUT_MS',
+  'AWS_PROFILE',
+  'AWS_SHARED_CREDENTIALS_FILE',
+  'AWS_CONFIG_FILE',
 ];
 
 async function withApp(values, run) {
@@ -77,7 +88,7 @@ test('a key is a relative path of plain segments', async () => {
   });
 });
 
-test("s3:// keeps files in a bucket, under its prefix, through Bun's S3 client", async () => {
+test('s3:// keeps files in a bucket, under its prefix, through the AWS SDK', async () => {
   const objects = new Map();
   const server = Bun.serve({
     port: 0,
@@ -123,6 +134,86 @@ test("s3:// keeps files in a bucket, under its prefix, through Bun's S3 client",
     );
   } finally {
     server.stop(true);
+  }
+});
+
+// A store that accepts a request and never answers must not hold the app (or a snapshot) up.
+test('an S3 request that never answers fails after S3_TIMEOUT_MS', async () => {
+  let requests = 0;
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch() {
+      requests += 1;
+      return new Promise(() => {});
+    },
+  });
+  try {
+    await withApp(
+      {
+        STORAGE_URL: 's3://uploads',
+        S3_ENDPOINT: `http://127.0.0.1:${server.port}`,
+        S3_ACCESS_KEY_ID: 'test',
+        S3_SECRET_ACCESS_KEY: 'test',
+        S3_REGION: 'us-east-1',
+        S3_TIMEOUT_MS: '200',
+      },
+      async () => {
+        const started = Date.now();
+        await assert.rejects(files.get('a.txt'));
+        assert.ok(Date.now() - started < 10_000, `gave up after ${Date.now() - started}ms`);
+        assert.ok(requests >= 1);
+      },
+    );
+  } finally {
+    server.stop(true);
+  }
+}, 20_000);
+
+// An app whose other AWS calls, such as email, use AWS_PROFILE gives storage its own.
+test('S3_PROFILE picks the profile storage signs with, over AWS_PROFILE', async () => {
+  const signedWith = [];
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch(request) {
+      signedWith.push(/Credential=([^/]+)\//.exec(request.headers.get('authorization') ?? '')?.[1]);
+      return new Response(null, { status: 200, headers: { etag: '"1"' } });
+    },
+  });
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-profiles-'));
+  const credentials = path.join(folder, 'credentials');
+  await fs.writeFile(
+    credentials,
+    [
+      '[email]',
+      'aws_access_key_id = EMAILKEY',
+      'aws_secret_access_key = email-secret',
+      '[storage]',
+      'aws_access_key_id = STORAGEKEY',
+      'aws_secret_access_key = storage-secret',
+      '',
+    ].join('\n'),
+  );
+  try {
+    await withApp(
+      {
+        STORAGE_URL: 's3://uploads',
+        S3_ENDPOINT: `http://127.0.0.1:${server.port}`,
+        S3_REGION: 'us-east-1',
+        AWS_SHARED_CREDENTIALS_FILE: credentials,
+        AWS_CONFIG_FILE: path.join(folder, 'config'),
+        AWS_PROFILE: 'email',
+        S3_PROFILE: 'storage',
+      },
+      async () => {
+        await files.put('a.txt', 'a');
+        assert.deepEqual(signedWith, ['STORAGEKEY']);
+      },
+    );
+  } finally {
+    server.stop(true);
+    await fs.rm(folder, { recursive: true, force: true });
   }
 });
 
@@ -263,3 +354,87 @@ test("setFileStore keeps files with the app's own store, under the same key rule
     }
   });
 });
+
+/** A stand-in S3: objects by path, with the conditional write and metadata S3 has. */
+function fakeS3() {
+  const objects = new Map();
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    async fetch(request) {
+      const key = decodeURIComponent(new URL(request.url).pathname);
+      if (request.method === 'PUT') {
+        if (request.headers.get('if-none-match') === '*' && objects.has(key)) {
+          return new Response('<Error><Code>PreconditionFailed</Code></Error>', { status: 412 });
+        }
+        const metadata = Object.fromEntries(
+          [...request.headers].filter(([name]) => name.startsWith('x-amz-meta-')),
+        );
+        objects.set(key, { body: new Uint8Array(await request.arrayBuffer()), metadata });
+        return new Response(null, { status: 200, headers: { etag: '"1"' } });
+      }
+      if (request.method === 'DELETE') {
+        objects.delete(key);
+        return new Response(null, { status: 204 });
+      }
+      const object = objects.get(key);
+      if (!object) return new Response('<Error><Code>NoSuchKey</Code></Error>', { status: 404 });
+      return new Response(request.method === 'HEAD' ? null : object.body, {
+        headers: {
+          'content-length': String(object.body.length),
+          etag: '"1"',
+          ...object.metadata,
+        },
+      });
+    },
+  });
+  return {
+    env: {
+      STORAGE_URL: 's3://uploads/app',
+      S3_ENDPOINT: `http://127.0.0.1:${server.port}`,
+      S3_ACCESS_KEY_ID: 'test',
+      S3_SECRET_ACCESS_KEY: 'test',
+      S3_REGION: 'us-east-1',
+    },
+    stop: () => server.stop(true),
+  };
+}
+
+// Private documents need writes that never replace one, metadata kept with each, and reads that
+// refuse a file too large to load: on disk and in S3 alike.
+for (const store of ['local disk', 'S3']) {
+  test(`${store}: a write-once put, metadata, and a read bounded by size`, async () => {
+    const s3 = store === 'S3' ? fakeS3() : undefined;
+    try {
+      await withApp(s3?.env ?? {}, async () => {
+        await files.put('docs/one.json', '{"v":1}', {
+          ifAbsent: true,
+          metadata: { 'uploaded-by': 'ada' },
+        });
+        await assert.rejects(
+          files.put('docs/one.json', '{"v":2}', { ifAbsent: true }),
+          (error) => error instanceof FileExistsError && error.key === 'docs/one.json',
+        );
+        const kept = await files.get('docs/one.json');
+        assert.equal(await kept.text(), '{"v":1}', 'the first write stays');
+        assert.deepEqual({ ...kept.metadata }, { 'uploaded-by': 'ada' });
+
+        assert.equal(await (await files.get('docs/one.json', { maxBytes: 7 })).text(), '{"v":1}');
+        await assert.rejects(
+          files.get('docs/one.json', { maxBytes: 6 }),
+          (error) => error instanceof FileTooLargeError && error.maxBytes === 6,
+        );
+
+        // Without ifAbsent a put replaces the file, and its metadata with it.
+        await files.put('docs/one.json', '{"v":3}');
+        const replaced = await files.get('docs/one.json');
+        assert.equal(await replaced.text(), '{"v":3}');
+        assert.deepEqual({ ...replaced.metadata }, {});
+        await files.delete('docs/one.json');
+        assert.equal(await files.get('docs/one.json'), undefined);
+      });
+    } finally {
+      s3?.stop();
+    }
+  });
+}
