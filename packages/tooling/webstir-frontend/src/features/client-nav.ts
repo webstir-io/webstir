@@ -573,7 +573,7 @@ async function renderDocumentHtml(
   const outgoing = document.querySelector('main');
   if (outgoing) await islandControls()?.unmountWithin(outgoing);
   await pageLifecycle.dispose();
-  await syncHead(doc, options.url, DOM_RUNTIME);
+  const removeOutgoingStyles = await syncHead(doc, options.url, DOM_RUNTIME);
   if (requestId !== activeRequestId) return;
 
   // The address changes just before the content goes in, in the same task, so the content's
@@ -594,6 +594,8 @@ async function renderDocumentHtml(
   if (newMain && currentMain) {
     currentMain.replaceWith(newMain);
   }
+  // The outgoing page's styles leave with it, before the new page focuses or lays anything out.
+  removeOutgoingStyles();
   const anchor = kept ? null : fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();

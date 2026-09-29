@@ -92,8 +92,20 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
         spacing: getComputedStyle(document.querySelector('h1')!).letterSpacing,
       })),
     ).toEqual({ path: '/', spacing: '3px' });
+    // And it leaves with that page: when the new content goes in, the old styles are gone.
+    await page.evaluate(() => {
+      new MutationObserver((_, observer) => {
+        if (document.querySelector('main h1')?.textContent !== 'second') return;
+        (window as unknown as { staleAtSwap: number }).staleAtSwap =
+          document.head.querySelectorAll('style[data-critical=""]').length;
+        observer.disconnect();
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     releaseCss();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 1);
+    expect(
+      await page.evaluate(() => (window as unknown as { staleAtSwap: number }).staleAtSwap),
+    ).toBe(0);
     expect(await readPageState(page)).toEqual({
       path: '/second/',
       setup: 'second',

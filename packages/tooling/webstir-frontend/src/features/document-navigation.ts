@@ -68,15 +68,20 @@ export function resolveRedirectNavigation(options: {
   };
 }
 
+/**
+ * Brings the head to the new document's: its stylesheets loaded, and its critical styles in place.
+ * Resolves with the step that removes the outgoing page's styles, for the caller to run as the new
+ * content replaces the old, so neither page is ever shown without its styles.
+ */
 export async function syncHead(
   doc: Document,
   url: string,
   runtime: NavigationDomRuntime,
-): Promise<void> {
+): Promise<() => void> {
   const head = document.head;
   const newHead = doc.head;
   if (!head || !newHead) {
-    return;
+    return () => {};
   }
 
   const preservedClientNav = head.querySelector('script[data-webstir="client-nav"]');
@@ -168,23 +173,16 @@ export async function syncHead(
 
   const stylesReady =
     pendingStyles.length > 0 ? waitForStylesheets(pendingStyles) : Promise.resolve();
-  // The outgoing page keeps its styles, linked or inlined, until the new page has replaced it.
   const staleCritical = syncCriticalStyles(head, newHead, url, runtime);
-  if (staleStyles.length > 0 || staleCritical.length > 0) {
-    void stylesReady.then(() => {
-      requestAnimationFrame(() => {
-        for (const style of [...staleStyles, ...staleCritical]) {
-          style.remove();
-        }
-      });
-    });
-  }
 
   if (preservedClientNav && !head.contains(preservedClientNav)) {
     head.appendChild(preservedClientNav);
   }
 
   await stylesReady;
+  return () => {
+    for (const style of [...staleStyles, ...staleCritical]) style.remove();
+  };
 }
 
 /** Load head scripts only after the new main and URL have been committed. */
