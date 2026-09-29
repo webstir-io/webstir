@@ -24,5 +24,6 @@ declare const Bun: {
     loader: 'ts' | 'tsx' | 'js' | 'jsx';
   }) => {
     scanImports(code: string): Array<{ path: string; kind: string }>;
+    scan(code: string): { exports: string[]; imports: Array<{ path: string; kind: string }> };
   };
 };

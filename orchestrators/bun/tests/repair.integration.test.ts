@@ -416,7 +416,24 @@ test.each([
     verify: async (root: string) => {
       expect(
         await readFile(path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts'), 'utf8'),
-      ).toBe('// Page entry point\n\n// Add page-specific logic here\n');
+      ).toBe('// Page entry point\nexport {};\n\n// Add page-specific logic here\n');
+    },
+  },
+  {
+    name: 'an app with a page that only shows the import in a string',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'sample.ts'),
+        "export const sample = `\nimport '../../app/app';\n`;\n",
+      );
+    },
+    removed: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    kept: [] as string[],
+    note: null as RegExp | null,
+    verify: async (root: string) => {
+      expect(
+        await readFile(path.join(root, 'src', 'frontend', 'pages', 'home', 'sample.ts'), 'utf8'),
+      ).toBe("export const sample = `\nimport '../../app/app';\n`;\n");
     },
   },
   {

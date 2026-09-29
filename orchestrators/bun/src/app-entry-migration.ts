@@ -193,22 +193,48 @@ export async function pageScripts(workspaceRoot: string): Promise<string[]> {
 /** A page script without its bare `import '../../app/app';`, the line add-page wrote before 0.8. */
 function withoutAppEntryImport(source: string, file: string, entryPath: string): string {
   const entryStem = entryPath.slice(0, -path.extname(entryPath).length);
-  return source.replace(
-    /^[ \t]*import\s+(['"])(\.{1,2}\/[^'"]*)\1[ \t]*;?[ \t]*(?:\r?\n|$)/gm,
-    (line, _quote: string, specifier: string) => {
-      const target = path.resolve(path.dirname(file), specifier).replace(/\.[cm]?[jt]sx?$/, '');
-      return target === entryStem ? '' : line;
-    },
-  );
+  const isEntry = (specifier: string) =>
+    specifier.startsWith('.') &&
+    path.resolve(path.dirname(file), specifier).replace(/\.[cm]?[jt]sx?$/, '') === entryStem;
+  // Only a file that really imports it, parsed rather than matched, so a string never counts.
+  if (!scanAllImports(source, file).some(isEntry)) return source;
+  const statement = /^[ \t]*import\s+(['"])(\.{1,2}\/[^'"]*)\1[ \t]*;?[ \t]*(?:\r?\n|$)/gm;
+  const remove = (replacement: string) => {
+    let first = true;
+    return source.replace(statement, (line, _quote: string, specifier: string) => {
+      if (!isEntry(specifier)) return line;
+      const kept = first ? replacement : '';
+      first = false;
+      return kept;
+    });
+  };
+  const updated = remove('');
+  // A file whose only import this was would stop being a module, and its names would clash.
+  const scanned = scan(updated, file);
+  return scanned && scanned.imports.length === 0 && scanned.exports.length === 0
+    ? remove('export {};\n')
+    : updated;
+}
+
+function scan(source: string, filePath: string) {
+  try {
+    return new Bun.Transpiler({ loader: loaderFor(filePath) }).scan(source);
+  } catch {
+    return null;
+  }
+}
+
+function loaderFor(filePath: string): 'ts' | 'tsx' | 'js' | 'jsx' {
+  const extension = path.extname(filePath).slice(1);
+  return extension === 'tsx' || extension === 'jsx' || extension === 'js' ? extension : 'ts';
 }
 
 // Static and dynamic imports alike: either one still needs the module.
 function scanAllImports(source: string, filePath: string): string[] {
-  const extension = path.extname(filePath).slice(1);
-  const loader =
-    extension === 'tsx' || extension === 'jsx' || extension === 'js' ? extension : 'ts';
   try {
-    return new Bun.Transpiler({ loader }).scanImports(source).map((entry) => entry.path);
+    return new Bun.Transpiler({ loader: loaderFor(filePath) })
+      .scanImports(source)
+      .map((entry) => entry.path);
   } catch {
     return [];
   }
