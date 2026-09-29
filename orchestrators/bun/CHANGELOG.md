@@ -1,5 +1,15 @@
 # @webstir-io/webstir
 
+## 0.9.2
+
+### Patch Changes
+
+- 8b89099: Client navigation keeps the outgoing page's inlined styles until the next page replaces it, so a page whose small stylesheet is inlined no longer flashes unstyled while the next page's stylesheet loads.
+- Updated dependencies [8b89099]
+  - @webstir-io/module-contract@0.9.2
+  - @webstir-io/webstir-backend@0.9.2
+  - @webstir-io/webstir-frontend@0.9.2
+
 ## 0.9.1
 
 ### Patch Changes
