@@ -26,7 +26,9 @@ report() {
         case "$target" in
           pipe:*|socket:*)
             # Which other processes hold the same pipe or socket.
-            holders="$(find /proc/[0-9]*/fd -lname "$target" 2>/dev/null | cut -d/ -f3 | sort -u | grep -vx "$pid" | tr '\n' ' ')"
+            pattern="${target//[/\\[}"
+            pattern="${pattern//]/\\]}"
+            holders="$(find /proc/[0-9]*/fd -lname "$pattern" 2>/dev/null | cut -d/ -f3 | sort -u | grep -vx "$pid" | tr '\n' ' ')"
             echo "   fd $(basename "$fd") -> $target shared with: ${holders:-none}"
             ;;
         esac
