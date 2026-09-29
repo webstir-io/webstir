@@ -1,5 +1,11 @@
 # @webstir-io/webstir-frontend
 
+## 0.7.3
+
+### Patch Changes
+
+- @webstir-io/module-contract@0.7.3
+
 ## 0.7.2
 
 ### Patch Changes
