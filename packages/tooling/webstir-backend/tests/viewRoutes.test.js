@@ -58,9 +58,13 @@ test("a GET route yields to the site's own files and pages at its address", asyn
     await fs.mkdir(path.join(frontendRoot, 'pages', 'about'), { recursive: true });
     await fs.writeFile(path.join(frontendRoot, 'pages', 'about', 'index.html'), '<main></main>');
     await fs.writeFile(path.join(frontendRoot, 'favicon.ico'), '');
+    // A folder of assets is not a page: the route still answers at its name.
+    await fs.mkdir(path.join(frontendRoot, 'app'), { recursive: true });
+    await fs.writeFile(path.join(frontendRoot, 'app', 'app.js'), '');
     const matches = createRenderedViewMatcher({ workspaceRoot: workspace, frontendRoot });
 
     assert.equal(await matches('/abc123'), true);
+    assert.equal(await matches('/app'), true);
     for (const taken of ['/favicon.ico', '/about', '/about/']) {
       assert.equal(await matches(taken), false, taken);
     }

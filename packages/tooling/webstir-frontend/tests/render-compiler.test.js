@@ -250,6 +250,18 @@ for (const [name, shellSource, dataSource, error] of [
     null,
   ],
   [
+    'a shell beside a view schema open to any key',
+    '{ data: z.object({}), load: () => ({}) }',
+    `${CLIENTS_SCHEMA_SOURCE}.passthrough()`,
+    null,
+  ],
+  [
+    'a shell beside a transformed view schema',
+    '{ data: z.object({}), load: () => ({}) }',
+    `${CLIENTS_SCHEMA_SOURCE}.transform((value) => value)`,
+    null,
+  ],
+  [
     'a shell without a loader',
     '{ data: z.object({}) }',
     CLIENTS_SCHEMA_SOURCE,

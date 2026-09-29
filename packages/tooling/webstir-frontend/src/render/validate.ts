@@ -16,6 +16,7 @@ import { RenderTemplateError, type RenderIssue } from './issues.js';
 import {
   checkAttribute,
   checkText,
+  declaresKey,
   elementOf,
   flattenSchema,
   isSchemaLike,
@@ -103,7 +104,7 @@ export async function validateRenderPrograms(
         });
         continue;
       }
-      if (shell && !('error' in lookupKey(flattenSchema(view.data), 'shell'))) {
+      if (shell && declaresKey(flattenSchema(view.data), 'shell')) {
         issues.push({
           loc: { file: program.source, line: 1 },
           message: `view ${viewName(view)} has its own \`shell\` data, which the module's shell replaces; rename it`,
