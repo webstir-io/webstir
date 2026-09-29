@@ -389,9 +389,6 @@ async function runPrimaryBunWatchBuild(
     define: {
       'process.env.NODE_ENV': JSON.stringify(options.nodeEnv),
     },
-    // Preserve the old esbuild watch behavior: transpile entries without requiring
-    // every relative import target to exist in minimal seeded workspaces.
-    plugins: [createRelativeImportPassthroughPlugin()],
     throw: false,
   });
   const end = performance.now();
@@ -554,23 +551,6 @@ function getBunBuild(): BunBuildFunction | undefined {
   };
   const build = runtime.Bun?.build;
   return typeof build === 'function' ? build.bind(runtime.Bun) : undefined;
-}
-
-function createRelativeImportPassthroughPlugin(): Record<string, unknown> {
-  return {
-    name: 'webstir-backend-watch-relative-imports',
-    setup(build: {
-      onResolve(
-        options: { filter: RegExp },
-        callback: (args: { path: string }) => { path: string; external: boolean },
-      ): void;
-    }) {
-      build.onResolve({ filter: /^\.\.?\// }, (args: { path: string }) => ({
-        path: args.path,
-        external: true,
-      }));
-    },
-  };
 }
 
 function isEnabled(value: string | undefined): boolean {

@@ -70,17 +70,15 @@ export function formatMigrateResult(result: MigrateResult): string {
     : ['[webstir] applied', ...applied.map((id) => `  ${id}`)].join('\n');
 }
 
-/** Copies the app's database to SNAPSHOT_URL now, with its migrations applied first. */
+/**
+ * Copies the app's database to SNAPSHOT_URL now, as it is: a backup changes nothing, so no
+ * migration runs and the backend need not build.
+ */
 export async function runSnapshot(options: {
   readonly workspaceRoot: string;
 }): Promise<{ readonly workspaceRoot: string; readonly key: string }> {
   const { prepareApp } = await import('@webstir-io/webstir-backend');
   prepareApp(options.workspaceRoot);
-  await buildBackendForCommand(options.workspaceRoot, 'snapshot');
-  if (hasSignIn(options.workspaceRoot)) {
-    const { declareSignInTables } = await import('@webstir-io/webstir-backend/sign-in');
-    declareSignInTables(await readSignInOptions(options.workspaceRoot));
-  }
   const { closeAppDatabase, snapshotAppDatabase } = await import('@webstir-io/webstir-backend/db');
   try {
     const key = await snapshotAppDatabase();

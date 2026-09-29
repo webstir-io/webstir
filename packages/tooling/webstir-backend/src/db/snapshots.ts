@@ -30,17 +30,69 @@ interface Snapshotter {
 
 let snapshotter: Snapshotter | undefined;
 
+/** Where snapshots of this database go, or undefined when the app keeps none of it. */
+function snapshotUrl(databaseUrl: string): string | undefined {
+  const url = process.env.SNAPSHOT_URL?.trim();
+  if (!url) return undefined;
+  const target = resolveDatabaseTarget(databaseUrl, appRoot());
+  if (target.dialect !== 'sqlite' || target.location === ':memory:') return undefined;
+  return url;
+}
+
+/** Why no snapshot of this database can be taken, or undefined when one can. */
+export function snapshotProblem(databaseUrl: string): string | undefined {
+  if (snapshotUrl(databaseUrl)) return undefined;
+  return process.env.SNAPSHOT_URL?.trim()
+    ? 'Snapshots are for a SQLite database; back up a Postgres database with its host.'
+    : 'SNAPSHOT_URL is not set; set it to s3://bucket/prefix or file:./data/snapshots.';
+}
+
 /** The app's snapshotter, when SNAPSHOT_URL is set and the database is SQLite. */
 export function databaseSnapshots(
   connection: () => Promise<DatabaseConnection>,
   databaseUrl: string,
 ): Snapshotter | undefined {
-  const url = process.env.SNAPSHOT_URL?.trim();
+  const url = snapshotUrl(databaseUrl);
   if (!url) return undefined;
-  const target = resolveDatabaseTarget(databaseUrl, appRoot());
-  if (target.dialect !== 'sqlite' || target.location === ':memory:') return undefined;
   snapshotter ??= createSnapshotter(url, connection);
   return snapshotter;
+}
+
+/** One copy now, over a connection the caller owns: for a database the app hasn't opened. */
+export async function snapshotOnce(
+  connection: DatabaseConnection,
+  databaseUrl: string,
+): Promise<string | undefined> {
+  const url = snapshotUrl(databaseUrl);
+  if (!url) return undefined;
+  return takeCopy(storeAt(url), async () => connection, readKeep());
+}
+
+function readKeep(): number {
+  return Number.parseInt(process.env.SNAPSHOT_KEEP ?? '', 10);
+}
+
+/** A copy of the database, retried, then pruned to SNAPSHOT_KEEP; undefined when it failed. */
+async function takeCopy(
+  store: ReturnType<typeof storeAt>,
+  connection: () => Promise<DatabaseConnection>,
+  keep: number,
+): Promise<string | undefined> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const key = await capture(store, await connection());
+      if (Number.isInteger(keep) && keep > 0) await prune(store, keep);
+      return key;
+    } catch (error) {
+      if (attempt >= ATTEMPTS) {
+        console.error(
+          `[webstir-backend] database snapshot failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return undefined;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    }
+  }
 }
 
 /** Waits for a copy that is scheduled or underway, then forgets the snapshotter. */
@@ -55,28 +107,12 @@ function createSnapshotter(
   connection: () => Promise<DatabaseConnection>,
 ): Snapshotter {
   const store = storeAt(url);
-  const keep = Number.parseInt(process.env.SNAPSHOT_KEEP ?? '', 10);
+  const keep = readKeep();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<string | undefined> | undefined;
   let again = false;
 
-  const take = async (): Promise<string | undefined> => {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        const key = await capture(store, await connection());
-        if (Number.isInteger(keep) && keep > 0) await prune(store, keep);
-        return key;
-      } catch (error) {
-        if (attempt >= ATTEMPTS) {
-          console.error(
-            `[webstir-backend] database snapshot failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-          return undefined;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
-      }
-    }
-  };
+  const take = () => takeCopy(store, connection, keep);
 
   const run = (): Promise<string | undefined> => {
     if (running) {
