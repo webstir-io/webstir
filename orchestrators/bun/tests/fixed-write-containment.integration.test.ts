@@ -318,3 +318,33 @@ test('CLI repair preflights mode-owned tsconfig before dry-run or asset restorat
 function pathExists(root: string, ...segments: string[]): boolean {
   return existsSync(path.join(root, ...segments));
 }
+
+// Repair may rewrite whichever app entry an app has, so each one is checked before anything is written.
+test('CLI repair refuses a symlinked app entry before rewriting it', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-repair-entry-symlink-', {
+    workspaceName: 'spa',
+  });
+  const root = copiedWorkspace.workspaceRoot;
+  const external = path.join(copiedWorkspace.cleanupRoot, 'outside-app.tsx');
+  const legacy = await readFile(
+    path.join(packageRoot, 'test-support', 'fixtures', 'app-0.7', 'app.ts.txt'),
+    'utf8',
+  );
+  const source = `${legacy}console.log('app-owned');\n`;
+  try {
+    await writeFile(external, source, 'utf8');
+    await symlink(external, path.join(root, 'src', 'frontend', 'app', 'app.tsx'));
+    const packageJsonPath = path.join(root, 'package.json');
+    const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
+    delete packageJson.webstir.enable;
+    await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
+
+    const result = await runCli(root, ['repair']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('symbolic link');
+    expect(await readFile(external, 'utf8')).toBe(source);
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});

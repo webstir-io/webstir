@@ -46,9 +46,9 @@ Webstir watch mode follows a narrow fallback policy:
 
 ### Moving an older workspace onto the package
 
-Older workspaces carry Webstir's plumbing in the app: a hot-module registry and an error loader in `app.ts`, the error reporter in `error.ts`, the dev clients `hmr.js` and `refresh.js`, feature imports in `app.ts` and `app.css`, and `@import "@app/app.css"` in each page stylesheet. The package does all of that now, and an app that still has them keeps working until it moves.
+Older workspaces carry Webstir's plumbing in the app: a hot-module registry and an error loader in `app.ts`, the error reporter in `error.ts`, the dev clients `hmr.js` and `refresh.js`, feature imports in `app.ts` and `app.css`, and `@import "@app/app.css"` in each page stylesheet. The package does all of that now. An app that still has them keeps working until it moves, except that a page script importing `app.ts` runs it a second time, since the app bundle loads it on every page.
 
-1. Run `webstir repair`. It removes each of those where it is still what a Webstir version wrote, and deletes `app.ts` when nothing of the app's own is left.
+1. Run `webstir repair`. It removes each of those where it is still what a Webstir version wrote, removes the `import '../../app/app';` line older `add-page` scaffolds wrote into page scripts, and deletes `app.ts` when nothing of the app's own is left.
 2. Where the app changed one, repair leaves it and prints a note. By hand:
    - In `app.ts`, delete the hot-module types, the `declare global` block and `registerHotModule`, and the error loader (`errorHandlerLoaded`, `loadErrorHandler`, its two `window.addEventListener` calls and its export). Delete `app.ts` if nothing else is left.
    - Import `registerHotModule` from `@webstir-io/webstir-frontend/runtime` in any page that imported it from `app.ts`.

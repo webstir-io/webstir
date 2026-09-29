@@ -102,3 +102,32 @@ test("an app's own copy of a client is not what the page loads", async () => {
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+// A tag inside an HTML comment loads nothing, so the build still adds its own.
+import { withAppBundle, withAppStyles, withDevClients } from '../dist/html/shellAssets.js';
+
+for (const [name, add, commented, expected] of [
+  [
+    'dev clients',
+    withDevClients,
+    '<!-- <script type="module" src="/hmr.js"></script> -->',
+    /<script type="module" src="\/hmr\.js"><\/script>\n/,
+  ],
+  [
+    'app bundle',
+    (html) => withAppBundle(html, true),
+    '<!-- <script src="/app/app.js"></script> -->',
+    /<script type="module" src="\/app\/app\.js"><\/script>/,
+  ],
+  [
+    'app styles',
+    (html) => withAppStyles(html, true),
+    '<!-- <link href="/app/app.css"> -->',
+    /<link rel="stylesheet" href="\/app\/app\.css">/,
+  ],
+]) {
+  test(`a commented-out ${name} tag doesn't stand in for the real one`, () => {
+    const html = `<html><head>${commented}</head><body><main></main></body></html>`;
+    assert.match(add(html), expected);
+  });
+}

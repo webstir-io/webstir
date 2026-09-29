@@ -3,14 +3,25 @@ import path from 'node:path';
 
 import { readWorkspaceLayers } from '@webstir-io/module-contract/workspace';
 
-import { EXTENSIONS } from '../core/constants.js';
+import { EXTENSIONS, FILES } from '../core/constants.js';
 import { pathExists, writeFile, ensureDir } from '../utils/fs.js';
 import type { BuilderContext } from './types.js';
 
 const FEATURES = '@webstir-io/webstir-frontend/features/';
 const APP_ENTRY_FILES = ['app.ts', 'app.tsx', 'app.js', 'app.jsx'];
-// Webstir's own modules come from the package doing the build, whatever the app has installed.
 const ownRequire = createRequire(import.meta.url);
+
+/**
+ * Webstir's modules resolve from the app's install, where the app's own imports of them resolve
+ * too, so the bundler includes each once; an app without it installed gets the building package's.
+ */
+function resolveWebstirModule(workspaceRoot: string, specifier: string): string {
+  try {
+    return createRequire(path.join(workspaceRoot, FILES.packageJson)).resolve(specifier);
+  } catch {
+    return ownRequire.resolve(specifier);
+  }
+}
 
 /**
  * What the app bundle every page loads is made of: Webstir's error reporter (an app with a server
@@ -21,17 +32,16 @@ export async function appBundleImports(context: BuilderContext): Promise<string[
   const { config, enable } = context;
   const imports: string[] = [];
   if (enable?.clientErrors ?? readWorkspaceLayers(config.paths.workspace).server) {
-    imports.push(ownRequire.resolve(`${FEATURES}client-errors`));
+    imports.push(resolveWebstirModule(config.paths.workspace, `${FEATURES}client-errors`));
   }
   for (const [on, name] of [
     [enable?.clientNav, 'client-nav'],
     [enable?.search, 'search'],
     [enable?.contentNav, 'content-nav'],
   ] as const) {
-    // An app that still has the copy an older version wrote imports that copy itself. One that
-    // still imports the packaged feature gets the same module, which the bundler includes once.
+    // An app that still has the copy an older version wrote imports that copy itself.
     if (on === true && !(await hasFeatureCopy(config, name))) {
-      imports.push(ownRequire.resolve(`${FEATURES}${name}`));
+      imports.push(resolveWebstirModule(config.paths.workspace, `${FEATURES}${name}`));
     }
   }
   const own = await resolveAppEntry(config.paths.src.app);

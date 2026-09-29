@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { lstat, mkdir } from 'node:fs/promises';
+import { lstat, mkdir, readFile } from 'node:fs/promises';
 import { EXTENSIONS, FILES, FOLDERS } from '../core/constants.js';
 import { resolveManifestPath } from '../config/paths.js';
 import { writeFile } from '../utils/fs.js';
@@ -41,7 +41,10 @@ export async function createPageScaffold(options: PageScaffoldOptions): Promise<
 
   if (mode === 'standard') {
     writes.push(
-      writeFile(path.join(pageDir, `${FILES.index}${EXTENSIONS.ts}`), buildScriptTemplate()),
+      writeFile(
+        path.join(pageDir, `${FILES.index}${EXTENSIONS.ts}`),
+        buildScriptTemplate(await usesClientNav(workspaceRoot)),
+      ),
     );
   }
 
@@ -309,7 +312,15 @@ function escapeHtmlText(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function buildScriptTemplate(): string {
+// Client-nav calls a page's setup on each visit; without it, the module runs once as the page loads.
+function buildScriptTemplate(clientNav: boolean): string {
+  if (!clientNav) {
+    return `// Runs when the page loads.
+
+// Add page behavior here.
+export {};
+`;
+  }
   return `import type { PageContext } from '@webstir-io/webstir-frontend/runtime';
 
 // Webstir calls setup each time this page is shown; what scope holds is cleaned up when it leaves.
@@ -317,4 +328,15 @@ export function setup({ root, scope }: PageContext): void {
   // Add page behavior here.
 }
 `;
+}
+
+async function usesClientNav(workspaceRoot: string): Promise<boolean> {
+  try {
+    const pkg = JSON.parse(await readFile(path.join(workspaceRoot, FILES.packageJson), 'utf8')) as {
+      webstir?: { enable?: { clientNav?: unknown } };
+    };
+    return pkg.webstir?.enable?.clientNav === true;
+  } catch {
+    return false;
+  }
 }

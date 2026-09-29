@@ -309,7 +309,6 @@ Artifacts are returned as absolute paths so installers can copy or upload them. 
 - `src/manifest/pipeline.ts` — hydrates the module manifest from `package.json` + `build/backend/module.js`, validating with the shared contract.
 - `src/cache/diff.ts` — records `.webstir` cache files for outputs/manifest digests and emits diff diagnostics.
 - `src/diagnostics/summary.ts` — common diagnostic helpers (log-level filtering, entry bucket summaries).
-- `src/scaffold/assets.ts` — backend scaffold definitions consumed by the provider and tests.
 
 ## NPM Scripts
 

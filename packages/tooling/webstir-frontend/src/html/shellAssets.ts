@@ -1,5 +1,8 @@
 import { FILES } from '../core/constants.js';
 
+// What a shell names outside HTML comments; a commented-out tag loads nothing.
+const live = (html: string) => html.replace(/<!--[\s\S]*?-->/g, '');
+
 const DEV_CLIENTS = [
   { src: `/${FILES.hmrJs}`, tag: `<script type="module" src="/${FILES.hmrJs}"></script>` },
   { src: `/${FILES.refreshJs}`, tag: `<script src="/${FILES.refreshJs}" async></script>` },
@@ -12,7 +15,7 @@ const DEV_CLIENTS = [
 export function withDevClients(html: string): string {
   const missing = DEV_CLIENTS.filter(
     ({ src }) =>
-      !new RegExp(`<script\\b[^>]*\\bsrc=["']${src.replace('.', '\\.')}["']`, 'i').test(html),
+      !new RegExp(`<script\\b[^>]*\\bsrc=["']${src.replace('.', '\\.')}["']`, 'i').test(live(html)),
   );
   if (missing.length === 0) return html;
   const tags = missing.map(({ tag }) => tag).join('\n');
@@ -22,7 +25,7 @@ export function withDevClients(html: string): string {
 
 /** Every page loads the app bundle when the app has one; a shell that names it keeps its own tag. */
 export function withAppBundle(html: string, hasBundle: boolean): string {
-  if (!hasBundle || /<script\b[^>]*\bsrc=["']\/app\/app\.js["']/i.test(html)) return html;
+  if (!hasBundle || /<script\b[^>]*\bsrc=["']\/app\/app\.js["']/i.test(live(html))) return html;
   const tag = '<script type="module" src="/app/app.js"></script>';
   const end = html.toLowerCase().indexOf('</head>');
   return end === -1 ? `${tag}\n${html}` : `${html.slice(0, end)}${tag}\n${html.slice(end)}`;
@@ -33,7 +36,7 @@ export function withAppBundle(html: string, hasBundle: boolean): string {
  * links them keeps its own tag.
  */
 export function withAppStyles(html: string, hasStyles: boolean): string {
-  if (!hasStyles || /<link\b[^>]*\bhref=["']\/app\/app\.css["']/i.test(html)) return html;
+  if (!hasStyles || /<link\b[^>]*\bhref=["']\/app\/app\.css["']/i.test(live(html))) return html;
   const tag = '<link rel="stylesheet" href="/app/app.css">';
   const lower = html.toLowerCase();
   const head = lower.indexOf('</head>');

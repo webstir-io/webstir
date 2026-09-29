@@ -143,7 +143,9 @@ export async function adoptPackagedFeature(
       usePackagedStyleImport(source, feature.style),
       packagedStyleStatement(feature.style.packaged),
     );
-    if (importsEither(findCssImportPaths(updated), feature.style)) {
+    // An import with a layer, media or supports condition is the app's choice and stays; the build
+    // adds no second one.
+    if (findCssImportPaths(updated).includes(feature.style.legacy)) {
       notes.push(
         `Kept the local ${name} copies because src/frontend/app/app.css could not be switched automatically. ` +
           `Remove its @import of '${feature.style.legacy}' (the build adds the feature's styles), then run this command again.`,
@@ -369,9 +371,10 @@ function packagedScriptStatement(specifier: string): RegExp {
   );
 }
 
+/** A plain import of the packaged stylesheet: one with a condition is left in place. */
 function packagedStyleStatement(specifier: string): RegExp {
   return new RegExp(
-    `^[ \\t]*@import\\s+(?:url\\(\\s*)?(['"])${escapeRegExp(specifier)}\\1\\s*\\)?[^;\\r\\n]*;${TRAILING_COMMENT}(?:\\r?\\n|$)`,
+    `^[ \\t]*@import\\s+(?:url\\(\\s*)?(['"])${escapeRegExp(specifier)}\\1\\s*\\)?\\s*;${TRAILING_COMMENT}(?:\\r?\\n|$)`,
     'gm',
   );
 }

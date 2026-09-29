@@ -403,6 +403,35 @@ test.each([
     note: /because src\/frontend\/pages\/home\/uses-app\.ts import from it/,
   },
   {
+    name: 'an app whose page add-page wrote loads app.ts itself',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts'),
+        "// Page entry point\nimport '../../app/app';\n\n// Add page-specific logic here\n",
+      );
+    },
+    removed: ['src/frontend/app/app.ts', 'src/frontend/app/error.ts'],
+    kept: [] as string[],
+    note: null as RegExp | null,
+    verify: async (root: string) => {
+      expect(
+        await readFile(path.join(root, 'src', 'frontend', 'pages', 'home', 'index.ts'), 'utf8'),
+      ).toBe('// Page entry point\n\n// Add page-specific logic here\n');
+    },
+  },
+  {
+    name: 'an app whose page imports its error reporter',
+    prepare: async (root: string) => {
+      await writeFile(
+        path.join(root, 'src', 'frontend', 'pages', 'home', 'uses-error.ts'),
+        "import { install } from '../../app/error';\nexport { install };\n",
+      );
+    },
+    removed: ['src/frontend/app/app.ts'],
+    kept: ['src/frontend/app/error.ts'],
+    note: /but src\/frontend\/pages\/home\/uses-error\.ts import it/,
+  },
+  {
     name: 'an app whose page imports app.css with a condition',
     prepare: async (root: string) => {
       const pageCss = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.css');
@@ -453,9 +482,44 @@ test.each([
     else expect(result.stdout).not.toContain('note:');
     const repairedCss = await readFile(pageCss, 'utf8');
     expect(repairedCss.includes('@import "@app/app.css";')).toBe(false);
+    if ('verify' in row && row.verify) await row.verify(root);
 
     const again = await runCli(['repair', '--dry-run', '--workspace', root]);
     expect(again.stdout).toContain('changes: none');
+  } finally {
+    await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+// A condition on a feature stylesheet import is the app's; repair keeps it, and the build adds no
+// second, unconditioned import.
+test('CLI repair keeps a feature stylesheet import that carries a condition', async () => {
+  const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-conditioned-css-', {
+    workspaceName: 'site',
+  });
+  const root = copiedWorkspace.workspaceRoot;
+  const appCss = path.join(root, 'src', 'frontend', 'app', 'app.css');
+  const conditioned =
+    '@import "@webstir-io/webstir-frontend/features/search.css" layer(widgets) print;';
+  try {
+    const installed = path.join(root, 'node_modules', '@webstir-io');
+    await mkdir(installed, { recursive: true });
+    await rm(path.join(installed, 'webstir-frontend'), { force: true });
+    await symlink(
+      path.join(repoRoot, 'packages', 'tooling', 'webstir-frontend'),
+      path.join(installed, 'webstir-frontend'),
+      'dir',
+    );
+    await writeFile(
+      appCss,
+      (await readFile(appCss, 'utf8')).replace(
+        '@import "./styles/shell.css";',
+        `${conditioned}\n@import "./styles/shell.css";`,
+      ),
+    );
+    const result = await runCli(['repair', '--workspace', root]);
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(appCss, 'utf8')).toContain(conditioned);
   } finally {
     await removeDemoWorkspace(copiedWorkspace);
   }

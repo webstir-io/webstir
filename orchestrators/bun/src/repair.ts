@@ -8,7 +8,7 @@ import {
   renderS3CloudFrontDeployScript,
   renderS3CloudFrontFunction,
 } from './enable-assets.ts';
-import { retireScaffoldAppFiles } from './app-entry-migration.ts';
+import { pageScripts, retireScaffoldAppFiles } from './app-entry-migration.ts';
 import { adoptPackagedFeature, appEntryPaths, legacyFeaturePaths } from './feature-imports.ts';
 import {
   preflightScaffoldAssets,
@@ -114,6 +114,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     [
       ...getFixedRepairWriteTargets(workspace.root, workspace.layers, enable),
       ...(workspace.layers.pages ? await pageStylesheets(workspace.root) : []),
+      ...(workspace.layers.pages ? await pageScripts(workspace.root) : []),
     ],
     'repair workspace files',
   );
@@ -195,7 +196,7 @@ function getFixedRepairWriteTargets(
   // The app-file migrations may rewrite or delete these.
   if (layers.pages) {
     targets.push(
-      path.join(appRoot, 'app.ts'),
+      ...appEntryPaths(workspaceRoot),
       path.join(appRoot, 'error.ts'),
       path.join(appRoot, 'hmr.js'),
       path.join(appRoot, 'refresh.js'),

@@ -92,6 +92,37 @@ test("an app's own app.ts is bundled after the features it enables", async () =>
   }
 });
 
+// An app from before the build added features still imports client-nav from its own install,
+// a different copy than the CLI's; the bundle takes the app's, so client-nav is in it once.
+test('an app that still imports a feature gets the same copy the flag adds', async () => {
+  const packageRoot = path.resolve(import.meta.dirname, '..');
+  const copies = [];
+  for (const appTs of [null, "import '@webstir-io/webstir-frontend/features/client-nav';\n"]) {
+    const root = await workspace({ enable: { clientNav: true }, appTs });
+    try {
+      const installed = path.join(root, 'node_modules', '@webstir-io', 'webstir-frontend');
+      await fs.mkdir(installed, { recursive: true });
+      for (const entry of ['package.json', 'dist', 'src', 'config']) {
+        await fs.cp(path.join(packageRoot, entry), path.join(installed, entry), {
+          recursive: true,
+        });
+      }
+      await fs.symlink(
+        path.join(packageRoot, 'node_modules'),
+        path.join(installed, 'node_modules'),
+        'dir',
+      );
+      await build(root, 'build');
+      const bundle = await read(root, 'build', 'frontend', 'app', 'app.js');
+      copies.push(bundle.split('webstir:client-nav').length - 1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  }
+  assert.ok(copies[0] > 0, 'client-nav is in the bundle');
+  assert.equal(copies[1], copies[0], "the app's own import adds no second copy");
+});
+
 const stylesheets = (html) =>
   [...html.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*href="([^"]+)"/g)].map((match) => match[1]);
 

@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { readdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 
-import { appEntryPaths, relativeWorkspacePath, scanImports } from './feature-imports.ts';
+import { appEntryPaths, relativeWorkspacePath } from './feature-imports.ts';
 import { HOT_MODULE_REGISTRATION, migrateHotModuleRegistry } from './hot-module-migration.ts';
 
 const HEADER = '// Global app initialization\n';
@@ -44,8 +44,8 @@ export { loadErrorHandler };
 `;
 // Scaffolds imported the reporter as './error' and, earlier, as './error.js'.
 const ERROR_LOADERS = [errorLoader('./error'), errorLoader('./error.js')];
-const loadsErrorReporter = (source: string) =>
-  /import\(\s*['"]\.\/error(\.js)?['"]\s*\)/.test(source);
+// Any import of the reporter, static or dynamic.
+const loadsErrorReporter = (source: string) => /['"]\.\/error(\.[jt]s)?['"]/.test(source);
 // SHA-256 (with LF line endings) of the error.ts every scaffold wrote.
 const SHIPPED_ERROR_REPORTERS = new Set([
   '613b4efbaa3ec867550d6b73da1779033d66a15fbdab85a62e3db5949405d432',
@@ -92,13 +92,26 @@ export async function retireScaffoldAppFiles(
   const errorPath = path.join(appRoot, 'error.ts');
   let errorReporterLoaded = false;
 
+  // What each page script will say once repair is done, for the checks below to read.
+  const pageSources = new Map<string, string>();
   if (entryPath) {
+    // Pages that add-page wrote before 0.8 load app.ts themselves, which the app bundle now loads
+    // on every page; that line would run it twice.
+    for (const file of await pageScripts(workspaceRoot)) {
+      const source = await readFile(file, 'utf8');
+      const updated = withoutAppEntryImport(source, file, entryPath);
+      if (updated === source) continue;
+      pageSources.set(file, updated);
+      if (!dryRun) await Bun.write(file, updated);
+      changes.push(relativeWorkspacePath(workspaceRoot, file));
+    }
+
     const entryName = relativeWorkspacePath(workspaceRoot, entryPath);
     const source = await readFile(entryPath, 'utf8');
     errorReporterLoaded = loadsErrorReporter(source);
     const retirement = retireScaffoldEntry(source);
     if (retirement.kind !== 'unchanged') {
-      const importers = await findEntryImporters(workspaceRoot, entryPath);
+      const importers = await findImporters(workspaceRoot, entryPath, [entryPath], pageSources);
       if (importers.length > 0) {
         notes.push(
           `${entryName} still holds the scaffold's hot-module registry and error loader, because ${importers.join(', ')} import from it. ` +
@@ -118,6 +131,18 @@ export async function retireScaffoldAppFiles(
 
   if (!existsSync(errorPath) || errorReporterLoaded) return;
   const errorName = relativeWorkspacePath(workspaceRoot, errorPath);
+  const errorImporters = await findImporters(
+    workspaceRoot,
+    errorPath,
+    entryPath ? [entryPath, errorPath] : [errorPath],
+    pageSources,
+  );
+  if (errorImporters.length > 0) {
+    notes.push(
+      `${errorName} is no longer needed, Webstir reports browser errors itself, but ${errorImporters.join(', ')} import it. Remove those imports, then delete it.`,
+    );
+    return;
+  }
   const digest = createHash('sha256')
     .update((await readFile(errorPath, 'utf8')).replace(/\r\n/g, '\n'))
     .digest('hex');
@@ -131,27 +156,60 @@ export async function retireScaffoldAppFiles(
   }
 }
 
-/** Frontend sources that import the app entry, relative to the workspace. */
-async function findEntryImporters(workspaceRoot: string, entryPath: string): Promise<string[]> {
+/** Frontend sources, other than those skipped, that import a module, relative to the workspace. */
+async function findImporters(
+  workspaceRoot: string,
+  modulePath: string,
+  skip: readonly string[],
+  sources: ReadonlyMap<string, string>,
+): Promise<string[]> {
   const frontend = path.join(workspaceRoot, 'src', 'frontend');
-  const entryStem = entryPath.slice(0, -path.extname(entryPath).length);
+  const stem = modulePath.slice(0, -path.extname(modulePath).length);
   const found: string[] = [];
   for (const entry of await readdir(frontend, { recursive: true, withFileTypes: true })) {
     if (!entry.isFile() || !SOURCE_EXTENSIONS.has(path.extname(entry.name))) continue;
     const file = path.join(entry.parentPath, entry.name);
-    if (file === entryPath) continue;
-    let imports: string[];
-    try {
-      imports = scanImports(await readFile(file, 'utf8'), file);
-    } catch {
-      continue;
-    }
-    const importsEntry = imports.some((specifier) => {
+    if (skip.includes(file)) continue;
+    const imports = scanAllImports(sources.get(file) ?? (await readFile(file, 'utf8')), file);
+    const importsModule = imports.some((specifier) => {
       if (!specifier.startsWith('.')) return false;
       const target = path.resolve(path.dirname(file), specifier);
-      return target === entryStem || target.replace(/\.[cm]?[jt]sx?$/, '') === entryStem;
+      return target === stem || target.replace(/\.[cm]?[jt]sx?$/, '') === stem;
     });
-    if (importsEntry) found.push(relativeWorkspacePath(workspaceRoot, file));
+    if (importsModule) found.push(relativeWorkspacePath(workspaceRoot, file));
   }
   return found;
+}
+
+/** The app's page scripts, which repair may rewrite. */
+export async function pageScripts(workspaceRoot: string): Promise<string[]> {
+  const pages = path.join(workspaceRoot, 'src', 'frontend', 'pages');
+  if (!existsSync(pages)) return [];
+  return (await readdir(pages, { recursive: true, withFileTypes: true }))
+    .filter((entry) => entry.isFile() && SOURCE_EXTENSIONS.has(path.extname(entry.name)))
+    .map((entry) => path.join(entry.parentPath, entry.name));
+}
+
+/** A page script without its bare `import '../../app/app';`, the line add-page wrote before 0.8. */
+function withoutAppEntryImport(source: string, file: string, entryPath: string): string {
+  const entryStem = entryPath.slice(0, -path.extname(entryPath).length);
+  return source.replace(
+    /^[ \t]*import\s+(['"])(\.{1,2}\/[^'"]*)\1[ \t]*;?[ \t]*(?:\r?\n|$)/gm,
+    (line, _quote: string, specifier: string) => {
+      const target = path.resolve(path.dirname(file), specifier).replace(/\.[cm]?[jt]sx?$/, '');
+      return target === entryStem ? '' : line;
+    },
+  );
+}
+
+// Static and dynamic imports alike: either one still needs the module.
+function scanAllImports(source: string, filePath: string): string[] {
+  const extension = path.extname(filePath).slice(1);
+  const loader =
+    extension === 'tsx' || extension === 'jsx' || extension === 'js' ? extension : 'ts';
+  try {
+    return new Bun.Transpiler({ loader }).scanImports(source).map((entry) => entry.path);
+  } catch {
+    return [];
+  }
 }

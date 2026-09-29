@@ -85,6 +85,7 @@ What it does:
   - the hot-module registry and error loader in `app.ts`, and the error reporter `error.ts`, which the app bundle includes; `app.ts` goes when nothing of the app's own is left
   - the feature imports in `app.ts` and `app.css`, and the feature copies older versions wrote, since the flags bring the features in
   - each page stylesheet's `@import "@app/app.css"`, since the build links it on every page
+  - the `import '../../app/app';` line older `add-page` scaffolds wrote into page scripts, since the app bundle loads `app.ts` on every page
 - Leaves anything the app changed in place with a note saying what to do by hand, such as a page that imports from `app.ts` or an edited copy
 - Never re-creates missing scaffold files on its own: a mature app may have removed starter files (error pages, starter pages, router files, shared types) on purpose. It lists them as `missingScaffold` instead
 - With `--restore-scaffold`, also re-creates every missing scaffold file from the starter that fits the app's layers (pages + server: `full`; server: `api`; pages: `ssg` when `src/frontend/content/` exists, else `spa`) and enabled features, including `AGENTS.md`. Starter tests are never re-created
