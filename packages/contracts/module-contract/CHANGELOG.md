@@ -1,5 +1,11 @@
 # @webstir-io/module-contract
 
+## 0.9.3
+
+### Patch Changes
+
+- bac9179: `webstir watch` and `webstir build` carry an app's own imports into the backend's server entry, jobs and TypeScript migrations, as publish does, so an app whose backend files import each other starts in development. `webstir snapshot` copies the database as it is, without applying pending migrations.
+
 ## 0.9.2
 
 ### Patch Changes
