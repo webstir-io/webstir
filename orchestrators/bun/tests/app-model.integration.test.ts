@@ -287,9 +287,14 @@ test('an app says who its users are and what they may do; forms, repeats and the
     // Every POST form carries the page it was rendered on, so a failure returns there even when
     // the Referer names an earlier failed post's address; and a form names the state it fails to.
     expect(keptHtml).toContain('name="_webstir_page" value="/editors"');
-    for (const [name, form, shown] of [
-      ['the page it names', { _webstir_page: '/editors/' }, true],
-      ['no page named', {}, false],
+    for (const [name, form, shown, address] of [
+      [
+        'the page it names, with its query',
+        { _webstir_page: '/editors/?tab=2' },
+        true,
+        '/editors?tab=2',
+      ],
+      ['no page named', {}, false, null],
     ] as const) {
       const again = await ada.request('/editors/remove', {
         method: 'POST',
@@ -298,6 +303,7 @@ test('an app says who its users are and what they may do; forms, repeats and the
       });
       const html = again.status === 403 ? await again.text() : '';
       expect([name, html.includes('<p class="kept">Form session expired')]).toEqual([name, shown]);
+      expect([name, again.headers.get('content-location')]).toEqual([name, address]);
     }
 
     // Signed in without the role, the page and its form are not there.

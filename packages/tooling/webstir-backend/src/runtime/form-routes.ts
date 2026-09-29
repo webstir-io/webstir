@@ -34,6 +34,8 @@ export interface PostedForm {
 }
 
 const POSTED_FORM_ID = /^[\w:.-]{1,120}$/;
+// Names every object already has: a form id is a key in the session's form states.
+const RESERVED_FORM_IDS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**
  * The page and form id a form carries, taken out of the body so actions never see them. The page
@@ -46,12 +48,28 @@ export function takePostedForm(body: unknown): PostedForm {
   const formId = record[FORM_ID_FIELD];
   delete record[FORM_PAGE_FIELD];
   delete record[FORM_ID_FIELD];
+  const path = typeof page === 'string' ? appPath(page) : undefined;
   return {
-    ...(typeof page === 'string' && /^\/(?![/\\])/.test(page) && !page.includes('\\')
-      ? { page }
+    ...(path ? { page: path } : {}),
+    ...(typeof formId === 'string' && POSTED_FORM_ID.test(formId) && !RESERVED_FORM_IDS.has(formId)
+      ? { formId }
       : {}),
-    ...(typeof formId === 'string' && POSTED_FORM_ID.test(formId) ? { formId } : {}),
   };
+}
+
+/**
+ * A path on this app, normalized: never another site, however it is spelled (`//x`, `/\\x`, or
+ * whitespace a browser would drop, as in `/\t/x`).
+ */
+function appPath(value: string): string | undefined {
+  if (!value.startsWith('/') || /[\s\\]/.test(value)) return undefined;
+  try {
+    const url = new URL(value, 'http://app.invalid');
+    const path = `${url.pathname}${url.search}`;
+    return url.origin === 'http://app.invalid' && !path.startsWith('//') ? path : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function formReturn(
@@ -59,11 +77,15 @@ function formReturn(
   views: readonly CompiledView[],
   posted: PostedForm = {},
 ): FormReturn {
-  const pageView = (location: string) => {
-    const pathname = normalizePath(new URL(location, 'http://app.invalid').pathname);
-    const match = matchView(views, pathname);
+  const pageView = (location: string, keepQuery = false) => {
+    const url = new URL(location, 'http://app.invalid');
+    const match = matchView(views, normalizePath(url.pathname));
     return match?.view.definition?.page
-      ? { view: match.view.name, params: match.params }
+      ? {
+          view: match.view.name,
+          params: match.params,
+          ...(keepQuery ? { search: url.search } : {}),
+        }
       : undefined;
   };
   // The page the form was on: the address it was rendered with, then the Referer a browser sends
@@ -71,7 +93,7 @@ function formReturn(
   // posted to, as forms often post to their own page's address.
   const referer = sameAppReferer(request) ? refererPath(request) : undefined;
   const target =
-    (posted.page && pageView(posted.page)) ??
+    (posted.page && pageView(posted.page, true)) ??
     (referer && pageView(referer)) ??
     pageView(new URL(request.url).pathname);
   if (target) return { rerender: target };

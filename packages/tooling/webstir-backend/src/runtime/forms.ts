@@ -46,6 +46,8 @@ interface RouteHandlerResultLike {
 export interface FormRerender {
   view: string;
   params?: Record<string, string>;
+  /** The query the page renders with, when it is not the posted one. */
+  search?: string;
   form: {
     id: string;
     values: FormValues;
@@ -56,6 +58,8 @@ export interface FormRerender {
 export interface FormRerenderTarget {
   view: string;
   params?: Record<string, string>;
+  /** The page's own query, when the form named its page; else the posted query is kept. */
+  search?: string;
 }
 
 export interface FormState {
@@ -356,6 +360,7 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
         rerender: {
           view: options.rerender.view,
           ...(options.rerender.params ? { params: { ...options.rerender.params } } : {}),
+          ...(options.rerender.search !== undefined ? { search: options.rerender.search } : {}),
           form: {
             id: options.formId,
             values: cloneFormValues(options.values),
