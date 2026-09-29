@@ -39,7 +39,7 @@ Usage:
 What it does:
 - Scaffolds a new app from the `full`, `ssg`, `spa`, or `api` starter
 - Uses workspace dependencies when the target lives inside this monorepo; uses published package versions for external workspaces
-- Creates the expected `src/frontend`, `src/backend`, `src/shared`, and `types` layout for the selected starter
+- Creates the selected starter's `src/frontend` and `src/backend` files
 - Prints `starter: <name>`
 
 Notes:
@@ -79,8 +79,13 @@ Notes:
 Usage: `webstir repair --workspace <path> [--dry-run] [--restore-scaffold]`
 
 What it does:
-- Migrates a workspace to what the installed Webstir expects: moves the hot-module registry from `app.ts` into the dev-only `hmr.js`, adds missing project references and deploy config, and re-applies wiring for recorded static feature flags like `search`, `clientNav`, `contentNav`, and `githubPages`, and removes `webstir.mode` and `webstir.enable.backend`, which older versions wrote to say what an app is
-- With `clientNav`, `search` or `contentNav`, switches an app from the copies older versions wrote to the package imports, leaving edited or still-imported copies in place with a note
+- Migrates a workspace to what the installed Webstir expects, adds missing project references and deploy config, re-applies wiring for recorded feature flags like `githubPages`, and removes `webstir.mode` and `webstir.enable.backend`, which older versions wrote to say what an app is
+- Takes out of the app what Webstir now does itself, deleting only copies that match what a Webstir version wrote:
+  - the dev clients (`hmr.js`, `refresh.js`), which the package serves
+  - the hot-module registry and error loader in `app.ts`, and the error reporter `error.ts`, which the app bundle includes; `app.ts` goes when nothing of the app's own is left
+  - the feature imports in `app.ts` and `app.css`, and the feature copies older versions wrote, since the flags bring the features in
+  - each page stylesheet's `@import "@app/app.css"`, since the build links it on every page
+- Leaves anything the app changed in place with a note saying what to do by hand, such as a page that imports from `app.ts` or an edited copy
 - Never re-creates missing scaffold files on its own: a mature app may have removed starter files (error pages, starter pages, router files, shared types) on purpose. It lists them as `missingScaffold` instead
 - With `--restore-scaffold`, also re-creates every missing scaffold file from the starter that fits the app's layers (pages + server: `full`; server: `api`; pages: `ssg` when `src/frontend/content/` exists, else `spa`) and enabled features, including `AGENTS.md`. Starter tests are never re-created
 - Accepts `--json` for machine-readable dry-run or repair output
@@ -98,6 +103,7 @@ What it does:
 - `backend` also writes `.env.example`, and a `.gitignore` (or the lines an existing one lacks) that keeps `data/`, `.webstir/` and `.env` out of git
 - `sign-in` writes `src/backend/sign-in.ts` and the sign-in pages; it needs pages and a server. See [Add Sign-In](../how-to/sign-in.md)
 - Updates workspace files and `package.json` flags so the feature is active on the next build/watch
+- `client-nav`, `search` and `content-nav` only set their flag: the build brings in the feature and its styles, with nothing imported into the app
 
 Notes:
 - Some features accept additional arguments before `--workspace`
@@ -244,6 +250,7 @@ What it does:
 - Scaffolds a frontend page in the selected workspace
 - Uses the canonical frontend tooling path rather than a Bun-only fork
 - Scaffolds `index.ts` by default; `--no-script` scaffolds a page without it
+- The page's `index.css` holds only its own styles; the build links the app's styles ahead of it
 
 ### add-island
 Usage: `webstir add-island <name> --workspace <path> [--react|--preact|--solid|--svelte|--vue]`

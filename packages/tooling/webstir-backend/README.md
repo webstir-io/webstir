@@ -84,10 +84,8 @@ The provider expects a standard workspace layout and performs two steps:
 - `metadata` — package id, version, kind (`backend`), CLI compatibility, and runtime notes.
 - `resolveWorkspace({ workspaceRoot })` — returns canonical source/build/test roots.
 - `build(options)` — type‑checks with `tsc --noEmit`, then runs esbuild. In `build`/`test` mode it transpiles without bundling; in `publish` it bundles workspace code, externalizes `node_modules`, minifies, strips comments, and defines `NODE_ENV=production`. Artifacts are gathered and a manifest describing entry points, diagnostics, and the module contract manifest is returned.
-- `getScaffoldAssets()` — returns starter files to bootstrap a backend workspace:
-  - `src/backend/tsconfig.json` (NodeNext, outDir `build/backend`)
-- `src/backend/index.ts` (thin composition entry that boots the package-managed Bun runtime)
-- `src/backend/module.ts` (optional manifest + handler example the server loads automatically)
+
+The starter files come from `webstir init` and `webstir enable backend`, not the provider: the server entry `src/backend/index.ts`, its `tsconfig.json`, and in the full starter a `module.ts` the server loads automatically.
 
 ### Bun Scaffold (default)
 
@@ -391,14 +389,9 @@ const handle = await startBackendWatch({
 await handle.stop();
 ```
 
-### Functions & Jobs (scaffolding)
+### Functions & Jobs
 
-The provider ships example entries you can copy into a fresh workspace:
-
-- `src/backend/functions/hello/index.ts` — a simple function entry
-- `src/backend/jobs/nightly/index.ts` — a simple job entry
-
-If you use `getScaffoldAssets()` programmatically, these templates are included alongside `tsconfig.json` and `index.ts`.
+`webstir add-job <name>` writes a job entry, `src/backend/jobs/<name>/index.ts`. A function is the same shape under `src/backend/functions/<name>/index.ts`.
 
 ### Dev runner readiness
 

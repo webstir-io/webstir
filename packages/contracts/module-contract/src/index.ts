@@ -60,18 +60,12 @@ export interface ModuleBuildResult {
   readonly manifest: ModuleBuildManifest;
 }
 
-export interface ModuleAsset {
-  readonly sourcePath: string;
-  readonly targetPath: string;
-}
-
 export interface ModuleProvider {
   readonly metadata: ModuleProviderMetadata;
   resolveWorkspace(
     options: ResolveWorkspaceOptions,
   ): Promise<ResolvedModuleWorkspace> | ResolvedModuleWorkspace;
   build(options: ModuleBuildOptions): Promise<ModuleBuildResult> | ModuleBuildResult;
-  getScaffoldAssets?(): Promise<readonly ModuleAsset[]> | readonly ModuleAsset[];
 }
 
 export const moduleKindSchema = z.enum(['frontend', 'backend']);

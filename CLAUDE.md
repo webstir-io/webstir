@@ -47,7 +47,7 @@ bun run webstir -- init ssg ./my-site
 
 ### Packages
 
-- **`packages/contracts/module-contract`** — Zod schemas and TypeScript types defining the `ModuleProvider` interface (resolveWorkspace, build, getScaffoldAssets). All tooling packages depend on this.
+- **`packages/contracts/module-contract`** — Zod schemas and TypeScript types defining the `ModuleProvider` interface (resolveWorkspace, build). All tooling packages depend on this.
 - **`packages/contracts/testing-contract`** — Contract for the testing framework.
 - **`packages/tooling/webstir-backend`** — Backend provider: TypeScript compilation via esbuild, Bun runtime delivery, session management, scaffold templates. Tests run with `bun test` against `dist/` and use `node:assert/strict` for assertions.
 - **`packages/tooling/webstir-frontend`** — Frontend provider: SSG/SPA/SSR modes, markdown processing, image optimization (sharp), HTML minification. Same test setup as backend.
@@ -61,7 +61,7 @@ bun run webstir -- init ssg ./my-site
 
 ### Key Patterns
 
-- **ModuleProvider interface**: Central abstraction — each provider implements `resolveWorkspace()`, `build()`, and `getScaffoldAssets()`.
+- **ModuleProvider interface**: Central abstraction — each provider implements `resolveWorkspace()` and `build()`.
 - **Hardened path resolution**: Env vars (`WORKSPACE_ROOT`, `WEBSTIR_WORKSPACE_ROOT`) or inference from `import.meta.url`. Several recent commits harden this.
 - **Contract-first**: Contracts are minimal with no heavy dependencies; tooling packages implement them. Edit contracts before tooling when changing interfaces.
 - **Build outputs**: Backend and frontend both use esbuild. Output goes to `build/` directories with manifests and diagnostics.

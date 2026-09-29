@@ -8,8 +8,6 @@ There is no active `AppWorkspace` class in the Bun runtime. Instead, the orchest
 
 - `src/frontend`
 - `src/backend`
-- `src/shared`
-- `types`
 - `build/frontend`
 - `build/backend`
 - `dist/frontend`
@@ -55,7 +53,7 @@ Once the files exist, nothing records which starter made them; the layers come f
 
 - Watch `src/**` and `types/**`.
 - Ignore `.git`, `.webstir`, `build`, `dist`, and `node_modules`.
-- Root changes to `package.json`, `base.tsconfig.json`, or `types.global.d.ts` trigger a frontend reload.
+- Root changes to `package.json` (and, in apps that still have them, `base.tsconfig.json` or `types.global.d.ts`) trigger a frontend reload.
 
 ## Generated Workspace State
 

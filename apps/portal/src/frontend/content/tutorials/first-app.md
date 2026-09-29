@@ -22,26 +22,21 @@ This starts the frontend dev server plus the backend runtime. The watch loop kee
 
 ## Walk The Built-In Form Flow
 
-Open `/api/demo/progressive-enhancement` and compare two cases:
+Open `/`. The home page is rendered by the server on each request, and its form works as a plain HTML form:
 
-1. Submit the form with JavaScript disabled or with no enhancement enabled. The backend follows the baseline redirect-after-post path.
-2. Keep the same route as your reference when you add auth gates, validation recovery, or other server-side behaviors.
+1. Enter a name and submit. The server answers the post with a redirect back to `/`, carrying a message the page shows: redirect-after-post, the baseline for every form.
+2. Try it with JavaScript disabled. It works the same way.
 
-That route lives in `src/backend/module.ts`. The scaffold keeps `src/backend/index.ts` as a thin Bun bootstrap entry, while `module.ts` holds the demo route logic and gives you a working reference for:
+The app is small on purpose. `src/backend/module.ts` holds both halves:
 
-- `application/x-www-form-urlencoded` form handling
-- redirect responses for the baseline HTML path
-- the same server-first structure you can extend with auth and optional fragment responses later
+- the `home` view, which renders `src/frontend/pages/home/index.html` on each request and lists the data it binds in a zod schema
+- the `greet` route, which reads the `application/x-www-form-urlencoded` form, checks its CSRF token, and redirects with a flash message
+
+`src/backend/index.ts` is the thin entry that starts the server; the rest of the plumbing (dev reload, error reporting, compiler settings) comes from the Webstir packages.
 
 ## Opt Into Client Navigation Later
 
-If your app benefits from fragment updates, add `client-nav` after the baseline HTML flow is already working:
-
-```bash
-"$WEBSTIR" enable client-nav --workspace "$PWD"
-```
-
-Then re-run the same form flow and compare the fragment-enhanced result with the redirect-after-post fallback.
+New `full` apps start with `client-nav` on: links and form redirects swap the page in place instead of reloading it. Turn it off by removing `clientNav` from `webstir.enable` in `package.json`, and the same form flow keeps working as full-page navigation.
 
 ## Add A Page
 
@@ -51,15 +46,15 @@ Then re-run the same form flow and compare the fragment-enhanced result with the
 
 Open `/about`, edit files under `src/frontend/pages/about/`, and watch the document rebuild.
 
-## Adapt The Backend Demo
+## Grow The Example
 
-To make the scaffold feel like your app instead of the stock demo, start by editing the existing backend route in `src/backend/module.ts`:
+Make the example your app's first real flow:
 
-- change `DEMO_PATH` to the route you actually want
-- rename the route summaries
-- replace the HTML in `renderGreeting()` with your own document or fragment markup
+- add fields to the home view's `data` schema and return them from its `load`, then bind them in the page with `data-text` and the other bindings
+- give the `greet` route real work: validate the form and send it back with its errors, or save it with `ctx.db`
+- add views and routes to the same `routes` and `views` lists as the app grows
 
-Once that is working, split the demo helpers into your own route handlers or module exports as the backend surface grows.
+For a larger example, with the progressive-enhancement flow, fragment updates and the page lifecycle, see the full demo in `examples/demos/full`.
 
 ## Validate The Workspace
 

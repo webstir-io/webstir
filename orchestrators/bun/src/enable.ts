@@ -454,8 +454,8 @@ async function enableS3CloudFront(workspaceRoot: string, changes: string[]): Pro
 }
 
 /**
- * Imports a feature from the frontend package, switching an app off copies older versions wrote.
- * Fails without setting the flag when the installed package cannot provide the feature.
+ * Turns on a feature the frontend package ships, switching an app off copies older versions wrote;
+ * the build adds it to the app bundle. Fails without setting the flag when the installed package cannot provide it.
  */
 async function enablePackagedFeature(
   workspaceRoot: string,

@@ -8,6 +8,7 @@ import {
   renderS3CloudFrontDeployScript,
   renderS3CloudFrontFunction,
 } from './enable-assets.ts';
+import { retireScaffoldAppFiles } from './app-entry-migration.ts';
 import { adoptPackagedFeature, appEntryPaths, legacyFeaturePaths } from './feature-imports.ts';
 import {
   preflightScaffoldAssets,
@@ -15,7 +16,10 @@ import {
   type PreflightedScaffoldAsset,
   type ScaffoldAssetDescriptor,
 } from './scaffold-path.ts';
-import { classifyHmrClient, migrateHotModuleRegistry } from './hot-module-migration.ts';
+import { retireDevClientCopies } from './dev-client-copies.ts';
+import { ERROR_PAGE_FILES, retireErrorPageCopies } from './error-page-copies.ts';
+import { pageStylesheets, retirePageAppImports } from './page-style-migration.ts';
+import { migrateHotModuleRegistry } from './hot-module-migration.ts';
 import { readWorkspaceDescriptor } from './workspace.ts';
 import { readFrontendConfigDocument, type FrontendConfigDocument } from './frontend-config.ts';
 import type { WorkspaceLayers } from '@webstir-io/module-contract/workspace';
@@ -107,14 +111,19 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     : [];
   await preflightWorkspaceWriteTargets(
     workspace.root,
-    getFixedRepairWriteTargets(workspace.root, workspace.layers, enable),
+    [
+      ...getFixedRepairWriteTargets(workspace.root, workspace.layers, enable),
+      ...(workspace.layers.pages ? await pageStylesheets(workspace.root) : []),
+    ],
     'repair workspace files',
   );
   const frontendConfig = enable.githubPages
     ? await readFrontendConfigDocument(workspace.root)
     : undefined;
   await restoreScaffoldAssets(preparedAssets, changes, dryRun);
-  await ensureHotModulePair(workspace.root, assets, changes, notes, dryRun);
+  await migrateHotModuleEntry(workspace.root, changes, notes, dryRun);
+  await retireDevClientCopies(workspace.root, changes, notes, dryRun);
+  await retireErrorPageCopies(workspace.root, changes, notes, dryRun);
   noteRetiredRouter(workspace.root, notes);
   await retireShapeFields(packageJsonPath, changes, notes, dryRun);
 
@@ -129,6 +138,10 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     if (flag) {
       await adoptPackagedFeature(workspace.root, name, changes, notes, dryRun);
     }
+  }
+  if (workspace.layers.pages) {
+    await retireScaffoldAppFiles(workspace.root, changes, notes, dryRun);
+    await retirePageAppImports(workspace.root, changes, notes, dryRun);
   }
   if (workspace.layers.server) {
     await ensureBackendTsReference(workspace.root, changes, dryRun);
@@ -159,7 +172,7 @@ export async function runRepair(options: RunRepairOptions): Promise<RepairResult
     dryRun,
     restoreScaffold,
     changes: uniqueSorted(changes),
-    // A migration may write a missing scaffold file itself (the hot-module move writes hmr.js).
+    // A file a migration changed is reported as a change, not also as missing.
     missingScaffold: restoreScaffold
       ? []
       : missingScaffold.filter((file) => !changes.includes(file)),
@@ -172,13 +185,21 @@ function getFixedRepairWriteTargets(
   layers: WorkspaceLayers,
   enable: RepairEnableFlags,
 ): readonly string[] {
-  // Retiring old shape fields may rewrite package.json.
-  const targets: string[] = [path.join(workspaceRoot, 'package.json')];
+  // Retiring old shape fields may rewrite package.json; retiring the error pages deletes them.
+  const targets: string[] = [
+    path.join(workspaceRoot, 'package.json'),
+    ...ERROR_PAGE_FILES.map((name) => path.join(workspaceRoot, name)),
+  ];
   const appRoot = path.join(workspaceRoot, 'src', 'frontend', 'app');
 
-  // The hot-module migration may rewrite these even when neither is missing.
+  // The app-file migrations may rewrite or delete these.
   if (layers.pages) {
-    targets.push(path.join(appRoot, 'app.ts'), path.join(appRoot, 'hmr.js'));
+    targets.push(
+      path.join(appRoot, 'app.ts'),
+      path.join(appRoot, 'error.ts'),
+      path.join(appRoot, 'hmr.js'),
+      path.join(appRoot, 'refresh.js'),
+    );
   }
   if (enable.clientNav || enable.search || enable.contentNav) {
     targets.push(...appEntryPaths(workspaceRoot));
@@ -254,12 +275,17 @@ async function retireShapeFields(
     'mode' in webstir ? 'webstir.mode' : undefined,
     'backend' in enable ? 'webstir.enable.backend' : undefined,
   ].filter((field): field is string => field !== undefined);
-  if (retired.length === 0) {
+  // Scaffolds wrote an empty moduleManifest; the views it can declare are the only thing read.
+  const manifest = webstir.moduleManifest;
+  const emptyManifest =
+    typeof manifest === 'object' && manifest !== null && Object.keys(manifest).length === 0;
+  if (retired.length === 0 && !emptyManifest) {
     return;
   }
 
   delete webstir.mode;
   delete enable.backend;
+  if (emptyManifest) delete webstir.moduleManifest;
   if ('enable' in webstir) {
     webstir.enable = enable;
   }
@@ -268,6 +294,7 @@ async function retireShapeFields(
     await Bun.write(packageJsonPath, `${JSON.stringify(root, null, 2)}\n`);
   }
   changes.push(path.basename(packageJsonPath));
+  if (retired.length === 0) return;
   notes.push(
     `Removed ${retired.join(' and ')} from package.json: an app's files say what it is (src/frontend for pages, src/backend/index.ts for a server).`,
   );
@@ -296,78 +323,33 @@ async function restoreScaffoldAssets(
   }
 }
 
-// The hot-module registry moved from app.ts into the dev-only hmr.js, and the
-// two only work as a pair: the current client reads window.__webstirHotModules,
-// the older client read hooks the older app.ts installed. Repair moves both
-// forward together when each is still the scaffold's own file, and otherwise
-// leaves both alone and says why.
-async function ensureHotModulePair(
+// The hot-module registry moved from app.ts into the dev client, which reads the registrations
+// app.ts queues in window.__webstirHotModules. An app.ts still installing the older hooks is moved
+// forward when it is the scaffold's own, and otherwise left alone with a note.
+async function migrateHotModuleEntry(
   workspaceRoot: string,
-  assets: readonly { sourcePath: string; targetPath: string }[],
   changes: string[],
   notes: string[],
   dryRun: boolean,
 ): Promise<void> {
   const appPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'app.ts');
-  const clientPath = path.join(workspaceRoot, 'src', 'frontend', 'app', 'hmr.js');
-  const clientAsset = assets.find(
-    (asset) => normalizeRelativePath(asset.targetPath) === 'src/frontend/app/hmr.js',
-  );
-  if (!existsSync(appPath) || !clientAsset) {
+  if (!existsSync(appPath)) {
     return;
   }
-
   const appRelative = relativeWorkspacePath(workspaceRoot, appPath);
-  const clientRelative = relativeWorkspacePath(workspaceRoot, clientPath);
-  const currentClient = await readTextFile(clientAsset.sourcePath);
-  const appSource = await readTextFile(appPath);
-  const migration = migrateHotModuleRegistry(appSource);
-  const clientKind = existsSync(clientPath)
-    ? classifyHmrClient(await readTextFile(clientPath), currentClient)
-    : 'current';
-  const manualSteps =
-    'see "Moving an older workspace to the dev-only registry" in the webstir-frontend README';
-
-  const refreshClient = async (): Promise<void> => {
-    if (!dryRun) {
-      await Bun.write(clientPath, currentClient);
-    }
-    changes.push(clientRelative);
-  };
-
+  const migration = migrateHotModuleRegistry(await readTextFile(appPath));
   if (migration.kind === 'customized') {
     notes.push(
-      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; replace the registry block by hand (${manualSteps}), then run repair again.`,
+      `${appRelative} still installs the old hot-update hooks, but ${migration.reason}; remove the registry by hand (see "Moving an older workspace onto the package" in the webstir-frontend README), then run repair again.`,
     );
     return;
   }
-
-  if (migration.kind === 'unchanged') {
-    if (clientKind === 'legacy') {
-      await refreshClient();
-    } else if (clientKind === 'custom' && appSource.includes('__webstirHotModules')) {
-      notes.push(
-        `${clientRelative} is customized and may not read the registrations ${appRelative} queues in window.__webstirHotModules; compare it with the scaffold's client (${manualSteps}).`,
-      );
+  if (migration.kind === 'rewritten') {
+    if (!dryRun) {
+      await Bun.write(appPath, migration.source);
     }
-    return;
+    changes.push(appRelative);
   }
-
-  if (clientKind === 'custom') {
-    notes.push(
-      `${appRelative} still installs the old hot-update hooks, and ${clientRelative} is customized, so neither was changed; bring ${clientRelative} up to the scaffold's client and run repair again (${manualSteps}).`,
-    );
-    return;
-  }
-
-  // The registry moves into hmr.js, so the move writes its destination when it is missing too.
-  if (clientKind === 'legacy' || !existsSync(clientPath)) {
-    await refreshClient();
-  }
-  if (!dryRun) {
-    await Bun.write(appPath, migration.source);
-  }
-  changes.push(appRelative);
 }
 
 async function ensureCssLayerIncludes(

@@ -115,36 +115,38 @@ export async function adoptPackagedFeature(
   }
 
   const rewrites: Array<{ filePath: string; source: string; updated: string }> = [];
-  // The entry the build bundles, in the order the build looks for it.
+  // The build adds an enabled feature to the app bundle itself, so the app entry keeps no import of
+  // it, packaged or local. An app without an entry has nothing to change.
   const entryPath = appEntryPaths(workspaceRoot).find((candidate) => existsSync(candidate));
-  if (!entryPath) {
-    notes.push(
-      `There is no src/frontend/app/app.{ts,tsx,js,jsx} to import '${feature.script.packaged}' from.` +
-        (present.length > 0 ? ` The local ${name} copies were left in place.` : ''),
+  if (entryPath) {
+    const entryName = relativeWorkspacePath(workspaceRoot, entryPath);
+    const entrySource = await readFile(entryPath, 'utf8');
+    const entryUpdated = withoutStatement(
+      usePackagedScriptImport(entrySource, feature, entryPath),
+      packagedScriptStatement(feature.script.packaged),
     );
-    return 'unavailable';
+    // A rewrite is only kept when parsing it shows neither import left.
+    if (importsEither(scanImports(entryUpdated, entryPath), feature.script)) {
+      notes.push(
+        `Kept the local ${name} copies because ${entryName} could not be switched automatically. ` +
+          `Remove its import of '${feature.script.legacy}' (the build adds the feature), then run this command again.`,
+      );
+      await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
+      return 'kept-local';
+    }
+    rewrites.push({ filePath: entryPath, source: entrySource, updated: entryUpdated });
   }
-  const entryName = relativeWorkspacePath(workspaceRoot, entryPath);
-  const entrySource = await readFile(entryPath, 'utf8');
-  const entryUpdated = usePackagedScriptImport(entrySource, feature, entryPath);
-  // A rewrite is only kept when parsing it shows the packaged import and no local one.
-  if (!importsOnly(scanImports(entryUpdated, entryPath), feature.script)) {
-    notes.push(
-      `Kept the local ${name} copies because ${entryName} could not be switched automatically. ` +
-        `Replace its import of '${feature.script.legacy}' with '${feature.script.packaged}', then run this command again.`,
-    );
-    await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
-    return 'kept-local';
-  }
-  rewrites.push({ filePath: entryPath, source: entrySource, updated: entryUpdated });
   const appCssPath = path.join(appRoot(workspaceRoot), 'app.css');
   if (feature.style && existsSync(appCssPath)) {
     const source = await readFile(appCssPath, 'utf8');
-    const updated = usePackagedStyleImport(source, feature.style);
-    if (!importsOnly(findCssImportPaths(updated), feature.style)) {
+    const updated = withoutStatement(
+      usePackagedStyleImport(source, feature.style),
+      packagedStyleStatement(feature.style.packaged),
+    );
+    if (importsEither(findCssImportPaths(updated), feature.style)) {
       notes.push(
         `Kept the local ${name} copies because src/frontend/app/app.css could not be switched automatically. ` +
-          `Replace its @import of '${feature.style.legacy}' with '${feature.style.packaged}', then run this command again.`,
+          `Remove its @import of '${feature.style.legacy}' (the build adds the feature's styles), then run this command again.`,
       );
       await wireLocalCopies(workspaceRoot, feature, present, changes, notes, dryRun);
       return 'kept-local';
@@ -173,7 +175,9 @@ export async function adoptPackagedFeature(
   for (const { filePath, source, updated } of rewrites) {
     if (updated === source) continue;
     if (!dryRun) {
-      await Bun.write(filePath, updated);
+      // An entry left with nothing of the app's own goes; the build needs none.
+      if (filePath === entryPath && isEmptyEntry(updated)) await rm(filePath);
+      else await Bun.write(filePath, updated);
     }
     changes.push(relativeWorkspacePath(workspaceRoot, filePath));
   }
@@ -344,11 +348,37 @@ function insertAfterLastCssImport(css: string, statement: string, newline: strin
     : `${css.slice(0, point)}${newline}${statement}${css.slice(point)}`;
 }
 
-function importsOnly(
+export function isEmptyEntry(source: string): boolean {
+  return source.replace('// Global app initialization', '').trim() === '';
+}
+
+function importsEither(
   imports: readonly string[],
   specifiers: { readonly packaged: string; readonly legacy: string },
 ): boolean {
-  return imports.includes(specifiers.packaged) && !imports.includes(specifiers.legacy);
+  return imports.includes(specifiers.packaged) || imports.includes(specifiers.legacy);
+}
+
+// A comment after the statement, on its line, describes it and goes with it.
+const TRAILING_COMMENT = String.raw`[^\S\r\n]*(?:\/\/[^\r\n]*|\/\*[^\r\n]*?\*\/[^\S\r\n]*)?`;
+
+function packagedScriptStatement(specifier: string): RegExp {
+  return new RegExp(
+    `^[ \\t]*import\\s+(['"])${escapeRegExp(specifier)}\\1[ \\t]*;?${TRAILING_COMMENT}(?:\\r?\\n|$)`,
+    'gm',
+  );
+}
+
+function packagedStyleStatement(specifier: string): RegExp {
+  return new RegExp(
+    `^[ \\t]*@import\\s+(?:url\\(\\s*)?(['"])${escapeRegExp(specifier)}\\1\\s*\\)?[^;\\r\\n]*;${TRAILING_COMMENT}(?:\\r?\\n|$)`,
+    'gm',
+  );
+}
+
+/** Drops each whole line the statement is on. */
+function withoutStatement(source: string, statement: RegExp): string {
+  return source.replace(statement, '');
 }
 
 /**
@@ -388,10 +418,11 @@ function installedFrontendShips(workspaceRoot: string, feature: PackagedFeature)
 }
 
 function importInstructions(feature: PackagedFeature): string {
-  const script = `import '${feature.script.packaged}' in src/frontend/app/app.ts`;
-  return feature.style
-    ? `${script} and @import "${feature.style.packaged}" in src/frontend/app/app.css`
+  const script = `import of '${feature.script.legacy}' from src/frontend/app/app.ts`;
+  const imports = feature.style
+    ? `${script} and the @import of '${feature.style.legacy}' from src/frontend/app/app.css`
     : script;
+  return `remove the ${imports}; the build adds the packaged feature while its flag is on`;
 }
 
 function appRoot(workspaceRoot: string): string {

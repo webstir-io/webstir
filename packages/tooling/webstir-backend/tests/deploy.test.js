@@ -7,6 +7,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { backendProvider, startPublishedWorkspaceServer } from '../dist/index.js';
+import { scaffoldAssets } from './support/scaffold.js';
 
 const tcpListenAvailable = await canListenOnTcp();
 
@@ -180,7 +181,7 @@ async function copyFile(src, dest) {
 }
 
 async function hydrateBackendScaffold(workspace) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
 
   for (const asset of assets) {
     const normalized = asset.targetPath.replace(/\\/g, '/');

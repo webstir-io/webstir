@@ -75,7 +75,7 @@ page's `<head>` that describe that page:
 - **Styles:** the new page's stylesheets load before the swap and the old page's
   are removed after it; `app.css` stays. `<style data-critical>` is replaced.
 - **Scripts:** the old page's entry script goes, and the new page's head scripts
-  load after the swap. The client-nav, `hmr.js` and `refresh.js` scripts stay.
+  load after the swap. The client-nav script and, in `watch`, Webstir's dev clients stay.
 - **Page metadata:** every `<meta name>` except `viewport` and `referrer`, every
   `<meta property>` (Open Graph), and `<link>`s whose rel is only `canonical`,
   `alternate`, `prev` or `next`. The old page's are removed and the new page's
@@ -220,7 +220,7 @@ The website-style event rebind pattern remains valid. A portal that uses only
 module top-level initialization needs this migration before adopting client-nav;
 its application data, menus, error display, and auth redirects remain its code.
 
-The full demo and full template include `/lifecycle`, an interactive counter with
+The full demo (`examples/demos/full`) includes `/lifecycle`, an interactive counter with
 scoped listener, observer, timer, request, and guarded asynchronous completion.
 
 ## Prepare data before replacing the page

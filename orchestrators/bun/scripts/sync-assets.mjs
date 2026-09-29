@@ -16,14 +16,7 @@ const guideSourcesRoot = path.join(resourcesRoot, 'guides');
 const demosRoot = path.join(repoRoot, 'examples', 'demos');
 const checkOnly = process.argv.includes('--check');
 
-const rootAssets = [
-  'AGENTS.md',
-  'Errors.404.html',
-  'Errors.500.html',
-  'Errors.default.html',
-  'types.global.d.ts',
-  path.join('types', 'global.d.ts'),
-];
+const rootAssets = ['AGENTS.md'];
 
 const modeTemplates = [
   {
@@ -42,10 +35,6 @@ const modeTemplates = [
         source: path.join(templateSourcesRoot, 'spa', 'src', 'frontend'),
         target: path.join('src', 'frontend'),
       },
-      {
-        source: path.join(templateSourcesRoot, 'spa', 'src', 'shared'),
-        target: path.join('src', 'shared'),
-      },
     ],
   },
   {
@@ -54,10 +43,6 @@ const modeTemplates = [
       {
         source: path.join(templateSourcesRoot, 'api', 'src', 'backend'),
         target: path.join('src', 'backend'),
-      },
-      {
-        source: path.join(templateSourcesRoot, 'api', 'src', 'shared'),
-        target: path.join('src', 'shared'),
       },
     ],
   },
@@ -71,10 +56,6 @@ const modeTemplates = [
       {
         source: path.join(templateSourcesRoot, 'full', 'src', 'backend'),
         target: path.join('src', 'backend'),
-      },
-      {
-        source: path.join(templateSourcesRoot, 'full', 'src', 'shared'),
-        target: path.join('src', 'shared'),
       },
     ],
   },

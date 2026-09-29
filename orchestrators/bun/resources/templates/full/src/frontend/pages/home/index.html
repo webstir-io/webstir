@@ -6,10 +6,13 @@
 <body>
     <main>
         <section class="hero">
-            <p class="eyebrow">Webstir full demo</p>
             <h1>Home</h1>
-            <p>Open the canonical progressive-enhancement route to compare full-page redirects with fragment updates driven by the same HTML form.</p>
-            <p><a href="/api/demo/progressive-enhancement">Open the form flow demo</a></p>
+            <p class="message" role="status" data-each="flash as note" data-text="note.message"></p>
+            <form class="greet" method="post" action="/greet">
+                <label for="name">Your name</label>
+                <input id="name" name="name" autocomplete="given-name" />
+                <button type="submit">Say hello</button>
+            </form>
         </section>
     </main>
 </body>

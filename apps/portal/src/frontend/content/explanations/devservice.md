@@ -16,7 +16,7 @@ The current Bun implementation is split across `frontend-watch.ts`, `api-watch.t
 3. Watch `src/**` and `types/**`; on changes:
    - Frontend change → incremental frontend rebuild → broadcast HMR or reload events.
    - Backend change → rebuild backend → restart the runtime if the rebuild succeeded.
-   - Root configuration change (`package.json`, `base.tsconfig.json`, `types.global.d.ts`) → full frontend reload.
+   - Root configuration change (`package.json`, or an older app's `base.tsconfig.json` or `types.global.d.ts`) → full frontend reload.
 
 ## Ports & Env
 - Web server prints the URL on startup; picks a free port or uses a configured one.

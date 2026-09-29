@@ -17,7 +17,7 @@ Use this when a backend endpoint needs explicit manifest metadata, schema refere
 3. Attach metadata so documentation and tooling stay in sync:
    - `webstir add-route accounts --workspace "$PWD" --summary "List accounts" --description "Returns the current tenant accounts" --tags accounts,api`
    - Schema references follow the `kind:name@source` format described in the CLI reference. Example:\
-     `webstir add-route accounts --workspace "$PWD" --params-schema zod:AccountParams@src/shared/contracts/accounts.ts --response-schema zod:AccountList@src/shared/contracts/accounts.ts`
+     `webstir add-route accounts --workspace "$PWD" --params-schema zod:AccountParams@src/backend/contracts/accounts.ts --response-schema zod:AccountList@src/backend/contracts/accounts.ts`
 4. Declare HTML-first route primitives when the route is a server-handled form or fragment update:
    - `webstir add-route sign-in --workspace "$PWD" --method POST --path /api/sign-in --interaction mutation --session required --session-write --form-urlencoded --csrf`
    - `webstir add-route account-panel --workspace "$PWD" --method POST --path /api/account/panel --interaction mutation --fragment-target account-panel --fragment-mode replace`

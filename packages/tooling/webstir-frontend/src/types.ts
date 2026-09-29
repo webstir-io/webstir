@@ -15,6 +15,8 @@ export interface FrontendConfig {
 }
 
 export interface EnableFlags {
+  /** Reports browser errors to the server; on by default in an app with a server. */
+  readonly clientErrors?: boolean;
   readonly clientNav?: boolean;
   readonly search?: boolean;
   readonly contentNav?: boolean;

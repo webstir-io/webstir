@@ -94,6 +94,7 @@
       "import": "./dist/testing/index.js",
       "default": "./dist/testing/index.js"
     },
+    "./tsconfig.json": "./config/tsconfig.app.json",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -109,7 +110,7 @@
   },
   "files": [
     "dist",
-    "templates",
+    "config",
     "src",
     "scripts",
     "tests",

@@ -295,7 +295,6 @@ ${script}
 
 function buildCssTemplate(pageName: string): string {
   return `/* ${pageName} Page Styles */
-@import "@app/app.css";
 
 /* Add your page-specific styles here */
 `;
@@ -311,9 +310,11 @@ function escapeHtmlText(value: string): string {
 }
 
 function buildScriptTemplate(): string {
-  return `// Page entry point
-import '../../app/app';
+  return `import type { PageContext } from '@webstir-io/webstir-frontend/runtime';
 
-// Add page-specific logic here
+// Webstir calls setup each time this page is shown; what scope holds is cleaned up when it leaves.
+export function setup({ root, scope }: PageContext): void {
+  // Add page behavior here.
+}
 `;
 }

@@ -31,34 +31,29 @@ Supported features:
 
 ### client-nav
 - New `spa` and `full` apps start with client-nav on.
-- Imports client-nav from the frontend package in `src/frontend/app/app.ts`; no files are copied:
-  - `import '@webstir-io/webstir-frontend/features/client-nav';`
 - Updates `package.json`:
   - `webstir.enable.clientNav=true`
-- An app that still has the client-nav copies older Webstir versions wrote (`src/frontend/app/scripts/features/{client-nav,document-navigation,form-enhancement}.ts`) has them removed and its import switched, unless a copy was edited; then the copies stay and the command says how to move over.
+- The flag is all it takes: the build adds client-nav from the frontend package to the app bundle every page loads. Nothing is imported or copied into the app.
+- An app that still has the client-nav copies older Webstir versions wrote (`src/frontend/app/scripts/features/{client-nav,document-navigation,form-enhancement}.ts`) has them removed along with its import of them, unless a copy was edited; then the copies stay and the command says how to move over.
 
 ### search
-- Imports the feature from the frontend package; no files are copied:
-  - `src/frontend/app/app.ts`: `import '@webstir-io/webstir-frontend/features/search';`
-  - `src/frontend/app/app.css`: adds the `features` layer (if missing) and `@import "@webstir-io/webstir-frontend/features/search.css";`
 - Updates `package.json`:
   - `webstir.enable.search=true`
+- The build adds the feature and its stylesheet from the frontend package: the script goes into the app bundle, and the styles into the app's stylesheet in the `features` layer, which `enable` adds to `src/frontend/app/app.css`'s layer order if it is missing.
 
 ### content-nav
-- Imports the feature from the frontend package; no files are copied:
-  - `src/frontend/app/app.ts`: `import '@webstir-io/webstir-frontend/features/content-nav';`
-  - `src/frontend/app/app.css`: adds the `features` layer (if missing) and `@import "@webstir-io/webstir-frontend/features/content-nav.css";`
 - Updates `package.json`:
   - `webstir.enable.contentNav=true`
+- The build adds the feature and its stylesheet from the frontend package, as for search.
 - Applies to SSG docs pages (content pipeline) only.
 
-An app that still has the copies an older version wrote under `src/frontend/app/scripts/features/` and `src/frontend/app/styles/features/` is switched over: its imports are rewritten and the copies removed, unless a copy was edited or another file still imports one; then everything stays and the command says how to move over.
+An app that still has the copies an older version wrote under `src/frontend/app/scripts/features/` and `src/frontend/app/styles/features/` is switched over: its imports of them are removed along with the copies, unless a copy was edited or another file still imports one; then everything stays and the command says how to move over. An import of the packaged feature left in `app.ts` or `app.css` is removed too, and an `app.ts` left empty is deleted.
 
 ### backend
 - In an app without a server, writes the same server `init` gives: the entry `src/backend/index.ts` and `src/backend/tsconfig.json`. Files the app already has stay as they are, such as the `module.ts` a static app keeps for build-time views.
 - Adds the backend package dependency; run `bun install` afterwards.
 - Removes a leftover `webstir.mode` or `webstir.enable.backend` from `package.json`.
-- Ensures `base.tsconfig.json` includes a `references` entry for `src/backend`.
+- In an older app with a `base.tsconfig.json`, adds its `references` entry for `src/backend`.
 - Writes `.env.example` when missing, and a `.gitignore` that keeps `data/`, `.webstir/` and `.env` out of git; an existing `.gitignore` gains the lines it lacks.
 
 ### sign-in
@@ -68,7 +63,7 @@ An app that still has the copies an older version wrote under `src/frontend/app/
 
 ### frontend
 - In an app without pages, writes an app shell and a home page under `src/frontend/**` (from the `spa` starter), with client-nav on.
-- Adds the frontend package dependency (run `bun install` afterwards) and a `base.tsconfig.json` reference for `src/frontend`.
+- Adds the frontend package dependency (run `bun install` afterwards), and in an older app with a `base.tsconfig.json`, its reference for `src/frontend`.
 - Once an app has pages, its pages own the site's addresses and its server answers under `/api/*`. Routes outside `/api/` are no longer reachable from the browser, so the command says to move them under `/api/`.
 
 ### github-pages
@@ -94,8 +89,8 @@ An app that still has the copies an older version wrote under `src/frontend/app/
 - Does not touch `publish.basePath`; the site is served from the bucket root.
 
 ## Notes
-- `enable` is additive and idempotent: it avoids duplicating imports on re-run.
-- Feature scripts are appended as `.js` imports in `app.ts` because the dev server serves the compiled output under `build/frontend/**`.
+- `enable` is additive and idempotent: running it again changes nothing.
+- Turning a feature off is removing its flag from `package.json`.
 - Prefer the server-first path for forms, links, redirects, and auth before enabling client-nav or other UI polish.
 
 For interactive page setup, cleanup, and migration from top-level scripts, see

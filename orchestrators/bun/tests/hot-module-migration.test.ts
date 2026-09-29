@@ -2,27 +2,26 @@ import { expect, test } from 'bun:test';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import {
-  HOT_MODULE_REGISTRATION,
-  classifyHmrClient,
-  migrateHotModuleRegistry,
-} from '../src/hot-module-migration.ts';
+import { isShippedDevClient } from '../src/dev-client-copies.ts';
+import { HOT_MODULE_REGISTRATION, migrateHotModuleRegistry } from '../src/hot-module-migration.ts';
 import { packageRoot } from '../src/paths.ts';
 
 const fixturesRoot = path.join(packageRoot, 'test-support', 'fixtures');
 const legacyAppPath = path.join(fixturesRoot, 'legacy-hot-module-app.ts.txt');
 const legacySsgClientPath = path.join(fixturesRoot, 'legacy-hmr-client-ssg.js.txt');
 const legacySpaClientPath = path.join(fixturesRoot, 'legacy-hmr-client-spa.js.txt');
-const currentClientPath = path.join(
-  packageRoot,
-  'assets',
-  'templates',
-  'ssg',
-  'src',
-  'frontend',
-  'app',
-  'hmr.js',
-);
+const packagedClient = (name: string) =>
+  path.join(
+    packageRoot,
+    '..',
+    '..',
+    'packages',
+    'tooling',
+    'webstir-frontend',
+    'src',
+    'dev-clients',
+    name,
+  );
 
 test('the scaffold registry block is replaced by the thin registration', async () => {
   const legacy = await readFile(legacyAppPath, 'utf8');
@@ -140,16 +139,17 @@ test('the rewritten entry is valid TypeScript', async () => {
   expect(result.source).not.toContain('export export');
 });
 
-test('the client is recognized as current, legacy, or custom', async () => {
-  const current = await readFile(currentClientPath, 'utf8');
-  expect(classifyHmrClient(current, current)).toBe('current');
-  expect(classifyHmrClient(await readFile(legacySsgClientPath, 'utf8'), current)).toBe('legacy');
-  expect(classifyHmrClient(await readFile(legacySpaClientPath, 'utf8'), current)).toBe('legacy');
-  expect(classifyHmrClient(`${current}\nconsole.log('mine');\n`, current)).toBe('custom');
-  expect(
-    classifyHmrClient(
-      (await readFile(legacySsgClientPath, 'utf8')).replaceAll('\n', '\r\n'),
-      current,
-    ),
-  ).toBe('legacy');
+test('every dev client a scaffold shipped is recognized, and an edited one is not', async () => {
+  const cases: Array<[name: string, source: string, shipped: boolean]> = [];
+  for (const name of ['hmr.js', 'refresh.js']) {
+    const current = await readFile(packagedClient(name), 'utf8');
+    cases.push([name, current, true], [name, current.replaceAll('\n', '\r\n'), true]);
+    cases.push([name, `${current}\nconsole.log('mine');\n`, false]);
+  }
+  for (const legacy of [legacySsgClientPath, legacySpaClientPath]) {
+    cases.push(['hmr.js', await readFile(legacy, 'utf8'), true]);
+  }
+  for (const [name, source, shipped] of cases) {
+    expect({ name, shipped: isShippedDevClient(name, source) }).toEqual({ name, shipped });
+  }
 });

@@ -97,7 +97,8 @@ test('CLI enable rejects hard-linked package metadata before feature assets', as
 });
 
 test('CLI enable backend preflights base tsconfig before assets and package metadata', async () => {
-  const copiedWorkspace = await copyDemoWorkspace('spa', 'webstir-enable-fixed-tsconfig-');
+  // A static app from before the package tsconfigs, which still has a base.tsconfig.json.
+  const copiedWorkspace = await copyDemoWorkspace('ssg/base', 'webstir-enable-fixed-tsconfig-');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const tsconfigPath = path.join(copiedWorkspace.workspaceRoot, 'base.tsconfig.json');
   const externalTsconfigPath = path.join(copiedWorkspace.cleanupRoot, 'outside-tsconfig.json');
@@ -206,7 +207,8 @@ test('CLI repair preflights late fixed config targets before dry-run or asset re
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-fixed-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  // The demos keep no AGENTS.md, so repair --restore-scaffold would write one.
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'AGENTS.md');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,
@@ -219,7 +221,7 @@ test('CLI repair preflights late fixed config targets before dry-run or asset re
   const externalConfig = '{"outside":true}\n';
 
   try {
-    await rm(missingRootAsset);
+    await rm(missingRootAsset, { force: true });
     await writeFile(externalConfigPath, externalConfig, 'utf8');
     await rm(configPath, { force: true });
     await symlink(externalConfigPath, configPath, 'file');
@@ -246,7 +248,8 @@ test('CLI repair rejects invalid frontend config before dry-run or asset restora
   const copiedWorkspace = await copyDemoWorkspace('ssg/site', 'webstir-repair-invalid-config-', {
     workspaceName: 'site',
   });
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  // The demos keep no AGENTS.md, so repair --restore-scaffold would write one.
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'AGENTS.md');
   const packageJsonPath = path.join(copiedWorkspace.workspaceRoot, 'package.json');
   const configPath = path.join(
     copiedWorkspace.workspaceRoot,
@@ -257,7 +260,7 @@ test('CLI repair rejects invalid frontend config before dry-run or asset restora
   const packageJson = await readFile(packageJsonPath, 'utf8');
 
   try {
-    await rm(missingRootAsset);
+    await rm(missingRootAsset, { force: true });
 
     for (const invalidConfig of ['{ invalid-json\n', '[]\n']) {
       await writeFile(configPath, invalidConfig, 'utf8');
@@ -283,13 +286,14 @@ test('CLI repair rejects invalid frontend config before dry-run or asset restora
 
 test('CLI repair preflights mode-owned tsconfig before dry-run or asset restoration', async () => {
   const copiedWorkspace = await copyDemoWorkspace('api', 'webstir-repair-fixed-tsconfig-');
-  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html');
+  // The demos keep no AGENTS.md, so repair --restore-scaffold would write one.
+  const missingRootAsset = path.join(copiedWorkspace.workspaceRoot, 'AGENTS.md');
   const tsconfigPath = path.join(copiedWorkspace.workspaceRoot, 'base.tsconfig.json');
   const externalTsconfigPath = path.join(copiedWorkspace.cleanupRoot, 'outside-tsconfig.json');
   const tsconfig = await readFile(tsconfigPath, 'utf8');
 
   try {
-    await rm(missingRootAsset);
+    await rm(missingRootAsset, { force: true });
     await writeFile(externalTsconfigPath, tsconfig, 'utf8');
     await rm(tsconfigPath);
     await link(externalTsconfigPath, tsconfigPath);

@@ -11,7 +11,5 @@
 @import "./styles/components/header.css";
 @import "./styles/components/drawer.css";
 @import "./styles/components/buttons.css";
-@import "@webstir-io/webstir-frontend/features/content-nav.css";
-@import "@webstir-io/webstir-frontend/features/search.css";
 @import "./styles/shell.css";
 @import "./styles/utilities.css";

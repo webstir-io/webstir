@@ -11,19 +11,28 @@ Embedded scaffolding used by the CLI to create projects and generate files. Keep
 ## Layout
 Created by `webstir init` according to the starter:
 
-- `full`: frontend, backend, shared, and types, with client-nav on
-- `spa`: frontend, shared, and types, with client-nav on
-- `ssg`: frontend and types
-- `api`: backend, shared, and types
+- `full`: a home page with one form, and a server with one view and the route the form posts to, with client-nav on
+- `spa`: a home page, with client-nav on
+- `ssg`: a docs site: home, about and docs pages, Markdown content and its styles
+- `api`: a server entry
 
 The starter only chooses the starting files. After init, the app's layers come from those files: pages when `src/frontend/` exists, a server when `src/backend/index.ts` exists.
 
 Typical frontend scaffold:
 
-- `src/frontend/app/app.html`
-- `src/frontend/app/**`
+- `src/frontend/app/app.html`: the shell every page merges into
+- `src/frontend/app/app.css`: the app's styles
+- `src/frontend/app/app.ts` (optional): the app's own code for every page, such as a theme or a menu
 - `src/frontend/pages/<page>/index.html|css` plus `index.ts` for standard pages
 - `src/frontend/{content,images,fonts,media}/**`
+
+What the build adds to every page, so the app holds none of it:
+
+- The app bundle (`/app/app.js`): the enabled features (`webstir.enable`), the error reporter in an app with a server, and `app.ts` when there is one. A page loads it whenever there is anything in it.
+- The app's styles (`/app/app.css`), linked ahead of the page's own stylesheet: `app.css` plus the stylesheets of enabled features. Pages don't import `app.css`.
+- In `webstir watch`, Webstir's live-update and reload clients (`/hmr.js`, `/refresh.js`), which the package serves and publish leaves out.
+
+A shell that already names one of these keeps its own tag.
 
 Typical backend scaffold:
 
@@ -44,9 +53,9 @@ Typical backend scaffold:
 - Start with `full` when the app needs forms, redirects, auth, or server-rendered documents; start with `spa` or `ssg` for pages without a server, which publish as a static site.
 
 ## TypeScript
-- Uses an embedded `base.tsconfig.json` referenced by template tsconfigs.
+- `src/frontend/tsconfig.json` and `src/backend/tsconfig.json` are one line each, extending `@webstir-io/webstir-frontend/tsconfig.json` and `@webstir-io/webstir-backend/tsconfig.json`, which hold the compiler settings. Stylesheet imports (CSS modules) are typed by the frontend package's declarations. Add your own options beside the `extends`.
+- A backend with no `tsconfig.json` is type-checked with the package's settings.
 - ESM-only; compiled via the active provider packages.
-- Shared code in `src/shared` is compiled for both frontend and backend.
 - Dev output keeps source maps for local debugging; publish strips them.
 - Dynamic imports load at runtime. Keep `/app/...` imports absolute for assets under `src/frontend/app/`.
 
@@ -65,14 +74,14 @@ Typical backend scaffold:
 - A missing source fails the build. A published (minified) bundle over 16 KB gets a `frontend.inlineScript.large` warning, because it travels with every page that includes it; the readable build output is not measured.
 
 ## Client Error Reporting
-- The SPA and full templates install a lightweight client error reporter: `src/frontend/app/app.ts` listens for `window` `error` and `unhandledrejection`, loads `src/frontend/app/error.ts` on the first one, and reports to `POST /client-errors` using `sendBeacon` (fallback to `fetch`).
-- The SSG template does not include it: a static site has no server to report to.
+- Every app with a server reports its pages' browser errors: the app bundle every page loads includes Webstir's reporter, which listens for `window` `error` and `unhandledrejection` and reports to `POST /client-errors` using `sendBeacon` (fallback to `fetch`). Nothing of it lives in the app.
+- An app without a server has nowhere to report to, so it is off there.
 - Behavior:
   - Throttled: max 1 event/second; capped at 20 per page session.
   - Deduped: repeats suppressed within 60s using a fingerprint of type|message|file:line:col|stack-hash.
   - Correlation: includes a client correlation id; the server also accepts `X-Correlation-ID`.
 - Where reports go: `webstir watch` prints each report in the terminal next to the build output; the Bun backend runtime logs it at error level, so apps with a server have a sink in production.
-- Opt-out: delete `src/frontend/app/error.ts` and remove the `loadErrorHandler` section from `src/frontend/app/app.ts`.
+- Turn it off with `"webstir": { "enable": { "clientErrors": false } }` in `package.json`, or on in an app without a server that reports elsewhere with `true`.
 
 ## Generators
 
@@ -122,7 +131,7 @@ Typical backend scaffold:
 - Pipelines — [pipelines](../explanations/pipelines.md)
 - Workspace and paths — [workspace](../explanations/workspace.md)
 
-The full template includes `/lifecycle`, demonstrating the optional page `setup`
-export and cleanup scopes. Client-nav itself ships in `@webstir-io/webstir-frontend`
+The full demo (`examples/demos/full`) adds `/lifecycle`, demonstrating the optional page `setup`
+export and cleanup scopes, and the progressive-enhancement form flow. Client-nav itself ships in `@webstir-io/webstir-frontend`
 (`packages/tooling/webstir-frontend/src/features/`); apps import it, so there are no
 copies to refresh.

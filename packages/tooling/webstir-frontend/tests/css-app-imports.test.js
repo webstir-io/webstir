@@ -321,7 +321,9 @@ for (const { mode, installed } of packageImportCases) {
       [
         '@layer reset, base, features;',
         '@import "./styles/base.css";',
-        '@import "@webstir-io/webstir-frontend/features/search.css" layer(features);',
+        // Webstir's own stylesheets resolve from the package doing the build; another package's
+        // must be installed.
+        `@import "${installed ? '@webstir-io/webstir-frontend/features/search.css' : '@example/missing/theme.css'}" layer(features);`,
         '@import "./styles/base.css" layer(base);',
       ].join('\n'),
       'utf8',
@@ -345,7 +347,7 @@ for (const { mode, installed } of packageImportCases) {
     if (!installed) {
       await assert.rejects(
         build,
-        /Unable to resolve CSS @import "@webstir-io\/webstir-frontend\/features\/search\.css" at .*app\.css:3\./,
+        /Unable to resolve CSS @import "@example\/missing\/theme\.css" at .*app\.css:3\./,
       );
       return;
     }

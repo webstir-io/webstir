@@ -51,18 +51,7 @@ export function getSignInAssets(): readonly ScaffoldAsset[] {
 }
 
 export function getRootScaffoldAssets(): readonly ScaffoldAsset[] {
-  return [
-    createAsset(sharedTemplateRoot, 'AGENTS.md', 'AGENTS.md'),
-    createAsset(sharedTemplateRoot, 'Errors.404.html', 'Errors.404.html'),
-    createAsset(sharedTemplateRoot, 'Errors.500.html', 'Errors.500.html'),
-    createAsset(sharedTemplateRoot, 'Errors.default.html', 'Errors.default.html'),
-    createAsset(sharedTemplateRoot, 'types.global.d.ts', 'types.global.d.ts'),
-    createAsset(
-      sharedTemplateRoot,
-      path.join('types', 'global.d.ts'),
-      path.join('types', 'global.d.ts'),
-    ),
-  ];
+  return [createAsset(sharedTemplateRoot, 'AGENTS.md', 'AGENTS.md')];
 }
 
 /**
@@ -92,20 +81,12 @@ export async function getStarterScaffoldAssets(
           sourceRoot: path.join(spaTemplateRoot, 'src', 'frontend'),
           targetRoot: path.join('src', 'frontend'),
         },
-        {
-          sourceRoot: path.join(spaTemplateRoot, 'src', 'shared'),
-          targetRoot: path.join('src', 'shared'),
-        },
       ]);
     case 'api':
       return collectStarterAssets([
         {
           sourceRoot: path.join(apiTemplateRoot, 'src', 'backend'),
           targetRoot: path.join('src', 'backend'),
-        },
-        {
-          sourceRoot: path.join(apiTemplateRoot, 'src', 'shared'),
-          targetRoot: path.join('src', 'shared'),
         },
       ]);
     case 'full':
@@ -117,10 +98,6 @@ export async function getStarterScaffoldAssets(
         {
           sourceRoot: path.join(fullTemplateRoot, 'src', 'backend'),
           targetRoot: path.join('src', 'backend'),
-        },
-        {
-          sourceRoot: path.join(fullTemplateRoot, 'src', 'shared'),
-          targetRoot: path.join('src', 'shared'),
         },
       ]);
   }

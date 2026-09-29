@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { backendProvider } from '../dist/index.js';
+import { scaffoldAssets } from './support/scaffold.js';
 
 async function createTempWorkspace(prefix = 'webstir-backend-bundler-parity-') {
   return await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -27,7 +28,7 @@ function getPackageRoot() {
 }
 
 async function hydrateBackendScaffold(workspace) {
-  const assets = await backendProvider.getScaffoldAssets();
+  const assets = scaffoldAssets();
 
   for (const asset of assets) {
     const normalized = asset.targetPath.replace(/\\/g, '/');

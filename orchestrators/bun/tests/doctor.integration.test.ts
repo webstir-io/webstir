@@ -54,7 +54,9 @@ test('CLI doctor reports scaffold drift and suggests repair', async () => {
     await useLegacyHmrClient(copiedWorkspace.workspaceRoot);
     // Missing scaffold files (this one and the demo's absent AGENTS.md) are not drift; doctor
     // points at --restore-scaffold for them.
-    await rm(path.join(copiedWorkspace.workspaceRoot, 'Errors.404.html'), { force: true });
+    await rm(path.join(copiedWorkspace.workspaceRoot, 'src/frontend/pages/home/index.css'), {
+      force: true,
+    });
 
     const result = await runCli(['doctor', '--workspace', copiedWorkspace.workspaceRoot]);
 
@@ -65,7 +67,7 @@ test('CLI doctor reports scaffold drift and suggests repair', async () => {
     expect(result.stdout).toContain('scaffold: fail');
     expect(result.stdout).toContain('scaffold_drift');
     expect(result.stdout).toContain('change: src/frontend/app/hmr.js');
-    expect(result.stdout).not.toContain('change: Errors.404.html');
+    expect(result.stdout).not.toContain('change: src/frontend/pages/home/index.css');
     expect(result.stdout).toContain(
       `repair: webstir repair --workspace ${copiedWorkspace.workspaceRoot}`,
     );

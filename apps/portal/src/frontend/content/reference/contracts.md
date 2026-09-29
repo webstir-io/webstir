@@ -8,8 +8,7 @@ Current user-visible behaviors that Webstir documents and tests while the framew
 - App assets: `src/frontend/app/**`
 - Static assets: `src/frontend/{images|fonts|media}/**`
 - Backend: `src/backend/**` (entry: `src/backend/index.ts`)
-- Shared: `src/shared/**`
-- Types: `types/**`
+- TypeScript settings: `src/frontend/tsconfig.json` and `src/backend/tsconfig.json`, each extending its package's
 
 ## Dev Outputs
 - `build/frontend/**` (includes `pages`, `images`, `fonts`, `media`)
@@ -50,7 +49,7 @@ Current user-visible behaviors that Webstir documents and tests while the framew
 ## Error Handling
 - Missing required inputs (base HTML, server entry) fails fast with clear messages.
 - Publish removes comments and source maps from outputs.
-- The SPA and full templates include a client error reporter (loaded from `src/frontend/app/error.ts` on the first error) that throttles to 1/sec (max 20/session) and deduplicates repeats for 60s. The SSG template omits it.
+- Apps with a server report browser errors to `POST /client-errors` from the app bundle every page loads, throttled to 1/sec (max 20/session) with repeats deduplicated for 60s; `webstir.enable.clientErrors` turns it off or on.
 
 ## CLI Guarantees
 - Commands: `init`, `refresh`, `inspect`, `frontend-inspect`, `doctor`, `repair`, `enable`, `build`, `watch`, `test`, `publish`, `smoke`, `backend-inspect`, `add-page`, `add-test`, `add-route`, `add-job`, `mcp`.
