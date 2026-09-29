@@ -22,6 +22,7 @@ const KEYS = [
   'S3_SECRET_ACCESS_KEY',
   'S3_REGION',
   'S3_PROFILE',
+  'S3_TIMEOUT_MS',
   'AWS_PROFILE',
   'AWS_SHARED_CREDENTIALS_FILE',
   'AWS_CONFIG_FILE',
@@ -135,6 +136,39 @@ test('s3:// keeps files in a bucket, under its prefix, through the AWS SDK', asy
     server.stop(true);
   }
 });
+
+// A store that accepts a request and never answers must not hold the app (or a snapshot) up.
+test('an S3 request that never answers fails after S3_TIMEOUT_MS', async () => {
+  let requests = 0;
+  const server = Bun.serve({
+    port: 0,
+    hostname: '127.0.0.1',
+    fetch() {
+      requests += 1;
+      return new Promise(() => {});
+    },
+  });
+  try {
+    await withApp(
+      {
+        STORAGE_URL: 's3://uploads',
+        S3_ENDPOINT: `http://127.0.0.1:${server.port}`,
+        S3_ACCESS_KEY_ID: 'test',
+        S3_SECRET_ACCESS_KEY: 'test',
+        S3_REGION: 'us-east-1',
+        S3_TIMEOUT_MS: '200',
+      },
+      async () => {
+        const started = Date.now();
+        await assert.rejects(files.get('a.txt'));
+        assert.ok(Date.now() - started < 10_000, `gave up after ${Date.now() - started}ms`);
+        assert.ok(requests >= 1);
+      },
+    );
+  } finally {
+    server.stop(true);
+  }
+}, 20_000);
 
 // An app whose other AWS calls, such as email, use AWS_PROFILE gives storage its own.
 test('S3_PROFILE picks the profile storage signs with, over AWS_PROFILE', async () => {

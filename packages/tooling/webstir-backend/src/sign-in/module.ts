@@ -94,13 +94,13 @@ const signInData = z.object({
 
 const confirmData = z.object({ token: z.string(), returnTo: z.string() });
 
-const formRoute = (name: string, path: string, formId: string) => ({
+const formRoute = (name: string, path: string, formId: string, csrf = true) => ({
   name,
   method: 'POST' as const,
   path,
   interaction: 'navigation' as const,
   session: { mode: 'optional' as const, write: true },
-  form: { id: formId, contentType: 'application/x-www-form-urlencoded' as const, csrf: true },
+  form: { id: formId, contentType: 'application/x-www-form-urlencoded' as const, csrf },
 });
 
 export interface SignInModule {
@@ -126,12 +126,17 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         // in: an app that turned them away since would send them straight back here.
         if (ctx.user && (await mayStillSignIn(options, ctx.user.email))) redirect(returnTo);
         const errors = form.errors;
+        // Signed in, but the app's `loadUser` gives them no access: say so, rather than asking again.
+        const refused =
+          !ctx.user && !pending && readSessionUserRef(ctx.session)
+            ? 'This account has no access here. Sign in with another email.'
+            : undefined;
         return {
           asking: !pending || Boolean(pending.changing),
           checking: Boolean(pending && !pending.changing),
           email: pending?.email ?? '',
           returnTo,
-          error: errors.code ?? errors.email ?? errors.form ?? '',
+          error: errors.code ?? errors.email ?? errors.form ?? refused ?? '',
           development: !isProduction() && !hasEmailDelivery(),
         };
       },
@@ -237,9 +242,10 @@ export function signIn(options: SignInOptions = {}): SignInModule {
       },
     },
     {
-      definition: formRoute('sign-out', '/sign-out', 'sign-out'),
+      // A sign-out form can sit on any page, rendered or not, with no token, so it is checked by
+      // its origin instead.
+      definition: formRoute('sign-out', '/sign-out', 'sign-out', false),
       async handler(ctx: FormContext): Promise<HandlerResult> {
-        // A sign-out form can sit on any page, rendered or not, so it is checked by its origin.
         if (!isSameOrigin(ctx.request)) return { status: 403 };
         const values = new URLSearchParams(
           typeof ctx.body === 'object' && ctx.body ? (ctx.body as Record<string, string>) : {},

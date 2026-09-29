@@ -22,6 +22,7 @@ test('every view that names a page, and every GET route, goes to the backend unl
     const frontendRoot = path.join(workspace, 'build', 'frontend');
     await fs.mkdir(path.join(frontendRoot, 'pages', 'clients'), { recursive: true });
     await fs.writeFile(path.join(frontendRoot, 'pages', 'clients', 'index.css'), 'main {}');
+
     const matches = createRenderedViewMatcher({ workspaceRoot: workspace, frontendRoot });
 
     // A page with no bindings compiles to no program, but its loader still has to run.
@@ -40,6 +41,29 @@ test('every view that names a page, and every GET route, goes to the backend unl
     assert.equal(await matches('/proposals/42/pdf'), true, 'a GET route, such as a download');
     assert.equal(await matches('/proposals/42'), false);
     assert.equal(await matches('/elsewhere'), false);
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("a GET route yields to the site's own files and pages at its address", async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-view-routes-'));
+  try {
+    await fs.mkdir(path.join(workspace, 'build', 'backend'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'build', 'backend', 'views.json'),
+      JSON.stringify([{ name: 'short', path: '/:code', method: 'GET' }]),
+    );
+    const frontendRoot = path.join(workspace, 'build', 'frontend');
+    await fs.mkdir(path.join(frontendRoot, 'pages', 'about'), { recursive: true });
+    await fs.writeFile(path.join(frontendRoot, 'pages', 'about', 'index.html'), '<main></main>');
+    await fs.writeFile(path.join(frontendRoot, 'favicon.ico'), '');
+    const matches = createRenderedViewMatcher({ workspaceRoot: workspace, frontendRoot });
+
+    assert.equal(await matches('/abc123'), true);
+    for (const taken of ['/favicon.ico', '/about', '/about/']) {
+      assert.equal(await matches(taken), false, taken);
+    }
   } finally {
     await fs.rm(workspace, { recursive: true, force: true });
   }

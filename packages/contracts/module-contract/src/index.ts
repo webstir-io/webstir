@@ -138,17 +138,17 @@ export interface FormStateReader {
  * each field, and the first error per field (and `form`, for errors about the whole form).
  */
 export function formStateSchema<const TFields extends readonly string[]>(fields: TFields) {
-  const strings = (names: readonly string[]) =>
+  const strings = <const TNames extends readonly string[]>(names: TNames) =>
     z.object(
       Object.fromEntries(names.map((name) => [name, z.string().optional()])) as Record<
-        TFields[number],
+        TNames[number],
         z.ZodOptional<z.ZodString>
       >,
     );
   return z.object({
     submitted: z.boolean(),
     values: strings(fields),
-    errors: strings([...fields, 'form']),
+    errors: strings([...fields, 'form'] as const),
   });
 }
 

@@ -64,12 +64,21 @@ test('writes are followed by one copy of the database, and a copy waiting is tak
     await new Promise((resolve) => setTimeout(resolve, 1_300));
     assert.equal((await copies(root)).length, 1);
 
-    // A write just before the database closes is still copied.
-    await db.execute("INSERT INTO notes (body) VALUES ('c')");
-    await closeAppDatabase();
-    const after = await copies(root);
-    assert.equal(after.length, 2);
-    assert.deepEqual(notesIn(path.join(root, 'snapshots', after[1])), ['a', 'b', 'c']);
+    // A write just before the database closes is still copied, however it was made.
+    const writes = [
+      ['execute', () => db.execute("INSERT INTO notes (body) VALUES ('c')")],
+      ['get', () => db.get("INSERT INTO notes (body) VALUES ('d') RETURNING body")],
+      ['query', () => db.query("UPDATE notes SET body = 'e' WHERE body = 'd' RETURNING body")],
+    ];
+    let expected = ['a', 'b'];
+    for (const [how, write] of writes) {
+      await write();
+      await closeAppDatabase();
+      const after = await copies(root);
+      expected = (await db.query('SELECT body FROM notes ORDER BY body')).map((row) => row.body);
+      assert.deepEqual(notesIn(path.join(root, 'snapshots', after.at(-1))), expected, how);
+    }
+    assert.deepEqual(expected, ['a', 'b', 'c', 'e']);
   });
 });
 

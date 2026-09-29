@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { Database } from 'bun:sqlite';
 
 import { startPublishedWorkspaceServer } from '@webstir-io/webstir-backend';
 
@@ -204,6 +205,7 @@ test('an app says who its users are and what they may do; forms, repeats and the
       EMAIL_URL: smtp.url,
       EMAIL_FROM: 'App <app@example.com>',
       WEBSTIR_JOBS: 'off',
+      SNAPSHOT_URL: 'file:./data/snapshots',
     },
     io: { stdout: { write: () => true }, stderr: { write: () => true } },
   });
@@ -283,10 +285,46 @@ test('an app says who its users are and what they may do; forms, repeats and the
     expect(gracePost.status).toBe(404);
     expect((await grace.request('/notes/')).status).toBe(200);
 
+    // A failed form never shows a page its sender could not open, whatever Referer names it.
+    for (const [who, browser, status] of [
+      ['signed out', visitor, 303],
+      ['without the role', grace, 404],
+    ] as const) {
+      const failed = await browser.request('/sign-in/', {
+        method: 'POST',
+        from: '/editors/',
+        form: { intent: 'request', email: 'someone@example.com', _csrf: 'wrong' },
+      });
+      expect([who, failed.status]).toEqual([who, status]);
+      expect(await failed.text()).not.toContain('<ul>');
+      if (status === 303)
+        expect(failed.headers.get('location')).toStartWith('/sign-in/?returnTo=%2Feditors');
+    }
+
     // Someone the app gives no access is treated as signed out.
     const nobody = createBrowser(origin);
     await signIn(nobody, smtp, 'nobody@example.com');
     expect((await nobody.request('/notes/')).status).toBe(303);
+    expect(await (await nobody.request('/sign-in/')).text()).toContain(
+      'This account has no access here.',
+    );
+
+    // Stopping the server, as a deploy does, takes the snapshot the last write is waiting for.
+    const last = await (await ada.request('/editors/')).text();
+    await ada.request('/editors/', {
+      method: 'POST',
+      from: '/editors/',
+      form: { title: 'Last', _csrf: csrfTokenFrom(last) },
+    });
+    await server.stop();
+    const folder = path.join(workspace, 'data', 'snapshots');
+    const newest = (await readdir(folder))
+      .filter((name) => name.endsWith('.sqlite'))
+      .sort()
+      .at(-1);
+    const copy = new Database(path.join(folder, String(newest)), { readonly: true });
+    expect(copy.query("SELECT body FROM notes WHERE body = 'Last'").all()).toHaveLength(1);
+    copy.close();
   } finally {
     await server.stop();
     smtp.stop();

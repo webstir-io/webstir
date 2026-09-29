@@ -11,7 +11,7 @@ import { executeRequestHookPhase, type RequestHookReferenceLike } from './reques
 import { isProduction, setAppRoot } from '../app/app-root.js';
 import { appUrl, loadAppEnv, loadEnvFiles } from '../app/env.js';
 import { appServices } from '../app/services.js';
-import { appDatabase, appDatabaseExists } from '../db/app-database.js';
+import { appDatabase, appDatabaseExists, closeAppDatabase } from '../db/app-database.js';
 import type { Database } from '../db/database.js';
 import { readAppMigrations } from '../db/migrations.js';
 import { emailSetupProblem, type Email } from '../email/index.js';
@@ -267,7 +267,7 @@ export async function startBunBackend<
     error: (message) => logger.error(message),
   });
 
-  bun.serve({
+  const server = bun.serve({
     port: env.PORT,
     hostname: '0.0.0.0',
     fetch: async (request) => {
@@ -296,6 +296,18 @@ export async function startBunBackend<
 
   if (!loadError) {
     readiness.ready();
+  }
+
+  // A stop (a deploy, a restart) takes the database's pending snapshot before the process ends.
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+    process.once(signal, () => {
+      server.stop();
+      void closeAppDatabase()
+        .catch((error: unknown) =>
+          logger.error({ err: error }, '[webstir-backend] shutdown failed'),
+        )
+        .finally(() => process.exit(0));
+    });
   }
 
   logger.info({ port: env.PORT, mode: env.NODE_ENV, runtime: 'bun' }, 'API server running');
@@ -773,6 +785,7 @@ async function handleRequest<
             cookies: parseCookieHeader(request.headers.get('cookie') ?? undefined),
             headers: toRequestHeadersRecord(request.headers),
             auth: ctx.auth,
+            user: ctx.user,
             session: ctx.session,
             env: envAccessor,
             logger: structuredLogger,

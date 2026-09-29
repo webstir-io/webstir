@@ -18,8 +18,8 @@ What the Sqware portal built for itself is now Webstir's:
 - **Sign-in and roles:** sign-in's `loadUser` makes `ctx.user` the app's own user (or no access), and `auth: { role }` limits a route or view to users with that role.
 - **Shell data:** a module's `shell` loader gives every page a view renders data as `shell`.
 - **Behaviors:** `data-submit-on-change`, `data-dismissable` and `data-menu-trigger` get their behavior from the app bundle when a page uses them.
-- **Files:** stored through the AWS SDK on S3, with `ifAbsent`, `metadata` and `maxBytes`, SDK credentials (profiles and roles included, and `S3_PROFILE` for storage's own), checksums, timeouts and retries.
+- **Files:** stored through the AWS SDK on S3, with `ifAbsent`, `metadata` and `maxBytes`, SDK credentials (profiles and roles included, and `S3_PROFILE` for storage's own), checksums, and requests that time out (`S3_TIMEOUT_MS`) and retry.
 - **GET routes outside `/api`**, such as downloads, reach the server in an app with pages.
-- **Snapshots:** `SNAPSHOT_URL` keeps copies of a SQLite database after writes; `webstir snapshot` takes one now.
+- **Snapshots:** `SNAPSHOT_URL` keeps copies of a SQLite database after writes, and the server takes the pending one when it stops; `webstir snapshot` takes one now.
 
 Breaking: a route that declares `form: { csrf: true }` now rejects a post without a token its session issued, before the handler runs.

@@ -57,14 +57,30 @@ export async function appBundleImports(context: BuilderContext): Promise<string[
 export async function writeAppBundleEntry(context: BuilderContext): Promise<string | null> {
   const imports = await appBundleImports(context);
   if (imports.length === 0) return null;
-  // Named app.js so the bundle is app.js; inside the workspace so the package resolves from it.
-  const entry = path.join(context.config.paths.build.frontend, '.app-bundle', 'app.js');
+  const entry = appBundleEntryPath(context);
   await ensureDir(path.dirname(entry));
-  await writeFile(
-    entry,
-    imports.map((specifier) => `import ${JSON.stringify(specifier)};\n`).join(''),
-  );
+  await writeFile(entry, entrySource(imports));
   return entry;
+}
+
+/**
+ * Whether the bundle is now made of something else than its entry says, as when an edited page is
+ * the first to use the behaviors, so an edit that is not a script's still rebuilds it.
+ */
+export async function appBundleEntryChanged(context: BuilderContext): Promise<boolean> {
+  const imports = await appBundleImports(context);
+  const entry = appBundleEntryPath(context);
+  const previous = (await pathExists(entry)) ? await readFile(entry) : null;
+  return imports.length === 0 ? previous !== null : previous !== entrySource(imports);
+}
+
+// Named app.js so the bundle is app.js; inside the workspace so the package resolves from it.
+function appBundleEntryPath(context: BuilderContext): string {
+  return path.join(context.config.paths.build.frontend, '.app-bundle', 'app.js');
+}
+
+function entrySource(imports: readonly string[]): string {
+  return imports.map((specifier) => `import ${JSON.stringify(specifier)};\n`).join('');
 }
 
 export async function resolveAppEntry(appRoot: string): Promise<string | null> {

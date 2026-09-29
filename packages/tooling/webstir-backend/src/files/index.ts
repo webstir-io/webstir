@@ -342,7 +342,8 @@ type Store =
 
 const cachedStores = new Map<string, Store>();
 
-// Each request gives up after this long, and the SDK retries the ones that may be retried.
+// Each request gives up after S3_TIMEOUT_MS (ten seconds by default), and the SDK retries the
+// ones that may be retried.
 const S3_REQUEST_TIMEOUT_MS = 10_000;
 const S3_ATTEMPTS = 3;
 
@@ -370,7 +371,12 @@ function resolveStore(url = process.env.STORAGE_URL?.trim() || DEFAULT_STORAGE_U
           }
         : {}),
       maxAttempts: S3_ATTEMPTS,
-      requestHandler: { requestTimeout: S3_REQUEST_TIMEOUT_MS, connectionTimeout: 5_000 },
+      requestHandler: {
+        requestTimeout: settings.timeoutMs ?? S3_REQUEST_TIMEOUT_MS,
+        // Without this, the SDK only logs a request that runs over and keeps waiting on it.
+        throwOnRequestTimeout: true,
+        connectionTimeout: Math.min(settings.timeoutMs ?? S3_REQUEST_TIMEOUT_MS, 5_000),
+      },
     });
     store = {
       kind: 's3',
@@ -468,6 +474,7 @@ function s3Settings(): {
   region?: string;
   endpoint?: string;
   profile?: string;
+  timeoutMs?: number;
 } {
   const pick = (...names: string[]) =>
     names.map((name) => process.env[name]?.trim()).find((value) => value);
@@ -478,8 +485,18 @@ function s3Settings(): {
     region: pick('S3_REGION', 'AWS_REGION'),
     endpoint: pick('S3_ENDPOINT', 'AWS_ENDPOINT'),
     profile: pick('S3_PROFILE', 'AWS_PROFILE'),
+    timeoutMs: readTimeout(pick('S3_TIMEOUT_MS')),
   };
   return Object.fromEntries(Object.entries(settings).filter((entry) => Boolean(entry[1])));
+}
+
+function readTimeout(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`S3_TIMEOUT_MS is "${raw}"; expected a whole number of milliseconds.`);
+  }
+  return value;
 }
 
 const TYPES_FOLDER = path.join('.webstir', 'types');

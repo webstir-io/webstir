@@ -41,10 +41,21 @@ export async function validateRenderPrograms(
 ): Promise<void> {
   const moduleDefinition = await loadBackendModuleDefinition<{
     views?: readonly ViewLike[];
-    shell?: { readonly data?: unknown };
+    shell?: { readonly data?: unknown; readonly load?: unknown };
   }>(options.workspaceRoot);
-  const shellSchema = moduleDefinition?.shell?.data;
-  const shell = isSchemaLike(shellSchema) ? shellSchema : undefined;
+  const issues: RenderIssue[] = [];
+  const moduleShell = moduleDefinition?.shell;
+  const shellSchema = moduleShell?.data;
+  // A shell binds only with both halves: without its loader, `shell.*` would render empty.
+  const shell =
+    isSchemaLike(shellSchema) && typeof moduleShell?.load === 'function' ? shellSchema : undefined;
+  if (moduleShell && !shell) {
+    issues.push({
+      loc: { file: 'src/backend/module.ts', line: 1 },
+      message:
+        'the module exports a `shell` without both a zod `data` schema and a `load` function',
+    });
+  }
   const claims = new Map<string, ViewLike[]>();
   for (const view of moduleDefinition?.views ?? []) {
     const page = view.definition?.page;
@@ -53,7 +64,6 @@ export async function validateRenderPrograms(
     }
   }
 
-  const issues: RenderIssue[] = [];
   const sourcePagesRoot =
     options.sourcePagesRoot ?? path.join(options.workspaceRoot, 'src', 'frontend', 'pages');
 
@@ -90,6 +100,13 @@ export async function validateRenderPrograms(
         issues.push({
           loc: { file: program.source, line: 1 },
           message: `view ${viewName(view)} renders page '${page}' but has no zod \`data\` schema`,
+        });
+        continue;
+      }
+      if (shell && !('error' in lookupKey(flattenSchema(view.data), 'shell'))) {
+        issues.push({
+          loc: { file: program.source, line: 1 },
+          message: `view ${viewName(view)} has its own \`shell\` data, which the module's shell replaces; rename it`,
         });
         continue;
       }

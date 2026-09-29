@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import { frontendProvider } from '../dist/index.js';
+import { frontendProvider, runRebuild } from '../dist/index.js';
 
 async function workspace({ server = false, enable = {}, appCss = null, appTs = null }) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-shell-assets-'));
@@ -192,3 +192,19 @@ for (const [name, markup, bundled] of [
     }
   });
 }
+
+// In watch, the edit that gives a page its first marked control brings the behaviors with it.
+test('an HTML edit that first marks a control rebuilds the bundle with the behaviors', async () => {
+  const root = await workspace({});
+  try {
+    await build(root, 'build');
+    const page = path.join(root, 'src', 'frontend', 'pages', 'home', 'index.html');
+    await fs.writeFile(page, '<head></head><main><form data-submit-on-change></form></main>');
+    await runRebuild({ workspaceRoot: root, changedFile: page });
+    const bundle = path.join(root, 'build', 'frontend', 'app', 'app.js');
+    assert.equal(await exists(bundle), true);
+    assert.match(await read(bundle), /__WEBSTIR_BEHAVIORS_INSTALLED__/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

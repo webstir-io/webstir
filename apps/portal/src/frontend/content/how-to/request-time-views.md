@@ -98,7 +98,7 @@ const addNote = {
 
 ## Share Data Across Pages
 
-The shell and partials often need the same data on every page, such as navigation or the signed-in account. Export a `shell` beside `views`, and every page a view renders binds it as `shell`, with no loader passing it along:
+The shell and partials often need the same data on every page, such as navigation or the signed-in account. Export a `shell` beside `views`, with a `data` schema and a `load`, and every page a view renders binds it as `shell`, with no loader passing it along. The build checks every `shell.*` binding against that schema, and fails when the shell lacks either half or a view's own data has a `shell` of its own:
 
 ```ts
 const shell = {

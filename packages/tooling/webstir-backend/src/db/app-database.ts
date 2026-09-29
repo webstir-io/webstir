@@ -100,10 +100,16 @@ export const db: Database = {
     return resolveDatabaseTarget(appDatabaseUrl(), appRoot()).dialect;
   },
   async query<T>(sql: string, params?: readonly unknown[]) {
-    return (await appDatabase()).query<T>(sql, params);
+    const connection = await appDatabase();
+    const rows = await connection.query<T>(sql, params);
+    if (mayWrite(sql) && !connection.inTransaction()) afterWrite();
+    return rows;
   },
   async get<T>(sql: string, params?: readonly unknown[]) {
-    return (await appDatabase()).get<T>(sql, params);
+    const connection = await appDatabase();
+    const row = await connection.get<T>(sql, params);
+    if (mayWrite(sql) && !connection.inTransaction()) afterWrite();
+    return row;
   },
   async execute(sql: string, params?: readonly unknown[]) {
     const connection = await appDatabase();
@@ -118,6 +124,11 @@ export const db: Database = {
     return result;
   },
 };
+
+/** A statement that returns rows can still write, such as `INSERT ... RETURNING`. */
+function mayWrite(sql: string): boolean {
+  return !/^\s*(select|explain)\b/i.test(sql) || /\breturning\b/i.test(sql);
+}
 
 /** The app changed its data: a snapshot follows, when the app keeps them. */
 function afterWrite(): void {

@@ -78,7 +78,8 @@ export async function hasRenderedViewRoutes(workspaceRoot: string): Promise<bool
  * Answers whether a request path is the backend's to answer: a view that names a page, with or
  * without bindings, since its loader must run either way, or a GET route the app declares. Watch
  * and the published server proxy those paths to the backend instead of serving a file. Only an
- * asset that exists as a file, such as a page's stylesheet, is served in a view's place.
+ * asset that exists as a file, such as a page's stylesheet, is served in a view's place; a GET
+ * route yields to any file or page at its address.
  */
 export function createRenderedViewMatcher(options: {
   readonly workspaceRoot: string;
@@ -112,7 +113,12 @@ export function createRenderedViewMatcher(options: {
   return async (pathname: string) => {
     const { views, routes } = await load();
     if (!matchView(views, pathname)?.view.definition?.page) {
-      return matchView(routes, pathname) !== undefined;
+      // A GET route yields to any file or page the site has at that address, such as
+      // /favicon.ico or /about/ beside a `/:code` route.
+      return (
+        matchView(routes, pathname) !== undefined &&
+        !(await staticFileExists(options.frontendRoot, pathname))
+      );
     }
     return !(
       isStaticAssetPath(pathname) && (await staticFileExists(options.frontendRoot, pathname))

@@ -41,7 +41,7 @@ version?.metadata['uploaded-by'];
 | unset, or `file:./data/files` | a folder beside the app; links are served by the app, signed with `SESSION_SECRET` |
 | `s3://bucket` or `s3://bucket/prefix` | S3, Cloudflare R2, MinIO or any S3 service, through the AWS SDK; links are presigned |
 
-For S3, set `S3_REGION` (or `AWS_REGION`), and `S3_ENDPOINT` for a service other than AWS. Credentials are `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` when set; otherwise the SDK finds them its usual way: the `AWS_*` variables, a profile named by `S3_PROFILE` or `AWS_PROFILE` (with `AWS_SHARED_CREDENTIALS_FILE` for a file elsewhere), or the instance's role. `S3_PROFILE` gives storage its own profile when the app's other AWS calls, such as sending email, use another.
+For S3, set `S3_REGION` (or `AWS_REGION`), and `S3_ENDPOINT` for a service other than AWS. Credentials are `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` when set; otherwise the SDK finds them its usual way: the `AWS_*` variables, a profile named by `S3_PROFILE` or `AWS_PROFILE` (with `AWS_SHARED_CREDENTIALS_FILE` for a file elsewhere), or the instance's role. `S3_PROFILE` gives storage its own profile when the app's other AWS calls, such as sending email, use another. Each request fails after `S3_TIMEOUT_MS` (ten seconds) and, where safe, is retried, up to three attempts.
 
 ## Your own storage client
 

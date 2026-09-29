@@ -15,7 +15,7 @@ import { createCompressedVariants } from '../assets/precompression.js';
 import { buildIslands, islandsSourceRoot } from './islandsBuilder.js';
 import { shouldProcess } from '../utils/changedFile.js';
 import { findPageFromChangedFile } from '../utils/pathMatch.js';
-import { writeAppBundleEntry } from './appBundle.js';
+import { appBundleEntryChanged, writeAppBundleEntry } from './appBundle.js';
 import {
   compileBrowserPage,
   findPageDataModule,
@@ -90,7 +90,9 @@ async function bundleJavaScript(context: BuilderContext, isProduction: boolean):
   // An HTML edit only changes the bundles of browser-rendered pages, which carry their template.
   const htmlEdit = context.changedFile?.endsWith('.html') === true;
 
-  if (!htmlEdit) await compileAppTypeScript(context, isProduction, bundler);
+  if (!htmlEdit || (await appBundleEntryChanged(context))) {
+    await compileAppTypeScript(context, isProduction, bundler);
+  }
 
   for (const page of pages) {
     if (targetPage && page.name !== targetPage) {

@@ -1,3 +1,4 @@
+import { hasRequiredRole, requiresSignIn, signInLocation } from '../sign-in/guard.js';
 import {
   createFormState,
   ensureSessionCsrfToken,
@@ -14,6 +15,7 @@ import {
   type LoggerLike,
   type ViewFlashMessage,
 } from './views.js';
+import { notFound, redirect } from './view-control.js';
 
 export function createSessionFormReader(
   getSession: () => Record<string, unknown> | null,
@@ -25,6 +27,8 @@ export function createSessionFormReader(
  * Renders the view an action named after its form failed, with the submitted values and
  * issues visible to that view's loader through `forms.read`. The view renders at its own
  * address, keeping the posted query, and reports that address so the response can name it.
+ * The view's own `auth` applies, as when it is requested: the page a form names, or a Referer
+ * does, is never shown to someone who could not open it.
  */
 export async function renderFormRerender<TSession extends Record<string, unknown>>(options: {
   readonly rerender: FormRerender;
@@ -35,6 +39,8 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   readonly cookies: Record<string, string>;
   readonly headers: Record<string, string>;
   readonly auth: unknown;
+  /** Who is signed in, as the view's `auth` sees them. */
+  readonly user: { readonly roles?: readonly string[] } | null;
   readonly session: TSession | null;
   readonly env: EnvAccessorLike;
   readonly logger: LoggerLike;
@@ -60,6 +66,9 @@ export async function renderFormRerender<TSession extends Record<string, unknown
 
   const params = rerender.params ?? options.routeParams;
   const url = viewUrl(view, params, options.url, rerender.form.id);
+  if (requiresSignIn(view.definition) && !options.user)
+    redirect(signInLocation(`${url.pathname}${url.search}`));
+  if (options.user && !hasRequiredRole(options.user, view.definition)) notFound();
   let session = options.session;
   const failed = createFormState(rerender.form.values, rerender.form.issues);
   const rendered = await renderRequestTimeView({

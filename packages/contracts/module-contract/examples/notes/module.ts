@@ -33,3 +33,10 @@ export const addNoteDefinition = routeDefinitionSchema.parse({
 
 // Anyone signed in may see a page that says `required`.
 viewDefinitionSchema.parse({ name: 'home', path: '/', auth: 'required' });
+
+// A form's state carries an error about the whole form as `errors.form`.
+export const formError: string | undefined = notesData.shape.add.parse({
+  submitted: true,
+  values: {},
+  errors: { form: 'Try again.' },
+}).errors.form;

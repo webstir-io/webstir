@@ -60,7 +60,7 @@ const signIn: SignInOptions = {
 };
 ```
 
-`null` means no access: that person is treated as signed out. Type loaders with `ViewContext<Member>` and handlers with `ActionContext<Member>` from `@webstir-io/webstir-backend`.
+`null` means no access: that person is treated as signed out, and the sign-in page tells them this account has no access here. Type loaders with `ViewContext<Member>` and handlers with `ActionContext<Member>` from `@webstir-io/webstir-backend`.
 
 ## An app with its own users table
 
