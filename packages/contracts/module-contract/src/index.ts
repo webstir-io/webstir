@@ -891,4 +891,9 @@ export {
 } from './render-execute.js';
 export type { ExecuteRenderProgramOptions, PreparedViewData } from './render-execute.js';
 
-export { CLIENT_NAV_HEADERS, CLIENT_NAV_SUBMISSION_FIELD } from './client-nav.js';
+export {
+  CLIENT_NAV_HEADERS,
+  CLIENT_NAV_SUBMISSION_FIELD,
+  FORM_ID_FIELD,
+  FORM_PAGE_FIELD,
+} from './client-nav.js';

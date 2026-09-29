@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { formStateSchema, formView, withShellData } from '@webstir-io/module-contract';
 
-import { createFormState } from '../dist/runtime/forms.js';
+import { createFormState, readFormValues } from '../dist/runtime/forms.js';
 
 // A fresh form shows its defaults; one that came back shows what was typed, and its errors.
 for (const [name, state, expected] of [
@@ -47,4 +47,18 @@ test('withShellData puts the shell beside the page data, checked against its sch
   const failed = withShellData({ title: 'Home' }, schema, {});
   assert.equal(failed.ok, false);
   assert.match(failed.error, /account/);
+});
+
+// A page cannot hand a file back, but a failed form can say which file to choose again.
+test('form values keep a posted file by its name, and an empty file input as empty', () => {
+  assert.deepEqual(
+    readFormValues({
+      _csrf: 'token',
+      title: 'v3',
+      document: new File(['{}'], 'v3.json'),
+      none: new File([], ''),
+      several: [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')],
+    }),
+    { title: 'v3', document: 'v3.json', none: '', several: ['a.txt', 'b.txt'] },
+  );
 });
