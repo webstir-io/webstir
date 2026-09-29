@@ -114,8 +114,11 @@ export const db: Database = {
 export async function migrateAppDatabase(): Promise<string[]> {
   const connection = await openDatabase(appDatabaseUrl(), { workspaceRoot: appRoot() });
   try {
-    await applyFirstTables(connection);
-    return await applyMigrations(connection, readAppMigrations(appRoot()));
+    // As when the server opens it: a migration using the app's database gets this connection.
+    return await beingOpened.run(connection, async () => {
+      await applyFirstTables(connection);
+      return applyMigrations(connection, readAppMigrations(appRoot()));
+    });
   } finally {
     await connection.close();
   }

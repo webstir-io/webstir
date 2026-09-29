@@ -58,6 +58,7 @@ jobs:
         run: bun x playwright install --with-deps chromium
 
       - name: Run required repo gate
-        run: bun run check:required
+        # It takes a few minutes; a run past 20 records what is still running, then fails.
+        run: scripts/run-with-watchdog.sh 1200 bun run check:required
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
