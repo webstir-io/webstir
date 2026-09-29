@@ -90,6 +90,12 @@ const removeTitle = {
   handler: (ctx: any) => fieldIssue(undefined, 'Kept for now.', { form: \`remove:\${ctx.form.values.title}\` }),
 };
 
+// A download: a page-shaped GET route that needs sign-in.
+const exportTitles = {
+  definition: { name: 'exportTitles', method: 'GET' as const, path: '/editors/export', auth: { role: 'editor' } },
+  handler: () => ({ status: 200, body: 'titles' }),
+};
+
 const shell = {
   data: z.object({ account: z.string().nullable() }),
   load: (ctx: any) => ({ account: ctx.user?.email ?? null }),
@@ -125,7 +131,7 @@ async function createEditorsApp(): Promise<string> {
   )}`
     .replace(
       'routes: [...routes, addNote, me],',
-      'routes: [...routes, addNote, me, addTitle, removeTitle],',
+      'routes: [...routes, addNote, me, addTitle, removeTitle, exportTitles],',
     )
     .replace('views: [notesView],', 'views: [notesView, editorsView],\n  shell,');
   expect(updated).toContain('views: [notesView, editorsView]');
@@ -215,6 +221,11 @@ test('an app says who its users are and what they may do; forms, repeats and the
     const signedOut = await visitor.request('/editors/');
     expect(signedOut.status).toBe(303);
     expect(signedOut.headers.get('location')).toBe('/sign-in/?returnTo=%2Feditors%2F');
+    // A page-shaped GET route, such as a download, comes back to its own address too.
+    const download = await visitor.request('/editors/export?format=csv');
+    expect(download.headers.get('location')).toBe(
+      '/sign-in/?returnTo=%2Feditors%2Fexport%3Fformat%3Dcsv',
+    );
 
     // An editor sees it, with the shell's data, and a form that carries its own submission id.
     const ada = createBrowser(origin);
@@ -272,6 +283,28 @@ test('an app says who its users are and what they may do; forms, repeats and the
     const keptHtml = await kept.text();
     expect(keptHtml).toContain('<p class="kept">Kept for now.</p>');
     expect(keptHtml).not.toContain('<p class="error">');
+
+    // Every POST form carries the page it was rendered on, so a failure returns there even when
+    // the Referer names an earlier failed post's address; and a form names the state it fails to.
+    expect(keptHtml).toContain('name="_webstir_page" value="/editors"');
+    for (const [name, form, shown, address] of [
+      [
+        'the page it names, with its query',
+        { _webstir_page: '/editors/?tab=2' },
+        true,
+        '/editors?tab=2',
+      ],
+      ['no page named', {}, false, null],
+    ] as const) {
+      const again = await ada.request('/editors/remove', {
+        method: 'POST',
+        from: '/editors/remove',
+        form: { title: 'First', _csrf: 'stale', _webstir_form: 'remove:First', ...form },
+      });
+      const html = again.status === 403 ? await again.text() : '';
+      expect([name, html.includes('<p class="kept">Form session expired')]).toEqual([name, shown]);
+      expect([name, again.headers.get('content-location')]).toEqual([name, address]);
+    }
 
     // Signed in without the role, the page and its form are not there.
     const grace = createBrowser(origin);

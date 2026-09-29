@@ -5,7 +5,7 @@ import type {
   RenderProgram,
   RenderSourceLocation,
 } from './render-program.js';
-import { CLIENT_NAV_SUBMISSION_FIELD } from './client-nav.js';
+import { CLIENT_NAV_SUBMISSION_FIELD, FORM_PAGE_FIELD } from './client-nav.js';
 import { RENDER_PROGRAM_VERSION } from './render-version.js';
 
 export const RENDER_CSRF_FIELD = '_csrf';
@@ -55,6 +55,8 @@ export interface ExecuteRenderProgramOptions {
    * double click) is answered once. Left out, forms render without one.
    */
   readonly submissionId?: () => string;
+  /** The page's own address, rendered into each POST form so a failure returns to it. */
+  readonly pagePath?: string;
 }
 
 export function readRenderProgram(value: unknown, source: string): RenderProgram {
@@ -111,6 +113,11 @@ function run(
         if (options.submissionId) {
           out.push(
             `<input type="hidden" name="${CLIENT_NAV_SUBMISSION_FIELD}" value="${escapeAttribute(options.submissionId())}">`,
+          );
+        }
+        if (options.pagePath) {
+          out.push(
+            `<input type="hidden" name="${FORM_PAGE_FIELD}" value="${escapeAttribute(options.pagePath)}">`,
           );
         }
         break;

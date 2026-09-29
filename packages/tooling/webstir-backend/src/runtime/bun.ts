@@ -28,7 +28,12 @@ import {
 import { declareSignInTables } from '../sign-in/database.js';
 import type { SignInOptions } from '../sign-in/module.js';
 import type { AppUser, SubmittedForm } from './contexts.js';
-import { checkDeclaredForm, declaredFormId, failDeclaredForm } from './form-routes.js';
+import {
+  checkDeclaredForm,
+  declaredFormId,
+  failDeclaredForm,
+  takePostedForm,
+} from './form-routes.js';
 import { createRequestMetricsTracker } from './metrics.js';
 import { createDatabaseSessionStore } from './session-database-store.js';
 import {
@@ -615,6 +620,7 @@ async function handleRequest<
       // goes where the first one redirected instead of running the action twice. It is answered
       // before the session guard: when the first signed in, the copy's old session has ended.
       const submissionId = method === 'POST' ? takeSubmissionId(request, ctx.body) : undefined;
+      const posted = method === 'POST' ? takePostedForm(ctx.body) : {};
       const cookieSessionId = sessionState.cookieSessionId;
       submission =
         submissionId && cookieSessionId
@@ -692,6 +698,7 @@ async function handleRequest<
             request,
             views: runtime.views,
             route: declared,
+            posted,
             session: ctx.session,
             body: ctx.body,
             now,
@@ -699,7 +706,9 @@ async function handleRequest<
         : undefined;
       if (formCheck && declared) {
         ctx.session = formCheck.session;
-        if (formCheck.ok) ctx.form = { id: declaredFormId(declared), values: formCheck.values };
+        if (formCheck.ok) {
+          ctx.form = { id: declaredFormId(declared, posted), values: formCheck.values };
+        }
       }
 
       let handlerResult: Awaited<ReturnType<typeof routeMatch.route.handler>>;
@@ -715,8 +724,9 @@ async function handleRequest<
           const failed = failDeclaredForm({
             request,
             views: runtime.views,
+            posted,
             session: ctx.session,
-            formId: issue.formId ?? ctx.form?.id ?? declaredFormId(routeDefinition),
+            formId: issue.formId ?? ctx.form?.id ?? declaredFormId(routeDefinition, posted),
             values: { ...(ctx.form?.values ?? {}), ...(issue.values ?? {}) },
             issue: {
               code: 'validation',

@@ -46,6 +46,8 @@ interface RouteHandlerResultLike {
 export interface FormRerender {
   view: string;
   params?: Record<string, string>;
+  /** The query the page renders with, when it is not the posted one. */
+  search?: string;
   form: {
     id: string;
     values: FormValues;
@@ -56,6 +58,8 @@ export interface FormRerender {
 export interface FormRerenderTarget {
   view: string;
   params?: Record<string, string>;
+  /** The page's own query, when the form named its page; else the posted query is kept. */
+  search?: string;
 }
 
 export interface FormState {
@@ -356,6 +360,7 @@ function failSubmission<TSession extends Record<string, unknown>>(options: {
         rerender: {
           view: options.rerender.view,
           ...(options.rerender.params ? { params: { ...options.rerender.params } } : {}),
+          ...(options.rerender.search !== undefined ? { search: options.rerender.search } : {}),
           form: {
             id: options.formId,
             values: cloneFormValues(options.values),
@@ -467,15 +472,23 @@ function normalizeFormValues(body: unknown, csrfFieldName: string): FormValues {
     if (key === csrfFieldName) {
       continue;
     }
-    if (typeof raw === 'string') {
-      values[key] = raw;
+    // A file is kept by its name: a page cannot hand the file back, but can say which to choose again.
+    const text = (value: unknown) =>
+      typeof value === 'string' ? value : value instanceof Blob ? fileName(value) : undefined;
+    if (!Array.isArray(raw)) {
+      const value = text(raw);
+      if (value !== undefined) values[key] = value;
       continue;
     }
-    if (Array.isArray(raw) && raw.every((value) => typeof value === 'string')) {
-      values[key] = [...raw];
-    }
+    const list = raw.map(text);
+    if (list.every((value) => value !== undefined)) values[key] = list as string[];
   }
   return values;
+}
+
+/** A posted file's name, or empty for a file input left empty. */
+function fileName(file: Blob): string {
+  return 'name' in file && typeof file.name === 'string' ? file.name : '';
 }
 
 function cloneFormValues(values: FormValues | undefined): FormValues {

@@ -1,3 +1,5 @@
+import { FORM_ID_FIELD, FORM_PAGE_FIELD } from '@webstir-io/module-contract';
+
 import { refererPath } from '../sign-in/guard.js';
 import { normalizePath } from './core.js';
 import {
@@ -25,22 +27,79 @@ interface FormReturn {
   readonly redirectTo?: string;
 }
 
-function formReturn(request: Request, views: readonly CompiledView[]): FormReturn {
-  const pageView = (location: string) => {
-    const pathname = normalizePath(new URL(location, 'http://app.invalid').pathname);
-    const match = matchView(views, pathname);
+/** What a posted form says about itself: the page it was rendered on, and the state it fails to. */
+export interface PostedForm {
+  readonly page?: string;
+  readonly formId?: string;
+}
+
+const POSTED_FORM_ID = /^[\w:.-]{1,120}$/;
+// Names every object already has: a form id is a key in the session's form states.
+const RESERVED_FORM_IDS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * The page and form id a form carries, taken out of the body so actions never see them. The page
+ * is kept only as a path on this app; the id only when it is a plain name.
+ */
+export function takePostedForm(body: unknown): PostedForm {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return {};
+  const record = body as Record<string, unknown>;
+  const page = record[FORM_PAGE_FIELD];
+  const formId = record[FORM_ID_FIELD];
+  delete record[FORM_PAGE_FIELD];
+  delete record[FORM_ID_FIELD];
+  const path = typeof page === 'string' ? appPath(page) : undefined;
+  return {
+    ...(path ? { page: path } : {}),
+    ...(typeof formId === 'string' && POSTED_FORM_ID.test(formId) && !RESERVED_FORM_IDS.has(formId)
+      ? { formId }
+      : {}),
+  };
+}
+
+/**
+ * A path on this app, normalized: never another site, however it is spelled (`//x`, `/\\x`, or
+ * whitespace a browser would drop, as in `/\t/x`).
+ */
+function appPath(value: string): string | undefined {
+  if (!value.startsWith('/') || /[\s\\]/.test(value)) return undefined;
+  try {
+    const url = new URL(value, 'http://app.invalid');
+    const path = `${url.pathname}${url.search}`;
+    return url.origin === 'http://app.invalid' && !path.startsWith('//') ? path : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function formReturn(
+  request: Request,
+  views: readonly CompiledView[],
+  posted: PostedForm = {},
+): FormReturn {
+  const pageView = (location: string, keepQuery = false) => {
+    const url = new URL(location, 'http://app.invalid');
+    const match = matchView(views, normalizePath(url.pathname));
     return match?.view.definition?.page
-      ? { view: match.view.name, params: match.params }
+      ? {
+          view: match.view.name,
+          params: match.params,
+          ...(keepQuery ? { search: url.search } : {}),
+        }
       : undefined;
   };
-  // The page the form was on, from the Referer a browser sends; or, when it sends none (a
-  // no-referrer policy), the page at the address the form posted to, as forms often post to their
-  // own page's address.
+  // The page the form was on: the address it was rendered with, then the Referer a browser sends
+  // (which, after one failed post, names that post's address instead), then the address the form
+  // posted to, as forms often post to their own page's address.
   const referer = sameAppReferer(request) ? refererPath(request) : undefined;
-  const target = (referer && pageView(referer)) ?? pageView(new URL(request.url).pathname);
+  const target =
+    (posted.page && pageView(posted.page, true)) ??
+    (referer && pageView(referer)) ??
+    pageView(new URL(request.url).pathname);
   if (target) return { rerender: target };
   // Without a page of the app's to go back to, the failure is answered where it happened.
-  return referer ? { redirectTo: referer } : {};
+  const back = posted.page ?? referer;
+  return back ? { redirectTo: back } : {};
 }
 
 function sameAppReferer(request: Request): boolean {
@@ -54,9 +113,12 @@ function sameAppReferer(request: Request): boolean {
   }
 }
 
-/** A route's form id, which the page's loader reads with `ctx.forms.read(id)`: `form.id`, or its name. */
-export function declaredFormId(route: DeclaredFormRoute): string {
-  return route.form?.id ?? route.name ?? route.path ?? 'form';
+/**
+ * A submission's form id, which the page's loader reads with `ctx.forms.read(id)`: the one the form
+ * names itself (one form per item), else the route's `form.id`, else its name.
+ */
+export function declaredFormId(route: DeclaredFormRoute, posted: PostedForm = {}): string {
+  return posted.formId ?? route.form?.id ?? route.name ?? route.path ?? 'form';
 }
 
 /**
@@ -68,6 +130,7 @@ export function checkDeclaredForm<TSession extends Record<string, unknown>>(opti
   request: Request;
   views: readonly CompiledView[];
   route: DeclaredFormRoute;
+  posted: PostedForm;
   session: TSession | null;
   body: unknown;
   now: () => Date;
@@ -81,10 +144,10 @@ export function checkDeclaredForm<TSession extends Record<string, unknown>>(opti
       auth: undefined as never,
     };
   }
-  const back = formReturn(options.request, options.views);
+  const back = formReturn(options.request, options.views, options.posted);
   return formFailure({
     session: options.session,
-    formId: declaredFormId(options.route),
+    formId: declaredFormId(options.route, options.posted),
     values,
     issues: [{ code: 'csrf', message: 'Form session expired. Reload the page and try again.' }],
     rerender: back.rerender,
@@ -97,13 +160,14 @@ export function checkDeclaredForm<TSession extends Record<string, unknown>>(opti
 export function failDeclaredForm<TSession extends Record<string, unknown>>(options: {
   request: Request;
   views: readonly CompiledView[];
+  posted: PostedForm;
   session: TSession | null;
   formId: string;
   values: FormValues;
   issue: FormIssue;
   now: () => Date;
 }) {
-  const back = formReturn(options.request, options.views);
+  const back = formReturn(options.request, options.views, options.posted);
   return formFailure({
     session: options.session,
     formId: options.formId,

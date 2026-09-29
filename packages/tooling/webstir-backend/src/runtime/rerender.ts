@@ -65,7 +65,7 @@ export async function renderFormRerender<TSession extends Record<string, unknown
   }
 
   const params = rerender.params ?? options.routeParams;
-  const url = viewUrl(view, params, options.url, rerender.form.id);
+  const url = viewUrl(view, params, options.url, rerender.form.id, rerender.search);
   if (requiresSignIn(view.definition) && !options.user)
     redirect(signInLocation(`${url.pathname}${url.search}`));
   if (options.user && !hasRequiredRole(options.user, view.definition)) notFound();
@@ -108,6 +108,7 @@ function viewUrl(
   params: Record<string, string>,
   posted: URL,
   formId: string,
+  search?: string,
 ): URL {
   const pattern = view.definition?.path;
   if (!pattern) return posted;
@@ -126,6 +127,6 @@ function viewUrl(
     segments.push(encodeURIComponent(value));
   }
   const url = new URL(segments.join('/'), posted);
-  url.search = posted.search;
+  url.search = search ?? posted.search;
   return url;
 }

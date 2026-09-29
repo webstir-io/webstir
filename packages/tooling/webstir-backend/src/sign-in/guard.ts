@@ -64,7 +64,8 @@ export function signInLocation(returnTo: string): string {
 
 /**
  * The answer to a signed-out request for a route that needs sign-in: a browser (a form, or a page
- * request) is sent to sign in and back to the page it came from; an API call gets 401.
+ * request) is sent to sign in and back: a page request to its own address, a form to the page it
+ * was sent from. An API call gets 401.
  */
 export function signInRequired(
   request: Request,
@@ -76,7 +77,12 @@ export function signInRequired(
 } {
   const accept = request.headers.get('accept') ?? '';
   if (route?.form || accept.includes('text/html')) {
-    return { status: 303, redirect: { location: signInLocation(refererPath(request)) } };
+    // A page request comes back to the address it asked for; a form to the page it was sent from.
+    const method = request.method.toUpperCase();
+    const url = new URL(request.url);
+    const back =
+      method === 'GET' || method === 'HEAD' ? `${url.pathname}${url.search}` : refererPath(request);
+    return { status: 303, redirect: { location: signInLocation(back) } };
   }
   return {
     status: 401,

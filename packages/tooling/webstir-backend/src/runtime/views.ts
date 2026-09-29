@@ -225,6 +225,7 @@ export async function renderRequestTimeView(options: {
         ? executeRenderProgram(program, await withShell(data, options.shell, context), {
             csrfToken: programUsesCsrf(program) ? options.csrfToken?.() : undefined,
             submissionId: randomUUID,
+            pagePath: `${options.url.pathname}${options.url.search}`,
           })
         : document.html,
       documentCache: {
