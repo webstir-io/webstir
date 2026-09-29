@@ -98,26 +98,17 @@ jobs:
     permissions:
       contents: read
       checks: read
+      pull-requests: read
     steps:
-      # Publish only a commit main's required gate passed, however the release pull request merged.
-      - name: Wait for the Required Gate on this commit
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for attempt in $(seq 1 120); do
-            result=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/check-runs?check_name=Required%20Gate" \
-              --jq '[.check_runs[] | select(.status == "completed") | .conclusion] | first // "pending"')
-            case "$result" in
-              success) echo "Required Gate passed on ${GITHUB_SHA}"; exit 0 ;;
-              pending) sleep 30 ;;
-              *) echo "::error::Required Gate concluded ${result} on ${GITHUB_SHA}; not publishing."; exit 1 ;;
-            esac
-          done
-          echo "::error::Required Gate did not finish on ${GITHUB_SHA} within an hour; not publishing."
-          exit 1
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      # Publish only content main's required gate passed, however the release pull request merged:
+      # the merged pull request's run when its head has the same tree, else the run on this commit.
+      - name: Wait for the Required Gate on this content
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wait-for-required-gate.sh "$GITHUB_REPOSITORY" "$GITHUB_SHA"
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: ${{ env.BUN_VERSION }}
