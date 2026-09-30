@@ -23,17 +23,20 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
     );
     await step('enable client-nav', () => runCli(workspace, ['enable', 'client-nav']));
     // Home's small stylesheet is inlined as a critical style; the second page's is too large to be.
+    // Both pages are tall, so the second can be scrolled when it arrives; each has its own body.
     await writeLifecyclePage(
       workspace,
       'home',
-      '<a href="/second/">Second</a>',
+      '<a href="/second/">Second</a><div style="height: 3000px"></div>',
       'h1 { letter-spacing: 3px; }\n',
+      'class="page-home" data-home',
     );
     await writeLifecyclePage(
       workspace,
       'second',
-      '<a href="/">Home</a>',
+      '<a href="/">Home</a><div style="height: 3000px"></div>',
       Array.from({ length: 400 }, (_, i) => `.pad-${i} { margin: ${i}px; }`).join('\n'),
+      'class="page-second"',
     );
     await step('publish', () => runCli(workspace, ['publish']));
 
@@ -84,7 +87,14 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
       await cssHeld;
       await route.continue();
     });
-    await page.locator('main a[href="/second/"]').click();
+    // Clicked from far down the page, as a link below the fold would be, with an app script's
+    // state on the body, as a menu or shell leaves it.
+    await page.evaluate(() => {
+      document.body.classList.add('menu-open');
+      document.body.setAttribute('data-runtime', '1');
+      window.scrollTo({ top: 2000, behavior: 'instant' });
+      document.querySelector<HTMLAnchorElement>('main a[href="/second/"]')!.click();
+    });
     await cssAsked;
     expect(
       await page.evaluate(() => ({
@@ -92,20 +102,30 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
         spacing: getComputedStyle(document.querySelector('h1')!).letterSpacing,
       })),
     ).toEqual({ path: '/', spacing: '3px' });
-    // And it leaves with that page: when the new content goes in, the old styles are gone.
+    // And it leaves with that page: when the new content goes in, the old styles are gone, the
+    // body is the new page's, and the new page starts at its top, as a full load of it would.
     await page.evaluate(() => {
       new MutationObserver((_, observer) => {
         if (document.querySelector('main h1')?.textContent !== 'second') return;
-        (window as unknown as { staleAtSwap: number }).staleAtSwap =
-          document.head.querySelectorAll('style[data-critical=""]').length;
+        (window as unknown as { atSwap: unknown }).atSwap = {
+          staleStyles: document.head.querySelectorAll('style[data-critical=""]').length,
+          body: {
+            className: document.body.className,
+            home: document.body.hasAttribute('data-home'),
+            runtime: document.body.getAttribute('data-runtime'),
+          },
+          scrollY: window.scrollY,
+        };
         observer.disconnect();
       }).observe(document.body, { childList: true, subtree: true });
     });
     releaseCss();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 1);
-    expect(
-      await page.evaluate(() => (window as unknown as { staleAtSwap: number }).staleAtSwap),
-    ).toBe(0);
+    expect(await page.evaluate(() => (window as unknown as { atSwap: unknown }).atSwap)).toEqual({
+      staleStyles: 0,
+      body: { className: 'menu-open page-second', home: false, runtime: '1' },
+      scrollY: 0,
+    });
     expect(await readPageState(page)).toEqual({
       path: '/second/',
       setup: 'second',
@@ -117,6 +137,9 @@ test('published SSG client-nav runs the incoming page setup after page scripts l
     await page.locator('main a[href="/"]').click();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 2);
     expect(await readPageState(page)).toEqual({ path: '/', setup: 'home', pageScripts: 1 });
+    expect(
+      await page.evaluate(() => [document.body.className, document.body.hasAttribute('data-home')]),
+    ).toEqual(['menu-open page-home', true]);
 
     await page.goBack();
     await page.waitForFunction(() => (window as unknown as VisitWindow).clientNavVisits === 3);
@@ -223,6 +246,7 @@ async function writeLifecyclePage(
   name: string,
   link: string,
   css?: string,
+  bodyAttributes?: string,
 ): Promise<void> {
   const pageDir = path.join(workspace, 'src', 'frontend', 'pages', name);
   await mkdir(pageDir, { recursive: true });
@@ -235,7 +259,7 @@ async function writeLifecyclePage(
       ...(css !== undefined ? ['  <link rel="stylesheet" href="index.css">'] : []),
       '  <script type="module" src="index.js"></script>',
       '</head>',
-      '<body>',
+      bodyAttributes ? `<body ${bodyAttributes}>` : '<body>',
       '  <main>',
       `    <h1>${name}</h1>`,
       `    ${link}`,

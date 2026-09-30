@@ -320,12 +320,11 @@ function mergeTemplates(appHtml: string, pageHtml: string): string {
 
   const appBody = app('body').first();
   const pageBody = page('body').first();
+  // The page's <body> carries its own attributes onto the app's, as <main> does below.
   if (appBody.length && pageBody.length) {
-    const pageBodyClass = pageBody.attr('class');
-    if (pageBodyClass) {
-      const existing = appBody.attr('class');
-      const merged = existing ? `${existing} ${pageBodyClass}` : pageBodyClass;
-      appBody.attr('class', merged);
+    for (const [name, value] of Object.entries(pageBody.attr() ?? {})) {
+      const existing = name === 'class' ? appBody.attr('class') : undefined;
+      appBody.attr(name, existing ? `${existing} ${value}` : value);
     }
   }
 
