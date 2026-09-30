@@ -35,6 +35,7 @@ import {
   syncHead,
   type HistoryMode,
 } from './document-navigation.js';
+import { type DeclaredBody, readDeclaredBody, syncBodyAttributes } from './body-attributes.js';
 import { handleFragmentResponse, resolveFragmentTarget } from './fragment-update.js';
 import { syncHeadMetadata } from './head-metadata.js';
 import {
@@ -42,8 +43,6 @@ import {
   readReferrerMetas,
   resolveReferrerPolicyNavigation,
 } from './referrer-policy-change.js';
-
-export {};
 
 /**
  * Minimal document navigation enhancement: swaps the <main> content, updates
@@ -57,6 +56,8 @@ export {};
 export function enableClientNav(): void {
   if (enabled) return;
   enabled = true;
+  // Taken before the app's own scripts run, so what they add to the body is theirs to keep.
+  if (document.body) declaredBody = readDeclaredBody(document.body);
   markClientNav({ refreshPage });
   const initial = () => {
     const requestId = activeRequestId;
@@ -158,6 +159,7 @@ let documentUrl = new URL(window.location.href);
 let documentReferrerPolicy: string | null | undefined;
 const pageLifecycle = createPageLifecycle();
 let pageGeneration = 0;
+let declaredBody: DeclaredBody = { attributes: new Map(), classes: new Set() };
 let commitQueue = Promise.resolve();
 // Settles once the current page's setup has finished.
 let pageSettled: Promise<void> = Promise.resolve();
@@ -594,13 +596,14 @@ async function renderDocumentHtml(
   if (newMain && currentMain) {
     currentMain.replaceWith(newMain);
   }
+  declaredBody = syncBodyAttributes(document.body, doc.body, declaredBody);
   // The outgoing page's styles leave with it, before the new page focuses or lays anything out.
   removeOutgoingStyles();
   const anchor = kept ? null : fragmentTarget(documentUrl.hash);
   if (anchor) {
     anchor.scrollIntoView();
   } else if (!kept) {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }
   if (!kept) focusAutofocus(document);
 

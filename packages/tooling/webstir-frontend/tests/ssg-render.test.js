@@ -268,6 +268,28 @@ test('a page <main> keeps its attributes and bindings, and a strict schema needs
   }
 });
 
+test("a page <body> keeps its attributes, classes joining the app shell's", async () => {
+  const root = await createWorkspace('ssg', {
+    home: '<body class="home" data-section="start" id="top"><main><h1>Home</h1></main></body>',
+    plain: '<main><h1>Plain</h1></main>',
+  });
+  try {
+    await publish(root);
+    const body = async (page) =>
+      (await fs.readFile(path.join(root, 'dist', 'frontend', ...page, 'index.html'), 'utf8')).match(
+        /<body[^>]*>/,
+      )?.[0];
+    const shell = (await body(['plain'])) ?? '';
+    assert.doesNotMatch(shell, /data-section|id="top"|home/);
+    const home = (await body([])) ?? '';
+    assert.match(home, /data-section="start"/);
+    assert.match(home, /id="top"/);
+    assert.match(home, /class="[^"]*\bhome\b[^"]*"/);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('the module loader sees each rebuild and survives concurrent loads', async () => {
   const { loadBackendModuleDefinition } = await import('../dist/utils/backendModule.js');
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-module-load-'));
