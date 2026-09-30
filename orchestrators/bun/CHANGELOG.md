@@ -1,5 +1,15 @@
 # @webstir-io/webstir
 
+## 0.9.4
+
+### Patch Changes
+
+- 794bda0: Client navigation gives the body the incoming page's attributes and classes (keeping what scripts added) and starts each page at its top instantly, as a full load does; a page's `<body>` attributes other than `class` now reach the built page.
+- Updated dependencies [794bda0]
+  - @webstir-io/module-contract@0.9.4
+  - @webstir-io/webstir-backend@0.9.4
+  - @webstir-io/webstir-frontend@0.9.4
+
 ## 0.9.3
 
 ### Patch Changes
