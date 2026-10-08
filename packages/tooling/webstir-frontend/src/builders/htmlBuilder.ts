@@ -201,10 +201,10 @@ async function buildHtml(context: BuilderContext): Promise<void> {
         await remove(path.join(targetDir, RENDER_PROGRAM_FILE));
         continue;
       }
-      await writeFile(targetPath, mergedWithScripts);
-      if (isPageIndex) {
-        await writePageProgram(mergedWithScripts, { page: page.name, source, targetDir });
-      }
+      const settled = isPageIndex
+        ? await writePageProgram(mergedWithScripts, { page: page.name, source, targetDir })
+        : undefined;
+      await writeFile(targetPath, settled ?? mergedWithScripts);
     }
   }
 
@@ -259,8 +259,9 @@ async function publishHtml(context: BuilderContext): Promise<void> {
       );
       const outputPath = path.join(distDir, relativeHtml);
       await ensureDir(path.dirname(outputPath));
+      let settled: string | undefined;
       if (relativeHtml === `${FILES.index}${EXTENSIONS.html}`) {
-        await writePageProgram(rewritten, {
+        settled = await writePageProgram(rewritten, {
           page: page.name,
           source: path
             .relative(
@@ -272,7 +273,7 @@ async function publishHtml(context: BuilderContext): Promise<void> {
           targetDir: path.dirname(outputPath),
         });
       }
-      await writeFile(outputPath, stripSourceStamps(rewritten));
+      await writeFile(outputPath, stripSourceStamps(settled ?? rewritten));
       await handlePrecompression(context, outputPath);
     }
   }

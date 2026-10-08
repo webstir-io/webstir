@@ -9,12 +9,12 @@ import { fileURLToPath } from 'node:url';
 
 import { executeRequestHookPhase, type RequestHookReferenceLike } from './request-hooks.js';
 import { isProduction, setAppRoot } from '../app/app-root.js';
-import { appUrl, loadAppEnv, loadEnvFiles } from '../app/env.js';
+import { loadAppEnv, loadEnvFiles } from '../app/env.js';
 import { appServices } from '../app/services.js';
 import { appDatabase, appDatabaseExists, closeAppDatabase } from '../db/app-database.js';
 import type { Database } from '../db/database.js';
 import { readAppMigrations } from '../db/migrations.js';
-import { emailSetupProblem, type Email } from '../email/index.js';
+import type { Email } from '../email/index.js';
 import { LOCAL_FILES_PATH, serveLocalFile, type Files } from '../files/index.js';
 import { startJobs, type Jobs } from '../jobs/index.js';
 import {
@@ -27,6 +27,13 @@ import {
 } from '../sign-in/guard.js';
 import { declareSignInTables } from '../sign-in/database.js';
 import type { SignInOptions } from '../sign-in/module.js';
+import { signInSetupProblem } from '../sign-in/setup.js';
+import {
+  databaseCloseTimeoutMs,
+  drainServer,
+  finishedWithin,
+  shutdownTimeoutMs,
+} from './shutdown.js';
 import type { AppUser, SubmittedForm } from './contexts.js';
 import {
   checkDeclaredForm,
@@ -255,7 +262,7 @@ export async function startBunBackend<
   const signIn = (runtime.definition as { signIn?: SignInOptions } | undefined)?.signIn;
   const shell = (runtime.definition as { shell?: ShellLike } | undefined)?.shell;
   const signInEnabled = Boolean(signIn);
-  const signInProblem = checkSignInSetup(runtime, signInEnabled);
+  const signInProblem = checkSignInSetup(runtime, signIn);
   if (signInProblem) {
     throw new Error(`[webstir-backend] ${signInProblem}`);
   }
@@ -265,8 +272,8 @@ export async function startBunBackend<
   if (readAppMigrations(workspaceRoot).length > 0 || appDatabaseExists()) {
     await appDatabase();
   }
-  // Jobs stop with the process; one it was running goes back in the queue at the next start.
-  startJobs({
+  // Jobs stop with the server; one still running then goes back in the queue at the next start.
+  const jobs = startJobs({
     info: (message) => logger.info(message),
     warn: (message) => logger.warn(message),
     error: (message) => logger.error(message),
@@ -303,15 +310,42 @@ export async function startBunBackend<
     readiness.ready();
   }
 
-  // A stop (a deploy, a restart) takes the database's pending snapshot before the process ends.
+  // A stop (a deploy, a restart) lets requests in flight and a running job finish, within
+  // SHUTDOWN_TIMEOUT, then takes the database's pending snapshot before the process ends.
+  let stopping = false;
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-    process.once(signal, () => {
-      server.stop();
-      void closeAppDatabase()
-        .catch((error: unknown) =>
-          logger.error({ err: error }, '[webstir-backend] shutdown failed'),
-        )
-        .finally(() => process.exit(0));
+    process.on(signal, () => {
+      // One stop is under way whoever else asks: a signal to the whole process group reaches
+      // this server and the one in front of it, which then passes its own along.
+      if (stopping) return;
+      stopping = true;
+      const limit = shutdownTimeoutMs();
+      void Promise.all([drainServer(server, limit), finishedWithin(jobs.stop(), limit)])
+        .then(([requests, work]) => {
+          if (!requests || !work) {
+            logger.warn(
+              { requests, jobs: work },
+              `[webstir-backend] stopped after ${limit / 1000}s with work unfinished`,
+            );
+          }
+          // Closing waits for a transaction still open, which work cut off above may never
+          // end; it has long enough to take a snapshot, and then the process ends regardless.
+          return finishedWithin(closeAppDatabase(), databaseCloseTimeoutMs(limit));
+        })
+        .then(
+          (closed) => {
+            if (!closed) {
+              logger.error(
+                '[webstir-backend] stopped without closing the database: it was still in use',
+              );
+            }
+            process.exit(closed ? 0 : 1);
+          },
+          (error: unknown) => {
+            logger.error({ err: error }, '[webstir-backend] shutdown failed');
+            process.exit(1);
+          },
+        );
     });
   }
 
@@ -344,32 +378,23 @@ export function createDefaultBunBackendBootstrap<
 
 /**
  * What sign-in needs before the server listens: routes or views that require it need sign-in
- * enabled, and in production sign-in needs APP_URL for its links and a way to send email.
+ * enabled, and in production sign-in needs APP_URL and whatever each way of signing in needs.
  */
 function checkSignInSetup(
   runtime: {
     routes: readonly { definition?: { auth?: unknown } }[];
     views: readonly CompiledView[];
   },
-  signInEnabled: boolean,
+  signIn: SignInOptions | undefined,
 ): string | undefined {
   const guarded = [
     ...runtime.routes.map((route) => route.definition),
     ...runtime.views.map((view) => view.definition as { auth?: unknown } | undefined),
   ].some(requiresSignIn);
-  if (guarded && !signInEnabled) {
+  if (guarded && !signIn) {
     return "a route or view says auth: 'required', but the app has no sign-in; run `webstir enable sign-in`.";
   }
-  if (signInEnabled && isProduction()) {
-    try {
-      appUrl();
-    } catch (error) {
-      return (error as Error).message;
-    }
-    const email = emailSetupProblem();
-    if (email) return `sign-in sends codes by email, but ${email}`;
-  }
-  return undefined;
+  return signIn && isProduction() ? signInSetupProblem(signIn) : undefined;
 }
 
 function createDefaultBaseLogger(): RuntimeLogger {

@@ -166,3 +166,38 @@ test('a job queued inside a transaction runs only once the transaction commits',
     await fs.rm(root, { recursive: true, force: true });
   }
 }, 20_000);
+
+test('a stopping scheduler starts no more runs, and waits for the one under way', async () => {
+  let finished = false;
+  let runs = 0;
+  const scheduler = startScheduler({
+    jobs: [
+      { name: 'at-start', schedule: '@reboot' },
+      { name: 'often', schedule: 'rate(1 second)' },
+    ],
+    logger: quiet,
+    run: async (name) => {
+      runs += 1;
+      if (name !== 'at-start') return;
+      await Bun.sleep(400);
+      finished = true;
+    },
+  });
+  await Bun.sleep(50);
+  const started = Date.now();
+  await scheduler.stop();
+  assert.equal(finished, true, 'the run under way finished first');
+  assert.ok(Date.now() - started >= 250);
+  const after = runs;
+  await Bun.sleep(1300);
+  assert.equal(runs, after, 'nothing runs once stopped');
+  // A run that fails is over too.
+  const failing = startScheduler({
+    jobs: [{ name: 'at-start', schedule: '@reboot' }],
+    logger: quiet,
+    run: async () => {
+      throw new Error('broken on purpose');
+    },
+  });
+  await failing.stop();
+});

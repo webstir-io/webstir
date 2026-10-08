@@ -7,5 +7,7 @@ export {
   type SignInOptions,
 } from './module.js';
 export { declareSignInTables } from './database.js';
+export { oidc, type OidcOptions } from './oidc.js';
+export type { SignInIdentity, SignInProvider } from './providers.js';
 export type { SessionUser } from './users.js';
 export type { LoadUser } from './guard.js';

@@ -11,7 +11,7 @@ This small harness measures one agent building consumer Webstir apps. It is a de
 - Every requirement is disclosed in the prompt, including stable route/form interfaces. Private acceptance verifies actual HTML CRUD with JavaScript disabled, server validation, restart persistence, and relevant ownership/CSRF boundaries. Repair also checks exact managed-file restoration and preserved customization. A JavaScript-enabled rendering check complements the baseline form flow.
 - Holdout replaces the repair task's update defect with a deletion defect. Run it once on the candidate after the primary comparison. Do not use its outcome to tune recipes before the first holdout result.
 - Correct completion requires every expected independent check and a successful agent process before the deadline. A success message, starter-test pass, or ungraded result never establishes completion. Timeouts count as failures. Setup/browser infrastructure errors and agent runtime errors remain separate outcomes and stay in the denominator. Task build/start/behavior errors count as task failures.
-- Record raw JSONL, prompts, exact package versions, settings, timestamps, checks and screenshots outside git. Import only a reviewed sanitized summary into the plan. API usage appears in Codex JSONL when available; do not invent a dollar cost for subscription runs.
+- Record raw JSONL, prompts, exact package versions, settings, timestamps, checks and screenshots outside git. Commit only a reviewed, sanitized summary. API usage appears in Codex JSONL when available; do not invent a dollar cost for subscription runs.
 
 ## Predeclared improvement gate
 

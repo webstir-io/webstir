@@ -4,24 +4,37 @@ import { appUrl, sessionSecret } from '../app/env.js';
 import { isProduction } from '../app/app-root.js';
 import { email as appEmail, hasEmailDelivery, type EmailMessage } from '../email/index.js';
 import { processFormSubmission, type FormIssue, type FormValues } from '../runtime/forms.js';
-import { renewSession } from '../runtime/session-metadata.js';
 import { redirect } from '../runtime/view-control.js';
 import { signInDatabase } from './database.js';
 import type { LoadUser } from './guard.js';
 import { CODE_MINUTES, consumeCode, consumeToken, createChallenge } from './challenges.js';
 import {
+  checkSignInMethods,
+  providerPath,
+  providerRoutes,
+  type SignInProvider,
+} from './providers.js';
+import { safeReturnTo } from './return-to.js';
+import {
   findOrCreateUser,
   normalizeEmail,
   readSessionUserRef,
-  SESSION_USER_KEY,
+  signedInSession,
   signOutEverywhere,
   type SessionUser,
+  type SessionUserRef,
 } from './users.js';
+
+export { safeReturnTo };
 
 /** What an app decides about sign-in, in `src/backend/sign-in.ts`. */
 export interface SignInOptions {
   /** Who may sign in. By default anyone can, and a first sign-in creates the user. */
   canSignIn?(email: string): boolean | Promise<boolean>;
+  /** False when nobody signs in with an emailed code, only through `providers`. True by default. */
+  emailCode?: boolean;
+  /** Other services people sign in through, each a button on the sign-in page. */
+  providers?: readonly SignInProvider[];
   /** The email with the code and the link; Webstir's plain one by default. */
   email?(message: SignInEmail): Pick<EmailMessage, 'subject' | 'text' | 'html'>;
   /**
@@ -90,6 +103,7 @@ const signInData = z.object({
   returnTo: z.string(),
   error: z.string(),
   development: z.boolean(),
+  providers: z.array(z.object({ id: z.string(), label: z.string(), action: z.string() })),
 });
 
 const confirmData = z.object({ token: z.string(), returnTo: z.string() });
@@ -109,14 +123,19 @@ export interface SignInModule {
   readonly routes: readonly unknown[];
 }
 
-/** Email-code sign-in: the sign-in and confirm pages, and the routes their forms post to. */
+/**
+ * Sign-in: the sign-in and confirm pages, the routes their forms post to, and each provider's
+ * routes. People sign in with an emailed code, through a provider, or either.
+ */
 export function signIn(options: SignInOptions = {}): SignInModule {
+  checkSignInMethods(options);
+  const emailCode = options.emailCode !== false;
   const views = [
     {
       definition: { name: 'sign-in', path: '/sign-in', page: 'sign-in' },
       data: signInData,
       async load(ctx: ViewContext): Promise<z.infer<typeof signInData>> {
-        const pending = readPending(ctx.session);
+        const pending = emailCode ? readPending(ctx.session) : undefined;
         const form = ctx.forms.read(FORM_ID);
         // A form sent back, such as a link that has expired, keeps where the visitor was headed.
         const returnTo = safeReturnTo(
@@ -129,15 +148,24 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         // Signed in, but the app's `loadUser` gives them no access: say so, rather than asking again.
         const refused =
           !ctx.user && !pending && readSessionUserRef(ctx.session)
-            ? 'This account has no access here. Sign in with another email.'
+            ? `This account has no access here. Sign in with another ${emailCode ? 'email' : 'account'}.`
             : undefined;
+        const checking = Boolean(pending && !pending.changing);
         return {
-          asking: !pending || Boolean(pending.changing),
-          checking: Boolean(pending && !pending.changing),
+          asking: emailCode && !checking,
+          checking,
           email: pending?.email ?? '',
           returnTo,
           error: errors.code ?? errors.email ?? errors.form ?? refused ?? '',
           development: !isProduction() && !hasEmailDelivery(),
+          // Not beside the code step: by then the visitor has chosen their way in.
+          providers: checking
+            ? []
+            : (options.providers ?? []).map(({ id, label }) => ({
+                id,
+                label,
+                action: providerPath(id),
+              })),
         };
       },
     },
@@ -166,6 +194,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         });
         ctx.session = submitted.session;
         if (!submitted.ok) return submitted.result;
+        if (!emailCode) return seeOther(SIGN_IN_PATH);
         const values = submitted.values;
         const intent = String(values.intent ?? 'request');
         const pending = readPending(ctx.session);
@@ -225,6 +254,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
         });
         ctx.session = submitted.session;
         if (!submitted.ok) return submitted.result;
+        if (!emailCode) return seeOther(SIGN_IN_PATH);
         const db = await signInDatabase();
         const address = await consumeToken(db, String(submitted.values.token ?? ''), secret());
         if (!address || !(await mayStillSignIn(options, address))) {
@@ -259,7 +289,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
     },
   ];
 
-  return { options, views, routes };
+  return { options, views, routes: [...routes, ...providerRoutes(options)] };
 }
 
 /** The app's module with sign-in's views and routes added, marked so the server knows. */
@@ -305,25 +335,6 @@ export function readSignInCode(value: unknown): string | undefined {
   return digits?.length === 6 ? digits : undefined;
 }
 
-/** A same-origin path to return to after signing in; never another site, and never sign-in itself. */
-export function safeReturnTo(value: unknown): string {
-  const raw = Array.isArray(value) ? value[0] : value;
-  if (typeof raw !== 'string') return '/';
-  const text = raw.trim();
-  if (!text.startsWith('/') || text.startsWith('//') || text.includes('\\')) return '/';
-  try {
-    const url = new URL(text, 'http://app.invalid');
-    if (url.origin !== 'http://app.invalid') return '/';
-    // Checked again after normalizing: `/.//x` and `/a/..//x` become `//x`, another site.
-    const result = `${url.pathname}${url.search}${url.hash}`;
-    if (result.startsWith('//') || result.includes('\\')) return '/';
-    if (/^\/sign-(?:in|out)(?:\/|$)/.test(url.pathname)) return '/';
-    return result;
-  } catch {
-    return '/';
-  }
-}
-
 async function mayStillSignIn(options: SignInOptions, address: string): Promise<boolean> {
   return (await options.canSignIn?.(address)) ?? true;
 }
@@ -359,13 +370,8 @@ function defaultEmail(message: SignInEmail): Pick<EmailMessage, 'subject' | 'tex
   };
 }
 
-function signedIn(
-  ctx: FormContext,
-  user: { id: string; version: number },
-  returnTo: string,
-): HandlerResult {
-  // A new session id at sign-in, so one set before it cannot be used to ride along.
-  ctx.session = renewSession({ [SESSION_USER_KEY]: { id: user.id, version: user.version } });
+function signedIn(ctx: FormContext, user: SessionUserRef, returnTo: string): HandlerResult {
+  ctx.session = signedInSession(user);
   return seeOther(returnTo);
 }
 

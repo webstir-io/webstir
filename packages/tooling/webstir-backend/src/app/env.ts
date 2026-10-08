@@ -17,13 +17,22 @@ const DEFAULT_BODY_LIMIT = 1_048_576;
  * earlier file, is kept.
  */
 export function loadEnvFiles(workspaceRoot: string = appRoot()): void {
+  for (const [key, value] of Object.entries(readEnvFiles(workspaceRoot))) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+/** What `.env.local`, then `.env`, set in the app's root: the earlier file's value is kept. */
+export function readEnvFiles(workspaceRoot: string): Record<string, string> {
+  const values: Record<string, string> = {};
   for (const file of ENV_FILES) {
     const full = path.join(workspaceRoot, file);
     if (!existsSync(full)) continue;
     for (const [key, value] of parseEnvFile(readFileSync(full, 'utf8'))) {
-      if (process.env[key] === undefined) process.env[key] = value;
+      if (values[key] === undefined) values[key] = value;
     }
   }
+  return values;
 }
 
 export function parseEnvFile(contents: string): [string, string][] {

@@ -16,7 +16,11 @@ export interface PublishedWorkspaceServer {
   readonly origin: string;
   /** What the published app is made of; it always has a server. */
   readonly layers: WorkspaceLayers;
-  stop(): Promise<void>;
+  /**
+   * Lets requests in flight finish, within SHUTDOWN_TIMEOUT, then stops the app server. With
+   * `now`, closes every connection and stops both at once.
+   */
+  stop(how?: { readonly now?: boolean }): Promise<void>;
 }
 
 export interface DeploymentIo {

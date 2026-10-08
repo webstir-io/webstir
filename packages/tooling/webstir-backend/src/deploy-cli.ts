@@ -18,10 +18,20 @@ async function main(argv: readonly string[]): Promise<void> {
     port: args.port,
   });
 
+  let stopping = false;
+  let forced = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    // Asked twice, it stops waiting for requests in flight.
+    if (stopping) {
+      forced = true;
+      await server.stop({ now: true });
+      process.exit(1);
+    }
+    stopping = true;
     process.stderr.write(`[webstir-backend-deploy] received ${signal}, stopping.\n`);
     await server.stop();
-    process.exit(0);
+    // Cut short by a second signal, this stop ends too: it was not a clean one.
+    process.exit(forced ? 1 : 0);
   };
 
   process.on('SIGINT', () => void shutdown('SIGINT'));

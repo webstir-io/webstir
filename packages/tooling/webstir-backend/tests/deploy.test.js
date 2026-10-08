@@ -5,6 +5,7 @@ import path from 'node:path';
 import net from 'node:net';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { spawn as spawnProcess } from 'node:child_process';
 
 import { backendProvider, startPublishedWorkspaceServer } from '../dist/index.js';
 import { scaffoldAssets } from './support/scaffold.js';
@@ -90,7 +91,7 @@ test.skipIf(!tcpListenAvailable)(
       assert.equal(readyResponse.status, 200);
       const readyPayload = await readyResponse.json();
       assert.equal(readyPayload.status, 'ready');
-      assert.equal(readyPayload.manifest?.routes, 2);
+      assert.equal(readyPayload.manifest?.routes, 4);
 
       const healthResponse = await fetch(`${server.origin}/healthz`);
       assert.equal(healthResponse.status, 200);
@@ -166,6 +167,198 @@ test.skipIf(!tcpListenAvailable)(
       await server.stop();
       await fs.rm(workspace, { recursive: true, force: true });
     }
+  },
+);
+
+/**
+ * The deploy command, or the app server alone, as a deployment runs it: its own process in its
+ * own process group, stopped with signals. Whatever the test does, both are gone when it ends.
+ */
+async function withStoppableProcess(options, run) {
+  const workspace = await createTempWorkspace('webstir-backend-stop-');
+  await buildRuntimeWorkspace(workspace, 'api');
+  if (options.dotEnv) await fs.writeFile(path.join(workspace, '.env'), options.dotEnv, 'utf8');
+  const port = await getOpenPort();
+  const cmd = options.appServerOnly
+    ? ['bun', path.join(workspace, 'build', 'backend', 'index.js')]
+    : [
+        'bun',
+        path.join(getPackageRoot(), 'dist', 'deploy-cli.js'),
+        '--workspace',
+        workspace,
+        '--port',
+        String(port),
+      ];
+  const child = spawnProcess(cmd[0], cmd.slice(1), {
+    // Not the workspace: only what the servers read themselves reaches them.
+    cwd: getPackageRoot(),
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+      WEBSTIR_JOBS: 'off',
+      ...(options.appServerOnly ? { PORT: String(port), WEBSTIR_WORKSPACE_ROOT: workspace } : {}),
+      ...options.env,
+    },
+    stdio: 'ignore',
+    detached: true,
+  });
+  const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)));
+  const origin = `http://127.0.0.1:${port}`;
+  try {
+    for (let waited = 0; ; waited += 50) {
+      if ((await fetch(`${origin}/deploy/check`).catch(() => undefined))?.ok) break;
+      assert.ok(waited < 20_000, 'the server should start');
+      await Bun.sleep(50);
+    }
+    await run({
+      origin,
+      exited,
+      signal: (name = 'SIGTERM') => child.kill(name),
+      /** As Ctrl-C or a service manager does: to the server and the one it runs, at once. */
+      signalGroup: (name = 'SIGTERM') => process.kill(-child.pid, name),
+      /** A request that takes this long, as what became of it. */
+      slow: (ms) =>
+        fetch(`${origin}/deploy/slow?ms=${ms}`).then(
+          async (response) => [response.status, await response.json()],
+          (error) => ['failed', error.code ?? error.message],
+        ),
+      groupIsGone: () => {
+        try {
+          process.kill(-child.pid, 0);
+          return false;
+        } catch {
+          return true;
+        }
+      },
+    });
+  } finally {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      // Already gone, as it should be.
+    }
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+}
+
+const stopTest = (name, run) => test.skipIf(!tcpListenAvailable)(name, run, 60_000);
+
+stopTest(
+  'a stopping deployment lets a request in flight finish, and takes no new ones',
+  async () => {
+    await withStoppableProcess({}, async (app) => {
+      const inFlight = app.slow(2000);
+      await Bun.sleep(300);
+      app.signal();
+      await Bun.sleep(300);
+      const late = await fetch(`${app.origin}/deploy/check`).then(
+        (response) => response.status,
+        () => 'refused',
+      );
+      assert.equal(late, 'refused');
+      assert.deepEqual(await inFlight, [200, { waited: 2000 }]);
+      assert.equal(await app.exited, 0);
+      assert.equal(app.groupIsGone(), true, 'the app server stops with it');
+    });
+  },
+);
+
+stopTest(
+  'a signal to the server and the app server it runs at once still lets a request finish',
+  async () => {
+    for (const signal of ['SIGTERM', 'SIGINT']) {
+      await withStoppableProcess({}, async (app) => {
+        const inFlight = app.slow(2000);
+        await Bun.sleep(300);
+        app.signalGroup(signal);
+        assert.deepEqual(await inFlight, [200, { waited: 2000 }], signal);
+        assert.equal(await app.exited, 0, signal);
+        assert.equal(app.groupIsGone(), true, signal);
+      });
+    }
+  },
+);
+
+stopTest(
+  'a stopping deployment waits only SHUTDOWN_TIMEOUT for a request, then closes it',
+  async () => {
+    await withStoppableProcess({ env: { SHUTDOWN_TIMEOUT: '1' } }, async (app) => {
+      const inFlight = app.slow(30_000);
+      await Bun.sleep(300);
+      const asked = Date.now();
+      app.signal();
+      assert.equal((await inFlight)[0], 'failed');
+      assert.equal(await app.exited, 0);
+      const took = Date.now() - asked;
+      assert.ok(took >= 900 && took < 10_000, `stopped ${took}ms after being asked`);
+      assert.equal(app.groupIsGone(), true);
+    });
+  },
+);
+
+stopTest("the app's .env sets the wait for the server in front as for the app server", async () => {
+  await withStoppableProcess({ dotEnv: 'SHUTDOWN_TIMEOUT=0\n' }, async (app) => {
+    const inFlight = app.slow(20_000);
+    await Bun.sleep(300);
+    const asked = Date.now();
+    app.signal();
+    assert.equal((await inFlight)[0], 'failed');
+    assert.equal(await app.exited, 0);
+    assert.ok(Date.now() - asked < 3000, 'neither waited the four seconds they would by default');
+  });
+});
+
+stopTest(
+  'asked twice, a stopping deployment stops waiting, and its app server goes with it',
+  async () => {
+    await withStoppableProcess({ env: { SHUTDOWN_TIMEOUT: '120' } }, async (app) => {
+      const inFlight = app.slow(60_000);
+      await Bun.sleep(300);
+      app.signal();
+      await Bun.sleep(500);
+      assert.equal(app.groupIsGone(), false, 'still waiting for the request');
+      const asked = Date.now();
+      app.signal();
+      assert.equal(await app.exited, 1);
+      assert.ok(Date.now() - asked < 10_000);
+      assert.equal((await inFlight)[0], 'failed');
+      await Bun.sleep(200);
+      assert.equal(app.groupIsGone(), true);
+    });
+  },
+);
+
+stopTest(
+  'a server whose database is still in use stops anyway, and says it did not close it',
+  async () => {
+    await withStoppableProcess(
+      { appServerOnly: true, env: { SHUTDOWN_TIMEOUT: '0' } },
+      async (app) => {
+        assert.deepEqual(await (await fetch(`${app.origin}/deploy/stuck`)).json(), { stuck: true });
+        const asked = Date.now();
+        app.signal();
+        assert.equal(await app.exited, 1);
+        const took = Date.now() - asked;
+        assert.ok(took >= 9000 && took < 30_000, `stopped ${took}ms after being asked`);
+      },
+    );
+  },
+);
+
+stopTest(
+  'an app server run on its own lets a request finish, however often it is asked to stop',
+  async () => {
+    await withStoppableProcess({ appServerOnly: true }, async (app) => {
+      const inFlight = app.slow(2000);
+      await Bun.sleep(300);
+      app.signal();
+      await Bun.sleep(200);
+      // The server in front of it passes its own signal along: that is not a second asking.
+      app.signal();
+      app.signal('SIGINT');
+      assert.deepEqual(await inFlight, [200, { waited: 2000 }]);
+      assert.equal(await app.exited, 0);
+    });
   },
 );
 
@@ -322,6 +515,31 @@ async function buildRuntimeWorkspace(workspace, mode) {
 function createModuleSource(mode) {
   const routePrefix = mode === 'full' ? '/api' : '';
   return `const routes = [
+  {
+    definition: {
+      name: 'deployStuck',
+      method: 'GET',
+      path: '${routePrefix}/deploy/stuck'
+    },
+    handler: async (ctx) => {
+      // A transaction that never ends, as a hung query inside one would be.
+      void ctx.db.transaction(() => new Promise(() => {}));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return { status: 200, body: { stuck: true } };
+    }
+  },
+  {
+    definition: {
+      name: 'deploySlow',
+      method: 'GET',
+      path: '${routePrefix}/deploy/slow'
+    },
+    handler: async (ctx) => {
+      const ms = Number(ctx.query.ms ?? 0);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      return { status: 200, body: { waited: ms } };
+    }
+  },
   {
     definition: {
       name: 'deployCheck',

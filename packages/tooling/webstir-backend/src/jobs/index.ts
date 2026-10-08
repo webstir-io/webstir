@@ -87,9 +87,8 @@ export function startJobs(logger: JobLogger): { stop(): Promise<void> } {
 
   return {
     async stop() {
-      scheduler.stop();
       unsubscribe();
-      await worker?.stop();
+      await Promise.all([scheduler.stop(), worker?.stop()]);
       worker = undefined;
     },
   };

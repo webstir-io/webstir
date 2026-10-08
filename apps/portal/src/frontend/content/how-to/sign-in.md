@@ -4,7 +4,7 @@
 webstir enable sign-in --workspace "$PWD"
 ```
 
-People sign in with a code sent to their email, or the link in the same email. There are no passwords to store or reset. The command writes:
+People sign in with a code sent to their email, or the link in the same email. There are no passwords to store or reset. An app can also let them [sign in through another service](#sign-in-through-another-service). The command writes:
 
 - **`src/backend/sign-in.ts`:** your choices: who may sign in, and the email's text.
 - **`src/frontend/pages/sign-in/`** and **`src/frontend/pages/sign-in-confirm/`:** the pages, as your own HTML to style.
@@ -62,6 +62,91 @@ const signIn: SignInOptions = {
 
 `null` means no access: that person is treated as signed out, and the sign-in page tells them this account has no access here. Type loaders with `ViewContext<Member>` and handlers with `ActionContext<Member>` from `@webstir-io/webstir-backend`.
 
+## Sign in through another service
+
+People can also sign in through a service that speaks OpenID Connect, such as Microsoft Entra, Google or Okta. Each one is a provider in `src/backend/sign-in.ts`, and a "Sign in with" button on the sign-in page:
+
+```ts
+import { oidc, type SignInOptions } from '@webstir-io/webstir-backend/sign-in';
+
+const signIn: SignInOptions = {
+  providers: [
+    oidc({
+      id: 'acme',
+      label: 'Acme',
+      issuer: 'https://login.acme.example',
+      clientId: process.env.ACME_CLIENT_ID,
+      clientSecret: process.env.ACME_CLIENT_SECRET,
+    }),
+  ],
+};
+```
+
+- **Register the callback.** The button posts to `/sign-in/<id>/`, which sends the visitor to the provider. They come back to `/sign-in/<id>/callback/` under `APP_URL`, which is the redirect address to register with the provider. `APP_URL` must be the address visitors use: the session cookie set on one host does not come back to another.
+- **What is checked.** The flow is the authorization code flow with PKCE, a state and a nonce. The ID token is checked for its issuer, audience, nonce, lifetime and signature. Only the sign-in page's own form, with its CSRF field, starts it.
+- **Who gets in.** `canSignIn` and `loadUser` apply as they do to email codes. `canSignIn` is asked about the address the app knows the person by and the one the provider gives now, and either can turn them away. `allowSignUp: false` only signs in people the app already has a user for.
+- **Who they are.** A person's first sign-in becomes the user with their address, or a new user. After that they are found by the provider's own id for them, so they stay the same user when their address changes. A user is one person at a provider: someone else who arrives there with that user's address is turned away. A provider that gives everyone new ids, as Entra's `sub` does when an app is registered again, turns everyone away for the same reason, until their rows in `webstir_sign_in_identities` are removed; build `identity` on an id that lasts, as the example below does.
+- **When it fails.** An answer that cannot be trusted, or a person who may not sign in, lands back on the sign-in page with a message. The reason, with what the provider said went wrong, is in the server's log under `[sign-in] <id>:`.
+- **Providers only.** `emailCode: false` beside `providers` leaves them as the only way in: the page shows no email form, and production needs no `EMAIL_URL`.
+- **Options.** `scopes` replaces the default `email` and `profile` (`openid` is always asked for). `authorizeParams` adds to what the provider's sign-in page is sent, such as `{ prompt: 'select_account' }`; it cannot set what the flow itself sets or depends on, such as `state`, `scope` or `response_mode`. With `max_age`, the token must say the person signed in that recently.
+
+By default the person is the token's `sub`, with its `email` only when the provider says `email_verified`. Since the address decides which user a first sign-in becomes, an unverified one is ignored, and that person gets in only if they signed in before. A provider with claims of its own takes an `identity`. Microsoft Entra, for one tenant, sends no `email_verified` and has its own lasting ids:
+
+```ts
+oidc({
+  id: 'microsoft',
+  label: 'Microsoft',
+  // The tenant's id, a GUID: not its domain name, and not `common` or `organizations`.
+  issuer: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}/v2.0`,
+  clientId: process.env.MICROSOFT_CLIENT_ID,
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+  authorizeParams: { prompt: 'select_account' },
+  allowSignUp: false,
+  identity: (claims) => {
+    if (typeof claims.tid !== 'string' || typeof claims.oid !== 'string') {
+      throw new Error('the token has no tenant and object id');
+    }
+    return { subject: `${claims.tid}:${claims.oid}`, email: String(claims.email ?? '') };
+  },
+});
+```
+
+- Entra sends `email` only for people whose account has a mail address, and only when the app registration asks for it as an optional claim. Someone without it has no address to be known by, and is turned away until they have one.
+- Pass an `email` on from `identity` only when you trust who sets it. In Entra that is the tenant's administrators: whoever can set a person's mail address there can make them the app user with that address on their first sign-in. With one tenant of your own, `allowSignUp: false` and a `canSignIn` that names who may sign in, that is the people who already run the tenant.
+
+A sign-in page written before providers needs these to show them: the `flash` messages outside the code step, and a form for each provider.
+
+```html
+<p role="status" data-each="flash as note" data-text="note.message"></p>
+<form method="post" data-no-client-nav data-each="providers as provider" data-attr-action="provider.action">
+    <input type="hidden" name="returnTo" data-attr-value="returnTo" />
+    <button type="submit">Sign in with <span data-text="provider.label"></span></button>
+</form>
+```
+
+### A provider of your own
+
+`oidc()` returns a `SignInProvider`, and an app can write one for a service that is not OpenID Connect: an `id`, a `label`, and two functions.
+
+```ts
+import type { SignInProvider } from '@webstir-io/webstir-backend/sign-in';
+
+const acme: SignInProvider = {
+  id: 'acme',
+  label: 'Acme',
+  // Where to send the visitor, and what to keep in their session until they come back.
+  async start({ redirectUri }) {
+    return { location: authorizeUrl, keep: { state } };
+  },
+  // Who came back. Throw when the answer cannot be trusted.
+  async finish({ url, redirectUri, kept }) {
+    return { subject, email };
+  },
+};
+```
+
+`start` must keep something only this visitor's session has, such as a random `state`, and `finish` must refuse an answer that does not carry it: that is what stops one person's answer being used in another's browser. `setupProblem()` can name what the provider still needs in production, and the server refuses to start until it returns nothing.
+
 ## An app with its own users table
 
 Webstir makes `users (id, email, session_version, created_at)` before the app's migrations run, so they can reference `users (id)`. An app whose own migrations make `users`, with more columns such as a name or a status, says so, and Webstir leaves the table to them:
@@ -83,4 +168,5 @@ The server refuses to start with sign-in unless it has:
 
 - `SESSION_SECRET`
 - `APP_URL`, the address people use, for the links in the email. It is never taken from the request.
-- `EMAIL_URL` and `EMAIL_FROM` (see [Send Email](./email.md)), or an email transport the app sets.
+- `EMAIL_URL` and `EMAIL_FROM` (see [Send Email](./email.md)), or an email transport the app sets, unless `emailCode` is off.
+- For each `oidc()` provider, its `issuer` (an https address), `clientId` and `clientSecret`.

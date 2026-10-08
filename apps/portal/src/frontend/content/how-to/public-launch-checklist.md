@@ -75,4 +75,3 @@ Make Webstir repos public in a consistent, OSS-friendly way. This guide captures
 - Docs index — [docs/README.md](../README.md)
 - CLI reference — [CLI](../reference/cli.md)
 - Contracts & invariants — [Contracts](../reference/contracts.md)
-- Provider selection — [Provider selection](./provider-selection.md)

@@ -11,11 +11,13 @@ import {
 import {
   ATTR_BINDING_PREFIX,
   SOURCE_STAMP_ATTRIBUTE,
+  WITH_BINDING_PREFIX,
   hasBindingAttribute,
   isBindingAttribute,
   parseEach,
   parsePath,
   parseStamp,
+  parseWith,
 } from './bindings.js';
 import { RenderTemplateError, type RenderIssue } from './issues.js';
 
@@ -60,6 +62,20 @@ const URL_ATTRIBUTES = new Set([
 const ATTRIBUTE_NAME_PATTERN = /^[a-z_][a-z0-9_.:-]*$/;
 const FORBIDDEN_ATTRIBUTES = new Set(['srcdoc', SOURCE_STAMP_ATTRIBUTE]);
 
+/** What a name given by `data-with-<name>` stands for: a path, or text written in the template. */
+type Given = { readonly path: RenderPath } | { readonly literal: string };
+
+/** The names in reach of an element: each loop's item, and what `data-with-<name>` has given. */
+interface Names {
+  readonly scopes: readonly string[];
+  readonly given: ReadonlyMap<string, Given>;
+}
+
+type Resolved =
+  | { readonly path: RenderPath }
+  | { readonly literal: string }
+  | { readonly problem: string };
+
 interface CompileState {
   readonly $: CheerioAPI;
   readonly source: string;
@@ -68,12 +84,25 @@ interface CompileState {
   /** Forms a submit control elsewhere in the document posts, through `form` and `formmethod`. */
   readonly postedForms: ReadonlySet<string>;
   bindings: number;
+  /** The template gave a name with `data-with-<name>`, which no rendered page keeps. */
+  settled: boolean;
 }
 
 export function compileRenderProgram(
   html: string,
   options: CompileRenderProgramOptions,
 ): RenderProgram {
+  return compilePage(html, options).program;
+}
+
+/**
+ * The page's program, and whether the template gave names with `data-with-<name>`: when such a
+ * page leaves the server nothing to render, its HTML is what it compiled to.
+ */
+export function compilePage(
+  html: string,
+  options: CompileRenderProgramOptions,
+): { readonly program: RenderProgram; readonly settled: boolean } {
   const $ = load(html);
   const postedForms = new Set(
     $('button[form][formmethod], input[form][formmethod]')
@@ -88,6 +117,7 @@ export function compileRenderProgram(
     dynamic: new Set(),
     postedForms,
     bindings: 0,
+    settled: false,
   };
   const roots = $.root().contents().toArray();
   for (const node of roots) {
@@ -95,17 +125,20 @@ export function compileRenderProgram(
   }
 
   const nodes: RenderNode[] = [];
-  compileNodes(roots, nodes, [], state);
+  compileNodes(roots, nodes, { scopes: [], given: new Map() }, state);
 
   if (state.issues.length > 0) {
     throw new RenderTemplateError(state.issues);
   }
   return {
-    version: RENDER_PROGRAM_VERSION,
-    page: options.page,
-    source: options.source,
-    bindings: state.bindings,
-    nodes,
+    program: {
+      version: RENDER_PROGRAM_VERSION,
+      page: options.page,
+      source: options.source,
+      bindings: state.bindings,
+      nodes,
+    },
+    settled: state.settled,
   };
 }
 
@@ -132,12 +165,12 @@ function markDynamic(node: AnyNode, state: CompileState): boolean {
 function compileNodes(
   nodes: readonly AnyNode[],
   target: RenderNode[],
-  scopes: readonly string[],
+  names: Names,
   state: CompileState,
 ): void {
   for (const node of nodes) {
     if (isElement(node) && state.dynamic.has(node)) {
-      compileElement(node, target, scopes, state);
+      compileElement(node, target, names, state);
     } else {
       pushStatic(target, state.$.html(node));
     }
@@ -147,7 +180,7 @@ function compileNodes(
 function compileElement(
   element: Element,
   target: RenderNode[],
-  scopes: readonly string[],
+  names: Names,
   state: CompileState,
 ): void {
   const attribs = element.attribs;
@@ -159,8 +192,19 @@ function compileElement(
     state.issues.push({ loc, message: `${attribute}="${attribs[attribute]}": ${message}` });
   };
 
+  /** A path as written, or undefined after reporting why it cannot be used here. */
+  const pathOf = (attribute: string, source: string, keys: string[], within: Names) => {
+    const resolved = resolve(source, keys, within);
+    if ('path' in resolved) return resolved.path;
+    report(
+      attribute,
+      'problem' in resolved ? resolved.problem : `\`${keys[0]}\` is text, and this needs data`,
+    );
+    return undefined;
+  };
+
   let container = target;
-  let innerScopes = scopes;
+  let inner = names;
 
   if (attribs['data-each'] !== undefined || attribs['data-if'] !== undefined) {
     if (DOCUMENT_ELEMENTS.has(element.name)) {
@@ -177,20 +221,51 @@ function compileElement(
     const parsed = parseEach(eachValue);
     if (typeof parsed === 'string') {
       report('data-each', parsed);
+    } else if (attribs[`${WITH_BINDING_PREFIX}${parsed.path[0].toLowerCase()}`] !== undefined) {
+      report(
+        'data-each',
+        `a loop is read before the names its element gives, so \`${parsed.path[0]}\` is not in its reach; give it on an element outside this one`,
+      );
     } else {
-      const body: RenderNode[] = [];
-      target.push({
-        op: 'each',
-        as: parsed.as,
-        path: resolvePath(parsed.source, parsed.path, scopes),
-        loc,
-        body,
-      });
-      state.bindings += 1;
-      container = body;
-      innerScopes = [...scopes, parsed.as];
+      const path = pathOf('data-each', parsed.source, parsed.path, names);
+      if (path) {
+        const body: RenderNode[] = [];
+        target.push({ op: 'each', as: parsed.as, path, loc, body });
+        state.bindings += 1;
+        container = body;
+      }
+      // The loop's item is the nearest thing by that name, over one given further out.
+      const given = new Map(names.given);
+      given.delete(parsed.as);
+      inner = { scopes: [...names.scopes, parsed.as], given };
     }
   }
+
+  // Each name is given from what is in reach outside this element, so none reads another.
+  const given = new Map(inner.given);
+  for (const [name, value] of Object.entries(attribs)) {
+    if (!name.startsWith(WITH_BINDING_PREFIX)) {
+      continue;
+    }
+    // Its attribute is the template's alone, so the page is written as what it compiled to.
+    state.settled = true;
+    const parsed = parseWith(name.slice(WITH_BINDING_PREFIX.length), value);
+    if (typeof parsed === 'string') {
+      report(name, parsed);
+      continue;
+    }
+    if ('literal' in parsed) {
+      given.set(parsed.name, { literal: parsed.literal });
+      continue;
+    }
+    const resolved = resolve(value.trim(), parsed.path, inner);
+    if ('problem' in resolved) {
+      report(name, resolved.problem);
+    } else {
+      given.set(parsed.name, resolved);
+    }
+  }
+  inner = { scopes: inner.scopes, given };
 
   const ifValue = attribs['data-if'];
   if (ifValue !== undefined) {
@@ -200,16 +275,20 @@ function compileElement(
     if (typeof parsed === 'string') {
       report('data-if', parsed);
     } else {
-      const body: RenderNode[] = [];
-      container.push({
-        op: 'if',
-        negate,
-        path: resolvePath(source, parsed, innerScopes),
-        loc,
-        body,
-      });
-      state.bindings += 1;
-      container = body;
+      const resolved = resolve(source, parsed, inner);
+      if ('problem' in resolved) {
+        report('data-if', resolved.problem);
+      } else if ('literal' in resolved) {
+        // Text written in the template is known now: empty text is falsy, as it is in data.
+        if (resolved.literal.length > 0 === negate) {
+          return;
+        }
+      } else {
+        const body: RenderNode[] = [];
+        container.push({ op: 'if', negate, path: resolved.path, loc, body });
+        state.bindings += 1;
+        container = body;
+      }
     }
   }
 
@@ -230,12 +309,21 @@ function compileElement(
       report(name, parsed);
       continue;
     }
+    const resolved = resolve(value.trim(), parsed, inner);
+    if ('problem' in resolved) {
+      report(name, resolved.problem);
+      continue;
+    }
     boundAttributes.add(target);
+    if ('literal' in resolved) {
+      attributeOps.push(` ${target}="${escapeAttribute(resolved.literal)}"`);
+      continue;
+    }
     attributeOps.push({
       op: 'attr',
       name: target,
       url: URL_ATTRIBUTES.has(target) || (element.name === 'object' && target === 'data'),
-      path: resolvePath(value.trim(), parsed, innerScopes),
+      path: resolved.path,
       loc,
     });
     state.bindings += 1;
@@ -249,22 +337,26 @@ function compileElement(
     } else if (typeof parsed === 'string') {
       report('data-props', parsed);
     } else {
-      // Rendered into its own attribute, so a rendered page never reads as a template again.
-      attributeOps.push({
-        op: 'attr',
-        name: 'data-island-props',
-        url: false,
-        json: true,
-        path: resolvePath(propsValue.trim(), parsed, innerScopes),
-        loc,
-      });
-      state.bindings += 1;
+      const path = pathOf('data-props', propsValue.trim(), parsed, inner);
+      if (path) {
+        // Rendered into its own attribute, so a rendered page never reads as a template again.
+        attributeOps.push({
+          op: 'attr',
+          name: 'data-island-props',
+          url: false,
+          json: true,
+          path,
+          loc,
+        });
+        state.bindings += 1;
+      }
     }
   }
 
   pushStatic(container, `<${element.name}${renderStaticAttributes(element, boundAttributes)}`);
   for (const op of attributeOps) {
-    container.push(op);
+    if (typeof op === 'string') pushStatic(container, op);
+    else container.push(op);
   }
   pushStatic(container, '>');
 
@@ -289,11 +381,18 @@ function compileElement(
     } else if (typeof parsed === 'string') {
       report('data-text', parsed);
     } else {
-      container.push({ op: 'text', path: resolvePath(textValue.trim(), parsed, innerScopes), loc });
-      state.bindings += 1;
+      const resolved = resolve(textValue.trim(), parsed, inner);
+      if ('problem' in resolved) {
+        report('data-text', resolved.problem);
+      } else if ('literal' in resolved) {
+        pushStatic(container, escapeText(resolved.literal));
+      } else {
+        container.push({ op: 'text', path: resolved.path, loc });
+        state.bindings += 1;
+      }
     }
   } else {
-    compileNodes(element.children, container, innerScopes, state);
+    compileNodes(element.children, container, inner, state);
   }
 
   pushStatic(container, `</${element.name}>`);
@@ -341,12 +440,23 @@ function renderStaticAttributes(element: Element, bound: ReadonlySet<string>): s
   return output;
 }
 
-function resolvePath(source: string, keys: string[], scopes: readonly string[]): RenderPath {
-  const scope = scopes.lastIndexOf(keys[0]);
-  if (scope >= 0) {
-    return { source, scope, keys: keys.slice(1) };
+/** What a path as written reads: a given name stands for its path or text, nearest first. */
+function resolve(source: string, keys: string[], names: Names): Resolved {
+  const given = names.given.get(keys[0]);
+  if (given && 'literal' in given) {
+    return keys.length === 1
+      ? given
+      : { problem: `\`${keys[0]}\` is text, so it has no \`${keys[1]}\`` };
   }
-  return { source, scope: -1, keys };
+  if (given) {
+    return {
+      path: { source, scope: given.path.scope, keys: [...given.path.keys, ...keys.slice(1)] },
+    };
+  }
+  const scope = names.scopes.lastIndexOf(keys[0]);
+  return {
+    path: scope >= 0 ? { source, scope, keys: keys.slice(1) } : { source, scope: -1, keys },
+  };
 }
 
 function pushStatic(target: RenderNode[], html: string): void {
@@ -395,6 +505,10 @@ function isPost(method: string | undefined): boolean {
 
 function isElement(node: AnyNode): node is Element {
   return node.type === 'tag' || node.type === 'script' || node.type === 'style';
+}
+
+function escapeText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeAttribute(value: string): string {

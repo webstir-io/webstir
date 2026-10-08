@@ -46,7 +46,7 @@ export async function copyFullWorkspace(copies: DemoWorkspaceCopy[]): Promise<st
   return workspace;
 }
 
-/** Copies the DESIGN.md clients page and its sidebar partial into the workspace. */
+/** Copies the render-clients fixture page and its sidebar partial into the workspace. */
 export async function copyDesignClientsPage(workspace: string): Promise<void> {
   const frontend = path.join(workspace, 'src', 'frontend');
   await cp(path.join(DESIGN_FIXTURE, 'pages', 'clients'), path.join(frontend, 'pages', 'clients'), {

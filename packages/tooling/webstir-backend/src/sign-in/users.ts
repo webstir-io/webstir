@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Database } from '../db/database.js';
+import { renewSession } from '../runtime/session-metadata.js';
 
 /** The signed-in person, as handlers and views see them in `ctx.user`. */
 export interface SessionUser {
@@ -28,12 +29,17 @@ export function normalizeEmail(value: unknown): string | undefined {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254 ? email : undefined;
 }
 
-export async function findOrCreateUser(db: Database, email: string): Promise<SessionUserRef> {
-  const existing = await db.get<UserRow>(
+export async function findUser(db: Database, email: string): Promise<SessionUserRef | undefined> {
+  const row = await db.get<UserRow>(
     'SELECT id, email, session_version FROM users WHERE email = ?',
     [email],
   );
-  if (existing) return { id: String(existing.id), version: Number(existing.session_version) };
+  return row ? { id: String(row.id), version: Number(row.session_version) } : undefined;
+}
+
+export async function findOrCreateUser(db: Database, email: string): Promise<SessionUserRef> {
+  const existing = await findUser(db, email);
+  if (existing) return existing;
   try {
     const id = randomUUID();
     await db.execute(
@@ -43,11 +49,8 @@ export async function findOrCreateUser(db: Database, email: string): Promise<Ses
     return { id, version: 1 };
   } catch (error) {
     // Two first sign-ins at once: the other one made the user.
-    const made = await db.get<UserRow>(
-      'SELECT id, email, session_version FROM users WHERE email = ?',
-      [email],
-    );
-    if (made) return { id: String(made.id), version: Number(made.session_version) };
+    const made = await findUser(db, email);
+    if (made) return made;
     throw error;
   }
 }
@@ -67,6 +70,11 @@ export async function loadSessionUser(
 /** Ends every session of this user, on every device. */
 export async function signOutEverywhere(db: Database, userId: string): Promise<void> {
   await db.execute('UPDATE users SET session_version = session_version + 1 WHERE id = ?', [userId]);
+}
+
+/** The session of someone who has just signed in: a new one, so an id set before cannot ride along. */
+export function signedInSession(user: SessionUserRef): Record<string, unknown> {
+  return renewSession({ [SESSION_USER_KEY]: { id: user.id, version: user.version } });
 }
 
 export function readSessionUserRef(

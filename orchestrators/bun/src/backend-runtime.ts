@@ -110,6 +110,9 @@ export class BackendRuntimeSupervisor {
     const child = spawn(resolveRuntimeCommand(), [this.entryFile], {
       cwd: this.workspaceRoot,
       env: {
+        // A rebuild replaces the server at once: waiting for an open connection would only
+        // slow the loop down.
+        SHUTDOWN_TIMEOUT: '0',
         ...process.env,
         ...this.env,
         PORT: String(port),

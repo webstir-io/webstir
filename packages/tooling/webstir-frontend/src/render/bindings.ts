@@ -1,5 +1,6 @@
 export const SOURCE_STAMP_ATTRIBUTE = 'data-webstir-src';
 export const ATTR_BINDING_PREFIX = 'data-attr-';
+export const WITH_BINDING_PREFIX = 'data-with-';
 
 export const BINDING_ATTRIBUTES = [
   'data-text',
@@ -9,8 +10,11 @@ export const BINDING_ATTRIBUTES = [
   'data-props',
 ] as const;
 
-const BINDING_PATTERN = /\sdata-(?:text|if|each|include|props|attr-[^\s=>]+)\s*=/i;
+const BINDING_PATTERN = /\sdata-(?:text|if|each|include|props|(?:attr|with)-[^\s=>]+)\s*=/i;
 const SEGMENT_PATTERN = /^[A-Za-z_$][\w$]*$/;
+// An attribute's name reaches the build in lowercase, so a name given with one is lowercase.
+const WITH_NAME_PATTERN = /^[a-z_][a-z0-9_]*$/;
+const LITERAL_PATTERN = /^'([\s\S]*)'$/;
 const EACH_PATTERN = /^(\S+)\s+as\s+(\S+)$/;
 const PARTIAL_NAME_PATTERN = /^[A-Za-z0-9][\w-]*(?:\/[A-Za-z0-9][\w-]*)*$/;
 
@@ -22,6 +26,7 @@ export function isBindingAttribute(name: string): boolean {
   return (
     (BINDING_ATTRIBUTES as readonly string[]).includes(name) ||
     name.startsWith(ATTR_BINDING_PREFIX) ||
+    name.startsWith(WITH_BINDING_PREFIX) ||
     name === SOURCE_STAMP_ATTRIBUTE
   );
 }
@@ -57,6 +62,24 @@ export function parseEach(value: string): { source: string; path: string[]; as: 
     return `\`${match[2]}\` is not a valid name`;
   }
   return { source: match[1], path, as: match[2] };
+}
+
+/**
+ * What `data-with-<name>` gives its name: the text between single quotes, or a path.
+ */
+export function parseWith(
+  name: string,
+  value: string,
+): { name: string; literal: string } | { name: string; path: string[] } | string {
+  if (!WITH_NAME_PATTERN.test(name)) {
+    return `\`${name}\` is not a name to give; use lowercase letters, digits and underscores, since HTML lowercases attribute names`;
+  }
+  const literal = LITERAL_PATTERN.exec(value.trim());
+  if (literal) {
+    return { name, literal: literal[1] };
+  }
+  const path = parsePath(value);
+  return typeof path === 'string' ? `${path}, or text in single quotes` : { name, path };
 }
 
 export function isValidPartialName(value: string): boolean {
