@@ -18,7 +18,14 @@ async function main(argv: readonly string[]): Promise<void> {
     port: args.port,
   });
 
+  let stopping = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    // Asked twice, it stops waiting for requests in flight.
+    if (stopping) {
+      await server.stop({ now: true });
+      process.exit(1);
+    }
+    stopping = true;
     process.stderr.write(`[webstir-backend-deploy] received ${signal}, stopping.\n`);
     await server.stop();
     process.exit(0);

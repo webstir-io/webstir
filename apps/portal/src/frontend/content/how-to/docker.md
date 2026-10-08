@@ -54,6 +54,22 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 - `SESSION_SECRET` is required in production. With sign-in, so are `APP_URL`, `EMAIL_URL` and `EMAIL_FROM`. See [Environment](../reference/env.md).
 - Only published apps with a server are in contract for this deploy path; an app without one publishes as a static site.
 
+## Stopping
+
+A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. The server then:
+
+1. Takes no new connections, and lets the requests in flight finish.
+2. Stops its jobs. A job still running when the wait ends goes back in the queue at the next start.
+3. Closes the database, taking a SQLite database's pending snapshot, and exits with `0`.
+
+`SHUTDOWN_TIMEOUT` is how long each wait lasts, 4 seconds by default. In an app with pages the public server waits for its requests first and then the app server waits for its jobs, so a stop can take twice the setting, plus a second to close the database. That fits the 10 seconds Docker allows before it kills a container. An app with slower requests raises both:
+
+```bash
+docker run --stop-timeout 30 -e SHUTDOWN_TIMEOUT=14 ...
+```
+
+A second `SIGTERM` stops the wait and exits at once with `1`.
+
 ## Canonical Source
 
 - Repo source: `orchestrators/bun/resources/deployment/docker/**`

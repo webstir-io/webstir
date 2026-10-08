@@ -90,7 +90,7 @@ test.skipIf(!tcpListenAvailable)(
       assert.equal(readyResponse.status, 200);
       const readyPayload = await readyResponse.json();
       assert.equal(readyPayload.status, 'ready');
-      assert.equal(readyPayload.manifest?.routes, 2);
+      assert.equal(readyPayload.manifest?.routes, 3);
 
       const healthResponse = await fetch(`${server.origin}/healthz`);
       assert.equal(healthResponse.status, 200);
@@ -167,6 +167,173 @@ test.skipIf(!tcpListenAvailable)(
       await fs.rm(workspace, { recursive: true, force: true });
     }
   },
+);
+
+/** The deploy command as a deployment runs it: its own process, stopped with signals. */
+async function startDeployProcess(env = {}) {
+  const workspace = await createTempWorkspace('webstir-backend-deploy-stop-');
+  await buildRuntimeWorkspace(workspace, 'api');
+  const port = await getOpenPort();
+  const child = Bun.spawn({
+    cmd: [
+      'bun',
+      path.join(getPackageRoot(), 'dist', 'deploy-cli.js'),
+      '--workspace',
+      workspace,
+      '--port',
+      String(port),
+    ],
+    cwd: workspace,
+    env: { ...process.env, NODE_ENV: 'test', WEBSTIR_JOBS: 'off', ...env },
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+  const origin = `http://127.0.0.1:${port}`;
+  for (let waited = 0; ; waited += 50) {
+    if ((await fetch(`${origin}/deploy/check`).catch(() => undefined))?.ok) break;
+    assert.ok(waited < 20_000, 'the deploy command should start');
+    await Bun.sleep(50);
+  }
+  /** A request that takes this long, as what became of it. */
+  const slow = (ms) =>
+    fetch(`${origin}/deploy/slow?ms=${ms}`).then(
+      async (response) => [response.status, await response.json()],
+      (error) => ['failed', error.code ?? error.message],
+    );
+  const appServers = async () =>
+    (
+      await new Response(
+        Bun.spawn({ cmd: ['pgrep', '-P', String(child.pid)], stdout: 'pipe' }).stdout,
+      ).text()
+    )
+      .split('\n')
+      .filter(Boolean)
+      .map(Number);
+  const isRunning = (pid) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  return { child, origin, slow, appServers, isRunning, workspace };
+}
+
+test.skipIf(!tcpListenAvailable)(
+  'a stopping deployment lets a request in flight finish, and takes no new ones',
+  async () => {
+    const app = await startDeployProcess();
+    const inFlight = app.slow(900);
+    await Bun.sleep(200);
+    const asked = Date.now();
+    app.child.kill('SIGTERM');
+    await Bun.sleep(150);
+    const late = await fetch(`${app.origin}/deploy/check`).then(
+      (response) => response.status,
+      () => 'refused',
+    );
+    assert.equal(late, 'refused');
+    assert.deepEqual(await inFlight, [200, { waited: 900 }]);
+    assert.equal(await app.child.exited, 0);
+    const took = Date.now() - asked;
+    assert.ok(took >= 600 && took < 3500, `stopped ${took}ms after being asked`);
+  },
+  30_000,
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'a stopping deployment waits only SHUTDOWN_TIMEOUT for a request, then closes it',
+  async () => {
+    const app = await startDeployProcess({ SHUTDOWN_TIMEOUT: '1' });
+    const [appServer] = await app.appServers();
+    const inFlight = app.slow(15_000);
+    await Bun.sleep(200);
+    const asked = Date.now();
+    app.child.kill('SIGTERM');
+    assert.equal((await inFlight)[0], 'failed');
+    assert.equal(await app.child.exited, 0);
+    const took = Date.now() - asked;
+    assert.ok(took >= 900 && took < 4000, `stopped ${took}ms after being asked`);
+    assert.equal(app.isRunning(appServer), false, 'the app server stops with it');
+  },
+  30_000,
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'asked twice, a stopping deployment stops waiting, and its app server goes with it',
+  async () => {
+    const app = await startDeployProcess({ SHUTDOWN_TIMEOUT: '30' });
+    const [appServer] = await app.appServers();
+    assert.ok(appServer, 'the deploy command runs the app server as its child');
+    const inFlight = app.slow(20_000);
+    await Bun.sleep(200);
+    app.child.kill('SIGTERM');
+    await Bun.sleep(300);
+    assert.equal(app.isRunning(app.child.pid), true, 'still waiting for the request');
+    const asked = Date.now();
+    app.child.kill('SIGTERM');
+    assert.equal(await app.child.exited, 1);
+    assert.ok(Date.now() - asked < 2000);
+    assert.equal((await inFlight)[0], 'failed');
+    assert.equal(app.isRunning(appServer), false);
+  },
+  30_000,
+);
+
+test.skipIf(!tcpListenAvailable)(
+  'an app server run on its own also lets a request in flight finish',
+  async () => {
+    const workspace = await createTempWorkspace('webstir-backend-stop-');
+    await buildRuntimeWorkspace(workspace, 'api');
+    const port = await getOpenPort();
+    const child = Bun.spawn({
+      cmd: ['bun', path.join(workspace, 'build', 'backend', 'index.js')],
+      cwd: workspace,
+      env: { ...process.env, NODE_ENV: 'test', WEBSTIR_JOBS: 'off', PORT: String(port) },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    });
+    const origin = `http://127.0.0.1:${port}`;
+    for (let waited = 0; ; waited += 50) {
+      if ((await fetch(`${origin}/deploy/check`).catch(() => undefined))?.ok) break;
+      assert.ok(waited < 20_000, 'the app server should start');
+      await Bun.sleep(50);
+    }
+    const inFlight = fetch(`${origin}/deploy/slow?ms=700`).then((response) => response.json());
+    await Bun.sleep(150);
+    child.kill('SIGTERM');
+    assert.deepEqual(await inFlight, { waited: 700 });
+    assert.equal(await child.exited, 0);
+
+    // Asked twice, it stops at once.
+    const again = Bun.spawn({
+      cmd: ['bun', path.join(workspace, 'build', 'backend', 'index.js')],
+      cwd: workspace,
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        WEBSTIR_JOBS: 'off',
+        PORT: String(port),
+        SHUTDOWN_TIMEOUT: '30',
+      },
+      stdout: 'ignore',
+      stderr: 'ignore',
+    });
+    for (let waited = 0; ; waited += 50) {
+      if ((await fetch(`${origin}/deploy/check`).catch(() => undefined))?.ok) break;
+      assert.ok(waited < 20_000, 'the app server should start again');
+      await Bun.sleep(50);
+    }
+    const hanging = fetch(`${origin}/deploy/slow?ms=20000`).catch(() => 'failed');
+    await Bun.sleep(150);
+    again.kill('SIGTERM');
+    await Bun.sleep(200);
+    again.kill('SIGTERM');
+    assert.equal(await again.exited, 1);
+    assert.equal(await hanging, 'failed');
+  },
+  30_000,
 );
 
 async function createTempWorkspace(prefix) {
@@ -322,6 +489,18 @@ async function buildRuntimeWorkspace(workspace, mode) {
 function createModuleSource(mode) {
   const routePrefix = mode === 'full' ? '/api' : '';
   return `const routes = [
+  {
+    definition: {
+      name: 'deploySlow',
+      method: 'GET',
+      path: '${routePrefix}/deploy/slow'
+    },
+    handler: async (ctx) => {
+      const ms = Number(ctx.query.ms ?? 0);
+      await new Promise((resolve) => setTimeout(resolve, ms));
+      return { status: 200, body: { waited: ms } };
+    }
+  },
   {
     definition: {
       name: 'deployCheck',

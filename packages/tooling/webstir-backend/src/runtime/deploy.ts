@@ -20,7 +20,11 @@ import {
 } from './deploy-shared.js';
 import { servePublishedStaticFile } from './deploy-static.js';
 import { readWorkspacePageRoutes, type PageRoute } from './page-routes.js';
+import { drainServer, finishedWithin, shutdownTimeoutMs } from './shutdown.js';
 import { createRenderedViewMatcher } from './view-routes.js';
+
+/** What the app server gets, beyond the limit, to close its database once its work is done. */
+const APP_SERVER_CLOSE_MS = 1_000;
 
 export type { DeploymentIo, PublishedWorkspaceServer, PublishedWorkspaceServerOptions };
 
@@ -109,12 +113,25 @@ export async function startPublishedWorkspaceServer(
   return {
     origin: `http://${displayHost}:${server.port}`,
     layers,
-    async stop() {
+    async stop(how: { readonly now?: boolean } = {}) {
       stopping = true;
-      server.stop(true);
       processRecord.expectedExit = true;
+      const exited = processRecord.exitPromise.catch(() => undefined);
+      if (how.now) {
+        await server.stop(true);
+        processRecord.child.kill('SIGKILL');
+        await exited;
+        return;
+      }
+      // Requests in flight finish here first, since each is one the app server is answering.
+      const limit = shutdownTimeoutMs({ ...process.env, ...options.env });
+      await drainServer(server, limit);
       processRecord.child.kill('SIGTERM');
-      await processRecord.exitPromise.catch(() => undefined);
+      // The app server has the same limit for its jobs, and a moment to close its database.
+      if (!(await finishedWithin(exited, limit + APP_SERVER_CLOSE_MS))) {
+        processRecord.child.kill('SIGKILL');
+        await exited;
+      }
     },
   };
 }

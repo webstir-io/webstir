@@ -20,6 +20,7 @@ A server app reads its settings from the environment, then from `.env.local`, th
 | `SNAPSHOT_URL` | unset (off) | Where copies of a SQLite database go after writes: a folder, or `s3://bucket/prefix`. See [Snapshot the Database](../how-to/snapshots.md). |
 | `SNAPSHOT_KEEP` | unset (every copy) | How many of the newest copies to keep. |
 | `REQUEST_BODY_MAX_BYTES` | `1048576` | The largest request body the server accepts. |
+| `SHUTDOWN_TIMEOUT` | `4` | How many seconds a stopping server waits for requests in flight, and for a running job, before closing them. See [Docker](../how-to/docker.md#stopping). |
 | `WEBSTIR_JOBS` | on | `off` keeps this process from running scheduled and queued jobs. |
 | `METRICS_ENABLED`, `METRICS_WINDOW` | on, `200` | Request counts and timings at `/metrics`, over the last N requests. |
 | `AUTH_JWT_SECRET`, `AUTH_JWT_PUBLIC_KEY`, `AUTH_JWT_PUBLIC_KEY_FILE`, `AUTH_JWKS_URL`, `AUTH_JWT_ISSUER`, `AUTH_JWT_AUDIENCE`, `AUTH_SERVICE_TOKENS` | unset | Bearer-token auth for an API with its own identity provider, through `resolveBearerAuth` from `@webstir-io/webstir-backend/auth/bearer`. |

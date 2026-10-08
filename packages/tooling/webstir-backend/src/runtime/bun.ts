@@ -28,6 +28,7 @@ import {
 import { declareSignInTables } from '../sign-in/database.js';
 import type { SignInOptions } from '../sign-in/module.js';
 import { signInSetupProblem } from '../sign-in/setup.js';
+import { drainServer, finishedWithin, shutdownTimeoutMs } from './shutdown.js';
 import type { AppUser, SubmittedForm } from './contexts.js';
 import {
   checkDeclaredForm,
@@ -266,8 +267,8 @@ export async function startBunBackend<
   if (readAppMigrations(workspaceRoot).length > 0 || appDatabaseExists()) {
     await appDatabase();
   }
-  // Jobs stop with the process; one it was running goes back in the queue at the next start.
-  startJobs({
+  // Jobs stop with the server; one still running then goes back in the queue at the next start.
+  const jobs = startJobs({
     info: (message) => logger.info(message),
     warn: (message) => logger.warn(message),
     error: (message) => logger.error(message),
@@ -304,11 +305,25 @@ export async function startBunBackend<
     readiness.ready();
   }
 
-  // A stop (a deploy, a restart) takes the database's pending snapshot before the process ends.
+  // A stop (a deploy, a restart) lets requests in flight and a running job finish, within
+  // SHUTDOWN_TIMEOUT, then takes the database's pending snapshot before the process ends.
+  let stopping = false;
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-    process.once(signal, () => {
-      server.stop();
-      void closeAppDatabase()
+    process.on(signal, () => {
+      // Asked twice, it stops waiting.
+      if (stopping) process.exit(1);
+      stopping = true;
+      const limit = shutdownTimeoutMs();
+      void Promise.all([drainServer(server, limit), finishedWithin(jobs.stop(), limit)])
+        .then(([requests, work]) => {
+          if (!requests || !work) {
+            logger.warn(
+              { requests, jobs: work },
+              `[webstir-backend] stopped after ${limit / 1000}s with work unfinished`,
+            );
+          }
+          return closeAppDatabase();
+        })
         .catch((error: unknown) =>
           logger.error({ err: error }, '[webstir-backend] shutdown failed'),
         )
