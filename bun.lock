@@ -119,7 +119,7 @@
     },
     "orchestrators/bun": {
       "name": "@webstir-io/webstir",
-      "version": "0.9.4",
+      "version": "0.10.0",
       "bin": {
         "webstir": "src/cli.ts",
       },
@@ -141,7 +141,7 @@
     },
     "packages/contracts/module-contract": {
       "name": "@webstir-io/module-contract",
-      "version": "0.9.4",
+      "version": "0.10.0",
       "dependencies": {
         "@ts-rest/core": "^3.40.0",
         "zod": "^3.23.8",
@@ -162,7 +162,7 @@
     },
     "packages/tooling/webstir-backend": {
       "name": "@webstir-io/webstir-backend",
-      "version": "0.9.4",
+      "version": "0.10.0",
       "bin": {
         "webstir-backend-deploy": "dist/deploy-cli.js",
       },
@@ -186,7 +186,7 @@
     },
     "packages/tooling/webstir-frontend": {
       "name": "@webstir-io/webstir-frontend",
-      "version": "0.9.4",
+      "version": "0.10.0",
       "bin": {
         "webstir-frontend": "dist/cli.js",
       },

@@ -1,5 +1,24 @@
 # @webstir-io/webstir
 
+## 0.10.0
+
+### Minor Changes
+
+- 5879a1e: Sign-in through OpenID Connect. `oidc({ id, label, issuer, clientId, clientSecret })` from `@webstir-io/webstir-backend/sign-in` is a provider for services such as Microsoft Entra, Google and Okta: the authorization code flow with PKCE, a state and a nonce, with the ID token checked for its issuer, audience, nonce, lifetime and signature. The person is the token's `sub`, with its `email` only when the provider says it is verified; `identity` reads other claims, and `scopes`, `authorizeParams` and `allowSignUp` adjust the rest. A sign-in that fails is logged with what the provider said went wrong. In production each provider needs an https `issuer`, a `clientId` and a `clientSecret`. The protocol is handled by `oauth4webapi`, a new dependency of the backend package.
+- 5879a1e: Templates can give a path or text a name. `data-with-<name>="path"` names a path on an element and inside it, so one partial serves different data: `<div data-include="field" data-with-field="form.email"></div>`. `data-with-<name>="'text'"` names text written in the template, which the build writes into the page. Both are settled at build time, checked against the view's schema like any other path, and leave the server's program format unchanged. A schema error on such a path names the real path it read. A page that gave names and has nothing left to render but a form's CSRF field is written as what it compiled to.
+
+### Patch Changes
+
+- 5879a1e: A stopping server finishes what it is doing. On `SIGTERM` or `SIGINT` the server takes no new connections, lets requests in flight finish, waits for a running job, then closes the database and exits with `0`. `webstir-backend-deploy` waits for its own requests before it stops the app server, where it used to close every connection at once. `SHUTDOWN_TIMEOUT` sets each wait in seconds, 4 by default, read from the environment or the app's `.env`; after it, what is still open is closed. A second signal to `webstir-backend-deploy` stops the wait and exits with `1`. `startPublishedWorkspaceServer().stop()` now waits the same way, and `stop({ now: true })` does not. `webstir watch` replaces a rebuilt server at once, as before.
+- 5879a1e: Sign-in can go through other services. `providers` in `src/backend/sign-in.ts` takes objects with an `id`, a `label`, and `start` and `finish` functions; each gets a "Sign in with" button on the sign-in page, a form that posts to `/sign-in/<id>/`, and comes back to `/sign-in/<id>/callback/`. A person is found again by the provider's own id for them, kept in a new `webstir_sign_in_identities` table; a user is one person at a provider. `canSignIn`, `loadUser` and a provider's `allowSignUp` decide who gets in. `emailCode: false` turns the emailed code off, and production then needs no `EMAIL_URL`. The sign-in page from `webstir enable sign-in` now shows `flash` messages at the top and a form for each provider; a page written earlier needs those to show them.
+- Updated dependencies [5879a1e]
+- Updated dependencies [5879a1e]
+- Updated dependencies [5879a1e]
+- Updated dependencies [5879a1e]
+  - @webstir-io/webstir-backend@0.10.0
+  - @webstir-io/webstir-frontend@0.10.0
+  - @webstir-io/module-contract@0.10.0
+
 ## 0.9.4
 
 ### Patch Changes
