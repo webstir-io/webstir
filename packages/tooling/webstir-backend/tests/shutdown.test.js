@@ -12,6 +12,9 @@ test('SHUTDOWN_TIMEOUT is in seconds, four by default, and anything else is the 
     ['0', 0],
     ['-1', 4000],
     ['soon', 4000],
+    // A timer holds about 24.8 days at most; a longer wait is that long, not none.
+    ['2147484', 2_147_483_647],
+    ['1e12', 2_147_483_647],
   ]) {
     assert.equal(shutdownTimeoutMs({ SHUTDOWN_TIMEOUT: value }), ms, String(value));
   }

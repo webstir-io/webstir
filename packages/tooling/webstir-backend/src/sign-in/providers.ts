@@ -1,4 +1,5 @@
 import { appUrl } from '../app/env.js';
+import { processFormSubmission } from '../runtime/forms.js';
 import { signInDatabase } from './database.js';
 import { findIdentityUser, linkIdentity } from './identities.js';
 import type { SignInOptions } from './module.js';
@@ -40,12 +41,13 @@ export interface SignInProvider {
 
 interface RouteContext {
   readonly request: Request;
+  readonly body?: unknown;
   session: Record<string, unknown> | null;
 }
 
 interface RouteResult {
-  status: number;
-  redirect: { location: string };
+  status?: number;
+  redirect?: { location: string };
   flash?: { level: 'error'; message: string }[];
 }
 
@@ -62,34 +64,66 @@ export function providerPath(id: string): string {
   return `${SIGN_IN_PATH}${id}/`;
 }
 
-/** Each provider's two routes: one sends the visitor to it, the other signs in who comes back. */
+/** The id of the form on the sign-in page that starts sign-in through a provider. */
+export function providerFormId(id: string): string {
+  return `sign-in-${id}`;
+}
+
+/**
+ * Each provider's two routes. The sign-in page's form posts to the first, which sends the visitor
+ * to the provider; a form, so that nothing but a visitor's own click starts it. The provider sends
+ * them back to the second, which signs in who it says came back.
+ */
 export function providerRoutes(options: SignInOptions): unknown[] {
   return (options.providers ?? []).flatMap((provider) => {
-    const route = (name: string, path: string) => ({
-      name: `sign-in-${provider.id}${name}`,
-      method: 'GET' as const,
-      path,
-      interaction: 'navigation' as const,
-      session: { mode: 'optional' as const, write: true },
-    });
     const callback = (request: Request) => `${appUrl(request)}/sign-in/${provider.id}/callback/`;
-    const unfinished = (error?: unknown): RouteResult => {
-      if (error !== undefined) {
-        console.error(
-          `[sign-in] ${provider.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+    const unfinished = (why: unknown): RouteResult => {
+      console.error(
+        `[sign-in] ${provider.id}: ${why instanceof Error ? why.message : String(why)}`,
+      );
       return refused(`Signing in with ${provider.label} did not finish. Try again.`);
+    };
+    const noAccess = (why: string): RouteResult => {
+      console.error(`[sign-in] ${provider.id}: ${why}`);
+      return refused(NO_ACCESS);
     };
 
     return [
       {
-        definition: route('', `/sign-in/${provider.id}`),
+        definition: {
+          name: `sign-in-${provider.id}`,
+          method: 'POST' as const,
+          path: `/sign-in/${provider.id}`,
+          interaction: 'navigation' as const,
+          session: { mode: 'optional' as const, write: true },
+          form: {
+            id: providerFormId(provider.id),
+            contentType: 'application/x-www-form-urlencoded' as const,
+            csrf: true,
+          },
+        },
         async handler(ctx: RouteContext): Promise<RouteResult> {
-          const returnTo = safeReturnTo(new URL(ctx.request.url).searchParams.get('returnTo'));
+          const submitted = processFormSubmission({
+            session: ctx.session,
+            body: ctx.body,
+            formId: providerFormId(provider.id),
+            csrf: true,
+            redirectTo: SIGN_IN_PATH,
+          });
+          ctx.session = submitted.session;
+          if (!submitted.ok) return submitted.result;
+          const returnTo = safeReturnTo(submitted.values.returnTo);
           let started: Awaited<ReturnType<SignInProvider['start']>>;
           try {
             started = await provider.start({ redirectUri: callback(ctx.request) });
+            if (
+              typeof started?.location !== 'string' ||
+              !started.location ||
+              typeof started.keep !== 'object' ||
+              !started.keep
+            ) {
+              throw new Error('its start gave no location to go to, or nothing to keep');
+            }
           } catch (error) {
             return unfinished(error);
           }
@@ -101,11 +135,21 @@ export function providerRoutes(options: SignInOptions): unknown[] {
         },
       },
       {
-        definition: route('-callback', `/sign-in/${provider.id}/callback`),
+        definition: {
+          name: `sign-in-${provider.id}-callback`,
+          method: 'GET' as const,
+          path: `/sign-in/${provider.id}/callback`,
+          interaction: 'navigation' as const,
+          session: { mode: 'optional' as const, write: true },
+        },
         async handler(ctx: RouteContext): Promise<RouteResult> {
           // Used once: an answer replayed, or one nobody here asked for, finds nothing waiting.
           const waiting = takeWaiting(ctx.session, provider.id);
-          if (!waiting) return unfinished();
+          if (!waiting) {
+            return unfinished(
+              'an answer came back with no sign-in waiting for it in the session. The session cookie did not come with it: it expired, or APP_URL is not the address the visitor used.',
+            );
+          }
           let identity: SignInIdentity;
           try {
             identity = await provider.finish({
@@ -121,9 +165,17 @@ export function providerRoutes(options: SignInOptions): unknown[] {
 
           const db = await signInDatabase();
           const known = await findIdentityUser(db, provider.id, subject);
+          const vouched = normalizeEmail(identity.email);
           // Someone who signed in before is the user they were, whatever address they have now.
-          const email = known?.email ?? normalizeEmail(identity.email);
-          if (!email || !((await options.canSignIn?.(email)) ?? true)) return refused(NO_ACCESS);
+          const email = known?.email ?? vouched;
+          if (!email) return noAccess('the provider gave no address to know a new person by');
+          // Asked about the address the app knows them by, and the one the provider gives now:
+          // a person turned away under either is turned away.
+          for (const address of new Set([email, vouched ?? email])) {
+            if (!((await options.canSignIn?.(address)) ?? true)) {
+              return noAccess(`canSignIn turned ${address} away`);
+            }
+          }
           const user =
             known ??
             (await linkIdentity(
@@ -131,7 +183,11 @@ export function providerRoutes(options: SignInOptions): unknown[] {
               { provider: provider.id, subject, email },
               { create: provider.allowSignUp ?? true },
             ));
-          if (!user) return refused(NO_ACCESS);
+          if (!user) {
+            return noAccess(
+              `${email} is not a user who can be signed in this way: sign-up is off and they are new, or they already sign in here as someone else at ${provider.label}`,
+            );
+          }
           ctx.session = signedInSession(user);
           return seeOther(waiting.returnTo);
         },
@@ -140,7 +196,7 @@ export function providerRoutes(options: SignInOptions): unknown[] {
   });
 }
 
-/** Refuses options nobody could sign in with, or whose providers' addresses would collide. */
+/** Refuses options nobody could sign in with, or providers the routes could not be made from. */
 export function checkSignInMethods(options: SignInOptions): void {
   const providers = options.providers ?? [];
   if (options.emailCode === false && providers.length === 0) {
@@ -149,14 +205,25 @@ export function checkSignInMethods(options: SignInOptions): void {
     );
   }
   const seen = new Set<string>();
-  for (const { id } of providers) {
-    if (!/^[a-z][a-z0-9-]*$/.test(id) || id === 'confirm') {
+  for (const provider of providers) {
+    const id = (provider as { id?: unknown } | null)?.id;
+    if (typeof id !== 'string' || !/^[a-z][a-z0-9-]*$/.test(id) || id === 'confirm') {
       throw new Error(
-        `[sign-in] a provider's id is in its addresses, so "${id}" cannot be one: use lowercase letters, digits and dashes, and not "confirm".`,
+        `[sign-in] a provider's id is in its addresses, so ${JSON.stringify(id)} cannot be one: use lowercase letters, digits and dashes, and not "confirm".`,
       );
     }
     if (seen.has(id)) throw new Error(`[sign-in] two providers have the id "${id}".`);
     seen.add(id);
+    if (
+      typeof provider.label !== 'string' ||
+      !provider.label.trim() ||
+      typeof provider.start !== 'function' ||
+      typeof provider.finish !== 'function'
+    ) {
+      throw new Error(
+        `[sign-in] the provider "${id}" needs a label, and start and finish functions.`,
+      );
+    }
   }
 }
 

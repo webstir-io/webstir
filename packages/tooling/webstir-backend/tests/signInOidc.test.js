@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { prepareApp } from '../dist/index.js';
 import { closeAppDatabase } from '../dist/db/index.js';
+import { ensureSessionCsrfToken } from '../dist/runtime/forms.js';
 import { oidc, signIn } from '../dist/sign-in/index.js';
 import { startOidcIssuer } from './support/oidcIssuer.js';
 
@@ -23,6 +24,8 @@ beforeEach(() => {
     deny: false,
     signAsStranger: false,
     omitIdToken: false,
+    unsigned: false,
+    claimsToBe: undefined,
     tokenRequests: [],
   });
 });
@@ -108,18 +111,18 @@ test('an answer the provider did not give, or one for someone else, is refused',
     ],
     [
       'a verifier that is not the one sent',
-      /error in the response body/,
+      /error in the response body: invalid_grant/,
       ({ kept }) => (kept.verifier = 'x'.repeat(43)),
     ],
     [
       'a code that is not the one given',
-      /error in the response body/,
+      /error in the response body: invalid_grant/,
       ({ url }) => url.searchParams.set('code', 'another'),
     ],
     ['nothing kept', /nothing was kept/, ({ kept }) => delete kept.state],
     [
       'the visitor turned away at the provider',
-      /authorization response from the server is an error/,
+      /authorization response from the server is an error: access_denied/,
       nothing,
       () => (issuer.deny = true),
     ],
@@ -160,6 +163,12 @@ test('an answer the provider did not give, or one for someone else, is refused',
       () => (issuer.signAsStranger = true),
     ],
     [
+      'a token nobody signed',
+      /unsupported JWS "alg" identifier|signature|alg/,
+      nothing,
+      () => (issuer.unsigned = true),
+    ],
+    [
       'no ID token',
       /"id_token" property must be a string/,
       nothing,
@@ -172,13 +181,15 @@ test('an answer the provider did not give, or one for someone else, is refused',
       deny: false,
       signAsStranger: false,
       omitIdToken: false,
+      unsigned: false,
+      claimsToBe: undefined,
     });
     misbehave?.();
     await assert.rejects(() => through(provider(), alter), why, name);
   }
   await assert.rejects(
     () => through(provider({ clientSecret: 'wrong' })),
-    /error in the response body/,
+    /error in the response body: invalid_client \(the secret is wrong\)/,
     'a wrong secret',
   );
 });
@@ -203,26 +214,64 @@ test('an address the provider has not verified names nobody, unless the app read
   });
 });
 
-test("the app's own parameters and scopes go along, and cannot replace what the flow depends on", async () => {
+test("the app's own parameters and scopes go along, but none the flow sets or depends on", async () => {
   const acme = provider({
     scopes: ['email', 'offline_access'],
-    authorizeParams: {
-      login_hint: 'ada@example.com',
-      state: 'chosen',
-      redirect_uri: 'https://evil.test/',
-      response_type: 'token',
-      code_challenge_method: 'plain',
-    },
+    authorizeParams: { login_hint: 'ada@example.com', prompt: 'select_account' },
   });
   const started = await acme.start({ redirectUri: REDIRECT });
   const asked = new URL(started.location).searchParams;
   assert.equal(asked.get('login_hint'), 'ada@example.com');
+  assert.equal(asked.get('prompt'), 'select_account');
   assert.equal(asked.get('scope'), 'openid email offline_access');
-  assert.equal(asked.get('state'), started.keep.state);
-  assert.equal(asked.get('redirect_uri'), REDIRECT);
-  assert.equal(asked.get('response_type'), 'code');
-  assert.equal(asked.get('code_challenge_method'), 'S256');
-  assert.equal(asked.getAll('state').length, 1);
+
+  for (const name of [
+    'client_id',
+    'redirect_uri',
+    'response_type',
+    'response_mode',
+    'scope',
+    'state',
+    'nonce',
+    'code_challenge',
+    'code_challenge_method',
+    'request',
+    'request_uri',
+  ]) {
+    assert.throws(
+      () => provider({ authorizeParams: { prompt: 'login', [name]: 'chosen' } }),
+      new RegExp(`authorizeParams cannot set ${name}; the flow sets or depends on it`),
+      name,
+    );
+  }
+  assert.throws(
+    () => provider({ authorizeParams: { state: 'a', request: 'b' } }),
+    /cannot set state, request; the flow sets or depends on them/,
+  );
+});
+
+test('with max_age, a token must say when the person signed in, and recently enough', async () => {
+  const acme = provider({ authorizeParams: { max_age: '300' } });
+  const asked = new URL((await acme.start({ redirectUri: REDIRECT })).location).searchParams;
+  assert.equal(asked.get('max_age'), '300');
+  await assert.rejects(() => through(acme), /auth_time/);
+  issuer.change = (claims) => (claims.auth_time = claims.iat - 3600);
+  await assert.rejects(() => through(acme), /too much time has elapsed/);
+  issuer.change = (claims) => (claims.auth_time = claims.iat - 10);
+  assert.equal((await through(acme)).subject, 'sub-ada');
+  assert.throws(
+    () => provider({ authorizeParams: { max_age: 'soon' } }),
+    /max_age must be a number/,
+  );
+});
+
+test('a provider that is not who its address says it is cannot be used', async () => {
+  issuer.claimsToBe = 'https://someone-else.test';
+  const acme = provider();
+  await assert.rejects(() => acme.start({ redirectUri: REDIRECT }), /issuer/);
+  // Asked again once it answers as itself.
+  issuer.claimsToBe = undefined;
+  assert.equal(typeof (await acme.start({ redirectUri: REDIRECT })).location, 'string');
 });
 
 test('a provider says what it still needs, and does nothing without it', async () => {
@@ -247,25 +296,65 @@ test('a provider says what it still needs, and does nothing without it', async (
   await assert.rejects(() => remote.start({ redirectUri: REDIRECT }));
 });
 
-test('through sign-in, a person from the provider becomes a signed-in user', async () => {
+test('through sign-in, a person from the provider becomes a signed-in user, or is told why not', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'webstir-sign-in-oidc-'));
   const saved = process.env.SESSION_SECRET;
   process.env.SESSION_SECRET = 'sign-in-oidc-test-secret';
   prepareApp(root);
   try {
-    const module = signIn({ emailCode: false, providers: [provider()] });
-    const route = (name) => module.routes.find((r) => r.definition.name === name).handler;
-    const ctx = {
-      request: new Request('http://127.0.0.1:4321/sign-in/acme/?returnTo=%2Fnotes%2F'),
-      session: null,
+    const attempt = async (acme) => {
+      const module = signIn({ emailCode: false, providers: [acme] });
+      const route = (name) => module.routes.find((r) => r.definition.name === name).handler;
+      const { session, token } = ensureSessionCsrfToken(null);
+      const ctx = {
+        request: new Request('http://127.0.0.1:4321/sign-in/acme/', { method: 'POST' }),
+        body: { returnTo: '/notes/', _csrf: token },
+        session,
+      };
+      const sent = await route('sign-in-acme')(ctx);
+      const back = await issuer.approve(sent.redirect.location);
+      assert.equal(`${back.origin}${back.pathname}`, REDIRECT);
+      const returned = { request: new Request(back), session: ctx.session };
+      const result = await route('sign-in-acme-callback')(returned);
+      return { result, session: returned.session };
     };
-    const sent = await route('sign-in-acme')(ctx);
-    const back = await issuer.approve(sent.redirect.location);
-    assert.equal(`${back.origin}${back.pathname}`, REDIRECT);
-    const returned = { request: new Request(back), session: ctx.session };
-    const result = await route('sign-in-acme-callback')(returned);
-    assert.deepEqual([result.status, result.redirect.location], [303, '/notes/']);
-    assert.equal(typeof returned.session.webstirUser.id, 'string');
+
+    const ada = await attempt(provider());
+    assert.deepEqual([ada.result.status, ada.result.redirect.location], [303, '/notes/']);
+    assert.equal(typeof ada.session.webstirUser.id, 'string');
+
+    // Someone new whose address the provider has not verified has no address to be known by.
+    issuer.person = { sub: 'sub-grace', email: 'grace@example.com', email_verified: false };
+    const grace = await attempt(provider());
+    assert.deepEqual(
+      [grace.result.redirect.location, grace.result.flash[0].message, grace.session.webstirUser],
+      ['/sign-in/', 'That account cannot sign in here.', undefined],
+    );
+    // Someone who signed in before still does, whatever the provider says of their address now.
+    issuer.person = { sub: 'sub-ada', email: 'ada@example.com', email_verified: false };
+    assert.deepEqual((await attempt(provider())).session.webstirUser, ada.session.webstirUser);
+
+    for (const [name, identity] of [
+      [
+        'throws',
+        () => {
+          throw new Error('no such claim');
+        },
+      ],
+      ['names nobody', () => undefined],
+      ['gives a subject that is not text', () => ({ subject: 7, email: 'ada@example.com' })],
+    ]) {
+      const refused = await attempt(provider({ identity }));
+      assert.deepEqual(
+        [
+          refused.result.redirect.location,
+          refused.result.flash[0].message,
+          refused.session.webstirUser,
+        ],
+        ['/sign-in/', 'Signing in with Acme did not finish. Try again.', undefined],
+        name,
+      );
+    }
   } finally {
     await closeAppDatabase();
     if (saved === undefined) delete process.env.SESSION_SECRET;

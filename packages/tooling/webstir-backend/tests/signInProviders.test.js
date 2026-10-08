@@ -56,13 +56,20 @@ const routesOf = (module) => {
   return { start: named('sign-in-acme'), callback: named('sign-in-acme-callback') };
 };
 
+/** The sign-in page's form for a provider, posted from a visitor's own page. */
+function startContext(returnTo = '/notes/') {
+  const { session, token } = ensureSessionCsrfToken(null);
+  return {
+    request: new Request(`${ORIGIN}/sign-in/acme/`, { method: 'POST' }),
+    body: { returnTo, _csrf: token },
+    session,
+  };
+}
+
 /** Goes to the provider and comes back, as one browser would. */
 async function signInThrough(module, returnTo = '/notes/') {
   const { start, callback } = routesOf(module);
-  const ctx = {
-    request: new Request(`${ORIGIN}/sign-in/acme/?returnTo=${encodeURIComponent(returnTo)}`),
-    session: null,
-  };
+  const ctx = startContext(returnTo);
   const sent = await start(ctx);
   const back = {
     request: new Request(`${ORIGIN}/sign-in/acme/callback/?code=c1&state=s1`),
@@ -151,7 +158,8 @@ test('someone who signed in before is the same user, and is asked about by the a
     email = 'ada@new-name.test';
     const second = await signInThrough(module);
     assert.equal(second.back.session.webstirUser.id, first.back.session.webstirUser.id);
-    assert.deepEqual(asked, ['ada@example.com', 'ada@example.com']);
+    // First about the one address there is; later about the one the app knows and the new one.
+    assert.deepEqual(asked, ['ada@example.com', 'ada@example.com', 'ada@new-name.test']);
   });
 });
 
@@ -222,15 +230,92 @@ test('an answer nobody here asked for, or one used already, signs nobody in', as
   });
 });
 
-test('a provider that cannot be reached sends the visitor back to sign in', async () => {
-  const provider = fakeProvider(() => ({}), {
-    start: () => Promise.reject(new Error('discovery failed')),
+test('a provider that cannot start, or starts with nothing to go on, sends the visitor back to sign in', async () => {
+  for (const [name, start] of [
+    ['cannot be reached', () => Promise.reject(new Error('discovery failed'))],
+    ['answers nothing', async () => undefined],
+    ['gives no location', async () => ({ keep: { state: 's1' } })],
+    ['gives an empty location', async () => ({ location: '', keep: {} })],
+    ['keeps nothing', async () => ({ location: 'https://acme.test/authorize' })],
+  ]) {
+    const { start: route } = routesOf(signIn({ providers: [fakeProvider(() => ({}), { start })] }));
+    const ctx = startContext();
+    const result = await route(ctx);
+    assert.deepEqual(
+      [result.redirect.location, result.flash[0].level],
+      ['/sign-in/', 'error'],
+      name,
+    );
+    assert.equal(ctx.session.webstirSignInProvider, undefined, name);
+  }
+});
+
+test("only the sign-in page's own form starts a sign-in", async () => {
+  const provider = fakeProvider(() => ({}));
+  const module = signIn({ providers: [provider] });
+  const { start } = routesOf(module);
+  const definition = module.routes.find(
+    (route) => route.definition.name === 'sign-in-acme',
+  ).definition;
+  assert.deepEqual([definition.method, definition.form.csrf], ['POST', true]);
+  const { session, token } = ensureSessionCsrfToken(null);
+  for (const [name, ctx] of [
+    ['no token', { body: { returnTo: '/notes/' }, session: { ...session } }],
+    [
+      'a wrong token',
+      { body: { returnTo: '/notes/', _csrf: `${token}x` }, session: { ...session } },
+    ],
+    ['no session', { body: { returnTo: '/notes/', _csrf: token }, session: null }],
+  ]) {
+    ctx.request = new Request(`${ORIGIN}/sign-in/acme/`, { method: 'POST' });
+    const result = await start(ctx);
+    assert.notEqual(result.redirect?.location, 'https://acme.test/authorize?state=s1', name);
+    assert.equal(ctx.session?.webstirSignInProvider, undefined, name);
+  }
+  assert.deepEqual(provider.calls, [], 'the provider is never asked');
+});
+
+test('an address that now belongs to someone else at the provider does not make them its user', async () => {
+  await withApp(async () => {
+    let subject = 'sub-ada';
+    const module = signIn({
+      providers: [fakeProvider(() => ({ subject, email: 'ada@example.com' }))],
+    });
+    const first = await signInThrough(module);
+    assert.equal(typeof first.back.session.webstirUser.id, 'string');
+    subject = 'sub-newcomer';
+    const second = await signInThrough(module);
+    assert.deepEqual(
+      [second.result.redirect.location, second.result.flash, second.back.session.webstirUser],
+      ['/sign-in/', [{ level: 'error', message: 'That account cannot sign in here.' }], undefined],
+    );
+    const db = await signInDatabase();
+    assert.deepEqual(await db.query('SELECT subject FROM webstir_sign_in_identities'), [
+      { subject: 'sub-ada' },
+    ]);
+    // The person it has always been still signs in.
+    subject = 'sub-ada';
+    const third = await signInThrough(module);
+    assert.deepEqual(third.back.session.webstirUser, first.back.session.webstirUser);
   });
-  const { start } = routesOf(signIn({ providers: [provider] }));
-  const ctx = { request: new Request(`${ORIGIN}/sign-in/acme/`), session: null };
-  const result = await start(ctx);
-  assert.equal(result.redirect.location, '/sign-in/');
-  assert.equal(ctx.session, null);
+});
+
+test('someone the app would turn away under the address the provider gives now is turned away', async () => {
+  await withApp(async () => {
+    let email = 'ada@corp.test';
+    const module = signIn({
+      providers: [fakeProvider(() => ({ subject: 'sub-ada', email }))],
+      canSignIn: (address) => address.endsWith('@corp.test'),
+    });
+    assert.equal((await signInThrough(module)).result.redirect.location, '/notes/');
+    email = 'ada@elsewhere.test';
+    const moved = await signInThrough(module);
+    assert.equal(moved.result.redirect.location, '/sign-in/');
+    assert.equal(moved.back.session.webstirUser, undefined);
+    // An address the provider no longer vouches for leaves the one the app knows them by.
+    email = '';
+    assert.equal((await signInThrough(module)).result.redirect.location, '/notes/');
+  });
 });
 
 test('where the visitor was headed stays on the app through a provider', async () => {
@@ -259,9 +344,7 @@ test('the sign-in page offers each provider, and only providers when email codes
         user: null,
         forms: { read: () => ({ errors: {} }) },
       });
-  const link = [
-    { id: 'acme', label: 'Acme', href: '/sign-in/acme/?returnTo=%2Fnotes%2F%3Fpage%3D2' },
-  ];
+  const link = [{ id: 'acme', label: 'Acme', action: '/sign-in/acme/' }];
   const pending = { webstirSignIn: { email: 'ada@example.com', returnTo: '/' } };
 
   const plain = await load(signIn());
@@ -308,8 +391,19 @@ test('options nobody could sign in with, or whose providers would collide, are r
   const provider = (id) => ({ ...fakeProvider(() => ({})), id });
   assert.throws(() => signIn({ emailCode: false }), /nobody could sign in/);
   assert.throws(() => signIn({ emailCode: false, providers: [] }), /nobody could sign in/);
-  for (const id of ['', 'Acme', 'a/b', 'a.b', '-a', '1a', 'confirm']) {
-    assert.throws(() => signIn({ providers: [provider(id)] }), /cannot be one/, id);
+  for (const id of ['', 'Acme', 'a/b', 'a.b', '-a', '1a', 'confirm', undefined, null, 7]) {
+    assert.throws(() => signIn({ providers: [provider(id)] }), /cannot be one/, String(id));
+  }
+  for (const [name, broken] of [
+    ['no label', { label: '' }],
+    ['no start', { start: undefined }],
+    ['no finish', { finish: 'later' }],
+  ]) {
+    assert.throws(
+      () => signIn({ providers: [{ ...provider('acme'), ...broken }] }),
+      /needs a label, and start and finish functions/,
+      name,
+    );
   }
   assert.throws(() => signIn({ providers: [provider('acme'), provider('acme')] }), /two providers/);
   assert.doesNotThrow(() => signIn({ providers: [provider('acme'), provider('acme-2')] }));

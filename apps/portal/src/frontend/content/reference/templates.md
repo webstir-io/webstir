@@ -62,8 +62,9 @@ A page's `index.html`, the app shell and partials bind data with attributes. A b
 | `data-if="path"`, `data-if="!path"` | Keeps the element only when the value is truthy, or falsy with `!`. |
 | `data-each="items as item"` | Repeats the element for each entry, with `item` in reach inside it. |
 | `data-include="name"` | Replaces the element's content with `src/frontend/app/partials/<name>.html`. |
-| `data-with-<name>="path"` | Gives a path a name, in reach on the element and inside it. |
+| `data-with-<name>="path"` | Gives a path a name, in reach of the element's other bindings and inside it. |
 | `data-with-<name>="'text'"` | Gives a name to text written in single quotes. |
+| `data-props="path"` | Passes the value to the island on the element, as JSON. See [Islands](../how-to/islands.md). |
 
 A partial reads whatever names are in reach where it is included, so `data-with-<name>` is how one partial serves different data:
 
@@ -87,9 +88,12 @@ Text in single quotes is for what the template itself knows, such as a button's 
 
 - **Names are lowercase.** HTML lowercases attribute names, so `data-with-clientRow` gives the name `clientrow`. Use lowercase letters, digits and underscores.
 - **The nearest name wins.** A name given inside a loop hides the loop's item of the same name, and a loop inside hides a name given outside it.
-- **Names on one element do not read each other.** Each is given from what is in reach outside the element.
+- **Names on one element do not read each other.** Each is given from what is in reach outside the element, and from its own loop's item when it has a `data-each`.
+- **A loop is read first.** `data-each` cannot read a name its own element gives, and the build says so. Give the name on an element outside.
 - **Text is not data.** A name given text works in `data-text`, `data-attr-*` and `data-if`, where empty text is falsy. It cannot be looped over or passed to an island.
 - **Errors name what was read.** A path through a given name is checked like any other, and the message shows the real path, such as `form.phone`, at the partial's line.
+- **A name given and never used is not checked.** A misspelled path shows up where the name is used, or not at all if it never is.
+- **Names stay in their file's template.** A page that renders in the browser cannot read a name the app shell gives.
 
 ## TypeScript
 - `src/frontend/tsconfig.json` and `src/backend/tsconfig.json` are one line each, extending `@webstir-io/webstir-frontend/tsconfig.json` and `@webstir-io/webstir-backend/tsconfig.json`, which hold the compiler settings. Stylesheet imports (CSS modules) are typed by the frontend package's declarations. Add your own options beside the `extends`.

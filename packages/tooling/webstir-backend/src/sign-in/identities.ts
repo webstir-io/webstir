@@ -21,7 +21,8 @@ export async function findIdentityUser(
 
 /**
  * A provider's person, signing in for the first time, becomes the user with their address: the
- * one there already, or a new one when `create` allows. Without either there is nobody to be.
+ * one there already, or a new one when `create` allows. Without either there is nobody to be, and
+ * nor is there when that user already is someone else at this provider.
  */
 export async function linkIdentity(
   db: Database,
@@ -32,6 +33,14 @@ export async function linkIdentity(
     ? await findOrCreateUser(db, identity.email)
     : await findUser(db, identity.email);
   if (!user) return undefined;
+  // One person at a provider is one user: an address that now belongs to someone else there
+  // does not make them the user it used to name.
+  const other = await db.get<{ subject: string }>(
+    `SELECT subject FROM webstir_sign_in_identities
+      WHERE provider = ? AND user_id = ? AND subject <> ?`,
+    [identity.provider, user.id, identity.subject],
+  );
+  if (other) return undefined;
   await db.execute(
     `INSERT INTO webstir_sign_in_identities (provider, subject, user_id, created_at)
      VALUES (?, ?, ?, ?)

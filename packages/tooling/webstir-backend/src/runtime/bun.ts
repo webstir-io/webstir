@@ -310,8 +310,9 @@ export async function startBunBackend<
   let stopping = false;
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
-      // Asked twice, it stops waiting.
-      if (stopping) process.exit(1);
+      // One stop is under way whoever else asks: a signal to the whole process group reaches
+      // this server and the one in front of it, which then passes its own along.
+      if (stopping) return;
       stopping = true;
       const limit = shutdownTimeoutMs();
       void Promise.all([drainServer(server, limit), finishedWithin(jobs.stop(), limit)])

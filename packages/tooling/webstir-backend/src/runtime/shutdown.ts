@@ -1,10 +1,13 @@
 const DEFAULT_SECONDS = 4;
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /** How long a stopping server waits for what is in flight: SHUTDOWN_TIMEOUT seconds, 4 by default. */
 export function shutdownTimeoutMs(env: Record<string, string | undefined> = process.env): number {
   const raw = env.SHUTDOWN_TIMEOUT?.trim();
   const seconds = raw ? Number(raw) : DEFAULT_SECONDS;
-  return (Number.isFinite(seconds) && seconds >= 0 ? seconds : DEFAULT_SECONDS) * 1000;
+  const ms = (Number.isFinite(seconds) && seconds >= 0 ? seconds : DEFAULT_SECONDS) * 1000;
+  // A timer holds at most about 24.8 days; longer than that is as long as it can wait.
+  return Math.min(ms, MAX_TIMEOUT_MS);
 }
 
 /** Whether the work finished within the limit; the work itself is left running when it did not. */

@@ -928,3 +928,113 @@ test('a name that cannot be given, or text used as data, fails with file and lin
     });
   }
 });
+
+test('a page that gave names and posts a form is written as what it compiled to, for when no view renders it', async () => {
+  const root = await createWorkspace();
+  const page = path.join(root, 'src', 'frontend', 'pages', 'contact');
+  await fs.mkdir(page, { recursive: true });
+  await fs.writeFile(
+    path.join(page, 'index.html'),
+    main(
+      `<h1 data-with-title="'Write to us'" data-text="title">Title</h1>`,
+      `<p data-with-note="''" data-if="note">Never shown</p>`,
+      '<form method="post" action="/contact/"><button>Send</button></form>',
+    ),
+    'utf8',
+  );
+  for (const [mode, out] of [
+    ['build', 'build/frontend'],
+    ['publish', 'dist/frontend'],
+  ]) {
+    await frontendProvider.build({
+      workspaceRoot: root,
+      env: { WEBSTIR_MODULE_MODE: mode },
+      incremental: false,
+    });
+    const dir = path.join(root, out, 'pages', 'contact');
+    const html = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+    assert.match(html, /<h1>Write to us<\/h1>/, mode);
+    assert.match(
+      html,
+      /<form method="post" action="\/contact\/"><button>Send<\/button><\/form>/,
+      mode,
+    );
+    assert.doesNotMatch(html, /data-with|data-text|data-if|Never shown|>Title</, mode);
+    // A view that renders the page still has its program, with the form's CSRF field.
+    const program = JSON.parse(await fs.readFile(path.join(dir, 'index.program.json'), 'utf8'));
+    assert.deepEqual(collectOps(program.nodes), [{ op: 'csrf' }], mode);
+    assert.match(
+      executeRenderProgram(program, {}, { csrfToken: 'token-1' }),
+      /<h1>Write to us<\/h1>[\s\S]*name="_csrf" value="token-1"/,
+      mode,
+    );
+  }
+});
+
+test('a loop cannot read a name its own element gives', async () => {
+  const root = await createWorkspace();
+  for (const markup of [
+    '<li data-with-list="clients" data-each="list as client"></li>',
+    '<li data-each="list.items as client" data-with-list="report"></li>',
+  ]) {
+    await assert.rejects(compileSource(root, main(markup)), (error) => {
+      assert.ok(error instanceof RenderTemplateError, markup);
+      assert.deepEqual(
+        error.issues.map((issue) => [issue.loc.file, issue.loc.line]),
+        [[CLIENTS_SOURCE, 3]],
+        markup,
+      );
+      assert.match(
+        error.issues[0].message,
+        /a loop is read before the names its element gives, so `list` is not in its reach; give it on an element outside this one/,
+        markup,
+      );
+      return true;
+    });
+  }
+  // Given outside, or given from the loop's own item, it is in reach.
+  assert.deepEqual(
+    pathsOf(
+      await compileSource(
+        root,
+        main(
+          '<ul data-with-list="clients"><li data-each="list as client" data-with-who="client.contact" data-text="who.name"></li></ul>',
+        ),
+      ),
+    ),
+    [
+      ['each', -1, 'clients'],
+      ['text', 0, 'contact.name'],
+    ],
+  );
+});
+
+test('a value of the wrong kind is named by what was read, as a missing one is', async () => {
+  const root = await createWorkspace();
+  const program = await compileSource(
+    root,
+    main(
+      '<div data-with-field="form.email">',
+      '<p data-text="field"></p>',
+      '<a data-attr-href="field"></a>',
+      '<i data-each="field as part"></i>',
+      '</div>',
+      '<ul><li data-each="clients as client" data-with-who="client.contact"><b data-text="who"></b></li></ul>',
+      '<p data-text="form"></p>',
+    ),
+  );
+  const schema = z.object({
+    form: z.object({ email: z.object({ label: z.string() }) }),
+    clients: z.array(z.object({ contact: z.object({ name: z.string() }) })),
+  });
+  const messages = validateRenderProgram(program, schema, 'view fields').map(
+    (issue) => issue.message,
+  );
+  assert.equal(messages.length, 5);
+  assert.match(messages[0], /^data-text="field": `form\.email` /);
+  assert.match(messages[1], /^data-attr-href="field": `form\.email` /);
+  assert.match(messages[2], /^data-each="field as part": `form\.email` /);
+  assert.match(messages[3], /^data-text="who": `client\.contact` /);
+  // Written as it is read, it says what it always said.
+  assert.match(messages[4], /^data-text="form": `form` /);
+});

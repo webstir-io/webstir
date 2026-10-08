@@ -18,8 +18,9 @@ export function startScheduler(options: {
   readonly jobs: readonly JobDefinition[];
   readonly run: (name: string) => Promise<void>;
   readonly logger: JobLogger;
-}): { stop(): void } {
+}): { stop(): Promise<void> } {
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  const runs = new Set<Promise<void>>();
   let stopped = false;
 
   for (const job of options.jobs) {
@@ -38,9 +39,12 @@ export function startScheduler(options: {
         return;
       }
       running = true;
+      const run = options.run(job.name).catch(() => undefined);
+      runs.add(run);
       try {
-        await options.run(job.name);
+        await run;
       } finally {
+        runs.delete(run);
         running = false;
       }
     };
@@ -70,10 +74,12 @@ export function startScheduler(options: {
   }
 
   return {
-    stop() {
+    /** No more runs start; the answer comes once the runs under way have finished. */
+    async stop() {
       stopped = true;
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
+      await Promise.all(runs);
     },
   };
 }

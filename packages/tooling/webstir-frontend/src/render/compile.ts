@@ -221,6 +221,11 @@ function compileElement(
     const parsed = parseEach(eachValue);
     if (typeof parsed === 'string') {
       report('data-each', parsed);
+    } else if (attribs[`${WITH_BINDING_PREFIX}${parsed.path[0].toLowerCase()}`] !== undefined) {
+      report(
+        'data-each',
+        `a loop is read before the names its element gives, so \`${parsed.path[0]}\` is not in its reach; give it on an element outside this one`,
+      );
     } else {
       const path = pathOf('data-each', parsed.source, parsed.path, names);
       if (path) {

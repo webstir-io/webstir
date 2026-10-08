@@ -103,7 +103,7 @@ const signInData = z.object({
   returnTo: z.string(),
   error: z.string(),
   development: z.boolean(),
-  providers: z.array(z.object({ id: z.string(), label: z.string(), href: z.string() })),
+  providers: z.array(z.object({ id: z.string(), label: z.string(), action: z.string() })),
 });
 
 const confirmData = z.object({ token: z.string(), returnTo: z.string() });
@@ -164,7 +164,7 @@ export function signIn(options: SignInOptions = {}): SignInModule {
             : (options.providers ?? []).map(({ id, label }) => ({
                 id,
                 label,
-                href: `${providerPath(id)}?returnTo=${encodeURIComponent(returnTo)}`,
+                action: providerPath(id),
               })),
         };
       },

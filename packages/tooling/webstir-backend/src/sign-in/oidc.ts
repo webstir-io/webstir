@@ -14,7 +14,11 @@ export interface OidcOptions {
   readonly clientSecret: string | undefined;
   /** What to ask for. `openid` is always asked for; `email` and `profile` by default. */
   readonly scopes?: readonly string[];
-  /** More to send to the provider's sign-in page, such as `{ prompt: 'select_account' }`. */
+  /**
+   * More to send to the provider's sign-in page, such as `{ prompt: 'select_account' }`. Not the
+   * parameters the flow itself sets or depends on; with `max_age`, the token's `auth_time` is
+   * checked against it.
+   */
   readonly authorizeParams?: Readonly<Record<string, string>>;
   /** Whether a first sign-in may create the user. True by default. */
   readonly allowSignUp?: boolean;
@@ -29,12 +33,40 @@ export interface OidcOptions {
 const TIMEOUT_MS = 5_000;
 const DISCOVERY_MS = 60 * 60 * 1000;
 const CLOCK_TOLERANCE_SECONDS = 30;
+// Set by the flow, or changing how the answer comes back or what was asked for behind its back.
+const FLOW_PARAMETERS = [
+  'client_id',
+  'redirect_uri',
+  'response_type',
+  'response_mode',
+  'scope',
+  'state',
+  'nonce',
+  'code_challenge',
+  'code_challenge_method',
+  'request',
+  'request_uri',
+];
 
 /**
  * Sign-in through an OpenID Connect provider: the authorization code flow with PKCE, a state
  * and a nonce. The ID token is checked for its issuer, audience, nonce, lifetime and signature.
  */
 export function oidc(options: OidcOptions): SignInProvider {
+  const taken = Object.keys(options.authorizeParams ?? {}).filter((name) =>
+    FLOW_PARAMETERS.includes(name),
+  );
+  if (taken.length > 0) {
+    throw new Error(
+      `[sign-in] oidc({ id: '${options.id}' }): authorizeParams cannot set ${taken.join(', ')}; the flow sets or depends on ${taken.length > 1 ? 'them' : 'it'}.`,
+    );
+  }
+  const maxAge = options.authorizeParams?.max_age;
+  if (maxAge !== undefined && !/^\d+$/.test(maxAge)) {
+    throw new Error(
+      `[sign-in] oidc({ id: '${options.id}' }): authorizeParams.max_age must be a number of seconds.`,
+    );
+  }
   const missing = (): string | undefined => {
     for (const name of ['issuer', 'clientId', 'clientSecret'] as const) {
       if (!options[name]?.trim()) return `it has no ${name}.`;
@@ -90,7 +122,6 @@ export function oidc(options: OidcOptions): SignInProvider {
       const nonce = oauth.generateRandomNonce();
       const verifier = oauth.generateRandomCodeVerifier();
       const url = new URL(as.authorization_endpoint);
-      // The app's own parameters first, so none of them can replace what the flow depends on.
       for (const [name, value] of Object.entries(options.authorizeParams ?? {})) {
         url.searchParams.set(name, value);
       }
@@ -116,26 +147,45 @@ export function oidc(options: OidcOptions): SignInProvider {
         throw new Error('nothing was kept from the start of this sign-in');
       }
       const as = await server();
-      const answer = oauth.validateAuthResponse(as, client(), url, state);
-      const response = await oauth.authorizationCodeGrantRequest(
-        as,
-        client(),
-        oauth.ClientSecretPost(String(options.clientSecret)),
-        answer,
-        redirectUri,
-        verifier,
-        http(),
-      );
-      const tokens = await oauth.processAuthorizationCodeResponse(as, client(), response, {
-        expectedNonce: nonce,
-        requireIdToken: true,
-      });
-      await oauth.validateApplicationLevelSignature(as, response, http());
+      let tokens: oauth.TokenEndpointResponse;
+      try {
+        const answer = oauth.validateAuthResponse(as, client(), url, state);
+        const response = await oauth.authorizationCodeGrantRequest(
+          as,
+          client(),
+          oauth.ClientSecretPost(String(options.clientSecret)),
+          answer,
+          redirectUri,
+          verifier,
+          http(),
+        );
+        tokens = await oauth.processAuthorizationCodeResponse(as, client(), response, {
+          expectedNonce: nonce,
+          requireIdToken: true,
+          ...(maxAge === undefined ? {} : { maxAge: Number(maxAge) }),
+        });
+        await oauth.validateApplicationLevelSignature(as, response, http());
+      } catch (error) {
+        throw withProviderReason(error);
+      }
       const claims = oauth.getValidatedIdTokenClaims(tokens) as Record<string, unknown> | undefined;
       if (!claims) throw new Error('the provider sent no ID token');
       return options.identity ? options.identity(claims) : verifiedIdentity(claims);
     },
   };
+}
+
+/**
+ * The error with what the provider said went wrong, such as `invalid_client` or `access_denied`
+ * and its description: the difference between a wrong secret and a redirect address it does not
+ * know. A provider's error names no secret.
+ */
+function withProviderReason(error: unknown): unknown {
+  const said = error as { error?: unknown; error_description?: unknown; message?: unknown };
+  if (!(error instanceof Error) || typeof said.error !== 'string') return error;
+  const description =
+    typeof said.error_description === 'string' ? ` (${said.error_description})` : '';
+  return new Error(`${error.message}: ${said.error}${description}`, { cause: error });
 }
 
 function verifiedIdentity(claims: Readonly<Record<string, unknown>>): SignInIdentity {

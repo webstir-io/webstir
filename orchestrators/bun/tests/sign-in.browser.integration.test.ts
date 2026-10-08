@@ -203,7 +203,7 @@ test('in watch, a visitor signs in through an OpenID Connect provider set up in 
     await page.goto(`${origin}/notes/`);
     await page.waitForURL(/\/sign-in\/\?returnTo=%2Fnotes%2F/);
     await page.waitForSelector('text=Send me a code');
-    await page.click('a:has-text("Sign in with Acme")');
+    await page.click('button:has-text("Sign in with Acme")');
     await page.waitForURL(`${origin}/notes/`);
     await page.waitForSelector('.who:text("ada@example.com")');
     expect(issuer.tokenRequests).toHaveLength(1);
@@ -214,7 +214,7 @@ test('in watch, a visitor signs in through an OpenID Connect provider set up in 
     const other = await browser.newContext();
     const second = await other.newPage();
     await second.goto(`${origin}/sign-in/`);
-    await second.click('a:has-text("Sign in with Acme")');
+    await second.click('button:has-text("Sign in with Acme")');
     await second.waitForURL(`${origin}/sign-in/`);
     await second.waitForSelector('text=Signing in with Acme did not finish. Try again.');
     await second.goto(`${origin}/notes/`);

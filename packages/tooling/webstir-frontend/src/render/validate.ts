@@ -181,25 +181,32 @@ function walk(
     if (node.op === 'text') {
       const problem = checkText(resolved.ok);
       if (problem) {
-        report(`\`${node.path.source}\` ${problem}`);
+        report(`\`${readName(node.path, loops)}\` ${problem}`);
       }
     } else if (node.op === 'attr') {
       // An island's props may be any value that has JSON; a text attribute needs a scalar.
       const problem = node.json ? undefined : checkAttribute(resolved.ok);
       if (problem) {
-        report(`\`${node.path.source}\` ${problem}`);
+        report(`\`${readName(node.path, loops)}\` ${problem}`);
       }
     } else if (node.op === 'if') {
       walk(node.body, root, scopes, loops, view, issues, shell);
     } else {
       const element = elementOf(resolved.ok);
       if ('error' in element) {
-        report(`\`${node.path.source}\` ${element.error}`);
+        report(`\`${readName(node.path, loops)}\` ${element.error}`);
         continue;
       }
       walk(node.body, root, [...scopes, element.ok], [...loops, node.as], view, issues, shell);
     }
   }
+}
+
+/** A path by what it reads, which is not what was written when `data-with-<name>` gave the name. */
+function readName(renderPath: RenderPath, loops: readonly string[]): string {
+  return [...(renderPath.scope === -1 ? [] : [loops[renderPath.scope]]), ...renderPath.keys].join(
+    '.',
+  );
 }
 
 function resolve(

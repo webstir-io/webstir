@@ -59,16 +59,16 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. The server then:
 
 1. Takes no new connections, and lets the requests in flight finish.
-2. Stops its jobs. A job still running when the wait ends goes back in the queue at the next start.
+2. Stops its jobs, waiting for one that is running. A queued job still running when the wait ends goes back in the queue at the next start; a scheduled one runs again when it is next due.
 3. Closes the database, taking a SQLite database's pending snapshot, and exits with `0`.
 
-`SHUTDOWN_TIMEOUT` is how long each wait lasts, 4 seconds by default. In an app with pages the public server waits for its requests first and then the app server waits for its jobs, so a stop can take twice the setting, plus a second to close the database. That fits the 10 seconds Docker allows before it kills a container. An app with slower requests raises both:
+`SHUTDOWN_TIMEOUT` is how long each wait lasts, 4 seconds by default, read from the environment or the app's `.env`. In an app with pages the public server waits for its requests first and then the app server waits for its jobs, so a stop can take twice the setting, and then as long as closing the database takes. That fits the 10 seconds Docker allows before it kills a container, with a database that closes within 2. An app with slower requests, or a snapshot that takes longer to upload, raises both:
 
 ```bash
-docker run --stop-timeout 30 -e SHUTDOWN_TIMEOUT=14 ...
+docker run --stop-timeout 30 -e SHUTDOWN_TIMEOUT=10 ...
 ```
 
-A second `SIGTERM` stops the wait and exits at once with `1`.
+A stop signal sent to the whole process group, as Ctrl-C and systemd send it, is the same one stop. Sent a second time to `webstir-backend-deploy`, it stops the wait: every connection is closed, the app server is stopped at once without closing its database, and the command exits with `1`.
 
 ## Canonical Source
 

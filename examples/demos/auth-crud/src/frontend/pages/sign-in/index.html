@@ -16,9 +16,10 @@
                 <button type="submit">Send me a code</button>
             </form>
 
-            <p data-each="providers as provider">
-                <a data-no-client-nav data-attr-href="provider.href">Sign in with <span data-text="provider.label">another service</span></a>
-            </p>
+            <form method="post" data-no-client-nav data-each="providers as provider" data-attr-action="provider.action">
+                <input type="hidden" name="returnTo" data-attr-value="returnTo" />
+                <button type="submit">Sign in with <span data-text="provider.label">another service</span></button>
+            </form>
 
             <div data-if="checking">
                 <p>If <strong data-text="email"></strong> can sign in, a code is on its way. It works for 5 minutes.</p>

@@ -6,7 +6,7 @@ import { startPublishedWorkspaceServer } from '@webstir-io/webstir-backend';
 
 import { runPublish } from '../src/publish.ts';
 import { createBatteriesApp } from '../test-support/batteries-app.ts';
-import { cookieFrom } from '../test-support/render-workspace.ts';
+import { cookieFrom, csrfTokenFrom } from '../test-support/render-workspace.ts';
 import { removeDemoWorkspace, type DemoWorkspaceCopy } from '../test-support/demo-workspace.ts';
 import { getFreePort } from '../test-support/watch.ts';
 
@@ -51,18 +51,30 @@ export default signIn;
 
 function createBrowser(origin: string) {
   let cookie = '';
+  const send = async (pathname: string, init: RequestInit, accept: string) => {
+    const response = await fetch(`${origin}${pathname}`, {
+      ...init,
+      headers: { accept, ...(cookie ? { cookie } : {}), ...init.headers },
+      redirect: 'manual',
+    });
+    cookie = cookieFrom(response, cookie);
+    return response;
+  };
   return {
     get cookie() {
       return cookie;
     },
-    async get(pathname: string, accept = 'text/html') {
-      const response = await fetch(`${origin}${pathname}`, {
-        headers: { accept, ...(cookie ? { cookie } : {}) },
-        redirect: 'manual',
-      });
-      cookie = cookieFrom(response, cookie);
-      return response;
-    },
+    get: (pathname: string, accept = 'text/html') => send(pathname, {}, accept),
+    post: (pathname: string, form: Record<string, string>) =>
+      send(
+        pathname,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded', origin },
+          body: new URLSearchParams(form).toString(),
+        },
+        'text/html',
+      ),
   };
 }
 
@@ -106,14 +118,26 @@ test('a full app whose people sign in through a provider, with no email set up',
     expect(guarded.headers.get('location')).toBe('/sign-in/?returnTo=%2Fnotes%2F');
 
     const page = await (await ada.get('/sign-in/?returnTo=%2Fnotes%2F')).text();
-    expect(page).toContain('href="/sign-in/acme/?returnTo=%2Fnotes%2F"');
+    expect(page).toMatch(
+      /<form method="post" data-no-client-nav(="")? action="\/sign-in\/acme\/">/,
+    );
+    expect(page).toContain('<input type="hidden" name="returnTo" value="/notes/">');
     expect(page).toContain('Sign in with <span>Acme</span>');
     expect(page).not.toContain('Send me a code');
     expect(page).not.toContain('data-each');
 
+    // Nothing but the page's own form starts a sign-in: not a link, and not a form without its token.
+    expect((await ada.get('/sign-in/acme/')).status).toBe(404);
+    const forged = await createBrowser(origin).post('/sign-in/acme/', { returnTo: '/notes/' });
+    expect(forged.headers.get('location') ?? '').not.toContain('acme.test');
+
     /** Leaves for the provider, and returns the state it was sent with. */
     const leave = async (browser: ReturnType<typeof createBrowser>) => {
-      const sent = await browser.get('/sign-in/acme/?returnTo=%2Fnotes%2F');
+      const form = await (await browser.get('/sign-in/?returnTo=%2Fnotes%2F')).text();
+      const sent = await browser.post('/sign-in/acme/', {
+        returnTo: '/notes/',
+        _csrf: csrfTokenFrom(form),
+      });
       expect(sent.status).toBe(303);
       const location = new URL(sent.headers.get('location') ?? '');
       expect(location.origin).toBe('https://acme.test');
@@ -125,8 +149,8 @@ test('a full app whose people sign in through a provider, with no email set up',
 
     // An answer with the wrong state signs nobody in, and uses up what was waiting.
     const state = await leave(ada);
-    const forged = await ada.get(back('not-the-state', 'ada@example.com'));
-    expect(forged.headers.get('location')).toBe('/sign-in/');
+    const wrongState = await ada.get(back('not-the-state', 'ada@example.com'));
+    expect(wrongState.headers.get('location')).toBe('/sign-in/');
     expect(await (await ada.get('/sign-in/')).text()).toContain(
       'Signing in with Acme did not finish. Try again.',
     );

@@ -20,11 +20,15 @@ import {
 } from './deploy-shared.js';
 import { servePublishedStaticFile } from './deploy-static.js';
 import { readWorkspacePageRoutes, type PageRoute } from './page-routes.js';
-import { drainServer, finishedWithin, shutdownTimeoutMs } from './shutdown.js';
+import { readEnvFiles } from '../app/env.js';
+import { drainServer, shutdownTimeoutMs } from './shutdown.js';
 import { createRenderedViewMatcher } from './view-routes.js';
 
-/** What the app server gets, beyond the limit, to close its database once its work is done. */
-const APP_SERVER_CLOSE_MS = 1_000;
+function definedOnly(env: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+}
 
 export type { DeploymentIo, PublishedWorkspaceServer, PublishedWorkspaceServerOptions };
 
@@ -124,14 +128,16 @@ export async function startPublishedWorkspaceServer(
         return;
       }
       // Requests in flight finish here first, since each is one the app server is answering.
-      const limit = shutdownTimeoutMs({ ...process.env, ...options.env });
+      // The limit is the one the app server reads: its environment, then the app's .env files.
+      const limit = shutdownTimeoutMs({
+        ...readEnvFiles(workspaceRoot),
+        ...definedOnly({ ...process.env, ...options.env }),
+      });
       await drainServer(server, limit);
       processRecord.child.kill('SIGTERM');
-      // The app server has the same limit for its jobs, and a moment to close its database.
-      if (!(await finishedWithin(exited, limit + APP_SERVER_CLOSE_MS))) {
-        processRecord.child.kill('SIGKILL');
-        await exited;
-      }
+      // The app server bounds its own waits, then closes its database, which may be taking a
+      // snapshot. That is waited for; whatever runs this process decides when it has been too long.
+      await exited;
     },
   };
 }

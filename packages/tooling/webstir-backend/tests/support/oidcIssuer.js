@@ -47,7 +47,11 @@ export async function startOidcIssuer({
       ...issuer.person,
     };
     issuer.change?.(claims);
-    const signed = `${b64url(JSON.stringify({ alg: 'RS256', kid: 'k1', typ: 'JWT' }))}.${b64url(JSON.stringify(claims))}`;
+    const header = issuer.unsigned
+      ? { alg: 'none', typ: 'JWT' }
+      : { alg: 'RS256', kid: 'k1', typ: 'JWT' };
+    const signed = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(claims))}`;
+    if (issuer.unsigned) return `${signed}.`;
     const signature = await crypto.subtle.sign(
       'RSASSA-PKCS1-v1_5',
       (issuer.signAsStranger ? strangerKeys : keys).privateKey,
@@ -65,7 +69,7 @@ export async function startOidcIssuer({
       const url = new URL(request.url);
       if (url.pathname === '/.well-known/openid-configuration') {
         return json({
-          issuer: issuer.url,
+          issuer: issuer.claimsToBe ?? issuer.url,
           authorization_endpoint: `${issuer.url}/authorize`,
           token_endpoint: `${issuer.url}/token`,
           jwks_uri: `${issuer.url}/jwks`,
@@ -103,10 +107,11 @@ export async function startOidcIssuer({
             new TextEncoder().encode(form.get('code_verifier') ?? ''),
           ),
         );
+        if (form.get('client_id') !== clientId || form.get('client_secret') !== clientSecret) {
+          return json({ error: 'invalid_client', error_description: 'the secret is wrong' }, 401);
+        }
         if (
           !granted ||
-          form.get('client_id') !== clientId ||
-          form.get('client_secret') !== clientSecret ||
           form.get('redirect_uri') !== granted.redirectUri ||
           challenge !== granted.challenge
         ) {

@@ -14,9 +14,10 @@ export { validateRenderProgram, validateRenderPrograms } from './validate.js';
 const STAMP_PATTERN = new RegExp(`\\s${SOURCE_STAMP_ATTRIBUTE}="[^"]*"`, 'g');
 
 /**
- * Writes the page's program beside it when the server has something to render. A page whose
- * bindings were all settled by the build, text given with `data-with-<name>`, needs none: what
- * it compiled to is returned, to be written as the page in place of its template.
+ * Writes the page's program beside it when the server has something to render. A page that gave
+ * names with `data-with-<name>` and leaves nothing to render but a CSRF field is also served as
+ * a file when no view renders it, so what it compiled to is returned, to be written as the page
+ * in place of its template.
  */
 export async function writePageProgram(
   html: string,
@@ -26,10 +27,11 @@ export async function writePageProgram(
   const programPath = path.join(options.targetDir, RENDER_PROGRAM_FILE);
   if (programNeedsRuntime(program)) {
     await writeJson(programPath, program);
-    return undefined;
+  } else {
+    await remove(programPath);
   }
-  await remove(programPath);
-  return settled ? program.nodes.join('') : undefined;
+  const text = program.nodes.filter((node) => typeof node === 'string' || node.op !== 'csrf');
+  return settled && text.every((node) => typeof node === 'string') ? text.join('') : undefined;
 }
 
 export function stripSourceStamps(html: string): string {
