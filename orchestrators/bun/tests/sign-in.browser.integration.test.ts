@@ -1,8 +1,9 @@
 import { afterAll, afterEach, expect, test } from 'bun:test';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { chromium, type Browser } from 'playwright';
 
+import { startOidcIssuer } from '../../../packages/tooling/webstir-backend/tests/support/oidcIssuer.js';
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { createBatteriesApp } from '../test-support/batteries-app.ts';
 import { removeDemoWorkspace, type DemoWorkspaceCopy } from '../test-support/demo-workspace.ts';
@@ -134,5 +135,99 @@ test('in watch, a visitor signs in with the emailed code or link, and a schedule
     // Stopping watch can take longer than a hook's limit, so it happens within the test.
     removeTrackedChild(children, child);
     await stopSpawnedProcess(child);
+  }
+}, 180_000);
+
+const OIDC_SIGN_IN = `import { oidc, type SignInOptions } from '@webstir-io/webstir-backend/sign-in';
+
+const signIn: SignInOptions = {
+  providers: [
+    oidc({
+      id: 'acme',
+      label: 'Acme',
+      issuer: process.env.ACME_ISSUER,
+      clientId: process.env.ACME_CLIENT_ID,
+      clientSecret: process.env.ACME_CLIENT_SECRET,
+    }),
+  ],
+};
+
+export default signIn;
+`;
+
+test('in watch, a visitor signs in through an OpenID Connect provider set up in .env', async () => {
+  const issuer = await startOidcIssuer();
+  const workspace = await createBatteriesApp(copies);
+  await writeFile(path.join(workspace, 'src', 'backend', 'sign-in.ts'), OIDC_SIGN_IN, 'utf8');
+  await writeFile(
+    path.join(workspace, '.env'),
+    `ACME_ISSUER=${issuer.url}\nACME_CLIENT_ID=${issuer.clientId}\nACME_CLIENT_SECRET=${issuer.clientSecret}\n`,
+    'utf8',
+  );
+  const port = await getFreePort();
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      'watch',
+      '--workspace',
+      workspace,
+      '--port',
+      String(port),
+    ],
+    cwd: repoRoot,
+    env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  children.push(child);
+  const stdout = { text: '' };
+  const stderr = { text: '' };
+  void collectOutput(child.stdout, stdout);
+  void collectOutput(child.stderr, stderr);
+  const origin = `http://127.0.0.1:${port}`;
+
+  try {
+    await waitFor(async () => {
+      expect(stdout.text).toContain('[webstir] watch starting');
+      expect((await fetch(`${origin}/sign-in/`)).status).toBe(200);
+    }, 60_000);
+
+    browser ??= await chromium.launch({ headless: true, args: ['--disable-dev-shm-usage'] });
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    // The page offers the provider beside the emailed code, and the provider sends them back.
+    await page.goto(`${origin}/notes/`);
+    await page.waitForURL(/\/sign-in\/\?returnTo=%2Fnotes%2F/);
+    await page.waitForSelector('text=Send me a code');
+    await page.click('a:has-text("Sign in with Acme")');
+    await page.waitForURL(`${origin}/notes/`);
+    await page.waitForSelector('.who:text("ada@example.com")');
+    expect(issuer.tokenRequests).toHaveLength(1);
+    expect(issuer.tokenRequests[0].redirect_uri).toBe(`${origin}/sign-in/acme/callback/`);
+
+    // Turned away at the provider, a visitor is back at sign-in, told so, and still signed out.
+    issuer.deny = true;
+    const other = await browser.newContext();
+    const second = await other.newPage();
+    await second.goto(`${origin}/sign-in/`);
+    await second.click('a:has-text("Sign in with Acme")');
+    await second.waitForURL(`${origin}/sign-in/`);
+    await second.waitForSelector('text=Signing in with Acme did not finish. Try again.');
+    await second.goto(`${origin}/notes/`);
+    await second.waitForURL(/\/sign-in\/\?returnTo=%2Fnotes%2F/);
+    await other.close();
+
+    expect(errors).toEqual([]);
+    await context.close();
+  } catch (error) {
+    throw appendWatchLogs(error, stdout.text, stderr.text);
+  } finally {
+    removeTrackedChild(children, child);
+    await stopSpawnedProcess(child);
+    issuer.stop();
   }
 }, 180_000);

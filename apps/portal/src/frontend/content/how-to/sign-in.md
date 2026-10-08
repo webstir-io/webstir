@@ -64,22 +64,61 @@ const signIn: SignInOptions = {
 
 ## Sign in through another service
 
-People can also sign in through a service the app trusts to say who they are. Each one is a provider in `src/backend/sign-in.ts`, and a "Sign in with" link on the sign-in page:
+People can also sign in through a service that speaks OpenID Connect, such as Microsoft Entra, Google or Okta. Each one is a provider in `src/backend/sign-in.ts`, and a "Sign in with" link on the sign-in page:
 
 ```ts
+import { oidc, type SignInOptions } from '@webstir-io/webstir-backend/sign-in';
+
 const signIn: SignInOptions = {
-  providers: [acme],
-  emailCode: false,
+  providers: [
+    oidc({
+      id: 'acme',
+      label: 'Acme',
+      issuer: 'https://login.acme.example',
+      clientId: process.env.ACME_CLIENT_ID,
+      clientSecret: process.env.ACME_CLIENT_SECRET,
+    }),
+  ],
 };
 ```
 
-- `emailCode: false` leaves providers as the only way in: the page shows no email form, and production needs no `EMAIL_URL`.
-- The link goes to `/sign-in/<id>/`, which sends the visitor to the provider. They come back to `/sign-in/<id>/callback/`, which is the address to register with the provider.
-- `canSignIn` and `loadUser` apply as they do to email codes. A provider with `allowSignUp: false` only signs in people the app already has a user for.
-- A person's first sign-in becomes the user with their address, or a new user. After that they are found by the provider's own id for them, so they stay the same user when their address changes.
-- An answer that cannot be trusted, or a person who may not sign in, lands back on the sign-in page with a message, which the page shows from `flash`.
+- **Register the callback.** The link goes to `/sign-in/<id>/`, which sends the visitor to the provider. They come back to `/sign-in/<id>/callback/` under `APP_URL`, which is the redirect address to register with the provider.
+- **What is checked.** The flow is the authorization code flow with PKCE, a state and a nonce. The ID token is checked for its issuer, audience, nonce, lifetime and signature.
+- **Who gets in.** `canSignIn` and `loadUser` apply as they do to email codes. `allowSignUp: false` only signs in people the app already has a user for.
+- **Who they are.** A person's first sign-in becomes the user with their address, or a new user. After that they are found by the provider's own id for them, so they stay the same user when their address changes.
+- **When it fails.** An answer that cannot be trusted, or a person who may not sign in, lands back on the sign-in page with a message, and the reason is in the server's log.
+- **Providers only.** `emailCode: false` beside `providers` leaves them as the only way in: the page shows no email form, and production needs no `EMAIL_URL`.
+- **Options.** `scopes` replaces the default `email` and `profile` (`openid` is always asked for), and `authorizeParams` adds to what the provider's sign-in page is sent, such as `{ prompt: 'select_account' }`.
 
-A provider is an object with an `id`, a `label`, and two functions:
+By default the person is the token's `sub`, with its `email` only when the provider says `email_verified`. Since the address decides which user a first sign-in becomes, an unverified one is ignored, and that person gets in only if they signed in before. A provider with claims of its own takes an `identity`. Microsoft Entra, for one tenant, sends no `email_verified` and has its own lasting ids:
+
+```ts
+oidc({
+  id: 'microsoft',
+  label: 'Microsoft',
+  issuer: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}/v2.0`,
+  clientId: process.env.MICROSOFT_CLIENT_ID,
+  clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+  authorizeParams: { prompt: 'select_account' },
+  allowSignUp: false,
+  identity: (claims) => ({ subject: `${claims.tid}:${claims.oid}`, email: String(claims.email ?? '') }),
+});
+```
+
+Pass an `email` on from `identity` only when the provider vouches for it, as a single tenant does for its own people.
+
+A sign-in page written before providers needs two lines to show them: the `flash` messages outside the code step, and the links.
+
+```html
+<p role="status" data-each="flash as note" data-text="note.message"></p>
+<p data-each="providers as provider">
+    <a data-no-client-nav data-attr-href="provider.href">Sign in with <span data-text="provider.label"></span></a>
+</p>
+```
+
+### A provider of your own
+
+`oidc()` returns a `SignInProvider`, and an app can write one for a service that is not OpenID Connect: an `id`, a `label`, and two functions.
 
 ```ts
 import type { SignInProvider } from '@webstir-io/webstir-backend/sign-in';
@@ -98,16 +137,7 @@ const acme: SignInProvider = {
 };
 ```
 
-`email` must be an address the provider vouches for, never one the person only claimed, since it decides which user they become. `setupProblem()` can name what the provider still needs in production, and the server refuses to start until it returns nothing.
-
-A sign-in page written before providers needs two lines to show them: the `flash` messages outside the code step, and the links.
-
-```html
-<p role="status" data-each="flash as note" data-text="note.message"></p>
-<p data-each="providers as provider">
-    <a data-no-client-nav data-attr-href="provider.href">Sign in with <span data-text="provider.label"></span></a>
-</p>
-```
+`setupProblem()` can name what the provider still needs in production, and the server refuses to start until it returns nothing.
 
 ## An app with its own users table
 
@@ -131,4 +161,4 @@ The server refuses to start with sign-in unless it has:
 - `SESSION_SECRET`
 - `APP_URL`, the address people use, for the links in the email. It is never taken from the request.
 - `EMAIL_URL` and `EMAIL_FROM` (see [Send Email](./email.md)), or an email transport the app sets, unless `emailCode` is off.
-- Whatever each provider's `setupProblem()` names.
+- For each `oidc()` provider, its `issuer` (an https address), `clientId` and `clientSecret`.
