@@ -13,7 +13,7 @@ export async function openEmptyDatabase(target) {
   const db = await openDatabase(target.url, { workspaceRoot: '/' });
   if (db.dialect === 'postgres') {
     await db.exec(
-      'DROP TABLE IF EXISTS webstir_jobs, webstir_sign_in_challenges, webstir_sessions, webstir_session_records, users, webstir_migrations CASCADE',
+      'DROP TABLE IF EXISTS webstir_jobs, webstir_sign_in_challenges, webstir_sign_in_identities, webstir_sessions, webstir_session_records, users, webstir_migrations CASCADE',
     );
   }
   return db;

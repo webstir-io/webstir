@@ -6,6 +6,7 @@
         <section class="sign-in">
             <h1>Sign in</h1>
             <p class="sign-in-error" role="alert" data-if="error" data-text="error"></p>
+            <p role="status" data-each="flash as note" data-attr-data-level="note.level" data-text="note.message"></p>
 
             <form method="post" action="/sign-in/" data-if="asking">
                 <input type="hidden" name="intent" value="request" />
@@ -15,9 +16,12 @@
                 <button type="submit">Send me a code</button>
             </form>
 
+            <p data-each="providers as provider">
+                <a data-no-client-nav data-attr-href="provider.href">Sign in with <span data-text="provider.label">another service</span></a>
+            </p>
+
             <div data-if="checking">
                 <p>If <strong data-text="email"></strong> can sign in, a code is on its way. It works for 5 minutes.</p>
-                <p role="status" data-each="flash as note" data-text="note.message"></p>
                 <p data-if="development">In development the email is not sent: the code is in the terminal and in <code>.webstir/email.log</code>.</p>
                 <form method="post" action="/sign-in/">
                     <input type="hidden" name="intent" value="code" />

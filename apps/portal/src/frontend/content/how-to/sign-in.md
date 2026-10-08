@@ -4,7 +4,7 @@
 webstir enable sign-in --workspace "$PWD"
 ```
 
-People sign in with a code sent to their email, or the link in the same email. There are no passwords to store or reset. The command writes:
+People sign in with a code sent to their email, or the link in the same email. There are no passwords to store or reset. An app can also let them [sign in through another service](#sign-in-through-another-service). The command writes:
 
 - **`src/backend/sign-in.ts`:** your choices: who may sign in, and the email's text.
 - **`src/frontend/pages/sign-in/`** and **`src/frontend/pages/sign-in-confirm/`:** the pages, as your own HTML to style.
@@ -62,6 +62,53 @@ const signIn: SignInOptions = {
 
 `null` means no access: that person is treated as signed out, and the sign-in page tells them this account has no access here. Type loaders with `ViewContext<Member>` and handlers with `ActionContext<Member>` from `@webstir-io/webstir-backend`.
 
+## Sign in through another service
+
+People can also sign in through a service the app trusts to say who they are. Each one is a provider in `src/backend/sign-in.ts`, and a "Sign in with" link on the sign-in page:
+
+```ts
+const signIn: SignInOptions = {
+  providers: [acme],
+  emailCode: false,
+};
+```
+
+- `emailCode: false` leaves providers as the only way in: the page shows no email form, and production needs no `EMAIL_URL`.
+- The link goes to `/sign-in/<id>/`, which sends the visitor to the provider. They come back to `/sign-in/<id>/callback/`, which is the address to register with the provider.
+- `canSignIn` and `loadUser` apply as they do to email codes. A provider with `allowSignUp: false` only signs in people the app already has a user for.
+- A person's first sign-in becomes the user with their address, or a new user. After that they are found by the provider's own id for them, so they stay the same user when their address changes.
+- An answer that cannot be trusted, or a person who may not sign in, lands back on the sign-in page with a message, which the page shows from `flash`.
+
+A provider is an object with an `id`, a `label`, and two functions:
+
+```ts
+import type { SignInProvider } from '@webstir-io/webstir-backend/sign-in';
+
+const acme: SignInProvider = {
+  id: 'acme',
+  label: 'Acme',
+  // Where to send the visitor, and what to keep in their session until they come back.
+  async start({ redirectUri }) {
+    return { location: authorizeUrl, keep: { state } };
+  },
+  // Who came back. Throw when the answer cannot be trusted.
+  async finish({ url, redirectUri, kept }) {
+    return { subject, email };
+  },
+};
+```
+
+`email` must be an address the provider vouches for, never one the person only claimed, since it decides which user they become. `setupProblem()` can name what the provider still needs in production, and the server refuses to start until it returns nothing.
+
+A sign-in page written before providers needs two lines to show them: the `flash` messages outside the code step, and the links.
+
+```html
+<p role="status" data-each="flash as note" data-text="note.message"></p>
+<p data-each="providers as provider">
+    <a data-no-client-nav data-attr-href="provider.href">Sign in with <span data-text="provider.label"></span></a>
+</p>
+```
+
 ## An app with its own users table
 
 Webstir makes `users (id, email, session_version, created_at)` before the app's migrations run, so they can reference `users (id)`. An app whose own migrations make `users`, with more columns such as a name or a status, says so, and Webstir leaves the table to them:
@@ -83,4 +130,5 @@ The server refuses to start with sign-in unless it has:
 
 - `SESSION_SECRET`
 - `APP_URL`, the address people use, for the links in the email. It is never taken from the request.
-- `EMAIL_URL` and `EMAIL_FROM` (see [Send Email](./email.md)), or an email transport the app sets.
+- `EMAIL_URL` and `EMAIL_FROM` (see [Send Email](./email.md)), or an email transport the app sets, unless `emailCode` is off.
+- Whatever each provider's `setupProblem()` names.

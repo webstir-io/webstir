@@ -9,12 +9,12 @@ import { fileURLToPath } from 'node:url';
 
 import { executeRequestHookPhase, type RequestHookReferenceLike } from './request-hooks.js';
 import { isProduction, setAppRoot } from '../app/app-root.js';
-import { appUrl, loadAppEnv, loadEnvFiles } from '../app/env.js';
+import { loadAppEnv, loadEnvFiles } from '../app/env.js';
 import { appServices } from '../app/services.js';
 import { appDatabase, appDatabaseExists, closeAppDatabase } from '../db/app-database.js';
 import type { Database } from '../db/database.js';
 import { readAppMigrations } from '../db/migrations.js';
-import { emailSetupProblem, type Email } from '../email/index.js';
+import type { Email } from '../email/index.js';
 import { LOCAL_FILES_PATH, serveLocalFile, type Files } from '../files/index.js';
 import { startJobs, type Jobs } from '../jobs/index.js';
 import {
@@ -27,6 +27,7 @@ import {
 } from '../sign-in/guard.js';
 import { declareSignInTables } from '../sign-in/database.js';
 import type { SignInOptions } from '../sign-in/module.js';
+import { signInSetupProblem } from '../sign-in/setup.js';
 import type { AppUser, SubmittedForm } from './contexts.js';
 import {
   checkDeclaredForm,
@@ -255,7 +256,7 @@ export async function startBunBackend<
   const signIn = (runtime.definition as { signIn?: SignInOptions } | undefined)?.signIn;
   const shell = (runtime.definition as { shell?: ShellLike } | undefined)?.shell;
   const signInEnabled = Boolean(signIn);
-  const signInProblem = checkSignInSetup(runtime, signInEnabled);
+  const signInProblem = checkSignInSetup(runtime, signIn);
   if (signInProblem) {
     throw new Error(`[webstir-backend] ${signInProblem}`);
   }
@@ -344,32 +345,23 @@ export function createDefaultBunBackendBootstrap<
 
 /**
  * What sign-in needs before the server listens: routes or views that require it need sign-in
- * enabled, and in production sign-in needs APP_URL for its links and a way to send email.
+ * enabled, and in production sign-in needs APP_URL and whatever each way of signing in needs.
  */
 function checkSignInSetup(
   runtime: {
     routes: readonly { definition?: { auth?: unknown } }[];
     views: readonly CompiledView[];
   },
-  signInEnabled: boolean,
+  signIn: SignInOptions | undefined,
 ): string | undefined {
   const guarded = [
     ...runtime.routes.map((route) => route.definition),
     ...runtime.views.map((view) => view.definition as { auth?: unknown } | undefined),
   ].some(requiresSignIn);
-  if (guarded && !signInEnabled) {
+  if (guarded && !signIn) {
     return "a route or view says auth: 'required', but the app has no sign-in; run `webstir enable sign-in`.";
   }
-  if (signInEnabled && isProduction()) {
-    try {
-      appUrl();
-    } catch (error) {
-      return (error as Error).message;
-    }
-    const email = emailSetupProblem();
-    if (email) return `sign-in sends codes by email, but ${email}`;
-  }
-  return undefined;
+  return signIn && isProduction() ? signInSetupProblem(signIn) : undefined;
 }
 
 function createDefaultBaseLogger(): RuntimeLogger {

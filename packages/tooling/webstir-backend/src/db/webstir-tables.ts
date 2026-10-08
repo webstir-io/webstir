@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS webstir_sign_in_challenges (
 CREATE INDEX IF NOT EXISTS webstir_sign_in_challenges_email
   ON webstir_sign_in_challenges (email, created_at);`),
     },
+    {
+      id: 'webstir/sign-in-2',
+      apply: script(`CREATE TABLE IF NOT EXISTS webstir_sign_in_identities (
+  provider TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (provider, subject)
+);`),
+    },
   ],
 };
 
