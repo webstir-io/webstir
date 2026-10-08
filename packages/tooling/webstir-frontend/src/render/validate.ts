@@ -147,7 +147,7 @@ export function validateRenderProgram(
 ): RenderIssue[] {
   const issues: RenderIssue[] = [];
   const shell = shellSchema ? flattenSchema(shellSchema) : undefined;
-  walk(program.nodes, flattenSchema(dataSchema), [], renderer, issues, shell);
+  walk(program.nodes, flattenSchema(dataSchema), [], [], renderer, issues, shell);
   return issues;
 }
 
@@ -155,6 +155,7 @@ function walk(
   nodes: readonly RenderNode[],
   root: readonly SchemaLike[],
   scopes: readonly (readonly SchemaLike[])[],
+  loops: readonly string[],
   view: string,
   issues: RenderIssue[],
   shell?: readonly SchemaLike[],
@@ -168,11 +169,11 @@ function walk(
       issues.push({ loc: node.loc, message: `${label}: ${message} (${view})` });
     };
 
-    const resolved = resolve(node.path, root, scopes, shell);
+    const resolved = resolve(node.path, root, scopes, loops, shell);
     if ('error' in resolved) {
       report(resolved.error);
       if (node.op === 'if') {
-        walk(node.body, root, scopes, view, issues, shell);
+        walk(node.body, root, scopes, loops, view, issues, shell);
       }
       continue;
     }
@@ -189,14 +190,14 @@ function walk(
         report(`\`${node.path.source}\` ${problem}`);
       }
     } else if (node.op === 'if') {
-      walk(node.body, root, scopes, view, issues, shell);
+      walk(node.body, root, scopes, loops, view, issues, shell);
     } else {
       const element = elementOf(resolved.ok);
       if ('error' in element) {
         report(`\`${node.path.source}\` ${element.error}`);
         continue;
       }
-      walk(node.body, root, [...scopes, element.ok], view, issues, shell);
+      walk(node.body, root, [...scopes, element.ok], [...loops, node.as], view, issues, shell);
     }
   }
 }
@@ -205,34 +206,34 @@ function resolve(
   renderPath: RenderPath,
   root: readonly SchemaLike[],
   scopes: readonly (readonly SchemaLike[])[],
+  loops: readonly string[],
   shell?: readonly SchemaLike[],
 ): { ok: readonly SchemaLike[] } | { error: string } {
   let current = renderPath.scope === -1 ? root : scopes[renderPath.scope];
   if (!current) {
     return { error: `\`${renderPath.source}\` refers to a loop that is not in scope` };
   }
-  const segments = renderPath.source.split('.');
-  let consumed = renderPath.scope === -1 ? 0 : 1;
+  // Named by what it reads, which is not what was written when `data-with-<name>` gave the name.
+  const read = renderPath.scope === -1 ? [] : [loops[renderPath.scope]];
 
   for (const [index, key] of renderPath.keys.entries()) {
     const result = lookupKey(current, key);
     if ('error' in result) {
       if (renderPath.scope === -1 && index === 0 && key === 'flash') {
         current = FLASH;
-        consumed += 1;
+        read.push(key);
         continue;
       }
       if (renderPath.scope === -1 && index === 0 && key === 'shell' && shell) {
         current = shell;
-        consumed += 1;
+        read.push(key);
         continue;
       }
-      const owner =
-        consumed === 0 ? 'the view data' : `\`${segments.slice(0, consumed).join('.')}\``;
+      const owner = read.length === 0 ? 'the view data' : `\`${read.join('.')}\``;
       return { error: `${owner} ${result.error}` };
     }
     current = result.ok;
-    consumed += 1;
+    read.push(key);
   }
   return { ok: current };
 }

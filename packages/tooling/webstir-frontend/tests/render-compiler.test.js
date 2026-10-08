@@ -11,6 +11,8 @@ import {
   schemaDeclaresField,
 } from '@webstir-io/module-contract';
 
+import { executeRenderProgram } from '@webstir-io/module-contract/render';
+
 import {
   RenderTemplateError,
   compileRenderProgram,
@@ -687,4 +689,242 @@ test('the shell binds on every view page, checked against its own schema', async
     validateRenderProgram(program, page, 'view fixture')[0].message,
     /the view data has no `shell`/,
   );
+});
+
+async function writePartial(root, name, html) {
+  const file = path.join(root, 'src', 'frontend', 'app', 'partials', `${name}.html`);
+  await fs.writeFile(file, html, 'utf8');
+}
+
+const main = (...lines) => ['<head></head>', '<main>', ...lines, '</main>'].join('\n');
+const pathsOf = (program) =>
+  collectOps(program.nodes).map((op) => [op.op, op.path.scope, op.path.keys.join('.')]);
+const staticOf = (program) => program.nodes.filter((node) => typeof node === 'string').join('');
+
+test('a partial reads the names it is given, so one partial serves different data', async () => {
+  const root = await createWorkspace();
+  await writePartial(
+    root,
+    'field',
+    [
+      '<label data-text="field.label">Label</label>',
+      '<input data-attr-value="field.value" />',
+      '<p data-if="field.error" data-text="field.error"></p>',
+    ].join('\n'),
+  );
+  const program = await compileSource(
+    root,
+    main(
+      '<div data-include="field" data-with-field="form.email"></div>',
+      '<div data-include="field" data-with-field="form.phone"></div>',
+      '<ul><li data-each="clients as client" data-include="field" data-with-field="client.contact"></li></ul>',
+    ),
+  );
+  const field = (scope, at) => [
+    ['text', scope, `${at}.label`],
+    ['attr', scope, `${at}.value`],
+    ['if', scope, `${at}.error`],
+    ['text', scope, `${at}.error`],
+  ];
+  assert.deepEqual(pathsOf(program), [
+    ...field(-1, 'form.email'),
+    ...field(-1, 'form.phone'),
+    ['each', -1, 'clients'],
+    ...field(0, 'contact'),
+  ]);
+  assert.doesNotMatch(JSON.stringify(program), /data-with|data-include/);
+
+  const contact = (label, value, error) => ({ label, value, ...(error ? { error } : {}) });
+  const html = executeRenderProgram(
+    program,
+    {
+      form: { email: contact('Email', 'ada@example.com', 'Taken'), phone: contact('Phone', '555') },
+      clients: [{ contact: contact('Acme', 'acme@example.com') }],
+    },
+    { csrfToken: false },
+  );
+  assert.match(
+    html,
+    /<div><label>Email<\/label>\n<input value="ada@example.com">\n<p>Taken<\/p><\/div>/,
+  );
+  assert.match(html, /<div><label>Phone<\/label>\n<input value="555">\n<\/div>/);
+  assert.match(html, /<li><label>Acme<\/label>\n<input value="acme@example.com">\n<\/li>/);
+
+  // A path through a given name is checked like any other, and reported where it is written.
+  const schema = z.object({
+    form: z.object({
+      email: z.object({ label: z.string(), value: z.string(), error: z.string().optional() }),
+      phone: z.object({ label: z.string(), value: z.string() }),
+    }),
+    clients: z.array(
+      z.object({ contact: z.object({ label: z.string(), value: z.string(), error: z.string() }) }),
+    ),
+  });
+  const issues = validateRenderProgram(program, schema, 'view fields');
+  assert.deepEqual(
+    issues.map((issue) => [issue.loc.file, issue.loc.line]),
+    [
+      ['src/frontend/app/partials/field.html', 3],
+      ['src/frontend/app/partials/field.html', 3],
+    ],
+  );
+  assert.equal(
+    issues[0].message,
+    'data-if="field.error": `form.phone` has no `error`; it has `label`, `value` (view fields)',
+  );
+});
+
+test('the nearest name wins, whether a loop made it or data-with gave it', async () => {
+  const root = await createWorkspace();
+  const cases = [
+    // The element that gives a name can use it, beside its loop's item.
+    [
+      '<p data-each="rows as row" data-with-cell="row.first" data-text="cell.text"></p>',
+      [
+        ['each', -1, 'rows'],
+        ['text', 0, 'first.text'],
+      ],
+    ],
+    [
+      '<ul data-with-list="report.rows"><li data-each="list as row" data-text="row.name"></li></ul>',
+      [
+        ['each', -1, 'report.rows'],
+        ['text', 0, 'name'],
+      ],
+    ],
+    [
+      '<div data-with-item="chosen"><p data-each="items as item" data-text="item.name"></p></div>',
+      [
+        ['each', -1, 'items'],
+        ['text', 0, 'name'],
+      ],
+    ],
+    [
+      '<p data-each="items as item"><span data-with-item="chosen" data-text="item.name"></span></p>',
+      [
+        ['each', -1, 'items'],
+        ['text', -1, 'chosen.name'],
+      ],
+    ],
+    [
+      '<div data-with-a="one"><div data-with-b="a.two"><p data-text="b.three"></p></div></div>',
+      [['text', -1, 'one.two.three']],
+    ],
+    // Names given on one element are read from outside it, so they can swap.
+    [
+      '<div data-with-a="x" data-with-b="y"><div data-with-a="b" data-with-b="a"><p data-text="a"></p><p data-text="b"></p></div></div>',
+      [
+        ['text', -1, 'y'],
+        ['text', -1, 'x'],
+      ],
+    ],
+    // HTML lowercases attribute names, so that is the name given.
+    [
+      '<div data-with-clientRow="client"><p data-text="clientrow.name"></p></div>',
+      [['text', -1, 'client.name']],
+    ],
+  ];
+  for (const [markup, expected] of cases) {
+    assert.deepEqual(pathsOf(await compileSource(root, main(markup))), expected, markup);
+  }
+});
+
+test('text given in single quotes is written into the page by the build', async () => {
+  const root = await createWorkspace();
+  await writePartial(
+    root,
+    'button',
+    '<span class="icon" data-if="icon" data-attr-data-icon="icon"></span><span data-text="label">Label</span><em data-if="!hint">no hint</em>',
+  );
+  const program = await compileSource(
+    root,
+    main(
+      `<a class="button" data-include="button" data-with-label="'Save & <close>'" data-with-icon="'check'" data-with-hint="''" data-attr-href="client.href" data-attr-title="label"></a>`,
+      `<a class="button" data-include="button" data-with-label="'Delete'" data-with-icon="''" data-with-hint="'careful'" href="/clients/"></a>`,
+      `<p data-with-quote="'it's a &quot;quote&quot;'" data-text="quote"></p>`,
+    ),
+  );
+  assert.deepEqual(pathsOf(program), [['attr', -1, 'client.href']]);
+  const html = staticOf(program);
+  assert.match(html, /<a class="button" title="Save &amp; <close>"/);
+  assert.match(
+    html,
+    /><span class="icon" data-icon="check"><\/span><span>Save &amp; &lt;close&gt;<\/span><em>no hint<\/em><\/a>/,
+  );
+  assert.match(html, /<a class="button" href="\/clients\/"><span>Delete<\/span><\/a>/);
+  assert.match(html, /<p>it's a "quote"<\/p>/);
+  assert.doesNotMatch(html, /data-with|data-text|data-if|data-attr|Label/);
+});
+
+test('a page whose bindings the build settled is written as plain HTML, with no program', async () => {
+  const root = await createWorkspace();
+  await writePartial(root, 'badge', '<strong data-text="label">Label</strong>');
+  const page = path.join(root, 'src', 'frontend', 'pages', 'about');
+  await fs.mkdir(page, { recursive: true });
+  await fs.writeFile(
+    path.join(page, 'index.html'),
+    main(`<p data-include="badge" data-with-label="'Since 2019'"></p>`).replace(
+      '<head></head>',
+      '<head><title>About</title></head>',
+    ),
+    'utf8',
+  );
+  for (const [mode, out] of [
+    ['build', 'build/frontend'],
+    ['publish', 'dist/frontend'],
+  ]) {
+    await frontendProvider.build({
+      workspaceRoot: root,
+      env: { WEBSTIR_MODULE_MODE: mode },
+      incremental: false,
+    });
+    const dir = path.join(root, out, 'pages', 'about');
+    const html = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+    assert.match(html, /<p><strong>Since 2019<\/strong><\/p>/, mode);
+    assert.match(html, /<title>About<\/title>/, mode);
+    assert.doesNotMatch(html, /data-with|data-text|data-include|data-webstir-src|Label/, mode);
+    await assert.rejects(fs.stat(path.join(dir, 'index.program.json')), undefined, mode);
+  }
+});
+
+test('a name that cannot be given, or text used as data, fails with file and line', async () => {
+  const root = await createWorkspace();
+  const cases = [
+    ['<p data-with-9x="a"></p>', 'data-with-9x="a": `9x` is not a name to give'],
+    ['<p data-with-a-b="a"></p>', 'data-with-a-b="a": `a-b` is not a name to give'],
+    ['<p data-with-a="b..c"></p>', 'data-with-a="b..c": `b..c` is not a path'],
+    ['<p data-with-a=""></p>', 'data-with-a="": expected a path, or text in single quotes'],
+    [`<p data-with-a="'x'" data-text="a.b"></p>`, 'data-text="a.b": `a` is text, so it has no `b`'],
+    [
+      `<p data-with-a="'x'"><i data-with-b="a.c" data-text="b"></i></p>`,
+      `data-with-b="a.c": \`a\` is text, so it has no \`c\``,
+    ],
+    [
+      `<ul data-with-a="'x'"><li data-each="a as item"></li></ul>`,
+      'data-each="a as item": `a` is text, and this needs data',
+    ],
+    [
+      `<div data-island="chart" data-with-a="'x'" data-props="a"></div>`,
+      'data-props="a": `a` is text, and this needs data',
+    ],
+    [
+      '<a data-attr-data-with-a="b"></a>',
+      'data-attr-data-with-a="b": `data-with-a` cannot be bound',
+    ],
+  ];
+  for (const [markup, expected] of cases) {
+    await assert.rejects(compileSource(root, main(markup)), (error) => {
+      assert.ok(error instanceof RenderTemplateError, markup);
+      assert.deepEqual(
+        error.issues.map((issue) => [issue.loc.file, issue.loc.line]),
+        [[CLIENTS_SOURCE, 3]],
+        markup,
+      );
+      assert.ok(
+        error.issues[0].message.startsWith(expected),
+        `${markup}\nexpected: ${expected}\nactual:   ${error.issues[0].message}`,
+      );
+      return true;
+    });
+  }
 });

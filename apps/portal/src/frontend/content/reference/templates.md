@@ -52,6 +52,45 @@ Typical backend scaffold:
 - For optional app features, prefer absolute app-asset imports such as `await import('/app/search.js')` so dev and publish paths stay aligned.
 - Start with `full` when the app needs forms, redirects, auth, or server-rendered documents; start with `spa` or `ssg` for pages without a server, which publish as a static site.
 
+## Bindings
+A page's `index.html`, the app shell and partials bind data with attributes. A binding is a path of names joined by dots, such as `client.name`, read from the view's data. The build checks every path against the view's schema and fails with the file and line of one that does not exist. Every value is escaped, and the attributes are not in the rendered page.
+
+| Attribute | Meaning |
+| --- | --- |
+| `data-text="path"` | Replaces the element's content with the value. What is written there is a placeholder. |
+| `data-attr-<name>="path"` | Sets the attribute. `true` adds it bare, and `false`, `null` or nothing removes it. |
+| `data-if="path"`, `data-if="!path"` | Keeps the element only when the value is truthy, or falsy with `!`. |
+| `data-each="items as item"` | Repeats the element for each entry, with `item` in reach inside it. |
+| `data-include="name"` | Replaces the element's content with `src/frontend/app/partials/<name>.html`. |
+| `data-with-<name>="path"` | Gives a path a name, in reach on the element and inside it. |
+| `data-with-<name>="'text'"` | Gives a name to text written in single quotes. |
+
+A partial reads whatever names are in reach where it is included, so `data-with-<name>` is how one partial serves different data:
+
+```html
+<!-- src/frontend/app/partials/field.html -->
+<label data-text="field.label">Label</label>
+<input data-attr-name="field.name" data-attr-value="field.value" />
+<p data-if="field.error" data-text="field.error"></p>
+```
+
+```html
+<div data-include="field" data-with-field="form.email"></div>
+<div data-include="field" data-with-field="form.phone"></div>
+```
+
+Text in single quotes is for what the template itself knows, such as a button's label. The build writes it into the page, so it costs nothing at request time:
+
+```html
+<a class="button" data-include="button" data-with-label="'Edit'" data-attr-href="client.editUrl"></a>
+```
+
+- **Names are lowercase.** HTML lowercases attribute names, so `data-with-clientRow` gives the name `clientrow`. Use lowercase letters, digits and underscores.
+- **The nearest name wins.** A name given inside a loop hides the loop's item of the same name, and a loop inside hides a name given outside it.
+- **Names on one element do not read each other.** Each is given from what is in reach outside the element.
+- **Text is not data.** A name given text works in `data-text`, `data-attr-*` and `data-if`, where empty text is falsy. It cannot be looped over or passed to an island.
+- **Errors name what was read.** A path through a given name is checked like any other, and the message shows the real path, such as `form.phone`, at the partial's line.
+
 ## TypeScript
 - `src/frontend/tsconfig.json` and `src/backend/tsconfig.json` are one line each, extending `@webstir-io/webstir-frontend/tsconfig.json` and `@webstir-io/webstir-backend/tsconfig.json`, which hold the compiler settings. Stylesheet imports (CSS modules) are typed by the frontend package's declarations. Add your own options beside the `extends`.
 - A backend with no `tsconfig.json` is type-checked with the package's settings.
