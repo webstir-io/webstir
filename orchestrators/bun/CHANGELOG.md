@@ -1,5 +1,15 @@
 # @webstir-io/webstir
 
+## 0.10.1
+
+### Patch Changes
+
+- 7a2b555: Dependencies with audit advisories are patched: `sharp` to 0.35.5 in the frontend package and `@modelcontextprotocol/sdk` to 1.31.0 in the CLI.
+- Updated dependencies [7a2b555]
+  - @webstir-io/webstir-frontend@0.10.1
+  - @webstir-io/module-contract@0.10.1
+  - @webstir-io/webstir-backend@0.10.1
+
 ## 0.10.0
 
 ### Minor Changes
