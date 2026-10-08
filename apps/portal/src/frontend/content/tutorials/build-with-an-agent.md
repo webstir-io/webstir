@@ -63,6 +63,4 @@ An MCP-capable coding agent can launch the same installed executable with the `m
 
 The repository's `tools/agent-eval/` harness evaluates build, extend, and repair tasks through installed packages and independent browser checks. It retains unsuccessful attempts and distinguishes environment errors from task failures. Its results are a bounded experiment in one local agent environment, not a comparison with other frameworks.
 
-See the [evaluation report](https://github.com/webstir-io/webstir/blob/main/plans/agent-assisted-development/RESULTS.md) for the package artifacts, full sample, and limitations.
-
 Package publication is separate from merging framework changes. Verify your installed version and its `--help` output before relying on newly documented package features.
