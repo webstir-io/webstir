@@ -1,7 +1,12 @@
 import { test } from 'bun:test';
 import assert from 'node:assert/strict';
 
-import { drainServer, finishedWithin, shutdownTimeoutMs } from '../dist/runtime/shutdown.js';
+import {
+  databaseCloseTimeoutMs,
+  drainServer,
+  finishedWithin,
+  shutdownTimeoutMs,
+} from '../dist/runtime/shutdown.js';
 
 test('SHUTDOWN_TIMEOUT is in seconds, four by default, and anything else is the default', () => {
   for (const [value, ms] of [
@@ -37,4 +42,10 @@ test('a server is given the limit to finish, and closed when it has not', async 
 
   assert.equal(await finishedWithin(Bun.sleep(5), 200), true);
   assert.equal(await finishedWithin(Bun.sleep(500), 20), false);
+});
+
+test('a database gets ten seconds to close, or as long as the server waits for work', () => {
+  assert.equal(databaseCloseTimeoutMs(0), 10_000);
+  assert.equal(databaseCloseTimeoutMs(4000), 10_000);
+  assert.equal(databaseCloseTimeoutMs(30_000), 30_000);
 });

@@ -91,7 +91,7 @@ test.skipIf(!tcpListenAvailable)(
       assert.equal(readyResponse.status, 200);
       const readyPayload = await readyResponse.json();
       assert.equal(readyPayload.status, 'ready');
-      assert.equal(readyPayload.manifest?.routes, 3);
+      assert.equal(readyPayload.manifest?.routes, 4);
 
       const healthResponse = await fetch(`${server.origin}/healthz`);
       assert.equal(healthResponse.status, 200);
@@ -329,6 +329,23 @@ stopTest(
 );
 
 stopTest(
+  'a server whose database is still in use stops anyway, and says it did not close it',
+  async () => {
+    await withStoppableProcess(
+      { appServerOnly: true, env: { SHUTDOWN_TIMEOUT: '0' } },
+      async (app) => {
+        assert.deepEqual(await (await fetch(`${app.origin}/deploy/stuck`)).json(), { stuck: true });
+        const asked = Date.now();
+        app.signal();
+        assert.equal(await app.exited, 1);
+        const took = Date.now() - asked;
+        assert.ok(took >= 9000 && took < 30_000, `stopped ${took}ms after being asked`);
+      },
+    );
+  },
+);
+
+stopTest(
   'an app server run on its own lets a request finish, however often it is asked to stop',
   async () => {
     await withStoppableProcess({ appServerOnly: true }, async (app) => {
@@ -498,6 +515,19 @@ async function buildRuntimeWorkspace(workspace, mode) {
 function createModuleSource(mode) {
   const routePrefix = mode === 'full' ? '/api' : '';
   return `const routes = [
+  {
+    definition: {
+      name: 'deployStuck',
+      method: 'GET',
+      path: '${routePrefix}/deploy/stuck'
+    },
+    handler: async (ctx) => {
+      // A transaction that never ends, as a hung query inside one would be.
+      void ctx.db.transaction(() => new Promise(() => {}));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      return { status: 200, body: { stuck: true } };
+    }
+  },
   {
     definition: {
       name: 'deploySlow',

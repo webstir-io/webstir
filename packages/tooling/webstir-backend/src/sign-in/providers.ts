@@ -79,12 +79,12 @@ export function providerRoutes(options: SignInOptions): unknown[] {
     const callback = (request: Request) => `${appUrl(request)}/sign-in/${provider.id}/callback/`;
     const unfinished = (why: unknown): RouteResult => {
       console.error(
-        `[sign-in] ${provider.id}: ${why instanceof Error ? why.message : String(why)}`,
+        `[sign-in] ${provider.id}: ${oneLine(why instanceof Error ? why.message : String(why))}`,
       );
       return refused(`Signing in with ${provider.label} did not finish. Try again.`);
     };
     const noAccess = (why: string): RouteResult => {
-      console.error(`[sign-in] ${provider.id}: ${why}`);
+      console.error(`[sign-in] ${provider.id}: ${oneLine(why)}`);
       return refused(NO_ACCESS);
     };
 
@@ -225,6 +225,16 @@ export function checkSignInMethods(options: SignInOptions): void {
       );
     }
   }
+}
+
+/**
+ * A reason as one line of the log: part of it may be what a provider, or the address a visitor
+ * came back at, said went wrong, and neither gets to write lines of its own.
+ */
+export function oneLine(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are what is removed
+  const line = text.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ').trim();
+  return line.length > 500 ? `${line.slice(0, 500)}...` : line;
 }
 
 function takeWaiting(

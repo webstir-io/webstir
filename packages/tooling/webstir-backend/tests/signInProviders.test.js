@@ -12,6 +12,7 @@ import { isSessionRenewed } from '../dist/runtime/session-metadata.js';
 import { signInDatabase } from '../dist/sign-in/database.js';
 import { findIdentityUser, linkIdentity } from '../dist/sign-in/identities.js';
 import { signIn } from '../dist/sign-in/index.js';
+import { oneLine } from '../dist/sign-in/providers.js';
 import { signInSetupProblem } from '../dist/sign-in/setup.js';
 import { databaseTargets, openEmptyDatabase } from './support/databases.js';
 
@@ -435,4 +436,36 @@ test('production needs what each way of signing in needs, and no more', () => {
       else process.env[key] = saved[key];
     }
   }
+});
+
+test('what a provider or a visitor said went wrong is one line of the log, and not a long one', async () => {
+  assert.equal(
+    oneLine('access_denied (no\n[sign-in] acme: everything is fine\r\n\u2028next\u0000)'),
+    'access_denied (no [sign-in] acme: everything is fine next )',
+  );
+  assert.equal(oneLine(`  ${'x'.repeat(900)}  `), `${'x'.repeat(500)}...`);
+  assert.equal(
+    oneLine('invalid_client (the secret is wrong)'),
+    'invalid_client (the secret is wrong)',
+  );
+
+  // Through the route: the reason a callback gives reaches the log as one line.
+  const logged = [];
+  const saved = console.error;
+  console.error = (line) => logged.push(line);
+  try {
+    const provider = fakeProvider(() =>
+      Promise.reject(new Error('denied\n[sign-in] forged: line')),
+    );
+    const { callback } = routesOf(signIn({ providers: [provider] }));
+    await callback({
+      request: new Request(`${ORIGIN}/sign-in/acme/callback/`),
+      session: {
+        webstirSignInProvider: { provider: 'acme', returnTo: '/', kept: { state: 's1' } },
+      },
+    });
+  } finally {
+    console.error = saved;
+  }
+  assert.deepEqual(logged, ['[sign-in] acme: denied [sign-in] forged: line']);
 });

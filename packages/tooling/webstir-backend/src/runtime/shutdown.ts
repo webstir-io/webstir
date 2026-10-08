@@ -10,6 +10,16 @@ export function shutdownTimeoutMs(env: Record<string, string | undefined> = proc
   return Math.min(ms, MAX_TIMEOUT_MS);
 }
 
+const DATABASE_CLOSE_MS = 10_000;
+
+/**
+ * How long a stopping server gives its database to close, which may mean uploading a snapshot:
+ * ten seconds, or the limit it waits for work when that is longer.
+ */
+export function databaseCloseTimeoutMs(limitMs: number): number {
+  return Math.max(limitMs, DATABASE_CLOSE_MS);
+}
+
 /** Whether the work finished within the limit; the work itself is left running when it did not. */
 export async function finishedWithin(work: Promise<unknown>, limitMs: number): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;

@@ -60,7 +60,7 @@ A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. 
 
 1. Takes no new connections, and lets the requests in flight finish.
 2. Stops its jobs, waiting for one that is running. A queued job still running when the wait ends goes back in the queue at the next start; a scheduled one runs again when it is next due.
-3. Closes the database, taking a SQLite database's pending snapshot, and exits with `0`.
+3. Closes the database, taking a SQLite database's pending snapshot, and exits with `0`. Closing has 10 seconds, or `SHUTDOWN_TIMEOUT` when that is longer; a database still in use after that, by a transaction that never ended, is left, and the server exits with `1`.
 
 `SHUTDOWN_TIMEOUT` is how long each wait lasts, 4 seconds by default, read from the environment or the app's `.env`. In an app with pages the public server waits for its requests first and then the app server waits for its jobs, so a stop can take twice the setting, and then as long as closing the database takes. That fits the 10 seconds Docker allows before it kills a container, with a database that closes within 2. An app with slower requests, or a snapshot that takes longer to upload, raises both:
 

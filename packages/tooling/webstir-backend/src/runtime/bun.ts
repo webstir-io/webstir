@@ -28,7 +28,12 @@ import {
 import { declareSignInTables } from '../sign-in/database.js';
 import type { SignInOptions } from '../sign-in/module.js';
 import { signInSetupProblem } from '../sign-in/setup.js';
-import { drainServer, finishedWithin, shutdownTimeoutMs } from './shutdown.js';
+import {
+  databaseCloseTimeoutMs,
+  drainServer,
+  finishedWithin,
+  shutdownTimeoutMs,
+} from './shutdown.js';
 import type { AppUser, SubmittedForm } from './contexts.js';
 import {
   checkDeclaredForm,
@@ -323,12 +328,24 @@ export async function startBunBackend<
               `[webstir-backend] stopped after ${limit / 1000}s with work unfinished`,
             );
           }
-          return closeAppDatabase();
+          // Closing waits for a transaction still open, which work cut off above may never
+          // end; it has long enough to take a snapshot, and then the process ends regardless.
+          return finishedWithin(closeAppDatabase(), databaseCloseTimeoutMs(limit));
         })
-        .catch((error: unknown) =>
-          logger.error({ err: error }, '[webstir-backend] shutdown failed'),
-        )
-        .finally(() => process.exit(0));
+        .then(
+          (closed) => {
+            if (!closed) {
+              logger.error(
+                '[webstir-backend] stopped without closing the database: it was still in use',
+              );
+            }
+            process.exit(closed ? 0 : 1);
+          },
+          (error: unknown) => {
+            logger.error({ err: error }, '[webstir-backend] shutdown failed');
+            process.exit(1);
+          },
+        );
     });
   }
 
