@@ -326,6 +326,50 @@ stopTest(
   },
 );
 
+stopTest('a deployment that cannot take its port leaves no app server running', async () => {
+  const workspace = await createTempWorkspace('webstir-backend-port-taken-');
+  await buildRuntimeWorkspace(workspace, 'api');
+  const taken = Bun.serve({ port: 0, hostname: '0.0.0.0', fetch: () => new Response('taken') });
+  const child = spawnProcess(
+    'bun',
+    [
+      path.join(getPackageRoot(), 'dist', 'deploy-cli.js'),
+      '--workspace',
+      workspace,
+      '--port',
+      String(taken.port),
+    ],
+    {
+      cwd: getPackageRoot(),
+      env: { ...process.env, NODE_ENV: 'test', WEBSTIR_JOBS: 'off' },
+      stdio: 'ignore',
+      detached: true,
+    },
+  );
+  const exited = new Promise((resolve) => child.once('exit', (code) => resolve(code)));
+  const groupIsGone = () => {
+    try {
+      process.kill(-child.pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  try {
+    assert.equal(await Promise.race([exited, Bun.sleep(25_000).then(() => 'still running')]), 1);
+    for (let waited = 0; !groupIsGone() && waited < 3000; waited += 50) await Bun.sleep(50);
+    assert.equal(groupIsGone(), true, 'the app server it started is stopped');
+  } finally {
+    try {
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      // Already gone, as it should be.
+    }
+    await taken.stop(true);
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
+
 stopTest('a deployment whose app server dies exits, so it can be started again', async () => {
   await withStoppableProcess({}, async (app) => {
     await app.killAppServer();

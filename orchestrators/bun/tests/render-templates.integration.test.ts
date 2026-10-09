@@ -372,6 +372,7 @@ test('the published server renders views and keeps programs private', async () =
       '/pages/clients/index.html.gz',
       '/pages/clients/index.html.br',
       '/pages/clients/index%2ehtml',
+      '/pages/clients/index.html%00',
       // On a file system that folds letters, the long s finds the same folder.
       '/pages/client%C5%BF/index.html',
       '/pages/clients/',

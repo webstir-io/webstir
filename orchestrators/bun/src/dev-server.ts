@@ -287,7 +287,14 @@ export class DevServer {
     const notFoundPage = acceptsHtml(request)
       ? await resolveStaticFile(this.buildRoot, [NOT_FOUND_PAGE_PATH])
       : null;
-    if (!notFoundPage) {
+    if (
+      !notFoundPage ||
+      (await isRenderedPageDocument(
+        this.buildRoot,
+        notFoundPage.absolutePath,
+        await this.renderedPages(),
+      ))
+    ) {
       return textResponse(404, 'Not found.');
     }
 

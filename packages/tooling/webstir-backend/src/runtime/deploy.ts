@@ -75,22 +75,31 @@ export async function startPublishedWorkspaceServer(
 
   const host = options.host ?? '0.0.0.0';
   const requestedPort = options.port ?? DEFAULT_PUBLIC_PORT;
-  const server = bun.serve({
-    hostname: host,
-    idleTimeout: 0,
-    port: requestedPort,
-    fetch: async (request) =>
-      await handlePublishedWorkspaceRequest({
-        request,
-        pages: layers.pages,
-        frontendRoot,
-        backendOrigin,
-        pageRoutes,
-        renderedPages,
-        isRenderedView,
-      }),
-    error: (error) => textResponse(500, error.message),
-  });
+  let server: ReturnType<typeof bun.serve>;
+  try {
+    server = bun.serve({
+      hostname: host,
+      idleTimeout: 0,
+      port: requestedPort,
+      fetch: async (request) =>
+        await handlePublishedWorkspaceRequest({
+          request,
+          pages: layers.pages,
+          frontendRoot,
+          backendOrigin,
+          pageRoutes,
+          renderedPages,
+          isRenderedView,
+        }),
+      error: (error) => textResponse(500, error.message),
+    });
+  } catch (error) {
+    // The public port could not be taken: the app server already started goes with it.
+    processRecord.expectedExit = true;
+    processRecord.child.kill('SIGTERM');
+    await processRecord.exitPromise.catch(() => undefined);
+    throw error;
+  }
 
   const failed = new Promise<void>((resolve) => {
     processRecord.exitPromise

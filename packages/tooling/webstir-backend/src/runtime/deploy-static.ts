@@ -127,7 +127,7 @@ export async function servePublishedStaticFile(
     isRenderProgramPath(resolved.relativePath) ||
     (await isRenderedPageDocument(frontendRoot, resolved.absolutePath, options.renderedPages))
   ) {
-    return await notFoundResponse(request, frontendRoot);
+    return await notFoundResponse(request, frontendRoot, options.renderedPages);
   }
 
   return serveResolvedFile(request, resolved, 200);
@@ -152,10 +152,18 @@ async function resolvePageRouteDocument(
   ]);
 }
 
-async function notFoundResponse(request: Request, frontendRoot: string): Promise<Response> {
+async function notFoundResponse(
+  request: Request,
+  frontendRoot: string,
+  renderedPages?: ReadonlySet<string>,
+): Promise<Response> {
   if (acceptsHtml(request)) {
     const notFoundPage = await resolveStaticFile(frontendRoot, ['pages/404/index.html']);
-    if (notFoundPage) {
+    // A 404 page a view renders is a template like any other, and is not sent as it is.
+    if (
+      notFoundPage &&
+      !(await isRenderedPageDocument(frontendRoot, notFoundPage.absolutePath, renderedPages))
+    ) {
       return serveResolvedFile(request, notFoundPage, 404);
     }
   }
@@ -213,6 +221,8 @@ async function resolveStaticFile(
   relativePaths: readonly string[],
 ): Promise<ResolvedStaticFile | null> {
   for (const relativePath of relativePaths) {
+    // No file's name holds a null; asking the file system for one is an error, not a miss.
+    if (relativePath.includes('\0')) continue;
     const absolutePath = path.resolve(buildRoot, relativePath);
     if (!absolutePath.startsWith(buildRoot + path.sep) && absolutePath !== buildRoot) {
       continue;
