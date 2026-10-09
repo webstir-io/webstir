@@ -70,6 +70,15 @@ export async function readViewRoutes(workspaceRoot: string): Promise<readonly Vi
   }
 }
 
+/** The pages the app's views render: each one's document is a template for the app server. */
+export async function readRenderedPages(workspaceRoot: string): Promise<ReadonlySet<string>> {
+  const pages = new Set<string>();
+  for (const entry of await readViewRoutes(workspaceRoot)) {
+    if (typeof entry.page === 'string' && entry.page.length > 0) pages.add(entry.page);
+  }
+  return pages;
+}
+
 export async function hasRenderedViewRoutes(workspaceRoot: string): Promise<boolean> {
   return (await readViewRoutes(workspaceRoot)).some((entry) => typeof entry.page === 'string');
 }

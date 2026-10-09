@@ -17,6 +17,9 @@ export async function runFullWatch(
   const validate = () => validateRenderTemplates(workspace.root);
   // Frontend builds replace the build output, so the backend checks templates between them.
   const exclusive = createLock();
+  // Heard from the start: a stop that comes while the servers are still starting must stop them
+  // too, not end this command with them left running.
+  const stopSignal = createStopSignal();
   const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io, {
     beforeRestart: () => exclusive(validate),
   });
@@ -36,20 +39,16 @@ export async function runFullWatch(
       `[webstir] watch starting\nworkspace: ${workspace.name}\nlayers: ${describeLayers(workspace.layers)}\nurl: ${frontendSession.address.origin}\napi: ${apiSession.origin}\n`,
     );
 
-    const stopSignal = createStopSignal();
-    try {
-      const sessionExitCode = await Promise.race([
-        frontendSession.waitForExit(),
-        stopSignal.promise.then(() => null),
-      ]);
+    const sessionExitCode = await Promise.race([
+      frontendSession.waitForExit(),
+      stopSignal.promise.then(() => null),
+    ]);
 
-      if (typeof sessionExitCode === 'number' && sessionExitCode !== 0) {
-        throw new Error(`Frontend watch session exited with code ${sessionExitCode}.`);
-      }
-    } finally {
-      stopSignal.dispose();
+    if (typeof sessionExitCode === 'number' && sessionExitCode !== 0) {
+      throw new Error(`Frontend watch session exited with code ${sessionExitCode}.`);
     }
   } finally {
+    stopSignal.dispose();
     if (frontendSession) {
       await frontendSession.stop();
     }

@@ -216,6 +216,16 @@ async function withStoppableProcess(options, run) {
       signal: (name = 'SIGTERM') => child.kill(name),
       /** As Ctrl-C or a service manager does: to the server and the one it runs, at once. */
       signalGroup: (name = 'SIGTERM') => process.kill(-child.pid, name),
+      /** Kills the app server the deploy command runs, and leaves the command itself alone. */
+      killAppServer: async () => {
+        const found = Bun.spawn({ cmd: ['pgrep', '-P', String(child.pid)], stdout: 'pipe' });
+        const pids = (await new Response(found.stdout).text())
+          .split(/\s+/)
+          .filter(Boolean)
+          .map(Number);
+        assert.equal(pids.length, 1, 'the deploy command runs one app server');
+        process.kill(pids[0], 'SIGKILL');
+      },
       /** A request that takes this long, as what became of it. */
       slow: (ms) =>
         fetch(`${origin}/deploy/slow?ms=${ms}`).then(
@@ -263,10 +273,27 @@ stopTest(
   },
 );
 
+stopTest('a hang-up stops a deployment and the app server it runs', async () => {
+  await withStoppableProcess({}, async (app) => {
+    app.signal('SIGHUP');
+    assert.equal(await app.exited, 0);
+    assert.equal(app.groupIsGone(), true, 'the app server stops with it');
+  });
+});
+
+stopTest('a deployment whose app server dies exits, so it can be started again', async () => {
+  await withStoppableProcess({}, async (app) => {
+    await app.killAppServer();
+    const code = await Promise.race([app.exited, Bun.sleep(5000).then(() => 'still running')]);
+    assert.equal(code, 1);
+    assert.equal(app.groupIsGone(), true);
+  });
+});
+
 stopTest(
   'a signal to the server and the app server it runs at once still lets a request finish',
   async () => {
-    for (const signal of ['SIGTERM', 'SIGINT']) {
+    for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
       await withStoppableProcess({}, async (app) => {
         const inFlight = app.slow(2000);
         await Bun.sleep(300);

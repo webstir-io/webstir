@@ -3,6 +3,10 @@ export interface StopSignal {
   dispose(): void;
 }
 
+// A closed terminal or an ended session hangs up rather than interrupts. Unheard, it ends the
+// command at once and leaves the servers it started running.
+const STOP_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
+
 export function createStopSignal(): StopSignal {
   let resolvePromise: (() => void) | undefined;
   const promise = new Promise<void>((resolve) => {
@@ -13,14 +17,12 @@ export function createStopSignal(): StopSignal {
     resolvePromise?.();
   };
 
-  process.on('SIGINT', handleSignal);
-  process.on('SIGTERM', handleSignal);
+  for (const signal of STOP_SIGNALS) process.on(signal, handleSignal);
 
   return {
     promise,
     dispose() {
-      process.off('SIGINT', handleSignal);
-      process.off('SIGTERM', handleSignal);
+      for (const signal of STOP_SIGNALS) process.off(signal, handleSignal);
     },
   };
 }

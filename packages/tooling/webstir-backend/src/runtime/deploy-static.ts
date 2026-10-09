@@ -72,9 +72,28 @@ export function isRenderProgramPath(relativePath: string): boolean {
   return relativePath.split(/[\\/]/).pop()?.toLowerCase().endsWith('.program.json') === true;
 }
 
+function isRenderedPageDocument(
+  relativePath: string,
+  renderedPages: ReadonlySet<string> | undefined,
+): boolean {
+  if (!renderedPages || renderedPages.size === 0) return false;
+  // Compared without regard to case: some file systems find the file under any.
+  const parts = relativePath.toLowerCase().split(/[\\/]/);
+  if (parts.length !== 3 || parts[0] !== 'pages' || parts[2] !== 'index.html') return false;
+  for (const page of renderedPages) {
+    if (page.toLowerCase() === parts[1]) return true;
+  }
+  return false;
+}
+
 export interface ServePublishedStaticFileOptions {
   /** Views that route dynamic paths to built pages; consulted only when no file matches. */
   readonly pageRoutes?: readonly PageRoute[];
+  /**
+   * Pages the app server renders. Their documents are templates, for it alone to fill and to
+   * decide who sees: none is served as a file, however the request spells its path.
+   */
+  readonly renderedPages?: ReadonlySet<string>;
 }
 
 interface ResolvedStaticFile {
@@ -96,7 +115,11 @@ export async function servePublishedStaticFile(
   const resolved =
     (await resolveStaticFile(frontendRoot, candidates)) ??
     (await resolvePageRouteDocument(frontendRoot, requestUrl.pathname, options.pageRoutes));
-  if (!resolved || isRenderProgramPath(resolved.relativePath)) {
+  if (
+    !resolved ||
+    isRenderProgramPath(resolved.relativePath) ||
+    isRenderedPageDocument(resolved.relativePath, options.renderedPages)
+  ) {
     return await notFoundResponse(request, frontendRoot);
   }
 

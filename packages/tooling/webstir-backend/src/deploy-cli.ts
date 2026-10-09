@@ -34,8 +34,16 @@ async function main(argv: readonly string[]): Promise<void> {
     process.exit(forced ? 1 : 0);
   };
 
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  // A hang-up, as from a closed terminal, is a stop like the others: unheard, it would end this
+  // command and leave the app server running.
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    process.on(signal, () => void shutdown(signal));
+  }
+
+  // Without its app server this answers nothing. It exits, so whatever runs it starts it again.
+  void server.failed.then(() => {
+    if (!stopping) process.exit(1);
+  });
 
   process.stdout.write(
     `[webstir-backend-deploy] serving ${server.layers.pages ? 'pages and server' : 'server'} at ${server.origin}\n`,

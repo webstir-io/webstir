@@ -22,7 +22,7 @@ import { servePublishedStaticFile } from './deploy-static.js';
 import { readWorkspacePageRoutes, type PageRoute } from './page-routes.js';
 import { readEnvFiles } from '../app/env.js';
 import { drainServer, shutdownTimeoutMs } from './shutdown.js';
-import { createRenderedViewMatcher } from './view-routes.js';
+import { createRenderedViewMatcher, readRenderedPages } from './view-routes.js';
 
 function definedOnly(env: Record<string, string | undefined>): Record<string, string> {
   return Object.fromEntries(
@@ -47,6 +47,7 @@ export async function startPublishedWorkspaceServer(
     await assertExists(frontendRoot, 'published frontend output');
   }
   const pageRoutes = frontendRoot ? await readWorkspacePageRoutes(workspaceRoot) : [];
+  const renderedPages = frontendRoot ? await readRenderedPages(workspaceRoot) : new Set<string>();
   const isRenderedView = frontendRoot
     ? createRenderedViewMatcher({ workspaceRoot, frontendRoot })
     : async () => false;
@@ -85,38 +86,44 @@ export async function startPublishedWorkspaceServer(
         frontendRoot,
         backendOrigin,
         pageRoutes,
+        renderedPages,
         isRenderedView,
       }),
     error: (error) => textResponse(500, error.message),
   });
 
-  processRecord.exitPromise
-    .then((code) => {
-      if (stopping || processRecord.expectedExit) {
-        return;
-      }
+  const failed = new Promise<void>((resolve) => {
+    processRecord.exitPromise
+      .then((code) => {
+        if (stopping || processRecord.expectedExit) {
+          return;
+        }
 
-      io.stderr.write(
-        `[webstir-backend-deploy] backend runtime exited unexpectedly with code ${code ?? 'null'}.\n`,
-      );
-      server.stop(true);
-    })
-    .catch((error) => {
-      if (stopping) {
-        return;
-      }
+        io.stderr.write(
+          `[webstir-backend-deploy] backend runtime exited unexpectedly with code ${code ?? 'null'}.\n`,
+        );
+        void server.stop(true);
+        resolve();
+      })
+      .catch((error) => {
+        if (stopping) {
+          return;
+        }
 
-      io.stderr.write(
-        `[webstir-backend-deploy] backend runtime failed: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
-      server.stop(true);
-    });
+        io.stderr.write(
+          `[webstir-backend-deploy] backend runtime failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+        void server.stop(true);
+        resolve();
+      });
+  });
 
   const displayHost = host === '0.0.0.0' ? '127.0.0.1' : host;
 
   return {
     origin: `http://${displayHost}:${server.port}`,
     layers,
+    failed,
     async stop(how: { readonly now?: boolean } = {}) {
       stopping = true;
       processRecord.expectedExit = true;
@@ -148,6 +155,7 @@ async function handlePublishedWorkspaceRequest(options: {
   readonly frontendRoot?: string;
   readonly backendOrigin: string;
   readonly pageRoutes: readonly PageRoute[];
+  readonly renderedPages: ReadonlySet<string>;
   readonly isRenderedView: (pathname: string) => Promise<boolean>;
 }): Promise<Response> {
   const requestUrl = new URL(options.request.url);
@@ -168,5 +176,6 @@ async function handlePublishedWorkspaceRequest(options: {
 
   return await servePublishedStaticFile(options.request, options.frontendRoot, {
     pageRoutes: options.pageRoutes,
+    renderedPages: options.renderedPages,
   });
 }

@@ -44,6 +44,7 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 - An app without pages exposes the published backend on the container port.
 - An app with pages exposes one public port that serves `dist/frontend/**` and proxies `/api/*` to the published backend.
 - `dist/frontend/**` is only there for an app with pages; an app without pages builds the image without a `dist` tree.
+- A page a view renders is answered only by that view. Its template under `dist/frontend/pages/` is never served as a file, so a view's `auth` covers every way of asking for the page.
 - The single public port keeps the runtime probes available without a second sidecar port:
   - `GET /healthz`
   - `GET /readyz`
@@ -56,7 +57,7 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 
 ## Stopping
 
-A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. The server then:
+A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. `SIGINT` and a hang-up (`SIGHUP`) are the same stop. The server then:
 
 1. Takes no new connections, and lets the requests in flight finish.
 2. Stops its jobs, waiting for one that is running. A queued job still running when the wait ends goes back in the queue at the next start; a scheduled one runs again when it is next due.
@@ -69,6 +70,10 @@ docker run --stop-timeout 30 -e SHUTDOWN_TIMEOUT=10 ...
 ```
 
 A stop signal sent to the whole process group, as Ctrl-C and systemd send it, is the same one stop. Sent a second time to `webstir-backend-deploy`, it stops the wait: every connection is closed, the app server is stopped at once without closing its database, and the command exits with `1`.
+
+## When The App Server Dies
+
+`webstir-backend-deploy` runs the app server as its own process. If that process ends without being asked to, by a crash or by being killed, the command closes its port and exits with `1`. Run the container with a restart policy, such as `--restart unless-stopped`, so it starts again.
 
 ## Canonical Source
 

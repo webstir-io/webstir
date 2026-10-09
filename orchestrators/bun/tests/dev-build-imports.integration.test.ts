@@ -130,6 +130,12 @@ test('a development build carries in the app’s own imports: nothing is left da
       await Promise.allSettled(drains);
       removeTrackedChild(childProcesses, child);
     }
+    // Stopped the moment it answered, while watch was still starting: the server went with it.
+    const stillAnswering = await fetch(`http://127.0.0.1:${port}/`).then(
+      () => true,
+      () => false,
+    );
+    expect(stillAnswering).toBe(false);
   } finally {
     await removeDemoWorkspace(copy);
   }

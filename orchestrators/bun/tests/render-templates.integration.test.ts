@@ -181,6 +181,72 @@ test('webstir watch renders a view through the dev server and proxies its form p
   }
 }, 90_000);
 
+test('a hang-up stops webstir watch and the servers it started', async () => {
+  const workspace = await createDesignClientsWorkspace();
+  const port = await getFreePort();
+  const child = Bun.spawn({
+    cmd: [
+      process.execPath,
+      path.join(packageRoot, 'src', 'cli.ts'),
+      'watch',
+      '--workspace',
+      workspace,
+      '--port',
+      String(port),
+    ],
+    cwd: repoRoot,
+    env: { ...process.env, WEBSTIR_BACKEND_TYPECHECK: 'skip' },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  childProcesses.push(child);
+  const stdout = { text: '' };
+  const stderr = { text: '' };
+  const drains = [collectOutput(child.stdout, stdout), collectOutput(child.stderr, stderr)];
+  const descendants = async (pid: number): Promise<number[]> => {
+    const found = Bun.spawn({ cmd: ['pgrep', '-P', String(pid)], stdout: 'pipe' });
+    const children = (await new Response(found.stdout).text())
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(Number);
+    return (
+      await Promise.all(children.map(async (each) => [each, ...(await descendants(each))]))
+    ).flat();
+  };
+  const running = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  let started: number[] = [];
+
+  try {
+    await waitForWatchReady(stdout, 45_000);
+    await waitFor(async () => {
+      expect((await fetch(`http://127.0.0.1:${port}/clients/`)).status).toBe(200);
+    }, 45_000);
+    started = await descendants(child.pid);
+    expect(started.length).toBeGreaterThan(0);
+
+    // As a closed terminal does it: to the command alone, not to what it started.
+    child.kill('SIGHUP');
+    expect(await child.exited).toBe(0);
+    await waitFor(async () => {
+      expect(started.filter(running)).toEqual([]);
+    }, 10_000);
+  } catch (error) {
+    throw appendWatchLogs(error, stdout.text, stderr.text);
+  } finally {
+    for (const pid of [child.pid, ...started].filter(running)) process.kill(pid, 'SIGKILL');
+    await child.exited.catch(() => undefined);
+    await Promise.allSettled(drains);
+    removeTrackedChild(childProcesses, child);
+  }
+}, 90_000);
+
 async function exerciseWatch(
   workspace: string,
   origin: string,
@@ -291,6 +357,22 @@ test('the published server renders views and keeps programs private', async () =
       '/pages/clients/index.program.json/',
     ]) {
       expect((await fetch(`${server.origin}${spelling}`)).status, spelling).toBe(404);
+    }
+
+    // The page's template is the app server's to fill and to guard, and is never a file to fetch.
+    for (const spelling of [
+      '/pages/clients/index.html',
+      '/pages/clients/index%2ehtml',
+      '/pages/clients/',
+      '/pages/clients',
+      '/pages/Clients/index.html',
+      '/pages//clients/index.html',
+      '/clients%2f',
+      '/clients%2Findex.html',
+    ]) {
+      const fetched = await fetch(`${server.origin}${spelling}`);
+      expect(fetched.status, spelling).toBe(404);
+      expect(await fetched.text(), spelling).not.toContain('data-each');
     }
 
     const home = await fetch(`${server.origin}/`);
