@@ -1,4 +1,4 @@
-import { createRenderedViewMatcher } from '@webstir-io/webstir-backend';
+import { createRenderedViewMatcher, readRenderedPages } from '@webstir-io/webstir-backend';
 import { existsSync } from 'node:fs';
 import { cp, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -149,6 +149,7 @@ export async function startDocumentWatch(
     isRenderedView: options.apiProxyOrigin
       ? createRenderedViewMatcher({ workspaceRoot, frontendRoot: buildRoot })
       : undefined,
+    renderedPages: options.apiProxyOrigin ? () => readRenderedPages(workspaceRoot) : undefined,
     renderedPage: options.renderedPage,
     readBuildOutput: buildOutput.read,
     host: options.host,

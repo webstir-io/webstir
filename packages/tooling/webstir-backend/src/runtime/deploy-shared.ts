@@ -21,6 +21,12 @@ export interface PublishedWorkspaceServer {
    * `now`, closes every connection and stops both at once.
    */
   stop(how?: { readonly now?: boolean }): Promise<void>;
+  /**
+   * Settles when the app server behind this one is gone without having been asked to stop. This
+   * server has closed by then and answers nothing more; what runs it should exit, to be started
+   * again.
+   */
+  readonly failed: Promise<void>;
 }
 
 export interface DeploymentIo {

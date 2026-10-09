@@ -19,18 +19,21 @@ export async function runApiWatch(
   options: WatchOptions,
   io: WatchIo,
 ): Promise<void> {
-  const session = await startApiWatchSession(workspace, options, io);
-
-  io.stdout.write(
-    `[webstir] watch starting\nworkspace: ${workspace.name}\nlayers: ${describeLayers(workspace.layers)}\nurl: ${session.origin}\n`,
-  );
-
+  // Heard from the start: a stop that comes while the server is still starting must stop it too,
+  // not end this command with the server left running.
   const stopSignal = createStopSignal();
+  let session: ApiWatchSession | undefined;
   try {
+    session = await startApiWatchSession(workspace, options, io);
+
+    io.stdout.write(
+      `[webstir] watch starting\nworkspace: ${workspace.name}\nlayers: ${describeLayers(workspace.layers)}\nurl: ${session.origin}\n`,
+    );
+
     await stopSignal.promise;
   } finally {
     stopSignal.dispose();
-    await session.stop();
+    await session?.stop();
   }
 }
 

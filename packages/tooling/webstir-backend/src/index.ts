@@ -25,11 +25,16 @@ export type {
   RuntimeLogger,
 } from './runtime/bun.js';
 export { startPublishedWorkspaceServer } from './runtime/deploy.js';
-export { isRenderProgramPath, isStaticAssetPath } from './runtime/deploy-static.js';
+export {
+  isRenderProgramPath,
+  isRenderedPageDocument,
+  isStaticAssetPath,
+} from './runtime/deploy-static.js';
 export {
   VIEW_ROUTES_FILE,
   createRenderedViewMatcher,
   hasRenderedViewRoutes,
+  readRenderedPages,
   readViewRoutes,
 } from './runtime/view-routes.js';
 export type { ViewRouteEntry } from './runtime/view-routes.js';

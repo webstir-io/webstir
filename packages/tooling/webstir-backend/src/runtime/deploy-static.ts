@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 
 import { requireBunRuntime, textResponse } from './deploy-shared.js';
 import { matchPageRoute, type PageRoute } from './page-routes.js';
@@ -72,9 +72,35 @@ export function isRenderProgramPath(relativePath: string): boolean {
   return relativePath.split(/[\\/]/).pop()?.toLowerCase().endsWith('.program.json') === true;
 }
 
+/**
+ * Whether a file found under the frontend root is the document of a page a view renders, or a
+ * compressed copy of it. Decided from where the file really is, not from how the request spelled
+ * its path: a file system that ignores case, or folds letters, finds the same file under many.
+ */
+export async function isRenderedPageDocument(
+  frontendRoot: string,
+  absolutePath: string,
+  renderedPages: ReadonlySet<string> | undefined,
+): Promise<boolean> {
+  if (!renderedPages || renderedPages.size === 0) return false;
+  const [root, file] = await Promise.all([realpath(frontendRoot), realpath(absolutePath)]);
+  const parts = path.relative(root, file).split(path.sep);
+  return (
+    parts.length === 3 &&
+    parts[0] === 'pages' &&
+    renderedPages.has(parts[1] as string) &&
+    /^index\.html(\.|$)/.test(parts[2] as string)
+  );
+}
+
 export interface ServePublishedStaticFileOptions {
   /** Views that route dynamic paths to built pages; consulted only when no file matches. */
   readonly pageRoutes?: readonly PageRoute[];
+  /**
+   * Pages the app server renders. Their documents are templates, for it alone to fill and to
+   * decide who sees: none is served as a file, however the request spells its path.
+   */
+  readonly renderedPages?: ReadonlySet<string>;
 }
 
 interface ResolvedStaticFile {
@@ -96,8 +122,12 @@ export async function servePublishedStaticFile(
   const resolved =
     (await resolveStaticFile(frontendRoot, candidates)) ??
     (await resolvePageRouteDocument(frontendRoot, requestUrl.pathname, options.pageRoutes));
-  if (!resolved || isRenderProgramPath(resolved.relativePath)) {
-    return await notFoundResponse(request, frontendRoot);
+  if (
+    !resolved ||
+    isRenderProgramPath(resolved.relativePath) ||
+    (await isRenderedPageDocument(frontendRoot, resolved.absolutePath, options.renderedPages))
+  ) {
+    return await notFoundResponse(request, frontendRoot, options.renderedPages);
   }
 
   return serveResolvedFile(request, resolved, 200);
@@ -122,10 +152,18 @@ async function resolvePageRouteDocument(
   ]);
 }
 
-async function notFoundResponse(request: Request, frontendRoot: string): Promise<Response> {
+async function notFoundResponse(
+  request: Request,
+  frontendRoot: string,
+  renderedPages?: ReadonlySet<string>,
+): Promise<Response> {
   if (acceptsHtml(request)) {
     const notFoundPage = await resolveStaticFile(frontendRoot, ['pages/404/index.html']);
-    if (notFoundPage) {
+    // A 404 page a view renders is a template like any other, and is not sent as it is.
+    if (
+      notFoundPage &&
+      !(await isRenderedPageDocument(frontendRoot, notFoundPage.absolutePath, renderedPages))
+    ) {
       return serveResolvedFile(request, notFoundPage, 404);
     }
   }
@@ -183,6 +221,8 @@ async function resolveStaticFile(
   relativePaths: readonly string[],
 ): Promise<ResolvedStaticFile | null> {
   for (const relativePath of relativePaths) {
+    // No file's name holds a null; asking the file system for one is an error, not a miss.
+    if (relativePath.includes('\0')) continue;
     const absolutePath = path.resolve(buildRoot, relativePath);
     if (!absolutePath.startsWith(buildRoot + path.sep) && absolutePath !== buildRoot) {
       continue;
