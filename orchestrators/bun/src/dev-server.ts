@@ -3,13 +3,14 @@ import {
   formatClientErrorReport,
   isClientErrorsPath,
   isRenderProgramPath,
+  isRenderedPageDocument,
   matchPageRoute,
   type PageRoute,
   readClientErrorReport,
 } from '@webstir-io/webstir-backend';
 import { CLIENT_NAV_HEADERS } from '@webstir-io/module-contract/client-nav';
 import path from 'node:path';
-import { access } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 
 import type { HotUpdatePayload, WatchStatus } from './watch-events.ts';
 
@@ -21,6 +22,8 @@ export interface DevServerOptions {
   readonly pageRoutes?: readonly PageRoute[];
   /** True when the backend renders this path; those requests are proxied instead of served. */
   readonly isRenderedView?: (pathname: string) => Promise<boolean>;
+  /** The pages views render: their documents are templates, never served as files. */
+  readonly renderedPages?: () => Promise<ReadonlySet<string>>;
   /** Pages rendered in memory: HTML to serve, `null` for not found, `undefined` to fall through. */
   readonly renderedPage?: (pathname: string) => string | null | undefined;
   /** Receives each browser error report posted to /client-errors. Defaults to the terminal. */
@@ -101,6 +104,7 @@ export class DevServer {
   private readonly apiProxyOrigin?: string;
   private readonly pageRoutes: readonly PageRoute[];
   private readonly isRenderedView: (pathname: string) => Promise<boolean>;
+  private readonly renderedPages: () => Promise<ReadonlySet<string>>;
   private readonly renderedPage: (pathname: string) => string | null | undefined;
   private readonly onClientError: (report: ClientErrorReport) => void;
   private readonly readBuildOutput: <T>(task: () => Promise<T>) => Promise<T>;
@@ -114,6 +118,7 @@ export class DevServer {
     this.apiProxyOrigin = options.apiProxyOrigin;
     this.pageRoutes = options.pageRoutes ?? [];
     this.isRenderedView = options.isRenderedView ?? (async () => false);
+    this.renderedPages = options.renderedPages ?? (async () => new Set<string>());
     this.renderedPage = options.renderedPage ?? (() => undefined);
     this.onClientError =
       options.onClientError ??
@@ -244,7 +249,15 @@ export class DevServer {
           `pages/${match.route.page}/index.html`,
         ]);
     }
-    if (!resolved || isRenderProgramPath(resolved.relativePath)) {
+    if (
+      !resolved ||
+      isRenderProgramPath(resolved.relativePath) ||
+      (await isRenderedPageDocument(
+        this.buildRoot,
+        resolved.absolutePath,
+        await this.renderedPages(),
+      ))
+    ) {
       return await this.notFoundResponse(request, method);
     }
 
@@ -501,7 +514,8 @@ async function resolveStaticFile(
     }
 
     try {
-      await access(absolutePath);
+      // A folder, such as a page's own, is not a file to serve.
+      if (!(await stat(absolutePath)).isFile()) continue;
       return { absolutePath, relativePath };
     } catch {
       // Try the next candidate.

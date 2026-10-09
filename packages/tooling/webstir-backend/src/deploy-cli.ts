@@ -12,15 +12,19 @@ async function main(argv: readonly string[]): Promise<void> {
   }
 
   const workspaceRoot = path.resolve(args.workspace ?? process.cwd());
-  const server = await startPublishedWorkspaceServer({
-    workspaceRoot,
-    host: args.host,
-    port: args.port,
-  });
 
+  // Heard from the start: a stop that comes while the app server is still starting is kept, and
+  // answered once there is a server to stop. Unheard, it would end this command and leave the
+  // app server running.
+  let server: Awaited<ReturnType<typeof startPublishedWorkspaceServer>> | undefined;
+  let early: NodeJS.Signals | undefined;
   let stopping = false;
   let forced = false;
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
+    if (!server) {
+      early = signal;
+      return;
+    }
     // Asked twice, it stops waiting for requests in flight.
     if (stopping) {
       forced = true;
@@ -34,16 +38,24 @@ async function main(argv: readonly string[]): Promise<void> {
     process.exit(forced ? 1 : 0);
   };
 
-  // A hang-up, as from a closed terminal, is a stop like the others: unheard, it would end this
-  // command and leave the app server running.
-  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
-    process.on(signal, () => void shutdown(signal));
-  }
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+
+  server = await startPublishedWorkspaceServer({
+    workspaceRoot,
+    host: args.host,
+    port: args.port,
+  });
 
   // Without its app server this answers nothing. It exits, so whatever runs it starts it again.
   void server.failed.then(() => {
     if (!stopping) process.exit(1);
   });
+
+  if (early) {
+    await shutdown(early);
+    return;
+  }
 
   process.stdout.write(
     `[webstir-backend-deploy] serving ${server.layers.pages ? 'pages and server' : 'server'} at ${server.origin}\n`,

@@ -240,7 +240,8 @@ test('a hang-up stops webstir watch and the servers it started', async () => {
   } catch (error) {
     throw appendWatchLogs(error, stdout.text, stderr.text);
   } finally {
-    for (const pid of [child.pid, ...started].filter(running)) process.kill(pid, 'SIGKILL');
+    const remaining = [child.pid, ...started, ...(await descendants(child.pid))];
+    for (const pid of remaining.filter(running)) process.kill(pid, 'SIGKILL');
     await child.exited.catch(() => undefined);
     await Promise.allSettled(drains);
     removeTrackedChild(childProcesses, child);
@@ -263,6 +264,12 @@ async function exerciseWatch(
   }, 45_000);
   expectDesignClientsHtml(html);
   expect(html).toContain('/refresh.js');
+  // The page's template is not a file to fetch here either.
+  for (const spelling of ['/pages/clients/index.html', '/pages/clients/', '/clients%2f']) {
+    const fetched = await fetch(`${origin}${spelling}`);
+    expect(fetched.status, spelling).toBe(404);
+    expect(await fetched.text(), spelling).not.toContain('data-each');
+  }
 
   const post = await fetch(`${origin}/clients/`, {
     method: 'POST',
@@ -362,7 +369,11 @@ test('the published server renders views and keeps programs private', async () =
     // The page's template is the app server's to fill and to guard, and is never a file to fetch.
     for (const spelling of [
       '/pages/clients/index.html',
+      '/pages/clients/index.html.gz',
+      '/pages/clients/index.html.br',
       '/pages/clients/index%2ehtml',
+      // On a file system that folds letters, the long s finds the same folder.
+      '/pages/client%C5%BF/index.html',
       '/pages/clients/',
       '/pages/clients',
       '/pages/Clients/index.html',

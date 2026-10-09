@@ -273,13 +273,58 @@ stopTest(
   },
 );
 
-stopTest('a hang-up stops a deployment and the app server it runs', async () => {
-  await withStoppableProcess({}, async (app) => {
-    app.signal('SIGHUP');
-    assert.equal(await app.exited, 0);
-    assert.equal(app.groupIsGone(), true, 'the app server stops with it');
-  });
-});
+stopTest(
+  'a stop that comes while a deployment is still starting leaves nothing running',
+  async () => {
+    const workspace = await createTempWorkspace('webstir-backend-early-stop-');
+    await buildRuntimeWorkspace(workspace, 'api');
+    try {
+      // From before the command hears signals to after its app server is up.
+      for (const wait of [150, 300, 600, 1200]) {
+        const child = spawnProcess(
+          'bun',
+          [
+            path.join(getPackageRoot(), 'dist', 'deploy-cli.js'),
+            '--workspace',
+            workspace,
+            '--port',
+            String(await getOpenPort()),
+          ],
+          {
+            cwd: getPackageRoot(),
+            env: { ...process.env, NODE_ENV: 'test', WEBSTIR_JOBS: 'off' },
+            stdio: 'ignore',
+            detached: true,
+          },
+        );
+        const exited = new Promise((resolve) => child.once('exit', resolve));
+        const groupIsGone = () => {
+          try {
+            process.kill(-child.pid, 0);
+            return false;
+          } catch {
+            return true;
+          }
+        };
+        try {
+          await Bun.sleep(wait);
+          child.kill('SIGTERM');
+          await Promise.race([exited, Bun.sleep(20_000)]);
+          for (let waited = 0; !groupIsGone() && waited < 3000; waited += 50) await Bun.sleep(50);
+          assert.equal(groupIsGone(), true, `stopped ${wait}ms after starting`);
+        } finally {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            // Already gone, as it should be.
+          }
+        }
+      }
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  },
+);
 
 stopTest('a deployment whose app server dies exits, so it can be started again', async () => {
   await withStoppableProcess({}, async (app) => {
@@ -293,7 +338,7 @@ stopTest('a deployment whose app server dies exits, so it can be started again',
 stopTest(
   'a signal to the server and the app server it runs at once still lets a request finish',
   async () => {
-    for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+    for (const signal of ['SIGTERM', 'SIGINT']) {
       await withStoppableProcess({}, async (app) => {
         const inFlight = app.slow(2000);
         await Bun.sleep(300);

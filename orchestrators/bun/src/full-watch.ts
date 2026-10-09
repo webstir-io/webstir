@@ -20,12 +20,13 @@ export async function runFullWatch(
   // Heard from the start: a stop that comes while the servers are still starting must stop them
   // too, not end this command with them left running.
   const stopSignal = createStopSignal();
-  const apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io, {
-    beforeRestart: () => exclusive(validate),
-  });
+  let apiSession: Awaited<ReturnType<typeof startApiWatchSession>> | undefined;
   let frontendSession: Awaited<ReturnType<typeof startDocumentWatch>> | undefined;
 
   try {
+    apiSession = await startApiWatchSession(workspace, { ...options, port: backendPort }, io, {
+      beforeRestart: () => exclusive(validate),
+    });
     frontendSession = await startDocumentWatch({
       workspaceRoot: workspace.root,
       host: options.host,
@@ -52,7 +53,7 @@ export async function runFullWatch(
     if (frontendSession) {
       await frontendSession.stop();
     }
-    await apiSession.stop();
+    await apiSession?.stop();
   }
 }
 

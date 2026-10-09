@@ -57,7 +57,7 @@ CMD ["bun", "./node_modules/.bin/webstir-backend-deploy", "--workspace", "/app",
 
 ## Stopping
 
-A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. `SIGINT` and a hang-up (`SIGHUP`) are the same stop. The server then:
+A container is stopped with `SIGTERM`, by `docker stop`, a deploy or a restart. `SIGINT` is the same stop. The server then:
 
 1. Takes no new connections, and lets the requests in flight finish.
 2. Stops its jobs, waiting for one that is running. A queued job still running when the wait ends goes back in the queue at the next start; a scheduled one runs again when it is next due.

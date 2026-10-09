@@ -312,9 +312,8 @@ export async function startBunBackend<
 
   // A stop (a deploy, a restart) lets requests in flight and a running job finish, within
   // SHUTDOWN_TIMEOUT, then takes the database's pending snapshot before the process ends.
-  // A hang-up, as from a closed terminal, is a stop like the others.
   let stopping = false;
-  for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+  for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       // One stop is under way whoever else asks: a signal to the whole process group reaches
       // this server and the one in front of it, which then passes its own along.

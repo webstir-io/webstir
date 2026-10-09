@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 
 import { requireBunRuntime, textResponse } from './deploy-shared.js';
 import { matchPageRoute, type PageRoute } from './page-routes.js';
@@ -72,18 +72,25 @@ export function isRenderProgramPath(relativePath: string): boolean {
   return relativePath.split(/[\\/]/).pop()?.toLowerCase().endsWith('.program.json') === true;
 }
 
-function isRenderedPageDocument(
-  relativePath: string,
+/**
+ * Whether a file found under the frontend root is the document of a page a view renders, or a
+ * compressed copy of it. Decided from where the file really is, not from how the request spelled
+ * its path: a file system that ignores case, or folds letters, finds the same file under many.
+ */
+export async function isRenderedPageDocument(
+  frontendRoot: string,
+  absolutePath: string,
   renderedPages: ReadonlySet<string> | undefined,
-): boolean {
+): Promise<boolean> {
   if (!renderedPages || renderedPages.size === 0) return false;
-  // Compared without regard to case: some file systems find the file under any.
-  const parts = relativePath.toLowerCase().split(/[\\/]/);
-  if (parts.length !== 3 || parts[0] !== 'pages' || parts[2] !== 'index.html') return false;
-  for (const page of renderedPages) {
-    if (page.toLowerCase() === parts[1]) return true;
-  }
-  return false;
+  const [root, file] = await Promise.all([realpath(frontendRoot), realpath(absolutePath)]);
+  const parts = path.relative(root, file).split(path.sep);
+  return (
+    parts.length === 3 &&
+    parts[0] === 'pages' &&
+    renderedPages.has(parts[1] as string) &&
+    /^index\.html(\.|$)/.test(parts[2] as string)
+  );
 }
 
 export interface ServePublishedStaticFileOptions {
@@ -118,7 +125,7 @@ export async function servePublishedStaticFile(
   if (
     !resolved ||
     isRenderProgramPath(resolved.relativePath) ||
-    isRenderedPageDocument(resolved.relativePath, options.renderedPages)
+    (await isRenderedPageDocument(frontendRoot, resolved.absolutePath, options.renderedPages))
   ) {
     return await notFoundResponse(request, frontendRoot);
   }
