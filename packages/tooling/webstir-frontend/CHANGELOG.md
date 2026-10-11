@@ -1,5 +1,12 @@
 # @webstir-io/webstir-frontend
 
+## 0.10.3
+
+### Patch Changes
+
+- 614ac4e: Prefetch server pages at their linked routes instead of inaccessible template paths, preserving nested routes and query strings.
+- @webstir-io/module-contract@0.10.3
+
 ## 0.10.2
 
 ### Patch Changes
