@@ -1,5 +1,11 @@
 # @webstir-io/webstir-backend
 
+## 0.10.3
+
+### Patch Changes
+
+- @webstir-io/module-contract@0.10.3
+
 ## 0.10.2
 
 ### Patch Changes
