@@ -22,7 +22,8 @@ export function injectResourceHints(
   knownPages: ReadonlySet<string>,
 ): ResourceHintResult {
   const head = document('head').first();
-  const pages = [...collectInternalPages(document, currentPage, pagesUrlPrefix, knownPages)];
+  const targets = collectInternalPages(document, currentPage, pagesUrlPrefix, knownPages);
+  const pages = [...targets.keys()];
 
   if (head.length === 0) {
     return {
@@ -36,9 +37,10 @@ export function injectResourceHints(
     return { added: 0, candidates: [], missingHead: false };
   }
 
-  for (const page of pages) {
-    const href = resolvePageHtmlUrl(pagesUrlPrefix, page, useRootIndex);
-    head.append(`\n<link rel="prefetch" href="${href}" as="document">`);
+  for (const [page, target] of targets) {
+    // Server pages are request-time views; their templates cannot be fetched directly.
+    const href = useRootIndex ? resolvePageHtmlUrl(pagesUrlPrefix, page, true) : target;
+    head.append(document('<link rel="prefetch" as="document">').attr('href', href));
   }
 
   return { added: pages.length, candidates: pages, missingHead: false };
@@ -49,30 +51,31 @@ function collectInternalPages(
   currentPage: string,
   pagesUrlPrefix: string,
   knownPages: ReadonlySet<string>,
-): Set<string> {
-  const pages = new Set<string>();
+): Map<string, string> {
+  const pages = new Map<string, string>();
   document('a[href]').each((_index, element) => {
-    const href = document(element).attr('href');
+    const href = document(element).attr('href')?.trim();
+    if (!href) return;
     const pageName = normalizePageName(href, pagesUrlPrefix);
     if (!pageName || pageName === currentPage || !knownPages.has(pageName)) {
       return;
     }
-    pages.add(pageName);
+    if (!pages.has(pageName)) {
+      pages.set(pageName, href.replace(/#.*/, ''));
+    }
   });
   return pages;
 }
 
-function normalizePageName(href: string | undefined, pagesUrlPrefix: string): string | null {
-  if (!href || href.length === 0) {
-    return null;
-  }
-
-  const lower = href.toLowerCase();
+function normalizePageName(href: string, pagesUrlPrefix: string): string | null {
   if (
-    lower.startsWith('http://') ||
-    lower.startsWith('https://') ||
-    lower.startsWith('mailto:') ||
-    lower.startsWith('#')
+    /^[a-z][a-z0-9+.-]*:/i.test(href) ||
+    href.startsWith('//') ||
+    href.includes('\\') ||
+    Array.from(href).some(
+      (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+    ) ||
+    href.startsWith('#')
   ) {
     return null;
   }

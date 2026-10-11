@@ -38,7 +38,7 @@ test('injectResourceHints prefetches only links that resolve to known pages', ()
   assert.equal(result.added, 2);
   assert.deepEqual(result.candidates, ['about', 'docs']);
   assert.equal(result.missingHead, false);
-  assert.deepEqual(prefetchHrefs(document), ['/pages/about/index.html', '/pages/docs/index.html']);
+  assert.deepEqual(prefetchHrefs(document), ['/about', '/docs/getting-started']);
 });
 
 test('injectResourceHints adds nothing when no link targets a known page', () => {
@@ -68,4 +68,36 @@ test('injectResourceHints honors the root-index page layout for known pages', ()
 
   assert.equal(result.added, 1);
   assert.deepEqual(prefetchHrefs(document), ['/about/index.html']);
+});
+
+for (const [href, expected] of [
+  ['/about/team?sort=name&active=1#staff', '/about/team?sort=name&active=1'],
+  ['about?name="quoted"&active=1', 'about?name="quoted"&active=1'],
+  ['/about#staff', '/about'],
+  ['//about/team', null],
+  ['https://about/team', null],
+  ['javascript:about', null],
+  ['/\\about/team', null],
+  ['/about/\\evil', null],
+  ['/about/\tteam', null],
+]) {
+  test(`server prefetch handles ${JSON.stringify(href)} safely`, () => {
+    const document = load('<html><head></head><body><a>About</a></body></html>');
+    document('a').attr('href', href);
+    injectResourceHints(document, 'home', '/pages', false, new Set(['home', 'about']));
+    const emitted = load(document.html());
+    assert.deepEqual(prefetchHrefs(emitted), expected ? [expected] : []);
+    assert.equal(emitted('link[rel="prefetch"]').attr('as'), expected ? 'document' : undefined);
+    assert.equal(emitted('link[rel="prefetch"]').attr('active'), undefined);
+  });
+}
+
+test('server hints retain the first linked URL for each known page', () => {
+  const document = load(
+    '<head></head><a href="/about/team">Team</a><a href="/about?tab=contact">Contact</a>',
+  );
+  const result = injectResourceHints(document, 'home', '/pages', false, new Set(['about']));
+  assert.equal(result.added, 1);
+  assert.deepEqual(result.candidates, ['about']);
+  assert.deepEqual(prefetchHrefs(document), ['/about/team']);
 });
