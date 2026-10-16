@@ -8,6 +8,31 @@ Monorepo baseline for Webstir.
 - `apps/portal`: first-party docs app workspace.
 - `examples/demos/*`: example workspaces used to verify framework behavior.
 
+## Architecture
+
+**Monorepo** using Bun workspaces. TypeScript 5.7 (ES2022, NodeNext modules, strict mode). ESM-only throughout.
+
+### Packages
+
+- **`packages/contracts/module-contract`** — Zod schemas and TypeScript types defining the `ModuleProvider` interface (resolveWorkspace, build). All tooling packages depend on this.
+- **`packages/contracts/testing-contract`** — Contract for the testing framework.
+- **`packages/tooling/webstir-backend`** — Backend provider: TypeScript compilation via esbuild, Bun runtime delivery, session management, scaffold templates. Tests run with `bun test` against `dist/` and use `node:assert/strict` for assertions.
+- **`packages/tooling/webstir-frontend`** — Frontend provider: SSG/SPA/SSR modes, markdown processing, image optimization (sharp), HTML minification. Same test setup as backend.
+- **`packages/tooling/webstir-testing`** — Testing runner and CLI.
+- **`orchestrators/bun`** — Primary CLI that bundles everything for end-user consumption. Tests use Bun's test runner with Playwright for browser automation.
+
+### Apps & Demos
+
+- **`apps/portal`** — Documentation site for webstir.dev, built as a Webstir SSG workspace (app shell in `src/frontend/app/`, static pages in `src/frontend/pages/`, Markdown content in `src/frontend/content/`, sidebar order in `src/frontend/content/_sidebar.json`). `bun run --filter webstir-portal build` publishes `dist/frontend/`, which GitHub Pages deploys on pushes to `main`.
+- **`examples/demos/*`** — Validation workspaces (spa, api, full, auth-crud, dashboard, ssg) that verify framework behavior against local package changes.
+
+### Key Patterns
+
+- **ModuleProvider interface**: Central abstraction — each provider implements `resolveWorkspace()` and `build()`.
+- **Hardened path resolution**: Env vars (`WORKSPACE_ROOT`, `WEBSTIR_WORKSPACE_ROOT`) or inference from `import.meta.url`.
+- **Contract-first**: Contracts are minimal with no heavy dependencies; tooling packages implement them. Edit contracts before tooling when changing interfaces.
+- **Build outputs**: Backend and frontend both use esbuild. Output goes to `build/` directories with manifests and diagnostics.
+
 ## Source Of Truth
 - Prefer editing `packages/**` when changing the publishable TypeScript packages.
 - When docs refer to repo paths, prefer the monorepo layout above rather than the legacy single-repo names.
@@ -18,6 +43,45 @@ Monorepo baseline for Webstir.
 ## Validation
 - JS/TS work: use `bun` from the repo root when possible.
 - Prefer package-local validation first, then widen to repo-level checks when the change warrants it.
+
+## Commands
+
+```bash
+# Install dependencies
+bun install
+
+# Build & test all workspaces
+bun run build
+bun run test
+
+# Filter to a specific package
+bun run --filter @webstir-io/webstir-backend build
+bun run --filter @webstir-io/webstir-backend test
+
+# Smoke tests (scaffold/template validation)
+bun run --filter @webstir-io/webstir-backend smoke
+
+# Contracts only
+bun run build:contracts
+bun run test:contracts
+
+# Bun orchestrator tests (uses Bun test runner + Playwright)
+bun run --filter @webstir-io/webstir test
+
+# Run a single backend test (Bun test runner; tests import from dist/, so build first)
+bun test packages/tooling/webstir-backend/tests/add.test.js
+
+# Run a single Bun orchestrator test
+bun test ./tests/init.integration.test.ts
+
+# Watch a demo workspace for local dev
+bun run watch:full    # fullstack demo
+bun run watch:spa     # SPA demo
+bun run watch:ssg     # SSG demo
+
+# CLI entry point
+bun run webstir -- init ssg ./my-site
+```
 
 ## Path-Specific Notes
 ### `packages/tooling/webstir-backend`
