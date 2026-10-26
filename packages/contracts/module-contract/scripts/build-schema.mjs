@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
 
 import {
   moduleErrorSchema,
@@ -29,11 +29,20 @@ const schemaEntries = [
   ['module-error', moduleErrorSchema]
 ];
 
-const toJson = (name, schema) =>
-  zodToJsonSchema(schema, name, {
-    target: 'jsonSchema7',
-    $refStrategy: 'none'
+const toJson = (name, schema) => {
+  const { $schema, definitions, ...definition } = z.toJSONSchema(schema, {
+    target: 'draft-07',
+    io: 'input',
+    reused: 'ref',
+    override: ({ zodSchema, jsonSchema }) => {
+      // Preserve the published Draft 7 policy for objects that strip extra keys.
+      if (zodSchema._zod.def.type === 'object' && !zodSchema._zod.def.catchall) {
+        jsonSchema.additionalProperties = false;
+      }
+    },
   });
+  return { $ref: `#/definitions/${name}`, definitions: { ...definitions, [name]: definition }, $schema };
+};
 
 await Promise.all(
   schemaEntries.map(async ([name, schema]) => {

@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { contractArray } from './schema-limits.js';
+
 import { RENDER_PROGRAM_VERSION } from './render-version.js';
 
 export { RENDER_PROGRAM_FILE, RENDER_PROGRAM_VERSION } from './render-version.js';
@@ -14,7 +16,7 @@ export type RenderSourceLocation = z.infer<typeof renderSourceLocationSchema>;
 export const renderPathSchema = z.object({
   source: z.string().min(1),
   scope: z.number().int().min(-1),
-  keys: z.array(z.string().min(1)),
+  keys: contractArray(z.string().min(1)),
 });
 
 export type RenderPath = z.infer<typeof renderPathSchema>;
@@ -64,14 +66,14 @@ export const renderNodeSchema: z.ZodType<RenderNode> = z.lazy(() =>
       negate: z.boolean(),
       path: renderPathSchema,
       loc: renderSourceLocationSchema,
-      body: z.array(renderNodeSchema),
+      body: contractArray(renderNodeSchema),
     }),
     z.object({
       op: z.literal('each'),
       as: z.string().min(1),
       path: renderPathSchema,
       loc: renderSourceLocationSchema,
-      body: z.array(renderNodeSchema),
+      body: contractArray(renderNodeSchema),
     }),
     z.object({ op: z.literal('csrf') }),
   ]),
@@ -82,7 +84,7 @@ export const renderProgramSchema = z.object({
   page: z.string().min(1),
   source: z.string().min(1),
   bindings: z.number().int().min(0),
-  nodes: z.array(renderNodeSchema),
+  nodes: contractArray(renderNodeSchema),
 });
 
 export type RenderProgram = z.infer<typeof renderProgramSchema>;
@@ -94,4 +96,4 @@ export const renderFlashMessageSchema = z.object({
 
 export type RenderFlashMessage = z.infer<typeof renderFlashMessageSchema>;
 
-export const renderFlashSchema = z.array(renderFlashMessageSchema);
+export const renderFlashSchema = contractArray(renderFlashMessageSchema);

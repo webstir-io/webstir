@@ -1,6 +1,283 @@
 {
   "$ref": "#/definitions/route-definition",
   "definitions": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "__schema2": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "optional",
+            "required"
+          ]
+        },
+        "write": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema3": {
+      "type": "object",
+      "properties": {
+        "consume": {
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema4"
+          }
+        },
+        "publish": {
+          "maxItems": 10000,
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/__schema5"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "__schema4": {
+      "type": "string",
+      "minLength": 1
+    },
+    "__schema5": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "info",
+            "success",
+            "warning",
+            "error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "when": {
+          "type": "string",
+          "enum": [
+            "always",
+            "success",
+            "error"
+          ]
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "__schema6": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selector": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "replace",
+            "append",
+            "prepend"
+          ]
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "additionalProperties": false
+    },
+    "__schema7": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "default": "zod",
+          "type": "string",
+          "enum": [
+            "zod",
+            "json-schema",
+            "ts-rest"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "__schema8": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/__schema9"
+            },
+            "headers": {
+              "$ref": "#/definitions/__schema10"
+            },
+            "body": {
+              "$ref": "#/definitions/__schema7"
+            }
+          },
+          "required": [
+            "body"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/__schema9"
+            },
+            "headers": {
+              "$ref": "#/definitions/__schema10"
+            },
+            "redirect": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 301
+                    },
+                    {
+                      "type": "number",
+                      "const": 302
+                    },
+                    {
+                      "type": "number",
+                      "const": 303
+                    },
+                    {
+                      "type": "number",
+                      "const": 307
+                    },
+                    {
+                      "type": "number",
+                      "const": 308
+                    }
+                  ]
+                },
+                "location": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "redirect"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/definitions/__schema9"
+            },
+            "headers": {
+              "$ref": "#/definitions/__schema10"
+            },
+            "body": {
+              "$ref": "#/definitions/__schema7"
+            },
+            "fragment": {
+              "$ref": "#/definitions/__schema6"
+            }
+          },
+          "required": [
+            "body",
+            "fragment"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "__schema9": {
+      "type": "integer",
+      "minimum": 100,
+      "maximum": 599
+    },
+    "__schema10": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/__schema7"
+        }
+      ]
+    },
+    "__schema11": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "validation",
+            "auth",
+            "not_found",
+            "domain",
+            "conflict",
+            "internal"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {},
+        "cause": {},
+        "correlationId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "__schema12": {
+      "type": "string",
+      "minLength": 1
+    },
     "route-definition": {
       "type": "object",
       "properties": {
@@ -31,9 +308,10 @@
           "type": "string"
         },
         "tags": {
+          "maxItems": 10000,
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/definitions/__schema0"
           }
         },
         "interaction": {
@@ -44,36 +322,18 @@
           ]
         },
         "requestHooks": {
+          "maxItems": 10000,
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "required": [
-              "id"
-            ],
-            "additionalProperties": false
+            "$ref": "#/definitions/__schema1"
           }
         },
         "session": {
-          "type": "object",
-          "properties": {
-            "mode": {
-              "type": "string",
-              "enum": [
-                "optional",
-                "required"
-              ]
-            },
-            "write": {
-              "type": "boolean"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema2"
             }
-          },
-          "additionalProperties": false
+          ]
         },
         "auth": {
           "anyOf": [
@@ -97,54 +357,11 @@
           ]
         },
         "flash": {
-          "type": "object",
-          "properties": {
-            "consume": {
-              "type": "array",
-              "items": {
-                "type": "string",
-                "minLength": 1
-              }
-            },
-            "publish": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "key": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "level": {
-                    "type": "string",
-                    "enum": [
-                      "info",
-                      "success",
-                      "warning",
-                      "error"
-                    ]
-                  },
-                  "message": {
-                    "type": "string",
-                    "minLength": 1
-                  },
-                  "when": {
-                    "type": "string",
-                    "enum": [
-                      "always",
-                      "success",
-                      "error"
-                    ]
-                  }
-                },
-                "required": [
-                  "key"
-                ],
-                "additionalProperties": false
-              }
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema3"
             }
-          },
-          "additionalProperties": false
+          ]
         },
         "form": {
           "type": "object",
@@ -165,74 +382,59 @@
               "type": "boolean"
             },
             "session": {
-              "$ref": "#/definitions/route-definition/properties/session"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/__schema2"
+                }
+              ]
             },
             "flash": {
-              "$ref": "#/definitions/route-definition/properties/flash"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/__schema3"
+                }
+              ]
             }
           },
           "additionalProperties": false
         },
         "fragment": {
-          "type": "object",
-          "properties": {
-            "target": {
-              "type": "string",
-              "minLength": 1
-            },
-            "selector": {
-              "type": "string",
-              "minLength": 1
-            },
-            "mode": {
-              "type": "string",
-              "enum": [
-                "replace",
-                "append",
-                "prepend"
-              ]
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema6"
             }
-          },
-          "required": [
-            "target"
-          ],
-          "additionalProperties": false
+          ]
         },
         "input": {
           "type": "object",
           "properties": {
             "params": {
-              "type": "object",
-              "properties": {
-                "kind": {
-                  "type": "string",
-                  "enum": [
-                    "zod",
-                    "json-schema",
-                    "ts-rest"
-                  ],
-                  "default": "zod"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "source": {
-                  "type": "string"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/__schema7"
                 }
-              },
-              "required": [
-                "name"
-              ],
-              "additionalProperties": false
+              ]
             },
             "query": {
-              "$ref": "#/definitions/route-definition/properties/input/properties/params"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/__schema7"
+                }
+              ]
             },
             "body": {
-              "$ref": "#/definitions/route-definition/properties/input/properties/params"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/__schema7"
+                }
+              ]
             },
             "headers": {
-              "$ref": "#/definitions/route-definition/properties/input/properties/params"
+              "allOf": [
+                {
+                  "$ref": "#/definitions/__schema7"
+                }
+              ]
             }
           },
           "additionalProperties": false
@@ -240,95 +442,18 @@
         "output": {
           "anyOf": [
             {
-              "anyOf": [
-                {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "integer",
-                      "minimum": 100,
-                      "maximum": 599
-                    },
-                    "headers": {
-                      "$ref": "#/definitions/route-definition/properties/input/properties/params"
-                    },
-                    "body": {
-                      "$ref": "#/definitions/route-definition/properties/input/properties/params"
-                    }
-                  },
-                  "required": [
-                    "body"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "$ref": "#/definitions/route-definition/properties/output/anyOf/0/anyOf/0/properties/status"
-                    },
-                    "headers": {
-                      "$ref": "#/definitions/route-definition/properties/output/anyOf/0/anyOf/0/properties/headers"
-                    },
-                    "redirect": {
-                      "type": "object",
-                      "properties": {
-                        "status": {
-                          "type": "number",
-                          "enum": [
-                            301,
-                            302,
-                            303,
-                            307,
-                            308
-                          ]
-                        },
-                        "location": {
-                          "type": "string",
-                          "minLength": 1
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "required": [
-                    "redirect"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "$ref": "#/definitions/route-definition/properties/output/anyOf/0/anyOf/0/properties/status"
-                    },
-                    "headers": {
-                      "$ref": "#/definitions/route-definition/properties/output/anyOf/0/anyOf/0/properties/headers"
-                    },
-                    "body": {
-                      "$ref": "#/definitions/route-definition/properties/input/properties/params"
-                    },
-                    "fragment": {
-                      "$ref": "#/definitions/route-definition/properties/fragment"
-                    }
-                  },
-                  "required": [
-                    "body",
-                    "fragment"
-                  ],
-                  "additionalProperties": false
-                }
-              ]
+              "$ref": "#/definitions/__schema8"
             },
             {
               "type": "object",
               "properties": {
                 "responses": {
+                  "minItems": 1,
+                  "maxItems": 10000,
                   "type": "array",
                   "items": {
-                    "$ref": "#/definitions/route-definition/properties/output/anyOf/0"
-                  },
-                  "minItems": 1
+                    "$ref": "#/definitions/__schema8"
+                  }
                 }
               },
               "required": [
@@ -339,35 +464,10 @@
           ]
         },
         "errors": {
+          "maxItems": 10000,
           "type": "array",
           "items": {
-            "type": "object",
-            "properties": {
-              "code": {
-                "type": "string",
-                "enum": [
-                  "validation",
-                  "auth",
-                  "not_found",
-                  "domain",
-                  "conflict",
-                  "internal"
-                ]
-              },
-              "message": {
-                "type": "string"
-              },
-              "details": {},
-              "cause": {},
-              "correlationId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "code",
-              "message"
-            ],
-            "additionalProperties": false
+            "$ref": "#/definitions/__schema11"
           }
         },
         "renderMode": {
@@ -379,10 +479,10 @@
           ]
         },
         "staticPaths": {
+          "maxItems": 10000,
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/definitions/__schema12"
           }
         },
         "ssg": {
@@ -390,7 +490,8 @@
           "properties": {
             "revalidateSeconds": {
               "type": "integer",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "additionalProperties": false

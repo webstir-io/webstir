@@ -558,7 +558,7 @@ test('prepareViewData merges session flash first and fits unions and strict sche
 
   const failed = prepareViewData(withFlash, { title: 42 }, []);
   assert.equal(failed.ok, false);
-  assert.match(failed.error, /title: Expected string, received number/);
+  assert.match(failed.error, /title: Invalid input: expected string, received number/);
 });
 
 test('what makes a form post must be written, not bound', () => {

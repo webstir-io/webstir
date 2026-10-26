@@ -29,23 +29,19 @@ import {
   type RequestContext,
   type SSRContext,
 } from '@webstir-io/module-contract';
-
-// Optional adapters live under a secondary export for teams using ts-rest
-import { fromTsRestRoute, fromTsRestRouter } from '@webstir-io/module-contract/ts-rest';
 ```
 
 - `ModuleProvider` remains the build-time contract (`metadata`, `resolveWorkspace`, `build`).
 - `moduleManifestSchema` / `routeDefinitionSchema` / `viewDefinitionSchema` model the runtime manifest that orchestrators ingest; the package publishes matching JSON schema under `schema/`.
 - `defineRoute`, `defineView`, and `createModule` give providers ergonomic helpers with strong TypeScript inference.
 - `RequestContext` and `SSRContext` describe what the orchestrator supplies to route and view handlers.
-- `fromTsRestRoute` converts an `@ts-rest/core` route contract into a Webstir `RouteSpec`, and `fromTsRestRouter` adapts an entire ts-rest router tree at once.
 - Routes and views support optional SSG metadata: `renderMode?: 'ssg' | 'ssr' | 'spa'`, `staticPaths?: string[]`, and a reserved `ssg?: { revalidateSeconds?: number }` bag for future incremental/static revalidation hints.
 - Modules can declare `requestHooks?: { id, phase, order }[]`, and routes can opt into them with `requestHooks?: { id }[]`.
 - Routes can also declare progressive-enhancement metadata with `interaction?: 'navigation' | 'mutation'`, optional `session`/`flash` metadata, optional form-level `session`/`flash` metadata, and an optional `fragment` target for partial updates.
 - Route `output` can describe a single response case or a `responses: [...]` list when native and enhanced flows diverge.
 - Route handlers may now return normal document/json bodies, targeted fragment updates, or redirects through the shared result contract, with `RouteNavigationResult` and `RouteMutationResult` aliases for the common progressive-enhancement patterns.
 
-> Install `@ts-rest/core` to use the adapters; it's published as an optional peer dependency of this package.
+> Requires Zod 4.6.6 or later. Upgrade application schemas to Zod 4. Framework-owned manifest, render-program and flash collections accept at most 10,000 items per array; this does not impose a limit on application-defined data schemas.
 
 ## Schema References
 
@@ -57,7 +53,7 @@ Format:
 - `source` &mdash; optional module specifier (usually a workspace-relative path like `src/backend/routes/accounts.ts` or a package entry such as `@demo/contracts/accounts.ts`).
 
 Naming & source guidance:
-- Keep `name` stable across builds. Use the TypeScript identifier for `zod`, the `$id` (or filename) for JSON Schema, and the router key for ts-rest adapters.
+- Keep `name` stable across builds. Use the TypeScript identifier for `zod`, the `$id` (or filename) for JSON Schema, and the router key for ts-rest metadata.
 - Use `source` whenever the schema lives outside the generated manifest (for example, in `src/shared/contracts/`), and prefer workspace-relative paths so the CLI can resolve them after scaffolding.
 - When emitting references from the CLI, serialize the tuple as `kind:name@source` (drop `kind:` for `zod` and omit `@source` when not needed). This is the same string accepted by `--*-schema` flags on `webstir add-route`.
 - Keep `kind`/`name` unique per file to avoid ambiguity when generators pre-populate manifest entries.
@@ -273,57 +269,26 @@ return {
 };
 ```
 
-### ts-rest Router Example
+### Native Route Example
 
 ```ts
-import { initContract } from '@ts-rest/core';
-import { fromTsRestRouter, type RequestContext } from '@webstir-io/module-contract/ts-rest';
+import { defineRoute, type RequestContext } from '@webstir-io/module-contract';
 import { z } from 'zod';
 
-const c = initContract();
+const params = z.object({ id: z.string().uuid() });
+const account = z.object({ id: z.string().uuid(), email: z.email() });
 
-const accountsRouter = c.router({
-  list: c.query({
-    path: '/accounts',
-    method: 'GET',
-    responses: {
-      200: z.object({
-        data: z.array(z.object({ id: z.string(), email: z.string().email() }))
-      })
-    }
+const detail = defineRoute<RequestContext, typeof params, undefined, undefined, typeof account>({
+  definition: { name: 'accounts.detail', method: 'GET', path: '/accounts/:id' },
+  schemas: { params, response: account },
+  handler: async (ctx) => ({
+    status: 200,
+    body: { id: ctx.params.id, email: 'account@example.com' },
   }),
-  detail: c.query({
-    path: '/accounts/:id',
-    method: 'GET',
-    pathParams: z.object({ id: z.string().uuid() }),
-    responses: {
-      200: z.object({ id: z.string().uuid(), email: z.string().email() }),
-      404: z.null()
-    }
-  })
 });
-
-const routeSpecs = fromTsRestRouter<RequestContext>({
-  router: accountsRouter,
-  baseName: 'accounts',
-  createRoute: ({ keyPath, appRoute }) => ({
-    handler: async (ctx) => {
-      if (keyPath.at(-1) === 'detail') {
-        const account = await ctx.db.accounts.findById(ctx.params.id);
-        return account
-          ? { status: 200, body: account }
-          : { status: 404, errors: [{ code: 'not_found', message: 'Account missing' }] };
-      }
-
-      const accounts = await ctx.db.accounts.list();
-      return { status: 200, body: { data: accounts } };
-    },
-    successStatus: appRoute.method === 'GET' ? 200 : undefined
-  })
-});
-
-// routeSpecs is a RouteSpec[] ready to feed into createModule({ routes: routeSpecs })
 ```
+
+Use native `defineRoute` definitions in `createModule({ routes: [detail], ... })`. The ts-rest adapter helpers, adapter option types and `/ts-rest` export have been removed. Schema references may still use the `ts-rest` metadata kind.
 
 When authoring a provider:
 

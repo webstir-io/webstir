@@ -31,11 +31,6 @@
       "import": "./dist/workspace.js",
       "default": "./dist/workspace.js"
     },
-    "./ts-rest": {
-      "types": "./dist/adapters/ts-rest.d.ts",
-      "import": "./dist/adapters/ts-rest.js",
-      "default": "./dist/adapters/ts-rest.js"
-    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -48,7 +43,7 @@
     "build:types": "tsc -p tsconfig.json",
     "build:schema": "bun scripts/build-schema.mjs",
     "test": "bun run build && bun run test:built",
-    "test:built": "tsc -p tsconfig.examples.json",
+    "test:built": "tsc -p tsconfig.examples.json && bun test tests/*.test.ts",
     "test:examples": "tsc -p tsconfig.examples.json"
   },
   "keywords": [
@@ -68,12 +63,10 @@
   },
   "author": "Webstir",
   "dependencies": {
-    "@ts-rest/core": "^3.40.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.19.21",
-    "typescript": "^7.0.2",
-    "zod-to-json-schema": "^3.23.3"
+    "typescript": "^7.0.2"
   }
 }

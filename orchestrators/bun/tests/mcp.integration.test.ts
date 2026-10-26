@@ -6,6 +6,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 
 import { packageRoot, repoRoot } from '../src/paths.ts';
 import { copyDemoWorkspace, removeDemoWorkspace } from '../test-support/demo-workspace.ts';
@@ -616,5 +617,49 @@ test('MCP repair tools reject malformed frontend config without reporting a repa
   } finally {
     await transport.close();
     await removeDemoWorkspace(copiedWorkspace);
+  }
+});
+
+test('MCP rejects oversized collections before tool validation or execution', async () => {
+  const { client, transport } = await connectClient();
+  try {
+    for (const extra of [
+      { tags: Array(10_001).fill(0) },
+      { unexpected: { values: Array(10_001).fill(0) } },
+    ]) {
+      const result = await client.callTool({
+        name: 'scaffold_route',
+        arguments: { workspace: '/not-used', name: 'sample', ...extra },
+      });
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result.content)).toContain('maximum of 10000 elements');
+    }
+  } finally {
+    await transport.close();
+  }
+});
+
+test('MCP schema validation resolves relative ids and local references', () => {
+  const validator = new AjvJsonSchemaValidator().getValidator({
+    $id: 'https://schemas.example.invalid/root.json',
+    type: 'object',
+    definitions: {
+      label: { type: 'string', minLength: 1 },
+      item: {
+        $id: 'item.json',
+        type: 'object',
+        properties: { id: { $ref: 'root.json#/definitions/label' } },
+        required: ['id'],
+        additionalProperties: false,
+      },
+    },
+    properties: { item: { $ref: 'item.json' } },
+    required: ['item'],
+  });
+  expect(validator({ item: { id: 'valid' } }).valid).toBe(true);
+  for (const input of [{ item: { id: '' } }, { item: { id: 7 } }, { item: {} }]) {
+    const result = validator(input);
+    expect(result.valid).toBe(false);
+    expect(result.errorMessage).toBeTruthy();
   }
 });
