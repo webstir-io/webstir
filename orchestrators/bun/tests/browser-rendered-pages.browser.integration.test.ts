@@ -19,7 +19,7 @@ for (const clientNav of [false, true]) {
     let browser: Browser | undefined;
 
     try {
-      await addDependency(workspace, 'zod', '^3.23.8');
+      await addDependency(workspace, 'zod', '^4.6.6');
       await materializeRepoLocalWorkspaceDependencies(workspace, { installStdio: 'pipe' });
       if (clientNav) await runCli(workspace, ['enable', 'client-nav']);
       await writeFruitPage(workspace);

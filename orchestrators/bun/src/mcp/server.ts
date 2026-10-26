@@ -51,7 +51,7 @@ const scaffoldRouteSchema = z
     path: z.string().min(1).optional(),
     summary: z.string().min(1).optional(),
     description: z.string().min(1).optional(),
-    tags: z.array(z.string().min(1)).optional(),
+    tags: z.array(z.string().min(1)).max(10_000).optional(),
     interaction: routeInteractionSchema.optional(),
   })
   .strict();
@@ -89,10 +89,10 @@ const scaffoldJobSchema = z
   .strict();
 
 export function createMcpServer(): McpServer {
-  const server = new McpServer({
-    name: 'webstir',
-    version: getPackageVersion(),
-  });
+  const server = new McpServer(
+    { name: 'webstir', version: getPackageVersion() },
+    { maxToolInputElements: 10_000 },
+  );
 
   server.registerTool(
     'list_operations',

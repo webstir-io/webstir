@@ -341,11 +341,11 @@ function declares(schema: unknown, field: string, seen: Set<unknown>): boolean {
   if (shape && typeof shape === 'object') {
     return field in shape;
   }
-  const def = (schema as { _def?: Record<string, unknown> })._def;
+  const def = (schema as { _zod?: { def?: Record<string, unknown> } })._zod?.def;
   if (!def) {
     return false;
   }
-  const inner: unknown[] = [def.innerType, def.schema, def.in, def.type, def.left, def.right];
+  const inner: unknown[] = [def.innerType, def.in, def.out, def.left, def.right];
   if (typeof def.getter === 'function') {
     inner.push((def.getter as () => unknown)());
   }

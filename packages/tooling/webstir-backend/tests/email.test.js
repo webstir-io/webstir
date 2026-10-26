@@ -7,6 +7,7 @@ import path from 'node:path';
 import { prepareApp } from '../dist/index.js';
 import { email, setEmailTransport } from '../dist/email/index.js';
 import { startSmtpServer } from './support/smtp.js';
+import addressparser from 'nodemailer/lib/addressparser';
 
 const KEYS = ['NODE_ENV', 'EMAIL_URL', 'EMAIL_FROM', 'WEBSTIR_WORKSPACE_ROOT'];
 
@@ -91,4 +92,44 @@ test('an app transport takes over; production refuses to drop email silently', a
       await assert.rejects(email.send(message), error);
     }
   });
+});
+
+test('SMTP preserves recipients with group separators, quoted local parts and nested comments', async () => {
+  const fixtures = [
+    ['group comment', 'G: (a; <evil@evil.com>) <v@victim.com>;', 'v@victim.com'],
+    // Nodemailer preserves the parser's target domain, then strips angle brackets from SMTP paths.
+    [
+      'quoted local part',
+      '<"a@evil.com>"@good.com>',
+      '"a@evil.com>"@good.com',
+      '"a@evil.com "@good.com',
+    ],
+    ['nested comment', 'Victim (x(y) <evil@evil.com>) <v@victim.com>', 'v@victim.com'],
+    ['ordinary display name', 'Ada Lovelace <ada@example.com>', 'ada@example.com'],
+  ];
+  const smtp = startSmtpServer();
+  try {
+    await withApp({ EMAIL_URL: smtp.url, EMAIL_FROM: 'App <app@example.com>' }, async () => {
+      for (const [name, to, expected, envelope = expected] of fixtures) {
+        assert.deepEqual(
+          addressparser(to, { flatten: true }).map((entry) => entry.address),
+          [expected],
+          name,
+        );
+        await email.send({
+          to,
+          subject: name,
+          text: 'Parser regression check.',
+          replyTo: 'Support <support@example.com>',
+        });
+        const message = smtp.messages.at(-1);
+        assert.deepEqual(message.to, [envelope], name);
+        assert.equal(message.from, 'app@example.com', name);
+        assert.match(message.data, /Reply-To: Support <support@example.com>/, name);
+      }
+      assert.equal(smtp.messages.length, fixtures.length);
+    });
+  } finally {
+    smtp.stop();
+  }
 });

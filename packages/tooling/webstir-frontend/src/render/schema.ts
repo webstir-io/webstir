@@ -1,44 +1,51 @@
 export interface SchemaLike {
-  readonly _def: Record<string, unknown> & { readonly typeName?: string };
+  readonly _zod: { readonly def: Record<string, unknown> & { readonly type: string } };
 }
 
 export type SchemaResult = { readonly ok: readonly SchemaLike[] } | { readonly error: string };
 
-const ANY: SchemaLike = { _def: { typeName: 'ZodAny' } };
-const WRAPPERS = new Set(['ZodOptional', 'ZodNullable', 'ZodDefault', 'ZodCatch', 'ZodReadonly']);
-const NULLISH = new Set(['ZodNull', 'ZodUndefined', 'ZodVoid']);
-const OPEN = new Set(['ZodAny', 'ZodUnknown']);
-const TEXT = new Set(['ZodString', 'ZodNumber', 'ZodBigInt', 'ZodEnum', 'ZodNativeEnum']);
+const ANY: SchemaLike = { _zod: { def: { type: 'any' } } };
+const WRAPPERS = new Set([
+  'optional',
+  'nullable',
+  'default',
+  'prefault',
+  'catch',
+  'readonly',
+  'nonoptional',
+]);
+const NULLISH = new Set(['null', 'undefined', 'void']);
+const OPEN = new Set(['any', 'unknown', 'custom']);
+const TEXT = new Set(['string', 'number', 'bigint', 'enum']);
 
 const KIND_NAMES: Record<string, string> = {
-  ZodObject: 'an object',
-  ZodRecord: 'an object',
-  ZodArray: 'an array',
-  ZodTuple: 'an array',
-  ZodSet: 'a set',
-  ZodMap: 'a map',
-  ZodString: 'a string',
-  ZodNumber: 'a number',
-  ZodBigInt: 'a number',
-  ZodBoolean: 'a boolean',
-  ZodDate: 'a date',
-  ZodEnum: 'a string',
-  ZodNativeEnum: 'an enum',
-  ZodNull: 'null',
-  ZodUndefined: 'undefined',
-  ZodVoid: 'undefined',
-  ZodFunction: 'a function',
-  ZodPromise: 'a promise',
-  ZodSymbol: 'a symbol',
-  ZodNever: 'never',
+  object: 'an object',
+  record: 'an object',
+  array: 'an array',
+  tuple: 'an array',
+  set: 'a set',
+  map: 'a map',
+  string: 'a string',
+  number: 'a number',
+  bigint: 'a number',
+  boolean: 'a boolean',
+  date: 'a date',
+  enum: 'a string',
+  null: 'null',
+  undefined: 'undefined',
+  void: 'undefined',
+  function: 'a function',
+  promise: 'a promise',
+  symbol: 'a symbol',
+  never: 'never',
 };
 
 export function isSchemaLike(value: unknown): value is SchemaLike {
   return (
     typeof value === 'object' &&
     value !== null &&
-    typeof (value as SchemaLike)._def === 'object' &&
-    typeof (value as SchemaLike)._def?.typeName === 'string'
+    typeof (value as SchemaLike)._zod === 'object' &&
+    typeof (value as SchemaLike)._zod?.def?.type === 'string'
   );
 }
 
@@ -51,7 +58,7 @@ export function flattenSchema(schema: SchemaLike): SchemaLike[] {
 /** Whether an object schema names this key itself, not just accepts any key. */
 export function declaresKey(candidates: readonly SchemaLike[], key: string): boolean {
   return candidates.some(
-    (candidate) => typeNameOf(candidate) === 'ZodObject' && key in objectShape(candidate),
+    (candidate) => typeNameOf(candidate) === 'object' && key in objectShape(candidate),
   );
 }
 
@@ -64,7 +71,7 @@ export function lookupKey(candidates: readonly SchemaLike[], key: string): Schem
     const typeName = typeNameOf(candidate);
     if (OPEN.has(typeName)) {
       found.push(ANY);
-    } else if (typeName === 'ZodObject') {
+    } else if (typeName === 'object') {
       const shape = objectShape(candidate);
       const field = shape[key];
       if (field) {
@@ -76,8 +83,8 @@ export function lookupKey(candidates: readonly SchemaLike[], key: string): Schem
           known.add(name);
         }
       }
-    } else if (typeName === 'ZodRecord') {
-      found.push(...flattenSchema(candidate._def.valueType as SchemaLike));
+    } else if (typeName === 'record') {
+      found.push(...flattenSchema(candidate._zod.def.valueType as SchemaLike));
     } else if (!NULLISH.has(typeName)) {
       kinds.add(describe(candidate));
     }
@@ -103,17 +110,17 @@ export function elementOf(candidates: readonly SchemaLike[]): SchemaResult {
     const typeName = typeNameOf(candidate);
     if (OPEN.has(typeName)) {
       found.push(ANY);
-    } else if (typeName === 'ZodArray') {
-      found.push(...flattenSchema(candidate._def.type as SchemaLike));
-    } else if (typeName === 'ZodSet') {
+    } else if (typeName === 'array') {
+      found.push(...flattenSchema(candidate._zod.def.element as SchemaLike));
+    } else if (typeName === 'set') {
       // A parsed set is a Set, not an array, and the renderer loops over arrays only.
       kinds.add('a set (use z.array)');
-    } else if (typeName === 'ZodTuple') {
-      for (const item of candidate._def.items as SchemaLike[]) {
+    } else if (typeName === 'tuple') {
+      for (const item of candidate._zod.def.items as SchemaLike[]) {
         found.push(...flattenSchema(item));
       }
-      if (isSchemaLike(candidate._def.rest)) {
-        found.push(...flattenSchema(candidate._def.rest));
+      if (isSchemaLike(candidate._zod.def.rest)) {
+        found.push(...flattenSchema(candidate._zod.def.rest));
       }
     } else if (!NULLISH.has(typeName)) {
       kinds.add(describe(candidate));
@@ -144,20 +151,19 @@ function checkScalar(candidates: readonly SchemaLike[], allowBoolean: boolean): 
     if (OPEN.has(typeName) || NULLISH.has(typeName) || TEXT.has(typeName)) {
       continue;
     }
-    if (typeName === 'ZodBoolean' && allowBoolean) {
+    if (typeName === 'boolean' && allowBoolean) {
       continue;
     }
-    if (typeName === 'ZodLiteral') {
-      const value = candidate._def.value;
-      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint') {
-        continue;
-      }
-      if (typeof value === 'boolean' && allowBoolean) {
-        continue;
-      }
-      if (value === null || value === undefined) {
-        continue;
-      }
+    if (typeName === 'literal') {
+      const values = candidate._zod.def.values as unknown[];
+      const allowed = values.every(
+        (value) =>
+          value === null ||
+          value === undefined ||
+          ['string', 'number', 'bigint'].includes(typeof value) ||
+          (allowBoolean && typeof value === 'boolean'),
+      );
+      if (allowed) continue;
     }
     kinds.add(describe(candidate));
   }
@@ -170,37 +176,29 @@ function checkScalar(candidates: readonly SchemaLike[], allowBoolean: boolean): 
 
 function collect(schema: SchemaLike, leaves: SchemaLike[], seen: Set<SchemaLike>): void {
   if (!isSchemaLike(schema)) {
-    leaves.push(ANY);
-    return;
+    throw new Error('Expected a Zod 4 schema.');
   }
   if (seen.has(schema)) {
     return;
   }
   seen.add(schema);
 
-  const def = schema._def;
+  const def = schema._zod.def;
   const typeName = typeNameOf(schema);
   if (WRAPPERS.has(typeName)) {
     collect(def.innerType as SchemaLike, leaves, seen);
-  } else if (typeName === 'ZodBranded') {
-    collect(def.type as SchemaLike, leaves, seen);
-  } else if (typeName === 'ZodLazy') {
+  } else if (typeName === 'lazy') {
     collect((def.getter as () => SchemaLike)(), leaves, seen);
-  } else if (typeName === 'ZodPipeline') {
+  } else if (typeName === 'pipe') {
     collect(def.out as SchemaLike, leaves, seen);
-  } else if (typeName === 'ZodEffects') {
-    const effect = def.effect as { type?: string } | undefined;
-    if (effect?.type === 'transform') {
-      leaves.push(ANY);
-    } else {
-      collect(def.schema as SchemaLike, leaves, seen);
-    }
-  } else if (typeName === 'ZodUnion' || typeName === 'ZodDiscriminatedUnion') {
+  } else if (typeName === 'transform') {
+    leaves.push(ANY);
+  } else if (typeName === 'union') {
     const options = def.options as Iterable<SchemaLike>;
     for (const option of options) {
       collect(option, leaves, seen);
     }
-  } else if (typeName === 'ZodIntersection') {
+  } else if (typeName === 'intersection') {
     collect(def.left as SchemaLike, leaves, seen);
     collect(def.right as SchemaLike, leaves, seen);
   } else {
@@ -209,26 +207,30 @@ function collect(schema: SchemaLike, leaves: SchemaLike[], seen: Set<SchemaLike>
 }
 
 function objectShape(schema: SchemaLike): Record<string, SchemaLike> {
-  const shape = schema._def.shape;
+  const shape = schema._zod.def.shape;
   return (typeof shape === 'function' ? shape() : shape) as Record<string, SchemaLike>;
 }
 
 function hasOpenKeys(schema: SchemaLike): boolean {
-  const catchall = schema._def.catchall;
-  if (isSchemaLike(catchall) && typeNameOf(catchall) !== 'ZodNever') {
+  const catchall = schema._zod.def.catchall;
+  if (isSchemaLike(catchall) && typeNameOf(catchall) !== 'never') {
     return true;
   }
-  return schema._def.unknownKeys === 'passthrough';
+  return false;
 }
 
 function typeNameOf(schema: SchemaLike): string {
-  return schema._def.typeName ?? 'ZodUnknown';
+  return schema._zod.def.type;
 }
 
 function describe(schema: SchemaLike): string {
   const typeName = typeNameOf(schema);
-  if (typeName === 'ZodLiteral') {
-    return `the literal ${JSON.stringify(schema._def.value)}`;
+  if (typeName === 'literal') {
+    const values = schema._zod.def.values as unknown[];
+    const rendered = values.map((value) =>
+      typeof value === 'bigint' ? `${value}n` : String(JSON.stringify(value)),
+    );
+    return `the literal ${values.length === 1 ? rendered[0] : `[${rendered.join(', ')}]`}`;
   }
   return KIND_NAMES[typeName] ?? typeName.replace(/^Zod/, '').toLowerCase();
 }

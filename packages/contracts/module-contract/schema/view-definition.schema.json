@@ -1,6 +1,37 @@
 {
   "$ref": "#/definitions/view-definition",
   "definitions": {
+    "__schema0": {
+      "type": "string"
+    },
+    "__schema1": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "default": "zod",
+          "type": "string",
+          "enum": [
+            "zod",
+            "json-schema",
+            "ts-rest"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
+    "__schema2": {
+      "type": "string",
+      "minLength": 1
+    },
     "view-definition": {
       "type": "object",
       "properties": {
@@ -23,9 +54,10 @@
           "type": "string"
         },
         "tags": {
+          "maxItems": 10000,
           "type": "array",
           "items": {
-            "type": "string"
+            "$ref": "#/definitions/__schema0"
           }
         },
         "auth": {
@@ -50,31 +82,18 @@
           ]
         },
         "params": {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "zod",
-                "json-schema",
-                "ts-rest"
-              ],
-              "default": "zod"
-            },
-            "name": {
-              "type": "string"
-            },
-            "source": {
-              "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema1"
             }
-          },
-          "required": [
-            "name"
-          ],
-          "additionalProperties": false
+          ]
         },
         "data": {
-          "$ref": "#/definitions/view-definition/properties/params"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema1"
+            }
+          ]
         },
         "renderMode": {
           "type": "string",
@@ -85,10 +104,10 @@
           ]
         },
         "staticPaths": {
+          "maxItems": 10000,
           "type": "array",
           "items": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/definitions/__schema2"
           }
         },
         "ssg": {
@@ -96,7 +115,8 @@
           "properties": {
             "revalidateSeconds": {
               "type": "integer",
-              "exclusiveMinimum": 0
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
             }
           },
           "additionalProperties": false

@@ -56,7 +56,7 @@ export const frontendConfigSchema = z.object({
   version: z.literal(1),
   paths: frontendPathSchema,
   features: frontendFeatureFlagsSchema,
-  shell: frontendShellConfigSchema.default({}),
+  shell: frontendShellConfigSchema.prefault({}),
   content: frontendContentConfigSchema,
 });
 

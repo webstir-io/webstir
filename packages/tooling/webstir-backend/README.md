@@ -173,72 +173,28 @@ If the manifest fails validation, the provider emits a diagnostic and falls back
 
 After a build, the provider also tries to load `build/backend/module.js` (compiled from `src/backend/module.ts`). Export a `createModule(...)` definition as `module`, `moduleDefinition`, or `default` to have routes, views, and capabilities hydrated automatically.
 
-#### ts-rest Router Example
+#### Native Route Example
 
 ```ts
-// src/backend/module.ts
-import { initContract } from '@ts-rest/core';
-import { createModule, fromTsRestRouter, CONTRACT_VERSION, type RequestContext } from '@webstir-io/module-contract';
+import { defineRoute, type RequestContext } from '@webstir-io/module-contract';
 import { z } from 'zod';
 
-const c = initContract();
+const params = z.object({ id: z.string().uuid() });
+const account = z.object({ id: z.string().uuid(), email: z.email() });
 
-const accountSchema = z.object({
-  id: z.string().uuid(),
-  email: z.string().email()
-});
-
-const router = c.router({
-  list: c.query({
-    path: '/accounts',
-    method: 'GET',
-    responses: {
-      200: z.object({ data: z.array(accountSchema) })
-    }
+const detail = defineRoute<RequestContext, typeof params, undefined, undefined, typeof account>({
+  definition: { name: 'accounts.detail', method: 'GET', path: '/accounts/:id' },
+  schemas: { params, response: account },
+  handler: async (ctx) => ({
+    status: 200,
+    body: { id: ctx.params.id, email: 'account@example.com' },
   }),
-  detail: c.query({
-    path: '/accounts/:id',
-    method: 'GET',
-    pathParams: z.object({ id: z.string().uuid() }),
-    responses: {
-      200: accountSchema,
-      404: z.null()
-    }
-  })
-});
-
-const routeSpecs = fromTsRestRouter<RequestContext>({
-  router,
-  baseName: 'accounts',
-  createRoute: ({ keyPath }) => ({
-    handler: async (ctx) => {
-      if (keyPath.at(-1) === 'detail') {
-        const row = await ctx.db.get('SELECT id, email FROM accounts WHERE id = ?', [ctx.params.id]);
-        return row
-          ? { status: 200, body: row }
-          : { status: 404, errors: [{ code: 'not_found', message: 'Account not found' }] };
-      }
-
-      const rows = await ctx.db.query('SELECT id, email FROM accounts');
-      return { status: 200, body: { data: rows } };
-    }
-  })
-});
-
-export const module = createModule({
-  manifest: {
-    contractVersion: CONTRACT_VERSION,
-    name: '@demo/accounts',
-    version: '0.1.0',
-    kind: 'backend',
-    capabilities: ['db', 'auth'],
-    routes: routeSpecs.map((route) => route.definition)
-  },
-  routes: routeSpecs
 });
 ```
 
-When `bun run build` completes, the provider detects `build/backend/module.js`, hydrates the manifest with the `routes` metadata above, and returns it to the orchestrator alongside the compiled entry points.
+Use native `defineRoute` definitions in `createModule({ routes: [detail], ... })`. The ts-rest adapter helpers, adapter option types and `/ts-rest` export have been removed. Schema references may still use the `ts-rest` metadata kind.
+
+When `bun run build` completes, the provider detects `build/backend/module.js`, hydrates the manifest with the `routes` metadata, and returns it to the orchestrator alongside the compiled entry points.
 
 #### Module Definition Only Example
 

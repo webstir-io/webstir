@@ -1,41 +1,60 @@
 {
   "$ref": "#/definitions/route-input",
   "definitions": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "default": "zod",
+          "type": "string",
+          "enum": [
+            "zod",
+            "json-schema",
+            "ts-rest"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false
+    },
     "route-input": {
       "type": "object",
       "properties": {
         "params": {
-          "type": "object",
-          "properties": {
-            "kind": {
-              "type": "string",
-              "enum": [
-                "zod",
-                "json-schema",
-                "ts-rest"
-              ],
-              "default": "zod"
-            },
-            "name": {
-              "type": "string"
-            },
-            "source": {
-              "type": "string"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema0"
             }
-          },
-          "required": [
-            "name"
-          ],
-          "additionalProperties": false
+          ]
         },
         "query": {
-          "$ref": "#/definitions/route-input/properties/params"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema0"
+            }
+          ]
         },
         "body": {
-          "$ref": "#/definitions/route-input/properties/params"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema0"
+            }
+          ]
         },
         "headers": {
-          "$ref": "#/definitions/route-input/properties/params"
+          "allOf": [
+            {
+              "$ref": "#/definitions/__schema0"
+            }
+          ]
         }
       },
       "additionalProperties": false

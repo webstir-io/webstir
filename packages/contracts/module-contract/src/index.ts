@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { contractArray } from './schema-limits.js';
+
 // Centralized manifest contract version used by providers and examples.
 export const CONTRACT_VERSION = '1.0.0' as const;
 export const contractVersionLiteral = z.literal(CONTRACT_VERSION);
@@ -405,7 +407,9 @@ export const flashLevelSchema = z.enum(['info', 'success', 'warning', 'error']);
 export type FlashLevel = z.infer<typeof flashLevelSchema>;
 
 /** What a page binds as `flash`: the messages an action left for it. The framework supplies it. */
-export const flashSchema = z.array(z.object({ level: flashLevelSchema, message: z.string() }));
+export const flashSchema = contractArray(
+  z.object({ level: flashLevelSchema, message: z.string() }),
+);
 
 export const flashPublishConditionSchema = z.enum(['always', 'success', 'error']);
 
@@ -424,8 +428,8 @@ export type RouteFlashMessageDefinition = z.infer<typeof routeFlashMessageSchema
 
 export const routeFlashSchema = z
   .object({
-    consume: z.array(z.string().min(1)).optional(),
-    publish: z.array(routeFlashMessageSchema).optional(),
+    consume: contractArray(z.string().min(1)).optional(),
+    publish: contractArray(routeFlashMessageSchema).optional(),
   })
   .strict();
 
@@ -506,7 +510,7 @@ export type RouteOutputVariantDefinition = z.infer<typeof routeOutputVariantSche
 
 export const routeOutputResponsesSchema = z
   .object({
-    responses: z.array(routeOutputVariantSchema).min(1),
+    responses: contractArray(routeOutputVariantSchema).min(1),
   })
   .strict();
 
@@ -522,9 +526,9 @@ export const routeDefinitionSchema = z.object({
   path: z.string().min(1),
   summary: z.string().optional(),
   description: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  tags: contractArray(z.string()).optional(),
   interaction: routeInteractionKindSchema.optional(),
-  requestHooks: z.array(requestHookReferenceSchema).optional(),
+  requestHooks: contractArray(requestHookReferenceSchema).optional(),
   session: routeSessionSchema.optional(),
   /** Who reaches the route: see `accessRequirementSchema`. */
   auth: accessRequirementSchema.optional(),
@@ -533,9 +537,9 @@ export const routeDefinitionSchema = z.object({
   fragment: routeFragmentSchema.optional(),
   input: routeInputSchema.optional(),
   output: routeOutputSchema.optional(),
-  errors: z.array(moduleErrorSchema).optional(),
+  errors: contractArray(moduleErrorSchema).optional(),
   renderMode: z.enum(['ssg', 'ssr', 'spa']).optional(),
-  staticPaths: z.array(z.string().min(1)).optional(),
+  staticPaths: contractArray(z.string().min(1)).optional(),
   ssg: z
     .object({
       revalidateSeconds: z.number().int().positive().optional(),
@@ -545,44 +549,44 @@ export const routeDefinitionSchema = z.object({
 
 export type RouteDefinition = z.infer<typeof routeDefinitionSchema>;
 
-export type InferOrNever<TSchema extends z.ZodTypeAny | undefined> = TSchema extends z.ZodTypeAny
+export type InferOrNever<TSchema extends z.ZodType | undefined> = TSchema extends z.ZodType
   ? z.infer<TSchema>
   : Record<string, never>;
 
 export interface RouteSchemas<
-  TParams extends z.ZodTypeAny | undefined,
-  TQuery extends z.ZodTypeAny | undefined,
-  TBody extends z.ZodTypeAny | undefined,
-  TResponse extends z.ZodTypeAny,
+  TParams extends z.ZodType | undefined,
+  TQuery extends z.ZodType | undefined,
+  TBody extends z.ZodType | undefined,
+  TResponse extends z.ZodType,
 > {
   readonly params?: TParams;
   readonly query?: TQuery;
   readonly body?: TBody;
-  readonly headers?: z.ZodTypeAny;
+  readonly headers?: z.ZodType;
   readonly response: TResponse;
-  readonly errors?: readonly z.ZodTypeAny[];
+  readonly errors?: readonly z.ZodType[];
 }
 
 export type RouteHandlerContext<
   TContext extends RequestContext,
-  TParams extends z.ZodTypeAny | undefined,
-  TQuery extends z.ZodTypeAny | undefined,
-  TBody extends z.ZodTypeAny | undefined,
+  TParams extends z.ZodType | undefined,
+  TQuery extends z.ZodType | undefined,
+  TBody extends z.ZodType | undefined,
 > = TContext & {
   readonly params: InferOrNever<TParams>;
   readonly query: InferOrNever<TQuery>;
   readonly body: InferOrNever<TBody>;
 };
 
-export interface RouteBodyResponse<TResponse extends z.ZodTypeAny> {
+export interface RouteBodyResponse<TResponse extends z.ZodType> {
   readonly status?: number;
   readonly body: z.infer<TResponse>;
   readonly headers?: Record<string, string>;
 }
 
-export type RouteSuccessResponse<TResponse extends z.ZodTypeAny> = RouteBodyResponse<TResponse>;
+export type RouteSuccessResponse<TResponse extends z.ZodType> = RouteBodyResponse<TResponse>;
 
-export interface RouteFragmentResponse<TResponse extends z.ZodTypeAny> {
+export interface RouteFragmentResponse<TResponse extends z.ZodType> {
   readonly status?: number;
   readonly fragment: {
     readonly target: string;
@@ -630,19 +634,19 @@ export interface RouteErrorResponse {
   readonly headers?: Record<string, string>;
 }
 
-export type RouteNavigationResult<TResponse extends z.ZodTypeAny> =
+export type RouteNavigationResult<TResponse extends z.ZodType> =
   | RouteBodyResponse<TResponse>
   | RouteRedirectResponse
   | RouteErrorResponse;
 
-export type RouteMutationResult<TResponse extends z.ZodTypeAny> =
+export type RouteMutationResult<TResponse extends z.ZodType> =
   | RouteBodyResponse<TResponse>
   | RouteFragmentResponse<TResponse>
   | RouteRedirectResponse
   | RouteRerenderResponse
   | RouteErrorResponse;
 
-export type RouteHandlerResult<TResponse extends z.ZodTypeAny> =
+export type RouteHandlerResult<TResponse extends z.ZodType> =
   | RouteBodyResponse<TResponse>
   | RouteFragmentResponse<TResponse>
   | RouteRedirectResponse
@@ -651,20 +655,20 @@ export type RouteHandlerResult<TResponse extends z.ZodTypeAny> =
 
 export type RouteHandler<
   TContext extends RequestContext,
-  TParams extends z.ZodTypeAny | undefined,
-  TQuery extends z.ZodTypeAny | undefined,
-  TBody extends z.ZodTypeAny | undefined,
-  TResponse extends z.ZodTypeAny,
+  TParams extends z.ZodType | undefined,
+  TQuery extends z.ZodType | undefined,
+  TBody extends z.ZodType | undefined,
+  TResponse extends z.ZodType,
 > = (
   context: RouteHandlerContext<TContext, TParams, TQuery, TBody>,
 ) => Promise<RouteHandlerResult<TResponse>> | RouteHandlerResult<TResponse>;
 
 export interface RouteSpec<
   TContext extends RequestContext = RequestContext,
-  TParams extends z.ZodTypeAny | undefined = undefined,
-  TQuery extends z.ZodTypeAny | undefined = undefined,
-  TBody extends z.ZodTypeAny | undefined = undefined,
-  TResponse extends z.ZodTypeAny = z.ZodTypeAny,
+  TParams extends z.ZodType | undefined = undefined,
+  TQuery extends z.ZodType | undefined = undefined,
+  TBody extends z.ZodType | undefined = undefined,
+  TResponse extends z.ZodType = z.ZodType,
 > {
   readonly definition: RouteDefinition;
   readonly schemas: RouteSchemas<TParams, TQuery, TBody, TResponse>;
@@ -673,10 +677,10 @@ export interface RouteSpec<
 
 export type LooseRouteSpec<TContext extends RequestContext = RequestContext> = RouteSpec<
   TContext,
-  z.ZodTypeAny | undefined,
-  z.ZodTypeAny | undefined,
-  z.ZodTypeAny | undefined,
-  z.ZodTypeAny
+  z.ZodType | undefined,
+  z.ZodType | undefined,
+  z.ZodType | undefined,
+  z.ZodType
 >;
 
 export const viewDefinitionSchema = z.object({
@@ -685,13 +689,13 @@ export const viewDefinitionSchema = z.object({
   page: z.string().min(1).optional(),
   summary: z.string().optional(),
   description: z.string().optional(),
-  tags: z.array(z.string()).optional(),
+  tags: contractArray(z.string()).optional(),
   /** Who sees the page: see `accessRequirementSchema`. */
   auth: accessRequirementSchema.optional(),
   params: schemaReferenceSchema.optional(),
   data: schemaReferenceSchema.optional(),
   renderMode: z.enum(['ssg', 'ssr', 'spa']).optional(),
-  staticPaths: z.array(z.string().min(1)).optional(),
+  staticPaths: contractArray(z.string().min(1)).optional(),
   ssg: z
     .object({
       revalidateSeconds: z.number().int().positive().optional(),
@@ -703,27 +707,27 @@ export type ViewDefinition = z.infer<typeof viewDefinitionSchema>;
 
 export type ViewLoaderContext<
   TContext extends SSRContext,
-  TParams extends z.ZodTypeAny | undefined,
+  TParams extends z.ZodType | undefined,
 > = TContext & {
   readonly params: InferOrNever<TParams>;
 };
 
 /** What a loader returns: the page's data, less the `flash` the framework adds. */
-export type ViewLoaderData<TData extends z.ZodTypeAny> =
+export type ViewLoaderData<TData extends z.ZodType> =
   z.input<TData> extends Record<string, unknown> ? Omit<z.input<TData>, 'flash'> : z.input<TData>;
 
 export type ViewLoader<
   TContext extends SSRContext,
-  TParams extends z.ZodTypeAny | undefined,
-  TData extends z.ZodTypeAny,
+  TParams extends z.ZodType | undefined,
+  TData extends z.ZodType,
 > = (
   context: ViewLoaderContext<TContext, TParams>,
 ) => Promise<ViewLoaderData<TData>> | ViewLoaderData<TData>;
 
 export interface ViewSpec<
   TContext extends SSRContext = SSRContext,
-  TParams extends z.ZodTypeAny | undefined = undefined,
-  TData extends z.ZodTypeAny = z.ZodTypeAny,
+  TParams extends z.ZodType | undefined = undefined,
+  TData extends z.ZodType = z.ZodType,
 > {
   readonly definition: ViewDefinition;
   readonly params?: TParams;
@@ -733,8 +737,8 @@ export interface ViewSpec<
 
 export type LooseViewSpec<TContext extends SSRContext = SSRContext> = ViewSpec<
   TContext,
-  z.ZodTypeAny | undefined,
-  z.ZodTypeAny
+  z.ZodType | undefined,
+  z.ZodType
 >;
 
 export const jobDefinitionSchema = z.object({
@@ -766,15 +770,15 @@ export const moduleManifestSchema = z.object({
   name: z.string().min(1),
   version: z.string().min(1),
   kind: moduleKindSchema,
-  capabilities: z.array(z.string()).optional(),
+  capabilities: contractArray(z.string()).optional(),
   // New: optional pass-through lists
-  assets: z.array(z.string()).optional(),
-  requestHooks: z.array(requestHookDefinitionSchema).optional(),
-  routes: z.array(routeDefinitionSchema).optional(),
-  views: z.array(viewDefinitionSchema).optional(),
-  jobs: z.array(jobDefinitionSchema).optional(),
-  events: z.array(eventDefinitionSchema).optional(),
-  services: z.array(serviceDefinitionSchema).optional(),
+  assets: contractArray(z.string()).optional(),
+  requestHooks: contractArray(requestHookDefinitionSchema).optional(),
+  routes: contractArray(routeDefinitionSchema).optional(),
+  views: contractArray(viewDefinitionSchema).optional(),
+  jobs: contractArray(jobDefinitionSchema).optional(),
+  events: contractArray(eventDefinitionSchema).optional(),
+  services: contractArray(serviceDefinitionSchema).optional(),
   init: z.string().optional(),
   dispose: z.string().optional(),
 });
@@ -825,10 +829,10 @@ export interface QueueProviderCapability {
 
 export function defineRoute<
   TContext extends RequestContext,
-  TParams extends z.ZodTypeAny | undefined = undefined,
-  TQuery extends z.ZodTypeAny | undefined = undefined,
-  TBody extends z.ZodTypeAny | undefined = undefined,
-  TResponse extends z.ZodTypeAny = z.ZodTypeAny,
+  TParams extends z.ZodType | undefined = undefined,
+  TQuery extends z.ZodType | undefined = undefined,
+  TBody extends z.ZodType | undefined = undefined,
+  TResponse extends z.ZodType = z.ZodType,
 >(
   spec: RouteSpec<TContext, TParams, TQuery, TBody, TResponse>,
 ): RouteSpec<TContext, TParams, TQuery, TBody, TResponse> {
@@ -837,8 +841,8 @@ export function defineRoute<
 
 export function defineView<
   TContext extends SSRContext,
-  TParams extends z.ZodTypeAny | undefined = undefined,
-  TData extends z.ZodTypeAny = z.ZodTypeAny,
+  TParams extends z.ZodType | undefined = undefined,
+  TData extends z.ZodType = z.ZodType,
 >(spec: ViewSpec<TContext, TParams, TData>): ViewSpec<TContext, TParams, TData> {
   return spec;
 }
@@ -854,13 +858,6 @@ export function createModule<
 ): ModuleDefinition<TRequestContext, TSSRContext, TRoutes, TViews> {
   return definition;
 }
-
-export { fromTsRestRoute, fromTsRestRouter } from './adapters/ts-rest.js';
-export type {
-  FromTsRestRouteOptions,
-  FromTsRestRouterOptions,
-  RouterRouteConfig,
-} from './adapters/ts-rest.js';
 
 export {
   RENDER_PROGRAM_FILE,

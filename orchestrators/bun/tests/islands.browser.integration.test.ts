@@ -250,7 +250,7 @@ async function withIslandsApp(
   try {
     const packageJsonPath = path.join(root, 'package.json');
     const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf8'));
-    packageJson.dependencies = { ...packageJson.dependencies, zod: '^3.23.8', ...app.dependencies };
+    packageJson.dependencies = { ...packageJson.dependencies, zod: '^4.6.6', ...app.dependencies };
     await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
     await materializeRepoLocalWorkspaceDependencies(root, { installStdio: 'pipe' });
 

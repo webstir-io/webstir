@@ -142,7 +142,7 @@ test('SSG publish refuses data that does not match the view schema', async () =>
     await writeViews(root, [POST_VIEW], POSTS.replace("title: 'Launch'", 'title: 42'));
     await assert.rejects(
       publish(root),
-      /view post returned data for \/blog\/launch that does not match its schema: title: Expected string, received number/,
+      /view post returned data for \/blog\/launch that does not match its schema: title: Invalid input: expected string, received number/,
     );
   } finally {
     await fs.rm(root, { recursive: true, force: true });
